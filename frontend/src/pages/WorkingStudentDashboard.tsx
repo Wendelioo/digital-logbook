@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
+import Button from '../components/Button';
 import { 
   LayoutDashboard, 
   UserPlus, 
@@ -237,15 +238,17 @@ function RegisterStudentModal({ onClose, onSuccess }: RegisterStudentModalProps)
                 </p>
               </div>
               <div className="ml-4 flex-shrink-0 flex">
-                <button
-                  className="bg-white rounded-md inline-flex text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setNotification(null)}
+                  className="bg-white text-gray-400 hover:text-gray-500"
                 >
                   <span className="sr-only">Close</span>
                   <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                   </svg>
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -261,13 +264,14 @@ function RegisterStudentModal({ onClose, onSuccess }: RegisterStudentModalProps)
         }}
       >
         <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 relative max-h-[90vh] flex flex-col">
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="sm"
             onClick={onClose}
-            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold transition-colors z-10"
+            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold"
           >
             ×
-          </button>
+          </Button>
           
           <div className="p-4 pb-3 flex-shrink-0 border-b border-gray-200">
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -361,20 +365,21 @@ function RegisterStudentModal({ onClose, onSuccess }: RegisterStudentModalProps)
 
             {/* Action Buttons */}
             <div className="border-t border-gray-200 p-4 flex justify-end gap-3">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={onClose}
-                className="px-4 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
               >
                 CANCEL
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
                 type="submit"
-                disabled={loading}
-                className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                loading={loading}
               >
-                {loading ? 'Saving...' : 'SAVE'}
-              </button>
+                SAVE
+              </Button>
             </div>
           </form>
         </div>
@@ -571,13 +576,15 @@ function BulkRegisterStudentModal({ onClose, onSuccess }: BulkRegisterStudentMod
                 )}
               </div>
               <div className="ml-4 flex-shrink-0 flex">
-                <button
-                  className="bg-white rounded-md inline-flex text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setNotification(null)}
+                  className="bg-white text-gray-400 hover:text-gray-500"
+                  icon={<X className="h-5 w-5" />}
                 >
                   <span className="sr-only">Close</span>
-                  <X className="h-5 w-5" />
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -593,13 +600,14 @@ function BulkRegisterStudentModal({ onClose, onSuccess }: BulkRegisterStudentMod
         }}
       >
         <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 relative max-h-[90vh] flex flex-col">
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="sm"
             onClick={onClose}
-            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold transition-colors z-10"
+            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold"
           >
             ×
-          </button>
+          </Button>
           
           <div className="p-4 pb-3 flex-shrink-0 border-b border-gray-200">
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -628,14 +636,15 @@ function BulkRegisterStudentModal({ onClose, onSuccess }: BulkRegisterStudentMod
                       Optional: <strong>Middle Name, Gender, Contact Number</strong>
                     </p>
                   </div>
-                  <button
-                    type="button"
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={downloadTemplate}
-                    className="ml-4 inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-100 rounded-md hover:bg-blue-200"
+                    icon={<Download className="h-3 w-3" />}
+                    className="ml-4 text-blue-700 bg-blue-100 hover:bg-blue-200"
                   >
-                    <Download className="h-3 w-3 mr-1" />
                     CSV Template
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -730,20 +739,22 @@ function BulkRegisterStudentModal({ onClose, onSuccess }: BulkRegisterStudentMod
 
             {/* Action Buttons */}
             <div className="border-t border-gray-200 p-4 flex justify-end gap-3">
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={onClose}
-                className="px-4 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
               >
                 CANCEL
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
                 type="submit"
-                disabled={loading || !uploadedFile}
-                className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                loading={loading}
+                disabled={!uploadedFile}
               >
-                {loading ? 'Processing...' : 'UPLOAD & REGISTER'}
-              </button>
+                UPLOAD & REGISTER
+              </Button>
             </div>
           </form>
         </div>
@@ -826,20 +837,20 @@ function ManageUsers() {
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Student Management</h2>
         <div className="flex gap-2">
-          <button
+          <Button
+            variant="success"
             onClick={() => setShowBulkModal(true)}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+            icon={<Upload className="h-4 w-4" />}
           >
-            <Upload className="h-4 w-4 mr-2" />
             BULK ADD
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
             onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+            icon={<Plus className="h-4 w-4" />}
           >
-            <Plus className="h-4 w-4 mr-2" />
             ADD NEW
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -929,25 +940,28 @@ function ManageUsers() {
               Showing {startEntry} to {endEntry} of {filteredStudents.length} entries
             </div>
             <div className="flex gap-2">
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
-                className="px-3 py-1 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Previous
-              </button>
-              <button
-                className="px-3 py-1 text-sm font-medium text-white bg-blue-600 border border-blue-600 rounded-md hover:bg-blue-700"
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
               >
                 {currentPage}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
-                className="px-3 py-1 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -1058,13 +1072,13 @@ function ViewStudentDetailsModal({ student, isOpen, onClose }: ViewStudentDetail
 
         {/* Footer - Close Button */}
         <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
-          <button
+          <Button
+            variant="secondary"
             onClick={onClose}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+            icon={<X className="h-4 w-4" />}
           >
-            <X className="h-4 w-4" />
             CLOSE
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -1224,15 +1238,17 @@ function EquipmentReports() {
                 </p>
               </div>
               <div className="ml-4 flex-shrink-0 flex">
-                <button
-                  className="bg-white rounded-md inline-flex text-gray-400 hover:text-gray-500"
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setNotification(null)}
+                  className="bg-white text-gray-400 hover:text-gray-500"
                 >
                   <span className="sr-only">Close</span>
                   <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
                   </svg>
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -1265,19 +1281,21 @@ function EquipmentReports() {
                 <span className="font-semibold text-blue-900">{selectedFeedbackIds.size}</span> report{selectedFeedbackIds.size !== 1 ? 's' : ''} selected
               </div>
               <div className="flex items-center gap-2">
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setSelectedFeedbackIds(new Set())}
-                  className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   Clear Selection
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={handleBatchForwardClick}
-                  className="inline-flex items-center px-4 py-1.5 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                  icon={<Send className="h-4 w-4" />}
                 >
-                  <Send className="h-4 w-4 mr-1.5" />
                   Forward Selected ({selectedFeedbackIds.size})
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -1348,23 +1366,25 @@ function EquipmentReports() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          <button
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => {
                               setSelectedReportForDetails(feedback);
                               setShowDetailsModal(true);
                             }}
-                            className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                            icon={<Eye className="h-4 w-4" />}
                           >
-                            <Eye className="h-4 w-4 mr-1.5" />
                             View Details
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            variant="primary"
+                            size="sm"
                             onClick={() => handleForwardClick(feedback)}
-                            className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                            icon={<Send className="h-4 w-4" />}
                           >
-                            <Send className="h-4 w-4 mr-1.5" />
                             Forward
-                          </button>
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -1392,13 +1412,14 @@ function EquipmentReports() {
           }}
         >
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 relative">
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setShowForwardModal(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold transition-colors"
+              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold"
             >
               ×
-            </button>
+            </Button>
             
             <div className="text-center p-8 pb-4">
               <Send className="h-12 w-12 text-blue-600 mx-auto mb-4" />
@@ -1499,22 +1520,20 @@ function EquipmentReports() {
 
               {/* Actions */}
               <div className="flex justify-end gap-3">
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
                   onClick={() => setShowForwardModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
                   disabled={forwarding}
                 >
                   Cancel
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="primary"
                   onClick={handleForwardSubmit}
-                  disabled={forwarding}
-                  className="px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  loading={forwarding}
                 >
-                  {forwarding ? 'Forwarding...' : 'Forward to Admin'}
-                </button>
+                  Forward to Admin
+                </Button>
               </div>
             </div>
           </div>
@@ -1532,13 +1551,14 @@ function EquipmentReports() {
           }}
         >
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 relative">
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setShowBatchForwardModal(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold transition-colors"
+              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold"
             >
               ×
-            </button>
+            </Button>
             
             <div className="text-center p-8 pb-4">
               <Send className="h-12 w-12 text-blue-600 mx-auto mb-4" />
@@ -1583,22 +1603,20 @@ function EquipmentReports() {
 
               {/* Actions */}
               <div className="flex justify-end gap-3">
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
                   onClick={() => setShowBatchForwardModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
                   disabled={forwarding}
                 >
                   Cancel
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="primary"
                   onClick={handleBatchForwardSubmit}
-                  disabled={forwarding}
-                  className="px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  loading={forwarding}
                 >
-                  {forwarding ? 'Forwarding...' : `Forward ${selectedFeedbackIds.size} Report${selectedFeedbackIds.size !== 1 ? 's' : ''}`}
-                </button>
+                  Forward {selectedFeedbackIds.size} Report{selectedFeedbackIds.size !== 1 ? 's' : ''}
+                </Button>
               </div>
             </div>
           </div>
@@ -1616,13 +1634,14 @@ function EquipmentReports() {
           }}
         >
           <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 relative max-h-[90vh] overflow-y-auto">
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setShowDetailsModal(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold transition-colors z-10"
+              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold z-10"
             >
               ×
-            </button>
+            </Button>
             
             <div className="p-8">
               <div className="flex items-center gap-3 mb-6">
@@ -1736,13 +1755,12 @@ function EquipmentReports() {
 
               {/* Close Button */}
               <div className="mt-6 flex justify-end">
-                <button
-                  type="button"
+                <Button
+                  variant="outline"
                   onClick={() => setShowDetailsModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   Close
-                </button>
+                </Button>
               </div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
+import Button from '../components/Button';
 import {
   LayoutDashboard,
   Users,
@@ -353,20 +354,20 @@ function ClassManagement() {
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-gray-900">Class Management</h2>
           <div className="flex items-center gap-2">
-            <button
+            <Button
               onClick={() => setShowGenerateModal(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              variant="success"
+              icon={<CalendarPlus className="h-4 w-4" />}
             >
-              <CalendarPlus className="h-4 w-4 mr-1" />
               GENERATE ATTENDANCE
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => navigate('/teacher/create-classlist')}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              variant="primary"
+              icon={<Plus className="h-4 w-4" />}
             >
-              <Plus className="h-4 w-4 mr-1" />
               ADD NEW
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -450,21 +451,22 @@ function ClassManagement() {
                   </td>
                   <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
-                      <button
+                      <Button
                         onClick={() => handleViewClassList(cls.class_id)}
-                        className="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-blue-600 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        variant="outline"
+                        size="sm"
+                        className="text-blue-600 bg-blue-50 hover:bg-blue-100"
+                        icon={<Eye className="h-3 w-3" />}
                         title="View"
-                      >
-                        <Eye className="h-3 w-3" />
-                      </button>
-                      <button
+                      />
+                      <Button
                         onClick={() => navigate(`/teacher/class-management/${cls.class_id}?mode=edit`)}
-                        className="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        variant="primary"
+                        size="sm"
+                        icon={<Edit className="h-3 w-3" />}
                         title="Edit"
-                      >
-                        <Edit className="h-3 w-3" />
-                      </button>
-                      <button
+                      />
+                      <Button
                         onClick={async () => {
                           if (window.confirm('Are you sure you want to delete this class?')) {
                             try {
@@ -480,11 +482,11 @@ function ClassManagement() {
                             }
                           }
                         }}
-                        className="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                        variant="danger"
+                        size="sm"
+                        icon={<Trash2 className="h-3 w-3" />}
                         title="Delete"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      />
                     </div>
                   </td>
                 </tr>
@@ -501,25 +503,25 @@ function ClassManagement() {
             Showing {startEntry} to {endEntry} of {filteredClasses.length} entries
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <Button
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
               disabled={currentPage === 1}
-              className="px-3 py-1 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="outline"
             >
               Previous
-            </button>
-            <button
-              className="px-3 py-1 text-sm font-medium text-white bg-blue-600 border border-blue-600 rounded-md hover:bg-blue-700"
+            </Button>
+            <Button
+              variant="primary"
             >
               {currentPage}
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
               disabled={currentPage === totalPages}
-              className="px-3 py-1 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="outline"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -533,12 +535,12 @@ function ClassManagement() {
               </svg>
               <h3 className="mt-2 text-sm font-medium text-gray-900">No matching classes found</h3>
               <div className="mt-6">
-                <button
+                <Button
                   onClick={() => setSearchTerm('')}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                  variant="outline"
                 >
                   Clear Search
-                </button>
+                </Button>
               </div>
             </>
           ) : (
@@ -548,13 +550,13 @@ function ClassManagement() {
                 You haven't created any classes yet.
               </p>
               <div className="mt-6">
-                <button
+                <Button
                   onClick={() => navigate('/teacher/create-classlist')}
-                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                  variant="primary"
+                  icon={<Plus className="h-4 w-4" />}
                 >
-                  <Plus className="h-4 w-4 mr-2" />
                   Add New Class
-                </button>
+                </Button>
               </div>
             </>
           )}
@@ -619,18 +621,18 @@ function ClassManagement() {
               </div>
 
               <div className="flex justify-end gap-2 mt-6">
-                <button
+                <Button
                   onClick={() => {
                     setShowGenerateModal(false);
                     setSelectedClassId(null);
                     setGenerateError('');
                   }}
                   disabled={generating}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
+                  variant="secondary"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={async () => {
                     if (!selectedClassId) {
                       setGenerateError('Please select a class');
@@ -657,10 +659,11 @@ function ClassManagement() {
                     }
                   }}
                   disabled={generating || !selectedClassId}
-                  className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  variant="success"
+                  loading={generating}
                 >
-                  {generating ? 'Generating...' : 'Generate Attendance'}
-                </button>
+                  Generate Attendance
+                </Button>
               </div>
             </div>
           </div>
@@ -978,17 +981,15 @@ function CreateClasslist() {
                         { value: 'Sat', label: 'SAT' },
                         { value: 'Sun', label: 'SUN' }
                       ].map((day) => (
-                        <button
+                        <Button
                           key={day.value}
                           type="button"
                           onClick={() => toggleDay(day.value)}
-                          className={`min-w-[40px] h-10 px-2 rounded-full flex items-center justify-center text-xs font-medium border-2 transition-colors ${formData.selectedDays.includes(day.value)
-                            ? 'bg-blue-600 text-white border-blue-600'
-                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                            }`}
+                          variant={formData.selectedDays.includes(day.value) ? 'primary' : 'outline'}
+                          className="min-w-[40px] h-10 px-2 rounded-full"
                         >
                           {day.label}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </div>
@@ -1112,20 +1113,21 @@ function CreateClasslist() {
 
             {/* Footer Buttons */}
             <div className="flex-shrink-0 border-t px-6 py-4 flex justify-end gap-3">
-              <button
+              <Button
                 type="button"
                 onClick={() => navigate('/teacher/class-management')}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                variant="outline"
               >
                 CANCEL
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
                 disabled={loading}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="primary"
+                loading={loading}
               >
-                {loading ? 'Saving...' : 'SAVE'}
-              </button>
+                SAVE
+              </Button>
             </div>
           </form>
         </div>
@@ -1429,37 +1431,37 @@ function ClassManagementDetail() {
       <div className="bg-white shadow rounded-lg">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h3 className="text-lg font-semibold text-gray-700">Class Student List</h3>
-          <button
+          <Button
             onClick={loadClassDetails}
             disabled={loading}
-            className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            variant="outline"
             title="Refresh class list"
           >
             <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             Refresh
-          </button>
+          </Button>
         </div>
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Enrolled Students</h3>
             {isEditMode && (
               <div className="flex items-center gap-3">
-                <button
+                <Button
                   onClick={handleEditClass}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                  variant="outline"
+                  icon={<Edit className="h-4 w-4" />}
                 >
-                  <Edit className="h-4 w-4 inline mr-2" />
                   EDIT CLASS
-                </button>
-                <button
+                </Button>
+                <Button
                   onClick={handleAddStudent}
-                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                  variant="primary"
+                  icon={<Plus className="h-4 w-4" />}
                 >
-                  <Plus className="h-4 w-4 mr-2" />
                   ADD STUDENT
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -1531,13 +1533,15 @@ function ClassManagementDetail() {
                         {student.contact_number || 'N/A'}
                       </td>
                       <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm">
-                        <button
+                        <Button
                           onClick={() => handleRemoveStudent(student.student_user_id, student.class_id)}
-                          className="text-red-600 hover:text-red-900 font-medium hover:underline transition-colors"
+                          variant="danger"
+                          size="sm"
+                          className="hover:underline"
+                          icon={<Trash2 className="h-4 w-4" />}
                         >
-                          <Trash2 className="h-4 w-4 inline mr-1" />
                           Remove
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -1670,21 +1674,22 @@ function ClassManagementDetail() {
               </div>
 
               <div className="mt-6 flex justify-end gap-3 flex-shrink-0">
-                <button
+                <Button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  variant="outline"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={handleEnrollStudents}
                   disabled={selectedStudents.size === 0 || enrolling}
-                  className="px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  variant="primary"
+                  loading={enrolling}
                 >
-                  {enrolling ? 'Enrolling...' : `Enroll ${selectedStudents.size > 0 ? selectedStudents.size : ''} Student${selectedStudents.size !== 1 ? 's' : ''}`}
-                </button>
+                  {`Enroll ${selectedStudents.size > 0 ? selectedStudents.size : ''} Student${selectedStudents.size !== 1 ? 's' : ''}`}
+                </Button>
               </div>
             </div>
           </div>
@@ -1777,21 +1782,22 @@ function ClassManagementDetail() {
               </div>
 
               <div className="mt-6 flex justify-end gap-3">
-                <button
+                <Button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                  variant="outline"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={handleSaveEdit}
                   disabled={saving}
-                  className="px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  variant="primary"
+                  loading={saving}
                 >
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </button>
+                  Save Changes
+                </Button>
               </div>
             </div>
           </div>
@@ -2044,19 +2050,15 @@ function AttendanceClassSelection() {
                         )}
                       </td>
                       <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-                        <button
+                        <Button
                           onClick={() => navigate(`/teacher/attendance/${cls.class_id}${hasActiveAttendance ? `?date=${activeDate}` : ''}`)}
-                          className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-900 font-medium"
+                          variant="outline"
+                          size="sm"
+                          className="text-blue-600 hover:text-blue-900"
+                          icon={hasActiveAttendance ? <Eye className="h-4 w-4" /> : undefined}
                         >
-                          {hasActiveAttendance ? (
-                            <>
-                              <Eye className="h-4 w-4" />
-                              View
-                            </>
-                          ) : (
-                            'Manage'
-                          )}
-                        </button>
+                          {hasActiveAttendance ? 'View' : 'Manage'}
+                        </Button>
                       </td>
                     </tr>
                   );
@@ -2074,25 +2076,28 @@ function AttendanceClassSelection() {
             Showing {startEntry} to {endEntry} of {filteredClasses.length} entries
           </div>
           <div className="flex items-center gap-1">
-            <button
+            <Button
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
               disabled={currentPage === 1}
-              className="px-2 py-1 text-xs text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="outline"
+              size="sm"
             >
               Previous
-            </button>
-            <button
-              className="px-2 py-1 text-xs font-medium text-white bg-blue-600 border border-blue-600 rounded-md hover:bg-blue-700"
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
             >
               {currentPage}
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
               disabled={currentPage === totalPages}
-              className="px-2 py-1 text-xs text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              variant="outline"
+              size="sm"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -2106,12 +2111,13 @@ function AttendanceClassSelection() {
               </svg>
               <h3 className="mt-2 text-xs font-medium text-gray-900">No matching classes found</h3>
               <div className="mt-4">
-                <button
+                <Button
                   onClick={() => setSearchTerm('')}
-                  className="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md shadow-sm text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
+                  variant="outline"
+                  size="sm"
                 >
                   Clear Search
-                </button>
+                </Button>
               </div>
             </>
           ) : (
@@ -2608,16 +2614,16 @@ function AttendanceManagementDetail() {
               <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" style={{ zIndex: 0 }} />
             </div>
             {selectedDate && (
-              <button
+              <Button
                 onClick={() => {
                   setSelectedDate('');
                   setHasSelectedDate(false);
                   setAttendanceRecords([]);
                 }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                variant="outline"
               >
                 Clear Date
-              </button>
+              </Button>
             )}
           </div>
           {!hasSelectedDate && (
@@ -2753,12 +2759,12 @@ function AttendanceManagementDetail() {
                   {error ? error : 'This class has no enrolled students. Please add students to the class first.'}
                 </p>
                 {!error && selectedClass && (
-                  <button
+                  <Button
                     onClick={() => navigate(`/teacher/class-management/${selectedClass.class_id}`)}
-                    className="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+                    variant="primary"
                   >
                     Go to Class Management
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
@@ -2769,12 +2775,13 @@ function AttendanceManagementDetail() {
       {/* Save Button - Show when date is selected or attendance is generated */}
       {selectedClass && (hasSelectedDate || isGenerated) && attendanceRecords.length > 0 && (
         <div className="flex justify-center mt-6">
-          <button
+          <Button
             onClick={handleSaveAll}
-            className="inline-flex items-center px-8 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+            variant="primary"
+            className="px-8 py-3 text-base"
           >
             Save Attendance
-          </button>
+          </Button>
         </div>
       )}
 
@@ -2848,32 +2855,24 @@ function AttendanceManagementDetail() {
               </div>
 
               <div className="flex justify-end gap-3">
-                <button
+                <Button
                   type="button"
                   onClick={handleCancelGenerate}
                   disabled={generating}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50"
+                  variant="secondary"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   onClick={handleGenerateAttendance}
                   disabled={generating}
-                  className="px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center"
+                  variant="primary"
+                  loading={generating}
+                  icon={!generating ? <CheckCircle className="h-4 w-4" /> : undefined}
                 >
-                  {generating ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Generate Attendance
-                    </>
-                  )}
-                </button>
+                  Generate Attendance
+                </Button>
               </div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
+import Button from '../components/Button';
 import {
   LayoutDashboard,
   ClipboardList,
@@ -374,30 +375,29 @@ function LoginHistory() {
               className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             />
             {searchQuery && (
-              <button
+              <Button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
+                variant="secondary"
+                size="sm"
+                icon={<X className="h-5 w-5" />}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 !p-0"
+              />
             )}
           </div>
           <div className="relative">
-            <button
+            <Button
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${showFilters
-                ? 'bg-primary-50 border-primary-500 text-primary-700'
-                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
+              variant={showFilters ? 'primary' : 'outline'}
+              icon={<SlidersHorizontal className="h-5 w-5" />}
+              className={showFilters ? 'bg-primary-50 border-primary-500 text-primary-700' : ''}
             >
-              <SlidersHorizontal className="h-5 w-5" />
               Filters
               {activeFilterCount > 0 && (
                 <span className="ml-1 px-2 py-0.5 bg-primary-500 text-white rounded-full text-xs">
                   {activeFilterCount}
                 </span>
               )}
-            </button>
+            </Button>
 
             {/* Dropdown with Date Picker */}
             {showFilters && (
@@ -420,12 +420,14 @@ function LoginHistory() {
                       </div>
                     </div>
                     {selectedDate && (
-                      <button
+                      <Button
                         onClick={() => setSelectedDate(null)}
-                        className="w-full text-xs text-gray-600 hover:text-gray-900 underline text-left"
+                        variant="secondary"
+                        size="sm"
+                        className="w-full text-xs text-gray-600 hover:text-gray-900 underline text-left !p-1"
                       >
                         Clear Date Filter
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -433,12 +435,12 @@ function LoginHistory() {
             )}
           </div>
           {(searchQuery || selectedDate) && (
-            <button
+            <Button
               onClick={clearFilters}
-              className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+              variant="outline"
             >
               Clear All
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -639,30 +641,29 @@ function FeedbackHistory() {
               className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             />
             {searchQuery && (
-              <button
+              <Button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
+                variant="secondary"
+                size="sm"
+                icon={<X className="h-5 w-5" />}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 !p-0"
+              />
             )}
           </div>
           <div className="relative">
-            <button
+            <Button
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${showFilters
-                ? 'bg-primary-50 border-primary-500 text-primary-700'
-                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
+              variant={showFilters ? 'primary' : 'outline'}
+              icon={<SlidersHorizontal className="h-5 w-5" />}
+              className={showFilters ? 'bg-primary-50 border-primary-500 text-primary-700' : ''}
             >
-              <SlidersHorizontal className="h-5 w-5" />
               Filters
               {activeFilterCount > 0 && (
                 <span className="ml-1 px-2 py-0.5 bg-primary-500 text-white rounded-full text-xs">
                   {activeFilterCount}
                 </span>
               )}
-            </button>
+            </Button>
 
             {/* Dropdown with Date Picker */}
             {showFilters && (
@@ -685,12 +686,14 @@ function FeedbackHistory() {
                       </div>
                     </div>
                     {selectedDate && (
-                      <button
+                      <Button
                         onClick={() => setSelectedDate(null)}
-                        className="w-full text-xs text-gray-600 hover:text-gray-900 underline text-left"
+                        variant="secondary"
+                        size="sm"
+                        className="w-full text-xs text-gray-600 hover:text-gray-900 underline text-left !p-1"
                       >
                         Clear Date Filter
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -698,12 +701,12 @@ function FeedbackHistory() {
             )}
           </div>
           {(searchQuery || selectedDate) && (
-            <button
+            <Button
               onClick={clearFilters}
-              className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+              variant="outline"
             >
               Clear All
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -931,17 +934,17 @@ function MyClasses() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-gray-900">My Classes</h2>
-          <button
+          <Button
             onClick={() => {
               setShowJoinForm(true);
               setSubjectCode('');
               setJoinError('');
               setJoinSuccess('');
             }}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+            variant="primary"
           >
             Join Class
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -959,7 +962,7 @@ function MyClasses() {
           }}
         >
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 relative">
-            <button
+            <Button
               type="button"
               onClick={() => {
                 setShowJoinForm(false);
@@ -967,10 +970,12 @@ function MyClasses() {
                 setJoinError('');
                 setJoinSuccess('');
               }}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold transition-colors z-10"
+              variant="secondary"
+              size="sm"
+              className="absolute top-4 right-4"
             >
               ×
-            </button>
+            </Button>
 
             <div className="p-6">
               <div className="mb-6">
@@ -1007,7 +1012,7 @@ function MyClasses() {
                 )}
 
                 <div className="flex gap-3 pt-4">
-                  <button
+                  <Button
                     type="button"
                     onClick={() => {
                       setShowJoinForm(false);
@@ -1015,17 +1020,20 @@ function MyClasses() {
                       setJoinError('');
                       setJoinSuccess('');
                     }}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                    variant="outline"
+                    className="flex-1"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="submit"
                     disabled={joining}
-                    className="flex-1 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    loading={joining}
+                    variant="primary"
+                    className="flex-1"
                   >
-                    {joining ? 'Joining...' : 'Join Class'}
-                  </button>
+                    Join Class
+                  </Button>
                 </div>
               </form>
             </div>
@@ -1115,3 +1123,4 @@ function StudentDashboard() {
 }
 
 export default StudentDashboard;
+

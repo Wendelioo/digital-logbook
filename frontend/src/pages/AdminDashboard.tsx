@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
+import Button from '../components/Button';
 import {
   LayoutDashboard,
   Users,
@@ -570,13 +571,13 @@ function UserManagement() {
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
-        <button
+        <Button
           onClick={() => setShowForm(true)}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+          variant="primary"
+          icon={<Plus className="h-4 w-4" />}
         >
-          <Plus className="h-4 w-4 mr-2" />
           ADD NEW
-        </button>
+        </Button>
       </div>
 
       {/* Notification */}
@@ -857,7 +858,7 @@ function UserManagement() {
 
               {/* Action Buttons */}
               <div className="border-t border-gray-200 p-4 flex justify-end gap-3">
-                <button
+                <Button
                   type="button"
                   onClick={() => {
                     setShowForm(false);
@@ -866,16 +867,18 @@ function UserManagement() {
                     setAvatarFile(null);
                     setAvatarPreview(null);
                   }}
-                  className="px-4 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  variant="secondary"
+                  size="sm"
                 >
                   CANCEL
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  variant="primary"
+                  size="sm"
                 >
                   SAVE
-                </button>
+                </Button>
               </div>
             </form>
           </div>
@@ -974,27 +977,28 @@ function UserManagement() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex items-center gap-2">
-                          <button
+                          <Button
                             onClick={() => setViewingUser(user)}
-                            className="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-blue-600 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                            variant="outline"
+                            size="sm"
+                            icon={<Eye className="h-3 w-3" />}
                             title="View"
-                          >
-                            <Eye className="h-3 w-3" />
-                          </button>
-                          <button
+                            className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                          />
+                          <Button
                             onClick={() => handleEdit(user)}
-                            className="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                            variant="primary"
+                            size="sm"
+                            icon={<Edit className="h-3 w-3" />}
                             title="Edit"
-                          >
-                            <Edit className="h-3 w-3" />
-                          </button>
-                          <button
+                          />
+                          <Button
                             onClick={() => handleDelete(user.id)}
-                            className="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                            variant="danger"
+                            size="sm"
+                            icon={<Trash2 className="h-3 w-3" />}
                             title="Delete"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
+                          />
                         </div>
                       </td>
                     </tr>
@@ -1014,25 +1018,28 @@ function UserManagement() {
               Showing {startEntry} to {endEntry} of {sortedUsers.length} entries
             </div>
             <div className="flex gap-2">
-              <button
+              <Button
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
-                className="px-3 py-1 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="outline"
+                size="sm"
               >
                 Previous
-              </button>
-              <button
-                className="px-3 py-1 text-sm font-medium text-white bg-blue-600 border border-blue-600 rounded-md hover:bg-blue-700"
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
               >
                 {currentPage}
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
-                className="px-3 py-1 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="outline"
+                size="sm"
               >
                 Next
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -1143,13 +1150,13 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
 
         {/* Footer - Close Button */}
         <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
-          <button
+          <Button
             onClick={onClose}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+            variant="secondary"
+            icon={<X className="h-4 w-4" />}
           >
-            <X className="h-4 w-4" />
             CLOSE
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -1254,20 +1261,20 @@ function ViewLogs() {
             <h2 className="text-2xl font-bold text-gray-900">View Logs</h2>
           </div>
           <div className="flex gap-2">
-            <button
+            <Button
               onClick={handleExportLogs}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              variant="outline"
+              icon={<Download className="h-4 w-4" />}
             >
-              <Download className="h-4 w-4 mr-2" />
               Export CSV
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleExportLogsPDF}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700"
+              variant="danger"
+              icon={<Download className="h-4 w-4" />}
             >
-              <Download className="h-4 w-4 mr-2" />
               Export PDF
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -1571,20 +1578,20 @@ function Reports() {
             </div>
           </div>
           <div className="flex gap-3">
-            <button
+            <Button
               onClick={handleExportReports}
-              className="inline-flex items-center px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+              variant="outline"
+              icon={<Download className="h-4 w-4" />}
             >
-              <Download className="h-4 w-4 mr-2" />
               Export CSV
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleExportReportsPDF}
-              className="inline-flex items-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+              variant="primary"
+              icon={<Download className="h-4 w-4" />}
             >
-              <Download className="h-4 w-4 mr-2" />
               Export PDF
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -1744,16 +1751,16 @@ function Reports() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <button
+                      <Button
                         onClick={() => {
                           setSelectedReport(report);
                           setShowReportModal(true);
                         }}
-                        className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                        variant="primary"
+                        icon={<Eye className="h-4 w-4" />}
                       >
-                        <Eye className="h-4 w-4 mr-1.5" />
                         View Details
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -1943,13 +1950,13 @@ function Reports() {
 
               {/* Close Button */}
               <div className="mt-6 flex justify-end">
-                <button
+                <Button
                   type="button"
                   onClick={() => setShowReportModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  variant="outline"
                 >
                   Close
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -2093,12 +2100,12 @@ function DepartmentManagement() {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Department Management</h2>
         </div>
-        <button
+        <Button
           onClick={() => setShowForm(true)}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700"
+          variant="primary"
         >
           Add Department
-        </button>
+        </Button>
       </div>
 
       {/* Notification */}
@@ -2245,12 +2252,13 @@ function DepartmentManagement() {
               </div>
               {/* Submit Button */}
               <div className="text-center">
-                <button
+                <Button
                   type="submit"
-                  className="w-full max-w-xs mx-auto px-6 py-3 bg-red-600 text-white text-base font-semibold rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors"
+                  variant="danger"
+                  className="w-full max-w-xs"
                 >
                   {editingDepartment ? 'UPDATE' : 'SUBMIT'}
-                </button>
+                </Button>
               </div>
             </form>
           </div>
@@ -2302,20 +2310,20 @@ function DepartmentManagement() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
-                      <button
+                      <Button
                         onClick={() => handleEdit(dept)}
-                        className="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        variant="primary"
+                        size="sm"
+                        icon={<Edit className="h-3 w-3" />}
                         title="Edit"
-                      >
-                        <Edit className="h-3 w-3" />
-                      </button>
-                      <button
+                      />
+                      <Button
                         onClick={() => handleDelete(dept.department_code)}
-                        className="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                        variant="danger"
+                        size="sm"
+                        icon={<Trash2 className="h-3 w-3" />}
                         title="Delete"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      />
                     </div>
                   </td>
                 </tr>
@@ -2335,38 +2343,32 @@ function DepartmentManagement() {
             Showing <span className="font-medium">{total === 0 ? 0 : startIndex + 1}</span> to <span className="font-medium">{endIndex}</span> of <span className="font-medium">{total}</span> entries
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <Button
               onClick={() => setPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
-              className={`px-3 py-1.5 border rounded-md text-sm ${currentPage === 1
-                ? 'text-gray-400 border-gray-200 cursor-not-allowed bg-gray-50'
-                : 'text-gray-700 border-gray-300 hover:bg-gray-50 bg-white'
-                }`}
+              variant="outline"
+              size="sm"
             >
               Previous
-            </button>
+            </Button>
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-              <button
+              <Button
                 key={pageNum}
                 onClick={() => setPage(pageNum)}
-                className={`px-3 py-1.5 border rounded-md text-sm ${currentPage === pageNum
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'text-gray-700 border-gray-300 hover:bg-gray-50 bg-white'
-                  }`}
+                variant={currentPage === pageNum ? 'primary' : 'outline'}
+                size="sm"
               >
                 {pageNum}
-              </button>
+              </Button>
             ))}
-            <button
+            <Button
               onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
               disabled={currentPage === totalPages}
-              className={`px-3 py-1.5 border rounded-md text-sm ${currentPage === totalPages
-                ? 'text-gray-400 border-gray-200 cursor-not-allowed bg-gray-50'
-                : 'text-gray-700 border-gray-300 hover:bg-gray-50 bg-white'
-                }`}
+              variant="outline"
+              size="sm"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       </div>
