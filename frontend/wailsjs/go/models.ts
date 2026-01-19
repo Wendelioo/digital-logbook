@@ -19,21 +19,28 @@ export namespace main {
 	    }
 	}
 	export class Attendance {
+	    id: number;
 	    class_id: number;
+	    subject_code: string;
+	    subject_name: string;
+	    section: string;
+	    schedule: string;
 	    student_user_id: number;
-	    date: string;
+	    student_id: string;
 	    student_code: string;
+	    student_name: string;
 	    first_name: string;
 	    middle_name?: string;
 	    last_name: string;
-	    subject_code: string;
-	    subject_name: string;
+	    date: string;
+	    attendance_date: string;
 	    time_in?: string;
 	    time_out?: string;
 	    pc_number?: string;
 	    status: string;
 	    remarks?: string;
-	    recorded_by?: number;
+	    recorded_by: number;
+	    recorded_by_name: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Attendance(source);
@@ -41,21 +48,28 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
 	        this.class_id = source["class_id"];
+	        this.subject_code = source["subject_code"];
+	        this.subject_name = source["subject_name"];
+	        this.section = source["section"];
+	        this.schedule = source["schedule"];
 	        this.student_user_id = source["student_user_id"];
-	        this.date = source["date"];
+	        this.student_id = source["student_id"];
 	        this.student_code = source["student_code"];
+	        this.student_name = source["student_name"];
 	        this.first_name = source["first_name"];
 	        this.middle_name = source["middle_name"];
 	        this.last_name = source["last_name"];
-	        this.subject_code = source["subject_code"];
-	        this.subject_name = source["subject_name"];
+	        this.date = source["date"];
+	        this.attendance_date = source["attendance_date"];
 	        this.time_in = source["time_in"];
 	        this.time_out = source["time_out"];
 	        this.pc_number = source["pc_number"];
 	        this.status = source["status"];
 	        this.remarks = source["remarks"];
 	        this.recorded_by = source["recorded_by"];
+	        this.recorded_by_name = source["recorded_by_name"];
 	    }
 	}
 	export class ClassStudent {
@@ -123,19 +137,20 @@ export namespace main {
 	    }
 	}
 	export class CourseClass {
+	    id: number;
 	    class_id: number;
 	    subject_code: string;
 	    subject_name: string;
 	    offering_code?: string;
-	    teacher_user_id: number;
-	    teacher_code?: string;
-	    teacher_name: string;
+	    section?: string;
 	    schedule?: string;
 	    room?: string;
 	    year_level?: string;
-	    section?: string;
-	    semester?: string;
 	    school_year?: string;
+	    semester?: string;
+	    teacher_user_id: number;
+	    teacher_name?: string;
+	    student_count: number;
 	    enrolled_count: number;
 	    is_active: boolean;
 	    created_by_user_id?: number;
@@ -147,19 +162,20 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
 	        this.class_id = source["class_id"];
 	        this.subject_code = source["subject_code"];
 	        this.subject_name = source["subject_name"];
 	        this.offering_code = source["offering_code"];
-	        this.teacher_user_id = source["teacher_user_id"];
-	        this.teacher_code = source["teacher_code"];
-	        this.teacher_name = source["teacher_name"];
+	        this.section = source["section"];
 	        this.schedule = source["schedule"];
 	        this.room = source["room"];
 	        this.year_level = source["year_level"];
-	        this.section = source["section"];
-	        this.semester = source["semester"];
 	        this.school_year = source["school_year"];
+	        this.semester = source["semester"];
+	        this.teacher_user_id = source["teacher_user_id"];
+	        this.teacher_name = source["teacher_name"];
+	        this.student_count = source["student_count"];
 	        this.enrolled_count = source["enrolled_count"];
 	        this.is_active = source["is_active"];
 	        this.created_by_user_id = source["created_by_user_id"];

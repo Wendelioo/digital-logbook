@@ -72,6 +72,8 @@ export function GetFeedback():Promise<Array<main.Feedback>>;
 
 export function GetPendingFeedback():Promise<Array<main.Feedback>>;
 
+export function GetRecentAttendance(arg1:Array<number>,arg2:number):Promise<Array<main.Attendance>>;
+
 export function GetStudentClasses(arg1:number):Promise<Array<main.CourseClass>>;
 
 export function GetStudentDashboard(arg1:number):Promise<main.StudentDashboard>;

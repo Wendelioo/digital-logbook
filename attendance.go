@@ -620,6 +620,5 @@ func parseScheduleStartTime(schedule string) (time.Time, error) {
 	}
 
 	// Convert to today's date with the parsed time
-	now := time.Now()
 	return time.Date(0, 1, 1, startTime.Hour(), startTime.Minute(), 0, 0, time.UTC), nil
 }

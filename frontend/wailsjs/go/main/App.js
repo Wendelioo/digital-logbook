@@ -142,6 +142,10 @@ export function GetPendingFeedback() {
   return window['go']['main']['App']['GetPendingFeedback']();
 }
 
+export function GetRecentAttendance(arg1, arg2) {
+  return window['go']['main']['App']['GetRecentAttendance'](arg1, arg2);
+}
+
 export function GetStudentClasses(arg1) {
   return window['go']['main']['App']['GetStudentClasses'](arg1);
 }

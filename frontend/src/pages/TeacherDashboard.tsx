@@ -1889,7 +1889,7 @@ function AttendanceClassSelection() {
     // Filter by search term
     if (searchTerm) {
       filtered = filtered.filter(cls =>
-        cls.teacher_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (cls.teacher_name && cls.teacher_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
         cls.subject_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         cls.subject_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (cls.school_year && cls.school_year.toLowerCase().includes(searchTerm.toLowerCase())) ||
