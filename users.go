@@ -27,11 +27,31 @@ func (a *App) GetUsers() ([]User, error) {
 
 	query := `
 		SELECT 
-			id, username, user_type, created_at,
-			first_name, middle_name, last_name,
-			employee_number, student_number,
-			email, contact_number, department_code
-		FROM v_users_complete
+			u.id, u.username, u.user_type, u.created_at,
+			a.first_name, a.middle_name, a.last_name,
+			a.employee_number, NULL as student_number,
+			a.email, a.contact_number, NULL as department_code
+		FROM users u
+		JOIN admins a ON u.id = a.user_id
+		WHERE u.user_type = 'admin'
+		UNION ALL
+		SELECT 
+			u.id, u.username, u.user_type, u.created_at,
+			t.first_name, t.middle_name, t.last_name,
+			t.employee_number, NULL as student_number,
+			t.email, t.contact_number, t.department_code
+		FROM users u
+		JOIN teachers t ON u.id = t.user_id
+		WHERE u.user_type IN ('teacher')
+		UNION ALL
+		SELECT 
+			u.id, u.username, u.user_type, u.created_at,
+			s.first_name, s.middle_name, s.last_name,
+			NULL as employee_number, s.student_number,
+			s.email, s.contact_number, NULL as department_code
+		FROM users u
+		JOIN students s ON u.id = s.user_id
+		WHERE u.user_type IN ('student', 'working_student')
 		ORDER BY created_at DESC
 	`
 	rows, err := a.db.Query(query)
@@ -51,15 +71,34 @@ func (a *App) GetUsersByType(userType string) ([]User, error) {
 
 	query := `
 		SELECT 
-			id, username, user_type, created_at,
-			first_name, middle_name, last_name,
-			employee_number, student_number,
-			email, contact_number, department_code
-		FROM v_users_complete
-		WHERE user_type = ?
+			u.id, u.username, u.user_type, u.created_at,
+			a.first_name, a.middle_name, a.last_name,
+			a.employee_number, NULL as student_number,
+			a.email, a.contact_number, NULL as department_code
+		FROM users u
+		JOIN admins a ON u.id = a.user_id
+		WHERE u.user_type = 'admin' AND u.user_type = ?
+		UNION ALL
+		SELECT 
+			u.id, u.username, u.user_type, u.created_at,
+			t.first_name, t.middle_name, t.last_name,
+			t.employee_number, NULL as student_number,
+			t.email, t.contact_number, t.department_code
+		FROM users u
+		JOIN teachers t ON u.id = t.user_id
+		WHERE u.user_type = 'teacher' AND u.user_type = ?
+		UNION ALL
+		SELECT 
+			u.id, u.username, u.user_type, u.created_at,
+			s.first_name, s.middle_name, s.last_name,
+			NULL as employee_number, s.student_number,
+			s.email, s.contact_number, NULL as department_code
+		FROM users u
+		JOIN students s ON u.id = s.user_id
+		WHERE u.user_type IN ('student', 'working_student') AND u.user_type = ?
 		ORDER BY created_at DESC
 	`
-	rows, err := a.db.Query(query, userType)
+	rows, err := a.db.Query(query, userType, userType, userType)
 	if err != nil {
 		return nil, err
 	}
@@ -76,24 +115,59 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 
 	query := `
 		SELECT 
-			id, username, user_type, created_at,
-			first_name, middle_name, last_name,
-			employee_number, student_number,
-			email, contact_number, department_code
-		FROM v_users_complete
-		WHERE (
-			username LIKE ? OR
-			first_name LIKE ? OR
-			last_name LIKE ? OR
-			middle_name LIKE ? OR
-			employee_number LIKE ? OR
-			student_number LIKE ? OR
-			DATE_FORMAT(created_at, '%Y-%m-%d') LIKE ?
+			u.id, u.username, u.user_type, u.created_at,
+			a.first_name, a.middle_name, a.last_name,
+			a.employee_number, NULL as student_number,
+			a.email, a.contact_number, NULL as department_code
+		FROM users u
+		JOIN admins a ON u.id = a.user_id
+		WHERE u.user_type = 'admin' AND (
+			u.username LIKE ? OR
+			a.first_name LIKE ? OR
+			a.last_name LIKE ? OR
+			a.middle_name LIKE ? OR
+			a.employee_number LIKE ? OR
+			DATE_FORMAT(u.created_at, '%Y-%m-%d') LIKE ?
+		)
+		UNION ALL
+		SELECT 
+			u.id, u.username, u.user_type, u.created_at,
+			t.first_name, t.middle_name, t.last_name,
+			t.employee_number, NULL as student_number,
+			t.email, t.contact_number, t.department_code
+		FROM users u
+		JOIN teachers t ON u.id = t.user_id
+		WHERE u.user_type = 'teacher' AND (
+			u.username LIKE ? OR
+			t.first_name LIKE ? OR
+			t.last_name LIKE ? OR
+			t.middle_name LIKE ? OR
+			t.employee_number LIKE ? OR
+			DATE_FORMAT(u.created_at, '%Y-%m-%d') LIKE ?
+		)
+		UNION ALL
+		SELECT 
+			u.id, u.username, u.user_type, u.created_at,
+			s.first_name, s.middle_name, s.last_name,
+			NULL as employee_number, s.student_number,
+			s.email, s.contact_number, NULL as department_code
+		FROM users u
+		JOIN students s ON u.id = s.user_id
+		WHERE u.user_type IN ('student', 'working_student') AND (
+			u.username LIKE ? OR
+			s.first_name LIKE ? OR
+			s.last_name LIKE ? OR
+			s.middle_name LIKE ? OR
+			s.student_number LIKE ? OR
+			DATE_FORMAT(u.created_at, '%Y-%m-%d') LIKE ?
 		)
 	`
 	searchPattern := "%" + searchTerm + "%"
-	args := []interface{}{searchPattern, searchPattern, searchPattern, searchPattern,
-		searchPattern, searchPattern, searchPattern}
+	args := []interface{}{
+		searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
+		searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
+		searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
+	}
 
 	if userType != "" {
 		query += ` AND user_type = ?`

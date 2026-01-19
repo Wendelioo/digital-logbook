@@ -12,7 +12,7 @@ import {
   EnrollStudentInClass,
   EnrollMultipleStudents,
   UnenrollStudentFromClass,
-  JoinClassBySubjectCode,
+  JoinClassByEDPCode,
 } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
 
@@ -151,6 +151,7 @@ export const useClasses = () => {
     section: string,
     semester: string,
     schoolYear: string,
+    descriptiveTitle: string,
     createdBy: number
   ) => {
     setLoading(true);
@@ -166,6 +167,7 @@ export const useClasses = () => {
         section,
         semester,
         schoolYear,
+        descriptiveTitle,
         createdBy
       );
       await fetchAllClasses(); // Refresh the list
@@ -283,7 +285,7 @@ export const useClasses = () => {
     setLoading(true);
     setError(null);
     try {
-      const classID = await JoinClassBySubjectCode(studentUserID, subjectCode);
+      const classID = await JoinClassByEDPCode(studentUserID, subjectCode);
       await fetchStudentClasses(studentUserID); // Refresh the student's classes
       return classID;
     } catch (err) {

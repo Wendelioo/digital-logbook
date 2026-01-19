@@ -191,6 +191,7 @@ type CourseClass struct {
 	ClassID        int     `json:"class_id"`
 	SubjectCode    string  `json:"subject_code"`
 	SubjectName    string  `json:"subject_name"`
+	DescriptiveTitle *string `json:"descriptive_title,omitempty"`
 	OfferingCode   *string `json:"offering_code,omitempty"`
 	Section        *string `json:"section,omitempty"`
 	Schedule       *string `json:"schedule,omitempty"`
@@ -351,20 +352,17 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	// Get all attendance records for this student
 	query := `
 		SELECT 
-			a.id, a.class_id, c.subject_code, s.name, c.section, c.schedule,
-			a.student_user_id, st.student_id,
-			CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.middle_name, ''), ' ', COALESCE(u.last_name, '')) as student_name,
-			a.attendance_date, a.time_in, a.time_out, a.pc_number, a.status, a.remarks,
-			a.recorded_by,
-			CONCAT(COALESCE(rec.first_name, ''), ' ', COALESCE(rec.middle_name, ''), ' ', COALESCE(rec.last_name, '')) as recorded_by_name
+			a.class_id, a.student_user_id, a.date,
+			stu.student_number,
+			stu.first_name, stu.middle_name, stu.last_name,
+			c.subject_code, s.description as subject_name,
+			a.time_in, a.time_out, a.pc_number, a.status, a.remarks
 		FROM attendance a
-		JOIN classlist c ON a.class_id = c.id
-		JOIN subjects s ON c.subject_code = s.code
-		JOIN students st ON a.student_user_id = st.user_id
-		JOIN users u ON st.user_id = u.id
-		LEFT JOIN users rec ON a.recorded_by = rec.id
+		JOIN students stu ON a.student_user_id = stu.user_id
+		JOIN classes c ON a.class_id = c.class_id
+		JOIN subjects s ON c.subject_code = s.subject_code
 		WHERE a.student_user_id = ?
-		ORDER BY a.attendance_date DESC, a.time_in DESC
+		ORDER BY a.date DESC, a.time_in DESC
 	`
 
 	rows, err := a.db.Query(query, userID)
@@ -376,20 +374,36 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	var attendance []Attendance
 	for rows.Next() {
 		var att Attendance
+		var middleName, timeIn, timeOut, pcNumber, remarks sql.NullString
 		err := rows.Scan(
-			&att.ID, &att.ClassID, &att.SubjectCode, &att.SubjectName, &att.Section, &att.Schedule,
-			&att.StudentUserID, &att.StudentID, &att.StudentName,
-			&att.AttendanceDate, &att.TimeIn, &att.TimeOut, &att.PCNumber, &att.Status, &att.Remarks,
-			&att.RecordedBy, &att.RecordedByName,
+			&att.ClassID, &att.StudentUserID, &att.Date,
+			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
+			&att.SubjectCode, &att.SubjectName,
+			&timeIn, &timeOut, &pcNumber, &att.Status, &remarks,
 		)
 		if err != nil {
 			log.Printf("Failed to scan attendance: %v", err)
 			continue
 		}
+		if middleName.Valid {
+			att.MiddleName = &middleName.String
+		}
+		if timeIn.Valid {
+			att.TimeIn = &timeIn.String
+		}
+		if timeOut.Valid {
+			att.TimeOut = &timeOut.String
+		}
+		if pcNumber.Valid {
+			att.PCNumber = &pcNumber.String
+		}
+		if remarks.Valid {
+			att.Remarks = &remarks.String
+		}
 		attendance = append(attendance, att)
 
 		// Check if this is today's record
-		if att.AttendanceDate == time.Now().Format("2006-01-02") && dashboard.TodayLog == nil {
+		if att.Date == time.Now().Format("2006-01-02") && dashboard.TodayLog == nil {
 			dashboard.TodayLog = &att
 		}
 	}

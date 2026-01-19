@@ -6,8 +6,8 @@ export function ChangePassword(arg1, arg2, arg3) {
   return window['go']['main']['App']['ChangePassword'](arg1, arg2, arg3);
 }
 
-export function CreateClass(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10) {
-  return window['go']['main']['App']['CreateClass'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10);
+export function CreateClass(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
+  return window['go']['main']['App']['CreateClass'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }
 
 export function CreateDepartment(arg1, arg2, arg3) {
@@ -126,8 +126,8 @@ export function GetClassesByCreator(arg1) {
   return window['go']['main']['App']['GetClassesByCreator'](arg1);
 }
 
-export function GetClassesBySubjectCode(arg1) {
-  return window['go']['main']['App']['GetClassesBySubjectCode'](arg1);
+export function GetClassesByEDPCode(arg1) {
+  return window['go']['main']['App']['GetClassesByEDPCode'](arg1);
 }
 
 export function GetDepartments() {
@@ -174,8 +174,8 @@ export function GetTeacherClassesByUserID(arg1) {
   return window['go']['main']['App']['GetTeacherClassesByUserID'](arg1);
 }
 
-export function GetTeacherClassesCreatedByWorkingStudents(arg1) {
-  return window['go']['main']['App']['GetTeacherClassesCreatedByWorkingStudents'](arg1);
+export function GetTeacherClassesWithAttendance(arg1) {
+  return window['go']['main']['App']['GetTeacherClassesWithAttendance'](arg1);
 }
 
 export function GetTeacherDashboard(arg1) {
@@ -206,8 +206,8 @@ export function InitializeAttendanceForClass(arg1, arg2, arg3) {
   return window['go']['main']['App']['InitializeAttendanceForClass'](arg1, arg2, arg3);
 }
 
-export function JoinClassBySubjectCode(arg1, arg2) {
-  return window['go']['main']['App']['JoinClassBySubjectCode'](arg1, arg2);
+export function JoinClassByEDPCode(arg1, arg2) {
+  return window['go']['main']['App']['JoinClassByEDPCode'](arg1, arg2);
 }
 
 export function Login(arg1, arg2) {

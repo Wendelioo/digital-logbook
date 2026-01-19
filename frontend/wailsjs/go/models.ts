@@ -141,6 +141,7 @@ export namespace main {
 	    class_id: number;
 	    subject_code: string;
 	    subject_name: string;
+	    descriptive_title?: string;
 	    offering_code?: string;
 	    section?: string;
 	    schedule?: string;
@@ -166,6 +167,7 @@ export namespace main {
 	        this.class_id = source["class_id"];
 	        this.subject_code = source["subject_code"];
 	        this.subject_name = source["subject_name"];
+	        this.descriptive_title = source["descriptive_title"];
 	        this.offering_code = source["offering_code"];
 	        this.section = source["section"];
 	        this.schedule = source["schedule"];

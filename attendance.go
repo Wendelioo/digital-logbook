@@ -87,24 +87,24 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 			cl.class_id,
 			cl.student_user_id,
 			COALESCE(a.date, ?) as date,
-			vcl.student_number,
-			vcl.first_name,
-			vcl.middle_name,
-			vcl.last_name,
+			stu.student_number,
+			stu.first_name,
+			stu.middle_name,
+			stu.last_name,
 			s.subject_code,
-			s.subject_name,
+			s.description as subject_name,
 			a.time_in,
 			a.time_out,
 			a.pc_number,
 			a.status,
 			a.remarks
 		FROM classlist cl
-		JOIN v_classlist_complete vcl ON cl.class_id = vcl.class_id AND cl.student_user_id = vcl.student_user_id
+		JOIN students stu ON cl.student_user_id = stu.user_id
 		JOIN classes c ON cl.class_id = c.class_id
 		JOIN subjects s ON c.subject_code = s.subject_code
 		LEFT JOIN attendance a ON cl.class_id = a.class_id AND cl.student_user_id = a.student_user_id AND a.date = ?
 		WHERE cl.class_id = ? AND cl.status = 'active'
-		ORDER BY vcl.last_name, vcl.first_name
+		ORDER BY stu.last_name, stu.first_name
 	`
 
 	rows, err := a.db.Query(query, date, date, classID)
@@ -271,13 +271,14 @@ func (a *App) ExportAttendanceCSV(classID int) (string, error) {
 	query := `
 		SELECT 
 			a.class_id, a.student_user_id, a.date, a.time_in, a.time_out, a.status, a.remarks,
-			vcl.student_number, vcl.first_name, vcl.middle_name, vcl.last_name,
-			vc.subject_code, vc.subject_name
+			stu.student_number, stu.first_name, stu.middle_name, stu.last_name,
+			c.subject_code, s.description as subject_name
 		FROM attendance a
-		JOIN v_classlist_complete vcl ON a.class_id = vcl.class_id AND a.student_user_id = vcl.student_user_id
-		JOIN v_classes_complete vc ON a.class_id = vc.class_id
+		JOIN students stu ON a.student_user_id = stu.user_id
+		JOIN classes c ON a.class_id = c.class_id
+		JOIN subjects s ON c.subject_code = s.subject_code
 		WHERE a.class_id = ?
-		ORDER BY a.date DESC, vcl.last_name, vcl.first_name
+		ORDER BY a.date DESC, stu.last_name, stu.first_name
 	`
 	rows, err := a.db.Query(query, classID)
 	if err != nil {
@@ -606,14 +607,23 @@ func (a *App) isWithinClassSchedule(schedule string, currentTime time.Time) bool
 
 // parseScheduleStartTime extracts the start time from a schedule string
 func parseScheduleStartTime(schedule string) (time.Time, error) {
-	// Parse schedule format: "Monday 8:00 AM - 10:00 AM" or "Mon-Wed 2:00 PM - 4:00 PM"
+	// Parse schedule format: "MWF 8:00 AM - 10:00 AM" or "MWF 2:00 PM-4:00 PM" or "Monday 8:00 AM - 10:00 AM"
 	parts := strings.Split(schedule, " ")
 	if len(parts) < 3 {
 		return time.Time{}, fmt.Errorf("invalid schedule format")
 	}
 
+	// Extract AM/PM part - it might contain dash (e.g., "PM-6:00")
+	// Split on dash to separate start AM/PM from end time
+	amPmPart := parts[2]
+	dashIndex := strings.Index(amPmPart, "-")
+	if dashIndex != -1 {
+		// Remove everything after dash (e.g., "PM-6:00" becomes "PM")
+		amPmPart = amPmPart[:dashIndex]
+	}
+
 	// Parse start time
-	startTimeStr := parts[1] + " " + parts[2] // "8:00 AM"
+	startTimeStr := parts[1] + " " + amPmPart // "8:00 AM" or "4:30 PM"
 	startTime, err := time.Parse("3:04 PM", startTimeStr)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to parse start time: %w", err)

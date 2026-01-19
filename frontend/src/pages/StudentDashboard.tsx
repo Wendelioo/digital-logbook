@@ -27,8 +27,8 @@ import {
   GetStudentFeedback,
   GetStudentLoginLogs,
   GetStudentClasses,
-  GetClassesBySubjectCode,
-  JoinClassBySubjectCode
+  GetClassesByEDPCode,
+  JoinClassByEDPCode
 } from '../../wailsjs/go/main/App';
 import { useAuth } from '../contexts/AuthContext';
 import { main } from '../../wailsjs/go/models';
@@ -846,7 +846,7 @@ function MyClasses() {
   const [classes, setClasses] = useState<CourseClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  const [subjectCode, setSubjectCode] = useState('');
+  const [edpCode, setEdpCode] = useState('');
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string>('');
   const [joinSuccess, setJoinSuccess] = useState<string>('');
@@ -874,7 +874,7 @@ function MyClasses() {
 
   const handleJoinClass = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !subjectCode.trim()) {
+    if (!user || !edpCode.trim()) {
       setJoinError('Please enter an EDP code.');
       return;
     }
@@ -884,28 +884,26 @@ function MyClasses() {
     setJoinSuccess('');
 
     try {
-      // First check if classes exist for this subject code
-      const availableClasses = await GetClassesBySubjectCode(subjectCode.trim().toUpperCase());
+      // First check if classes exist for this EDP code
+      const availableClasses = await GetClassesByEDPCode(edpCode.trim().toUpperCase());
 
       if (availableClasses.length === 0) {
-        setJoinError('No classes found.');
+        setJoinError('No classes found for this EDP code.');
         setJoining(false);
         return;
       }
 
       // Join the class
-      await JoinClassBySubjectCode(user.id, subjectCode.trim().toUpperCase());
-      setJoinSuccess('Successfully joined the class!');
+      await JoinClassByEDPCode(user.id, edpCode.trim().toUpperCase());
 
       // Reload classes to show the new enrollment
       await loadClasses();
 
-      // Close modal and clear form after 1.5 seconds
-      setTimeout(() => {
-        setShowJoinForm(false);
-        setSubjectCode('');
-        setJoinSuccess('');
-      }, 1500);
+      // Close modal and clear form immediately
+      setShowJoinForm(false);
+      setEdpCode('');
+      setJoinError('');
+      setJoinSuccess('');
     } catch (error: any) {
       console.error('Failed to join class:', error);
       const errorMessage = error.message || 'Failed to join class. Please try again.';
@@ -937,11 +935,12 @@ function MyClasses() {
           <Button
             onClick={() => {
               setShowJoinForm(true);
-              setSubjectCode('');
+              setEdpCode('');
               setJoinError('');
               setJoinSuccess('');
             }}
             variant="primary"
+            icon={<Plus className="h-4 w-4" />}
           >
             Join Class
           </Button>
@@ -955,7 +954,7 @@ function MyClasses() {
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowJoinForm(false);
-              setSubjectCode('');
+              setEdpCode('');
               setJoinError('');
               setJoinSuccess('');
             }
@@ -966,7 +965,7 @@ function MyClasses() {
               type="button"
               onClick={() => {
                 setShowJoinForm(false);
-                setSubjectCode('');
+                setEdpCode('');
                 setJoinError('');
                 setJoinSuccess('');
               }}
@@ -985,14 +984,14 @@ function MyClasses() {
 
               <form onSubmit={handleJoinClass} className="space-y-4">
                 <div>
-                  <label htmlFor="subjectCode" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="edpCode" className="block text-sm font-medium text-gray-700 mb-2">
                     EDP Code
                   </label>
                   <input
-                    id="subjectCode"
+                    id="edpCode"
                     type="text"
-                    value={subjectCode}
-                    onChange={(e) => setSubjectCode(e.target.value.toUpperCase())}
+                    value={edpCode}
+                    onChange={(e) => setEdpCode(e.target.value.toUpperCase())}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     required
                     autoFocus
@@ -1016,7 +1015,7 @@ function MyClasses() {
                     type="button"
                     onClick={() => {
                       setShowJoinForm(false);
-                      setSubjectCode('');
+                      setEdpCode('');
                       setJoinError('');
                       setJoinSuccess('');
                     }}
@@ -1060,8 +1059,11 @@ function MyClasses() {
               className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
             >
               <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3">
-                <h3 className="text-white font-semibold text-lg">{cls.subject_name || cls.subject_code}</h3>
-                <p className="text-white text-sm opacity-90">{cls.subject_code}</p>
+                <h3 className="text-white font-semibold text-lg">{cls.descriptive_title || cls.subject_name || cls.subject_code}</h3>
+                <p className="text-white text-sm opacity-90">Subject Code: {cls.subject_code}</p>
+                {cls.offering_code && (
+                  <p className="text-white text-xs opacity-75">EDP Code: {cls.offering_code}</p>
+                )}
               </div>
 
               <div className="px-4 py-4 bg-white">
