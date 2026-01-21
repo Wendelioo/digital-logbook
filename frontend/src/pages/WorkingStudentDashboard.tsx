@@ -72,6 +72,13 @@ function DashboardOverview() {
     };
 
     loadStats();
+
+    // Auto-refresh every 30 seconds to keep stats up-to-date
+    const refreshInterval = setInterval(() => {
+      loadStats();
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
   }, []);
 
   if (loading) {
@@ -1102,6 +1109,13 @@ function EquipmentReports() {
 
   useEffect(() => {
     loadPendingFeedback();
+
+    // Auto-refresh every 30 seconds to show new feedback submissions
+    const refreshInterval = setInterval(() => {
+      loadPendingFeedback();
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
   }, []);
 
   const loadPendingFeedback = async () => {

@@ -699,20 +699,31 @@ func (a *App) ArchiveAttendanceSheet(classID int, date string) error {
 		return fmt.Errorf("database not connected")
 	}
 
+	// Archive attendance records
 	query := `
 		UPDATE attendance 
 		SET is_archived = TRUE,
-		    updated_at = CURRENT_TIMESTAMP
+			updated_at = CURRENT_TIMESTAMP
 		WHERE class_id = ? AND date = ?
 	`
 
 	result, err := a.db.Exec(query, classID, date)
 	if err != nil {
-		log.Printf("⚠ Failed to archive attendance sheet: %v", err)
+		log.Printf("⚠ Failed to archive attendance records: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
+
+	// Also mark the attendance_sheets entry as archived (if it exists)
+	sheetQuery := `
+		UPDATE attendance_sheets
+		SET is_archived = TRUE,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE class_id = ? AND date = ?
+	`
+	_, _ = a.db.Exec(sheetQuery, classID, date)
+
 	log.Printf("✓ Archived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
 	return nil
 }
@@ -723,20 +734,31 @@ func (a *App) UnarchiveAttendanceSheet(classID int, date string) error {
 		return fmt.Errorf("database not connected")
 	}
 
+	// Unarchive attendance records
 	query := `
 		UPDATE attendance 
 		SET is_archived = FALSE,
-		    updated_at = CURRENT_TIMESTAMP
+			updated_at = CURRENT_TIMESTAMP
 		WHERE class_id = ? AND date = ?
 	`
 
 	result, err := a.db.Exec(query, classID, date)
 	if err != nil {
-		log.Printf("⚠ Failed to unarchive attendance sheet: %v", err)
+		log.Printf("⚠ Failed to unarchive attendance records: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
+
+	// Also unmark the attendance_sheets entry (if it exists)
+	sheetQuery := `
+		UPDATE attendance_sheets
+		SET is_archived = FALSE,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE class_id = ? AND date = ?
+	`
+	_, _ = a.db.Exec(sheetQuery, classID, date)
+
 	log.Printf("✓ Unarchived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
 	return nil
 }
@@ -762,25 +784,30 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 		return nil, fmt.Errorf("database not connected")
 	}
 
+	// Include sheets archived via attendance rows or via attendance_sheets table
 	query := `
-		SELECT 
-			a.class_id,
-			DATE_FORMAT(a.date, '%Y-%m-%d') as date,
-			s.subject_code,
-			s.description as subject_name,
+		SELECT
+			COALESCE(a.class_id, sh.class_id) AS class_id,
+			DATE_FORMAT(COALESCE(a.date, sh.date), '%Y-%m-%d') AS date,
+			subj.subject_code,
+			subj.description AS subject_name,
 			c.edp_code,
 			c.schedule,
-			COUNT(*) as student_count,
-			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) as present_count,
-			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) as absent_count,
-			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) as late_count,
-			SUM(CASE WHEN a.status = 'excused' THEN 1 ELSE 0 END) as excused_count
-		FROM attendance a
-		JOIN classes c ON a.class_id = c.class_id
-		JOIN subjects s ON c.subject_code = s.subject_code
-		WHERE c.teacher_user_id = ? AND a.is_archived = TRUE
-		GROUP BY a.class_id, a.date, s.subject_code, s.description, c.edp_code, c.schedule
-		ORDER BY a.date DESC, s.subject_code
+			COUNT(a.student_user_id) AS student_count,
+			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
+			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
+			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count,
+			SUM(CASE WHEN a.status = 'excused' THEN 1 ELSE 0 END) AS excused_count
+		FROM classes c
+		JOIN subjects subj ON c.subject_code = subj.subject_code
+		LEFT JOIN attendance a ON c.class_id = a.class_id
+			AND (a.is_archived = TRUE)
+		LEFT JOIN attendance_sheets sh ON c.class_id = sh.class_id
+			AND (sh.is_archived = TRUE)
+		WHERE c.teacher_user_id = ?
+		  AND (a.is_archived = TRUE OR sh.is_archived = TRUE)
+		GROUP BY COALESCE(a.class_id, sh.class_id), DATE_FORMAT(COALESCE(a.date, sh.date), '%Y-%m-%d'), subj.subject_code, subj.description, c.edp_code, c.schedule
+		ORDER BY DATE_FORMAT(COALESCE(a.date, sh.date), '%Y-%m-%d') DESC, subj.subject_code
 	`
 
 	rows, err := a.db.Query(query, teacherUserID)

@@ -144,6 +144,13 @@ function DashboardOverview() {
     };
 
     loadStats();
+
+    // Auto-refresh every 30 seconds to keep stats up-to-date
+    const refreshInterval = setInterval(() => {
+      loadStats();
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
   }, []);
 
   const statCards = [
@@ -1204,6 +1211,7 @@ function ViewLogs() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
 
+
   // Available dates for archiving
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [archiving, setArchiving] = useState(false);
@@ -1215,13 +1223,9 @@ function ViewLogs() {
   // Date filter only
   const [dateFilter, setDateFilter] = useState('');
 
-  useEffect(() => {
-    loadLogs();
-    loadAvailableDates();
-  }, []);
-
   const loadLogs = async () => {
     try {
+      // Always load all logs - we filter on the frontend based on viewMode
       const data = await GetAllLogs();
       if (data && Array.isArray(data)) {
         setLogs(data);
@@ -1246,6 +1250,19 @@ function ViewLogs() {
       console.error('Failed to load log dates:', error);
     }
   };
+
+  useEffect(() => {
+    loadLogs();
+    loadAvailableDates();
+
+    // Auto-refresh every 30 seconds to show new logins
+    const refreshInterval = setInterval(() => {
+      loadLogs();
+      loadAvailableDates();
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
+  }, []);
 
   const clearFilters = () => {
     setSearchQuery('');
@@ -1272,23 +1289,20 @@ function ViewLogs() {
     }
   };
 
-  // Group logs by date for display
-  const groupedLogs = logs.reduce((groups, log) => {
-    const date = log.login_time ? new Date(log.login_time).toISOString().split('T')[0] : 'unknown';
-    if (!groups[date]) {
-      groups[date] = [];
-    }
-    groups[date].push(log);
-    return groups;
-  }, {} as Record<string, LoginLog[]>);
 
-  // Apply filters to logs
+  // Helper function to extract date from login_time string (YYYY-MM-DD)
+  const getLogDate = (loginTime: string | undefined) => {
+    if (!loginTime) return '';
+    // login_time format: "2026-01-22 15:04:05"
+    return loginTime.split(' ')[0];
+  };
+
+  // Apply filters to logs (search and date filter only)
   const filteredLogs = logs.filter((log) => {
-    // General search - searches across all fields
+    const logDate = getLogDate(log.login_time);
     const searchLower = searchQuery.toLowerCase();
-    const logDate = log.login_time ? new Date(log.login_time).toISOString().split('T')[0] : '';
-    const timeIn = log.login_time ? new Date(log.login_time).toLocaleTimeString() : '';
-    const timeOut = log.logout_time ? new Date(log.logout_time).toLocaleTimeString() : '';
+    const timeIn = log.login_time ? log.login_time.split(' ')[1] || '' : '';
+    const timeOut = log.logout_time ? log.logout_time.split(' ')[1] || '' : '';
 
     const matchesSearch = searchQuery === '' ||
       log.user_name.toLowerCase().includes(searchLower) ||
@@ -1299,7 +1313,7 @@ function ViewLogs() {
       timeIn.toLowerCase().includes(searchLower) ||
       timeOut.toLowerCase().includes(searchLower);
 
-    // Date filter
+    // Date filter is now the main way to organize logs
     const matchesDate = dateFilter === '' || logDate === dateFilter;
 
     return matchesSearch && matchesDate;
@@ -1307,7 +1321,7 @@ function ViewLogs() {
 
   // Group filtered logs by date for display
   const groupedFilteredLogs = filteredLogs.reduce((groups, log) => {
-    const date = log.login_time ? new Date(log.login_time).toISOString().split('T')[0] : 'unknown';
+    const date = getLogDate(log.login_time) || 'unknown';
     if (!groups[date]) {
       groups[date] = [];
     }
@@ -1329,7 +1343,9 @@ function ViewLogs() {
         <div className="flex justify-between items-center mb-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Log Entries</h2>
-            <p className="text-sm text-gray-500 mt-1">View all login logs. Use filters to find and archive logs by date.</p>
+            <p className="text-sm text-gray-500 mt-1">
+              Use the date filter to view logs for a specific day, or leave blank to see all logs.
+            </p>
           </div>
         </div>
 
@@ -1564,6 +1580,14 @@ function Reports() {
   useEffect(() => {
     loadReports();
     loadAvailableDates();
+
+    // Auto-refresh every 30 seconds to show new feedback reports
+    const refreshInterval = setInterval(() => {
+      loadReports();
+      loadAvailableDates();
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
   }, []);
 
   const loadReports = async () => {
@@ -2608,7 +2632,7 @@ function ArchiveManagement() {
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              Login Logs ({logSheets.length} sheets)
+              Login Entries ({logSheets.reduce((sum, sheet) => sum + sheet.total_logins, 0)} logs)
             </button>
             <button
               onClick={() => setActiveTab('reports')}
@@ -2618,7 +2642,7 @@ function ArchiveManagement() {
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              Equipment Reports ({feedbackSheets.length} sheets)
+              Equipment Reports ({feedbackSheets.reduce((sum, sheet) => sum + sheet.total_reports, 0)} reports)
             </button>
           </nav>
         </div>

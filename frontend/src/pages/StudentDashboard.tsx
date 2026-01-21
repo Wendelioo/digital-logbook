@@ -88,6 +88,13 @@ function DashboardOverview() {
     };
 
     loadDashboard();
+
+    // Auto-refresh every 30 seconds to keep dashboard data up-to-date
+    const refreshInterval = setInterval(() => {
+      if (user) loadDashboard();
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
   }, [user]);
 
   if (loading) {
@@ -310,6 +317,13 @@ function LoginHistory() {
     };
 
     loadLoginLogs();
+
+    // Auto-refresh every 30 seconds to show updated login history
+    const refreshInterval = setInterval(() => {
+      if (user) loadLoginLogs();
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
   }, [user]);
 
   // Filter logs based on date and search
@@ -575,6 +589,13 @@ function FeedbackHistory() {
     };
 
     loadFeedback();
+
+    // Auto-refresh every 30 seconds to show updated feedback history
+    const refreshInterval = setInterval(() => {
+      if (user) loadFeedback();
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
   }, [user]);
 
   // Filter feedback based on date and search
