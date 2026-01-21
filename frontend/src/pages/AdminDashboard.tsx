@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { 
-  LayoutDashboard, 
-  Users, 
-  ClipboardList, 
+import Button from '../components/Button';
+import {
+  LayoutDashboard,
+  Users,
+  ClipboardList,
   FileText,
   UserPlus,
   Edit,
@@ -25,13 +26,13 @@ import {
   BarChart3,
   AlertCircle
 } from 'lucide-react';
-import { 
-  GetAdminDashboard, 
+import {
+  GetAdminDashboard,
   GetUsers,
   GetUsersByType,
   SearchUsers,
-  CreateUser, 
-  UpdateUser, 
+  CreateUser,
+  UpdateUser,
   DeleteUser,
   GetAllLogs,
   GetFeedback,
@@ -216,7 +217,7 @@ function UserManagement() {
   const [viewingUser, setViewingUser] = useState<User | null>(null);
   const [userTypeFilter, setUserTypeFilter] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [formData, setFormData] = useState({
     password: '',
@@ -295,7 +296,7 @@ function UserManagement() {
     try {
       const header = ['User ID', 'Full Name', 'User Type'];
       const lines = rows.map((u) => {
-        const fullName = u.first_name && u.last_name 
+        const fullName = u.first_name && u.last_name
           ? `${u.last_name}, ${u.first_name}${u.middle_name ? ' ' + u.middle_name : ''}`
           : u.name;
         const loginId = u.employee_id || u.student_id || u.name || '-';
@@ -347,7 +348,7 @@ function UserManagement() {
   const loadUsers = async () => {
     try {
       let data;
-      
+
       // Use server-side filtering for better performance
       if (searchTerm && userTypeFilter) {
         // Search with user type filter
@@ -362,7 +363,7 @@ function UserManagement() {
         // Get all users
         data = await GetUsers();
       }
-      
+
       // Ensure data is always an array, even if API returns null/undefined
       setUsers(data || []);
       setError('');
@@ -399,11 +400,11 @@ function UserManagement() {
 
       // Build name from lastName, firstName, middleName
       const fullName = `${formData.lastName}, ${formData.firstName}${formData.middleName ? ' ' + formData.middleName : ''}`;
-      
+
       // For new users, password is required
       // For editing, if password is empty, we keep the old password (backend handles this)
       let password_to_pass = formData.password;
-      
+
       // If creating a new user and no password provided, show error
       if (!editingUser && !password_to_pass) {
         showNotification('error', 'Password is required for new users');
@@ -428,13 +429,13 @@ function UserManagement() {
       });
 
       const departmentCode = formData.role === 'teacher' ? formData.departmentCode : '';
-      
+
       if (editingUser) {
         await UpdateUser(editingUser.id, fullName, formData.firstName, formData.middleName, formData.lastName, '', formData.role, formData.employeeId, formData.studentId, '', '', formData.email, formData.contactNumber, departmentCode);
         showNotification('success', 'User updated successfully!');
       } else {
         await CreateUser(password_to_pass, fullName, formData.firstName, formData.middleName, formData.lastName, '', formData.role, formData.employeeId, formData.studentId, '', '', formData.email, formData.contactNumber, departmentCode);
-        
+
         // Show specific notification based on user role
         const roleMessages = {
           'student': 'Student added successfully!',
@@ -445,7 +446,7 @@ function UserManagement() {
         const message = roleMessages[formData.role as keyof typeof roleMessages] || 'User added successfully!';
         showNotification('success', message);
       }
-      
+
       setShowForm(false);
       setEditingUser(null);
       setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', year: '', section: '', email: '', contactNumber: '', departmentCode: '' });
@@ -570,20 +571,19 @@ function UserManagement() {
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
-        <button
+        <Button
           onClick={() => setShowForm(true)}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+          variant="primary"
+          icon={<Plus className="h-4 w-4" />}
         >
-          <Plus className="h-4 w-4 mr-2" />
           ADD NEW
-        </button>
+        </Button>
       </div>
 
       {/* Notification */}
       {notification && (
-        <div className={`fixed top-4 right-4 z-50 max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out ${
-          notification.type === 'success' ? 'border-l-4 border-green-400' : 'border-l-4 border-red-400'
-        }`}>
+        <div className={`fixed top-4 right-4 z-50 max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out ${notification.type === 'success' ? 'border-l-4 border-green-400' : 'border-l-4 border-red-400'
+          }`}>
           <div className="p-4">
             <div className="flex items-start">
               <div className="flex-shrink-0">
@@ -598,9 +598,8 @@ function UserManagement() {
                 )}
               </div>
               <div className="ml-3 w-0 flex-1 pt-0.5">
-                <p className={`text-sm font-medium ${
-                  notification.type === 'success' ? 'text-green-800' : 'text-red-800'
-                }`}>
+                <p className={`text-sm font-medium ${notification.type === 'success' ? 'text-green-800' : 'text-red-800'
+                  }`}>
                   {notification.message}
                 </p>
               </div>
@@ -622,7 +621,7 @@ function UserManagement() {
 
       {/* User Form Modal */}
       {showForm && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
@@ -649,7 +648,7 @@ function UserManagement() {
             >
               ×
             </button>
-            
+
             {/* Header */}
             <div className="p-4 pb-3 flex-shrink-0 border-b border-gray-200">
               <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
@@ -657,7 +656,7 @@ function UserManagement() {
                 {editingUser ? `Edit ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}` : `Add ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}`}
               </h3>
             </div>
-            
+
             <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
               <div className="p-4">
                 {/* Role Selection - Hidden if editing */}
@@ -668,8 +667,8 @@ function UserManagement() {
                       value={formData.role}
                       onChange={(e) => {
                         const newRole = e.target.value;
-                        setFormData({ 
-                          ...formData, 
+                        setFormData({
+                          ...formData,
                           role: newRole
                         });
                       }}
@@ -687,7 +686,7 @@ function UserManagement() {
                   {/* Left Column - Personal Information */}
                   <div className="space-y-3">
                     <h4 className="text-xs font-semibold text-gray-700 mb-3">Personal Information</h4>
-                    
+
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1">First Name</label>
                       <input
@@ -735,7 +734,7 @@ function UserManagement() {
                   {/* Right Column - Account Information and Avatar */}
                   <div className="space-y-3">
                     <h4 className="text-xs font-semibold text-gray-700 mb-3">Account Information</h4>
-                    
+
                     {formData.role === 'teacher' ? (
                       <div>
                         <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
@@ -859,7 +858,7 @@ function UserManagement() {
 
               {/* Action Buttons */}
               <div className="border-t border-gray-200 p-4 flex justify-end gap-3">
-                <button
+                <Button
                   type="button"
                   onClick={() => {
                     setShowForm(false);
@@ -868,16 +867,18 @@ function UserManagement() {
                     setAvatarFile(null);
                     setAvatarPreview(null);
                   }}
-                  className="px-4 py-1.5 text-sm bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  variant="secondary"
+                  size="sm"
                 >
                   CANCEL
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  variant="primary"
+                  size="sm"
                 >
                   SAVE
-                </button>
+                </Button>
               </div>
             </form>
           </div>
@@ -901,7 +902,7 @@ function UserManagement() {
       <div className="bg-white shadow rounded-lg">
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <div className="text-sm text-gray-600">
-            Show <select 
+            Show <select
               value={entriesPerPage}
               onChange={(e) => {
                 setEntriesPerPage(Number(e.target.value));
@@ -961,46 +962,47 @@ function UserManagement() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                {currentUsers.map((user, index) => (
-                  <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {user.employee_id || user.student_id || user.name || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {user.first_name && user.last_name 
-                        ? `${user.last_name}, ${user.first_name}${user.middle_name ? ' ' + user.middle_name : ''}`
-                        : user.name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {user.role.replace('_', ' ')}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setViewingUser(user)}
-                          className="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-blue-600 bg-blue-50 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                          title="View"
-                        >
-                          <Eye className="h-3 w-3" />
-                        </button>
-                        <button
-                          onClick={() => handleEdit(user)}
-                          className="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                          title="Edit"
-                        >
-                          <Edit className="h-3 w-3" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(user.id)}
-                          className="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                          title="Delete"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                  {currentUsers.map((user, index) => (
+                    <tr key={user.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {user.employee_id || user.student_id || user.name || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {user.first_name && user.last_name
+                          ? `${user.last_name}, ${user.first_name}${user.middle_name ? ' ' + user.middle_name : ''}`
+                          : user.name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {user.role.replace('_', ' ')}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            onClick={() => setViewingUser(user)}
+                            variant="outline"
+                            size="sm"
+                            icon={<Eye className="h-3 w-3" />}
+                            title="View"
+                            className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                          />
+                          <Button
+                            onClick={() => handleEdit(user)}
+                            variant="primary"
+                            size="sm"
+                            icon={<Edit className="h-3 w-3" />}
+                            title="Edit"
+                          />
+                          <Button
+                            onClick={() => handleDelete(user.id)}
+                            variant="danger"
+                            size="sm"
+                            icon={<Trash2 className="h-3 w-3" />}
+                            title="Delete"
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             ) : (
@@ -1016,25 +1018,28 @@ function UserManagement() {
               Showing {startEntry} to {endEntry} of {sortedUsers.length} entries
             </div>
             <div className="flex gap-2">
-              <button
+              <Button
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
-                className="px-3 py-1 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="outline"
+                size="sm"
               >
                 Previous
-              </button>
-              <button
-                className="px-3 py-1 text-sm font-medium text-white bg-blue-600 border border-blue-600 rounded-md hover:bg-blue-700"
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
               >
                 {currentPage}
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
-                className="px-3 py-1 text-sm text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="outline"
+                size="sm"
               >
                 Next
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -1080,7 +1085,7 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
@@ -1102,9 +1107,9 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
             <div className="flex-shrink-0">
               <div className="w-32 h-32 border-2 border-black rounded overflow-hidden bg-gray-100 flex items-center justify-center">
                 {user.photo_url ? (
-                  <img 
-                    src={user.photo_url} 
-                    alt={getFullName()} 
+                  <img
+                    src={user.photo_url}
+                    alt={getFullName()}
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -1145,13 +1150,13 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
 
         {/* Footer - Close Button */}
         <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
-          <button
+          <Button
             onClick={onClose}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+            variant="secondary"
+            icon={<X className="h-4 w-4" />}
           >
-            <X className="h-4 w-4" />
             CLOSE
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -1162,11 +1167,11 @@ function ViewLogs() {
   const [logs, setLogs] = useState<LoginLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  
+
   // General search
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  
+
   // Date filter only
   const [dateFilter, setDateFilter] = useState('');
 
@@ -1224,8 +1229,8 @@ function ViewLogs() {
     const logDate = log.login_time ? new Date(log.login_time).toISOString().split('T')[0] : '';
     const timeIn = log.login_time ? new Date(log.login_time).toLocaleTimeString() : '';
     const timeOut = log.logout_time ? new Date(log.logout_time).toLocaleTimeString() : '';
-    
-    const matchesSearch = searchQuery === '' || 
+
+    const matchesSearch = searchQuery === '' ||
       log.user_name.toLowerCase().includes(searchLower) ||
       (log.user_id_number || '').toLowerCase().includes(searchLower) ||
       log.user_type.toLowerCase().includes(searchLower) ||
@@ -1233,10 +1238,10 @@ function ViewLogs() {
       logDate.includes(searchLower) ||
       timeIn.toLowerCase().includes(searchLower) ||
       timeOut.toLowerCase().includes(searchLower);
-    
+
     // Date filter
     const matchesDate = dateFilter === '' || logDate === dateFilter;
-    
+
     return matchesSearch && matchesDate;
   });
 
@@ -1256,20 +1261,20 @@ function ViewLogs() {
             <h2 className="text-2xl font-bold text-gray-900">View Logs</h2>
           </div>
           <div className="flex gap-2">
-            <button
+            <Button
               onClick={handleExportLogs}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+              variant="outline"
+              icon={<Download className="h-4 w-4" />}
             >
-              <Download className="h-4 w-4 mr-2" />
               Export CSV
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleExportLogsPDF}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700"
+              variant="danger"
+              icon={<Download className="h-4 w-4" />}
             >
-              <Download className="h-4 w-4 mr-2" />
               Export PDF
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -1295,11 +1300,10 @@ function ViewLogs() {
           <div className="relative">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
-                showFilters
-                  ? 'bg-primary-50 border-primary-500 text-primary-700'
-                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${showFilters
+                ? 'bg-primary-50 border-primary-500 text-primary-700'
+                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
             >
               <SlidersHorizontal className="h-5 w-5" />
               Filters
@@ -1309,7 +1313,7 @@ function ViewLogs() {
                 </span>
               )}
             </button>
-            
+
             {/* Dropdown Filters Panel */}
             {showFilters && (
               <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
@@ -1411,20 +1415,20 @@ function ViewLogs() {
                         {log.pc_number || <span className="text-gray-400">N/A</span>}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {log.login_time ? new Date(log.login_time).toLocaleTimeString('en-US', { 
-                          hour: '2-digit', 
-                          minute: '2-digit', 
+                        {log.login_time ? new Date(log.login_time).toLocaleTimeString('en-US', {
+                          hour: '2-digit',
+                          minute: '2-digit',
                           second: '2-digit',
-                          hour12: true 
+                          hour12: true
                         }) : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                         {log.logout_time ? (
-                          new Date(log.logout_time).toLocaleTimeString('en-US', { 
-                            hour: '2-digit', 
-                            minute: '2-digit', 
+                          new Date(log.logout_time).toLocaleTimeString('en-US', {
+                            hour: '2-digit',
+                            minute: '2-digit',
                             second: '2-digit',
-                            hour12: true 
+                            hour12: true
                           })
                         ) : (
                           <span className="text-gray-400">-</span>
@@ -1470,14 +1474,14 @@ function Reports() {
   const [reports, setReports] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  
+
   // General search
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  
+
   // Date filter only
   const [dateFilter, setDateFilter] = useState('');
-  
+
   // Modal state
   const [selectedReport, setSelectedReport] = useState<Feedback | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -1543,7 +1547,7 @@ function Reports() {
       report.mouse_condition.toLowerCase().includes(searchLower) ||
       (report.comments && report.comments.toLowerCase().includes(searchLower)) ||
       (report.date_submitted && report.date_submitted.toLowerCase().includes(searchLower));
-    
+
     // Date filter
     const matchesDate = dateFilter === '' || (report.date_submitted && report.date_submitted.startsWith(dateFilter));
 
@@ -1564,30 +1568,23 @@ function Reports() {
       <div className="mb-6">
         <div className="flex justify-between items-start mb-6">
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <BarChart3 className="h-6 w-6 text-blue-600" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
-              </div>
-            </div>
+            <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
           </div>
           <div className="flex gap-3">
-            <button
+            <Button
               onClick={handleExportReports}
-              className="inline-flex items-center px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+              variant="outline"
+              icon={<Download className="h-4 w-4" />}
             >
-              <Download className="h-4 w-4 mr-2" />
               Export CSV
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleExportReportsPDF}
-              className="inline-flex items-center px-4 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+              variant="primary"
+              icon={<Download className="h-4 w-4" />}
             >
-              <Download className="h-4 w-4 mr-2" />
               Export PDF
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -1613,11 +1610,10 @@ function Reports() {
           <div className="relative">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
-                showFilters
-                  ? 'bg-primary-50 border-primary-500 text-primary-700'
-                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
+              className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${showFilters
+                ? 'bg-primary-50 border-primary-500 text-primary-700'
+                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
             >
               <SlidersHorizontal className="h-5 w-5" />
               Filters
@@ -1627,7 +1623,7 @@ function Reports() {
                 </span>
               )}
             </button>
-            
+
             {/* Dropdown Filters Panel */}
             {showFilters && (
               <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
@@ -1748,16 +1744,16 @@ function Reports() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <button
+                      <Button
                         onClick={() => {
                           setSelectedReport(report);
                           setShowReportModal(true);
                         }}
-                        className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                        variant="primary"
+                        icon={<Eye className="h-4 w-4" />}
                       >
-                        <Eye className="h-4 w-4 mr-1.5" />
                         View Details
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -1787,7 +1783,7 @@ function Reports() {
 
       {/* Report Details Modal */}
       {showReportModal && selectedReport && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
@@ -1803,7 +1799,7 @@ function Reports() {
             >
               ×
             </button>
-            
+
             <div className="p-8">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2 bg-blue-100 rounded-lg">
@@ -1856,49 +1852,45 @@ function Reports() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                       <span className="text-xs text-gray-600 block mb-2">Equipment</span>
-                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${
-                        selectedReport.equipment_condition === 'Good' 
-                          ? 'bg-green-100 text-green-800' 
-                          : selectedReport.equipment_condition === 'Minor Issue' 
+                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${selectedReport.equipment_condition === 'Good'
+                        ? 'bg-green-100 text-green-800'
+                        : selectedReport.equipment_condition === 'Minor Issue'
                           ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-red-100 text-red-800'
-                      }`}>
+                        }`}>
                         {selectedReport.equipment_condition}
                       </span>
                     </div>
                     <div>
                       <span className="text-xs text-gray-600 block mb-2">Monitor</span>
-                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${
-                        selectedReport.monitor_condition === 'Good' 
-                          ? 'bg-green-100 text-green-800' 
-                          : selectedReport.monitor_condition === 'Minor Issue' 
+                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${selectedReport.monitor_condition === 'Good'
+                        ? 'bg-green-100 text-green-800'
+                        : selectedReport.monitor_condition === 'Minor Issue'
                           ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-red-100 text-red-800'
-                      }`}>
+                        }`}>
                         {selectedReport.monitor_condition}
                       </span>
                     </div>
                     <div>
                       <span className="text-xs text-gray-600 block mb-2">Keyboard</span>
-                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${
-                        selectedReport.keyboard_condition === 'Good' 
-                          ? 'bg-green-100 text-green-800' 
-                          : selectedReport.keyboard_condition === 'Minor Issue' 
+                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${selectedReport.keyboard_condition === 'Good'
+                        ? 'bg-green-100 text-green-800'
+                        : selectedReport.keyboard_condition === 'Minor Issue'
                           ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-red-100 text-red-800'
-                      }`}>
+                        }`}>
                         {selectedReport.keyboard_condition}
                       </span>
                     </div>
                     <div>
                       <span className="text-xs text-gray-600 block mb-2">Mouse</span>
-                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${
-                        selectedReport.mouse_condition === 'Good' 
-                          ? 'bg-green-100 text-green-800' 
-                          : selectedReport.mouse_condition === 'Minor Issue' 
+                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${selectedReport.mouse_condition === 'Good'
+                        ? 'bg-green-100 text-green-800'
+                        : selectedReport.mouse_condition === 'Minor Issue'
                           ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-red-100 text-red-800'
-                      }`}>
+                        }`}>
                         {selectedReport.mouse_condition}
                       </span>
                     </div>
@@ -1951,13 +1943,13 @@ function Reports() {
 
               {/* Close Button */}
               <div className="mt-6 flex justify-end">
-                <button
+                <Button
                   type="button"
                   onClick={() => setShowReportModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  variant="outline"
                 >
                   Close
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -1985,12 +1977,10 @@ function DepartmentManagement() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [formData, setFormData] = useState({
     departmentCode: '',
-    departmentName: '',
-    description: '',
-    isActive: true
+    departmentName: ''
   });
 
   useEffect(() => {
@@ -2025,16 +2015,16 @@ function DepartmentManagement() {
       }
 
       if (editingDepartment) {
-        await UpdateDepartment(editingDepartment.department_code, formData.departmentCode, formData.departmentName, formData.description, formData.isActive);
+        await UpdateDepartment(editingDepartment.department_code, formData.departmentCode, formData.departmentName, '', true);
         showNotification('success', 'Department updated successfully!');
       } else {
-        await CreateDepartment(formData.departmentCode, formData.departmentName, formData.description);
+        await CreateDepartment(formData.departmentCode, formData.departmentName, '');
         showNotification('success', 'Department added successfully!');
       }
-      
+
       setShowForm(false);
       setEditingDepartment(null);
-      setFormData({ departmentCode: '', departmentName: '', description: '', isActive: true });
+      setFormData({ departmentCode: '', departmentName: '' });
       loadDepartments();
     } catch (error) {
       console.error('Failed to save department:', error);
@@ -2047,9 +2037,7 @@ function DepartmentManagement() {
     setEditingDepartment(department);
     setFormData({
       departmentCode: department.department_code,
-      departmentName: department.department_name,
-      description: department.description || '',
-      isActive: department.is_active
+      departmentName: department.department_name
     });
     setShowForm(true);
   };
@@ -2083,11 +2071,11 @@ function DepartmentManagement() {
       dept.department_name.toLowerCase().includes(searchLower) ||
       (dept.description && dept.description.toLowerCase().includes(searchLower))
     );
-    
-    const matchesStatus = statusFilter === 'all' || 
+
+    const matchesStatus = statusFilter === 'all' ||
       (statusFilter === 'active' && dept.is_active) ||
       (statusFilter === 'inactive' && !dept.is_active);
-    
+
     return matchesSearch && matchesStatus;
   });
 
@@ -2105,20 +2093,19 @@ function DepartmentManagement() {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Department Management</h2>
         </div>
-        <button
+        <Button
           onClick={() => setShowForm(true)}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700"
+          variant="primary"
+          icon={<Plus className="w-5 h-5" />}
         >
-          <UserPlus className="h-4 w-4 mr-2" />
           Add Department
-        </button>
+        </Button>
       </div>
 
       {/* Notification */}
       {notification && (
-        <div className={`fixed top-4 right-4 z-50 max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out ${
-          notification.type === 'success' ? 'border-l-4 border-green-400' : 'border-l-4 border-red-400'
-        }`}>
+        <div className={`fixed top-4 right-4 z-50 max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out ${notification.type === 'success' ? 'border-l-4 border-green-400' : 'border-l-4 border-red-400'
+          }`}>
           <div className="p-4">
             <div className="flex items-start">
               <div className="flex-shrink-0">
@@ -2133,9 +2120,8 @@ function DepartmentManagement() {
                 )}
               </div>
               <div className="ml-3 w-0 flex-1 pt-0.5">
-                <p className={`text-sm font-medium ${
-                  notification.type === 'success' ? 'text-green-800' : 'text-red-800'
-                }`}>
+                <p className={`text-sm font-medium ${notification.type === 'success' ? 'text-green-800' : 'text-red-800'
+                  }`}>
                   {notification.message}
                 </p>
               </div>
@@ -2202,13 +2188,13 @@ function DepartmentManagement() {
 
       {/* Department Form Modal */}
       {showForm && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowForm(false);
               setEditingDepartment(null);
-              setFormData({ departmentCode: '', departmentName: '', description: '', isActive: true });
+              setFormData({ departmentCode: '', departmentName: '' });
             }
           }}
         >
@@ -2219,13 +2205,13 @@ function DepartmentManagement() {
               onClick={() => {
                 setShowForm(false);
                 setEditingDepartment(null);
-                setFormData({ departmentCode: '', departmentName: '', description: '', isActive: true });
+                setFormData({ departmentCode: '', departmentName: '' });
               }}
               className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold transition-colors z-10"
             >
               ×
             </button>
-            
+
             {/* Header */}
             <div className="text-center p-8 pb-4 flex-shrink-0">
               <h3 className="text-2xl font-bold text-blue-600 mb-2">
@@ -2233,7 +2219,7 @@ function DepartmentManagement() {
               </h3>
               <div className="w-24 h-0.5 bg-blue-600 mx-auto"></div>
             </div>
-            
+
             <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto px-8 pb-8 flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
@@ -2258,34 +2244,15 @@ function DepartmentManagement() {
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  rows={3}
-                />
-              </div>
-              <div>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.isActive}
-                    onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">Active</span>
-                </label>
-              </div>
               {/* Submit Button */}
               <div className="text-center">
-                <button
+                <Button
                   type="submit"
-                  className="w-full max-w-xs mx-auto px-6 py-3 bg-red-600 text-white text-base font-semibold rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors"
+                  variant="danger"
+                  className="w-full max-w-xs"
                 >
                   {editingDepartment ? 'UPDATE' : 'SUBMIT'}
-                </button>
+                </Button>
               </div>
             </form>
           </div>
@@ -2328,30 +2295,29 @@ function DepartmentManagement() {
                     {dept.description || dept.department_name}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      dept.is_active 
-                        ? 'bg-blue-100 text-blue-800' 
-                        : 'bg-red-100 text-red-800'
-                    }`}>
+                    <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${dept.is_active
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-red-100 text-red-800'
+                      }`}>
                       {dept.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
-                      <button
+                      <Button
                         onClick={() => handleEdit(dept)}
-                        className="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        variant="primary"
+                        size="sm"
+                        icon={<Edit className="h-3 w-3" />}
                         title="Edit"
-                      >
-                        <Edit className="h-3 w-3" />
-                      </button>
-                      <button
+                      />
+                      <Button
                         onClick={() => handleDelete(dept.department_code)}
-                        className="inline-flex items-center justify-center px-2 py-1 text-xs font-medium rounded text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                        variant="danger"
+                        size="sm"
+                        icon={<Trash2 className="h-3 w-3" />}
                         title="Delete"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
+                      />
                     </div>
                   </td>
                 </tr>
@@ -2371,41 +2337,32 @@ function DepartmentManagement() {
             Showing <span className="font-medium">{total === 0 ? 0 : startIndex + 1}</span> to <span className="font-medium">{endIndex}</span> of <span className="font-medium">{total}</span> entries
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <Button
               onClick={() => setPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
-              className={`px-3 py-1.5 border rounded-md text-sm ${
-                currentPage === 1
-                  ? 'text-gray-400 border-gray-200 cursor-not-allowed bg-gray-50'
-                  : 'text-gray-700 border-gray-300 hover:bg-gray-50 bg-white'
-              }`}
+              variant="outline"
+              size="sm"
             >
               Previous
-            </button>
+            </Button>
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-              <button
+              <Button
                 key={pageNum}
                 onClick={() => setPage(pageNum)}
-                className={`px-3 py-1.5 border rounded-md text-sm ${
-                  currentPage === pageNum
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'text-gray-700 border-gray-300 hover:bg-gray-50 bg-white'
-                }`}
+                variant={currentPage === pageNum ? 'primary' : 'outline'}
+                size="sm"
               >
                 {pageNum}
-              </button>
+              </Button>
             ))}
-            <button
+            <Button
               onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
               disabled={currentPage === totalPages}
-              className={`px-3 py-1.5 border rounded-md text-sm ${
-                currentPage === totalPages
-                  ? 'text-gray-400 border-gray-200 cursor-not-allowed bg-gray-50'
-                  : 'text-gray-700 border-gray-300 hover:bg-gray-50 bg-white'
-              }`}
+              variant="outline"
+              size="sm"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -2415,7 +2372,7 @@ function DepartmentManagement() {
 
 function AdminDashboard() {
   const location = useLocation();
-  
+
   const navigationItems = [
     { name: 'Dashboard', href: '/admin', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/admin' },
     { name: 'Manage Users', href: '/admin/users', icon: <Users className="h-5 w-5" />, current: location.pathname === '/admin/users' },

@@ -4,7 +4,7 @@ import {main} from '../models';
 
 export function ChangePassword(arg1:string,arg2:string,arg3:string):Promise<void>;
 
-export function CreateClass(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:number):Promise<number>;
+export function CreateClass(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:number):Promise<number>;
 
 export function CreateDepartment(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -64,13 +64,15 @@ export function GetClassStudents(arg1:number):Promise<Array<main.ClasslistEntry>
 
 export function GetClassesByCreator(arg1:number):Promise<Array<main.CourseClass>>;
 
-export function GetClassesBySubjectCode(arg1:string):Promise<Array<main.CourseClass>>;
+export function GetClassesByEDPCode(arg1:string):Promise<Array<main.CourseClass>>;
 
 export function GetDepartments():Promise<Array<main.Department>>;
 
 export function GetFeedback():Promise<Array<main.Feedback>>;
 
 export function GetPendingFeedback():Promise<Array<main.Feedback>>;
+
+export function GetRecentAttendance(arg1:Array<number>,arg2:number):Promise<Array<main.Attendance>>;
 
 export function GetStudentClasses(arg1:number):Promise<Array<main.CourseClass>>;
 
@@ -86,7 +88,7 @@ export function GetTeacherClasses(arg1:number):Promise<Array<main.CourseClass>>;
 
 export function GetTeacherClassesByUserID(arg1:number):Promise<Array<main.CourseClass>>;
 
-export function GetTeacherClassesCreatedByWorkingStudents(arg1:number):Promise<Array<main.CourseClass>>;
+export function GetTeacherClassesWithAttendance(arg1:number):Promise<Array<main.CourseClass>>;
 
 export function GetTeacherDashboard(arg1:number):Promise<main.TeacherDashboard>;
 
@@ -102,7 +104,7 @@ export function GetWorkingStudentID(arg1:number):Promise<number>;
 
 export function InitializeAttendanceForClass(arg1:number,arg2:string,arg3:number):Promise<void>;
 
-export function JoinClassBySubjectCode(arg1:number,arg2:string):Promise<number>;
+export function JoinClassByEDPCode(arg1:number,arg2:string):Promise<number>;
 
 export function Login(arg1:string,arg2:string):Promise<main.User>;
 

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { 
-  LayoutDashboard, 
-  ClipboardList, 
+import Button from '../components/Button';
+import {
+  LayoutDashboard,
+  ClipboardList,
   MessageSquare,
   Clock,
   CheckCircle,
@@ -20,14 +21,14 @@ import {
   MapPin,
   Library
 } from 'lucide-react';
-import { 
+import {
   GetStudentDashboard,
   RecordAttendance,
   GetStudentFeedback,
   GetStudentLoginLogs,
   GetStudentClasses,
-  GetClassesBySubjectCode,
-  JoinClassBySubjectCode
+  GetClassesByEDPCode,
+  JoinClassByEDPCode
 } from '../../wailsjs/go/main/App';
 import { useAuth } from '../contexts/AuthContext';
 import { main } from '../../wailsjs/go/models';
@@ -61,11 +62,11 @@ function DashboardOverview() {
   useEffect(() => {
     const loadDashboard = async () => {
       if (!user) return;
-      
+
       try {
         const data = await GetStudentDashboard(user.id);
         setDashboardData(data);
-        
+
         // Fetch last login log
         try {
           const loginLogs = await GetStudentLoginLogs(user.id);
@@ -213,7 +214,7 @@ function DashboardOverview() {
               </dl>
             </div>
           </div>
-          
+
           {/* Total Records */}
           <div className="pt-6 border-t border-gray-200">
             <div className="flex items-center justify-between">
@@ -282,13 +283,13 @@ function LoginHistory() {
         setLoading(false);
         return;
       }
-      
+
       try {
         console.log('Loading login logs for user ID:', user.id);
         const data = await GetStudentLoginLogs(user.id);
         console.log('Received login logs data:', data);
         console.log('Number of logs:', data?.length || 0);
-        
+
         if (data && Array.isArray(data)) {
           setLoginLogs(data);
           setFilteredLogs(data);
@@ -319,10 +320,10 @@ function LoginHistory() {
     if (selectedDate) {
       filtered = filtered.filter(log => {
         if (!log.login_time) return false;
-        
+
         const logDate = new Date(log.login_time);
         const selected = new Date(selectedDate);
-        
+
         // Compare only the date part (ignore time)
         return logDate.toDateString() === selected.toDateString();
       });
@@ -336,7 +337,7 @@ function LoginHistory() {
         (log.login_time && new Date(log.login_time).toLocaleString().toLowerCase().includes(query))
       );
     }
-    
+
     setFilteredLogs(filtered);
   }, [loginLogs, selectedDate, searchQuery]);
 
@@ -368,38 +369,36 @@ function LoginHistory() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Search..."
+              placeholder=""
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             />
             {searchQuery && (
-              <button
+              <Button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
+                variant="secondary"
+                size="sm"
+                icon={<X className="h-5 w-5" />}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 !p-0"
+              />
             )}
           </div>
           <div className="relative">
-            <button
+            <Button
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
-                showFilters
-                  ? 'bg-primary-50 border-primary-500 text-primary-700'
-                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
+              variant={showFilters ? 'primary' : 'outline'}
+              icon={<SlidersHorizontal className="h-5 w-5" />}
+              className={showFilters ? 'bg-primary-50 border-primary-500 text-primary-700' : ''}
             >
-              <SlidersHorizontal className="h-5 w-5" />
               Filters
               {activeFilterCount > 0 && (
                 <span className="ml-1 px-2 py-0.5 bg-primary-500 text-white rounded-full text-xs">
                   {activeFilterCount}
                 </span>
               )}
-            </button>
-            
+            </Button>
+
             {/* Dropdown with Date Picker */}
             {showFilters && (
               <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
@@ -421,12 +420,14 @@ function LoginHistory() {
                       </div>
                     </div>
                     {selectedDate && (
-                      <button
+                      <Button
                         onClick={() => setSelectedDate(null)}
-                        className="w-full text-xs text-gray-600 hover:text-gray-900 underline text-left"
+                        variant="secondary"
+                        size="sm"
+                        className="w-full text-xs text-gray-600 hover:text-gray-900 underline text-left !p-1"
                       >
                         Clear Date Filter
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -434,12 +435,12 @@ function LoginHistory() {
             )}
           </div>
           {(searchQuery || selectedDate) && (
-            <button
+            <Button
               onClick={clearFilters}
-              className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+              variant="outline"
             >
               Clear All
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -495,20 +496,20 @@ function LoginHistory() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {log.login_time ? new Date(log.login_time).toLocaleTimeString('en-US', { 
-                        hour: '2-digit', 
+                      {log.login_time ? new Date(log.login_time).toLocaleTimeString('en-US', {
+                        hour: '2-digit',
                         minute: '2-digit',
                         second: '2-digit',
-                        hour12: true 
+                        hour12: true
                       }) : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {log.logout_time ? (
-                        new Date(log.logout_time).toLocaleTimeString('en-US', { 
-                          hour: '2-digit', 
+                        new Date(log.logout_time).toLocaleTimeString('en-US', {
+                          hour: '2-digit',
                           minute: '2-digit',
                           second: '2-digit',
-                          hour12: true 
+                          hour12: true
                         })
                       ) : (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -559,7 +560,7 @@ function FeedbackHistory() {
   useEffect(() => {
     const loadFeedback = async () => {
       if (!user) return;
-      
+
       try {
         const data = await GetStudentFeedback(user.id);
         setFeedbackList(data || []);
@@ -584,10 +585,10 @@ function FeedbackHistory() {
     if (selectedDate) {
       filtered = filtered.filter(feedback => {
         if (!feedback.date_submitted) return false;
-        
+
         const feedbackDate = new Date(feedback.date_submitted);
         const selected = new Date(selectedDate);
-        
+
         // Compare only the date part (ignore time)
         return feedbackDate.toDateString() === selected.toDateString();
       });
@@ -602,7 +603,7 @@ function FeedbackHistory() {
         (feedback.date_submitted && new Date(feedback.date_submitted).toLocaleString().toLowerCase().includes(query))
       );
     }
-    
+
     setFilteredFeedback(filtered);
   }, [feedbackList, selectedDate, searchQuery]);
 
@@ -634,38 +635,36 @@ function FeedbackHistory() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
               type="text"
-              placeholder="Search..."
+              placeholder=""
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             />
             {searchQuery && (
-              <button
+              <Button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
+                variant="secondary"
+                size="sm"
+                icon={<X className="h-5 w-5" />}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 !p-0"
+              />
             )}
           </div>
           <div className="relative">
-            <button
+            <Button
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
-                showFilters
-                  ? 'bg-primary-50 border-primary-500 text-primary-700'
-                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-              }`}
+              variant={showFilters ? 'primary' : 'outline'}
+              icon={<SlidersHorizontal className="h-5 w-5" />}
+              className={showFilters ? 'bg-primary-50 border-primary-500 text-primary-700' : ''}
             >
-              <SlidersHorizontal className="h-5 w-5" />
               Filters
               {activeFilterCount > 0 && (
                 <span className="ml-1 px-2 py-0.5 bg-primary-500 text-white rounded-full text-xs">
                   {activeFilterCount}
                 </span>
               )}
-            </button>
-            
+            </Button>
+
             {/* Dropdown with Date Picker */}
             {showFilters && (
               <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
@@ -687,12 +686,14 @@ function FeedbackHistory() {
                       </div>
                     </div>
                     {selectedDate && (
-                      <button
+                      <Button
                         onClick={() => setSelectedDate(null)}
-                        className="w-full text-xs text-gray-600 hover:text-gray-900 underline text-left"
+                        variant="secondary"
+                        size="sm"
+                        className="w-full text-xs text-gray-600 hover:text-gray-900 underline text-left !p-1"
                       >
                         Clear Date Filter
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -700,12 +701,12 @@ function FeedbackHistory() {
             )}
           </div>
           {(searchQuery || selectedDate) && (
-            <button
+            <Button
               onClick={clearFilters}
-              className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+              variant="outline"
             >
               Clear All
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -781,46 +782,42 @@ function FeedbackHistory() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        feedback.equipment_condition === 'Good'
-                          ? 'bg-green-100 text-green-800'
-                          : feedback.equipment_condition === 'Minor Issue'
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${feedback.equipment_condition === 'Good'
+                        ? 'bg-green-100 text-green-800'
+                        : feedback.equipment_condition === 'Minor Issue'
                           ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-red-100 text-red-800'
-                      }`}>
+                        }`}>
                         {feedback.equipment_condition}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        feedback.mouse_condition === 'Good'
-                          ? 'bg-green-100 text-green-800'
-                          : feedback.mouse_condition === 'Minor Issue'
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${feedback.mouse_condition === 'Good'
+                        ? 'bg-green-100 text-green-800'
+                        : feedback.mouse_condition === 'Minor Issue'
                           ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-red-100 text-red-800'
-                      }`}>
+                        }`}>
                         {feedback.mouse_condition}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        feedback.keyboard_condition === 'Good'
-                          ? 'bg-green-100 text-green-800'
-                          : feedback.keyboard_condition === 'Minor Issue'
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${feedback.keyboard_condition === 'Good'
+                        ? 'bg-green-100 text-green-800'
+                        : feedback.keyboard_condition === 'Minor Issue'
                           ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-red-100 text-red-800'
-                      }`}>
+                        }`}>
                         {feedback.keyboard_condition}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        feedback.monitor_condition === 'Good'
-                          ? 'bg-green-100 text-green-800'
-                          : feedback.monitor_condition === 'Minor Issue'
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${feedback.monitor_condition === 'Good'
+                        ? 'bg-green-100 text-green-800'
+                        : feedback.monitor_condition === 'Minor Issue'
                           ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-red-100 text-red-800'
-                      }`}>
+                        }`}>
                         {feedback.monitor_condition}
                       </span>
                     </td>
@@ -849,7 +846,7 @@ function MyClasses() {
   const [classes, setClasses] = useState<CourseClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  const [subjectCode, setSubjectCode] = useState('');
+  const [edpCode, setEdpCode] = useState('');
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string>('');
   const [joinSuccess, setJoinSuccess] = useState<string>('');
@@ -861,7 +858,7 @@ function MyClasses() {
 
   const loadClasses = async () => {
     if (!user) return;
-    
+
     setLoading(true);
     try {
       const data = await GetStudentClasses(user.id);
@@ -877,8 +874,8 @@ function MyClasses() {
 
   const handleJoinClass = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !subjectCode.trim()) {
-      setJoinError('Please enter a subject code.');
+    if (!user || !edpCode.trim()) {
+      setJoinError('Please enter an EDP code.');
       return;
     }
 
@@ -887,28 +884,26 @@ function MyClasses() {
     setJoinSuccess('');
 
     try {
-      // First check if classes exist for this subject code
-      const availableClasses = await GetClassesBySubjectCode(subjectCode.trim().toUpperCase());
-      
+      // First check if classes exist for this EDP code
+      const availableClasses = await GetClassesByEDPCode(edpCode.trim().toUpperCase());
+
       if (availableClasses.length === 0) {
-        setJoinError('No classes found.');
+        setJoinError('No classes found for this EDP code.');
         setJoining(false);
         return;
       }
 
       // Join the class
-      await JoinClassBySubjectCode(user.id, subjectCode.trim().toUpperCase());
-      setJoinSuccess('Successfully joined the class!');
-      
+      await JoinClassByEDPCode(user.id, edpCode.trim().toUpperCase());
+
       // Reload classes to show the new enrollment
       await loadClasses();
-      
-      // Close modal and clear form after 1.5 seconds
-      setTimeout(() => {
-        setShowJoinForm(false);
-        setSubjectCode('');
-        setJoinSuccess('');
-      }, 1500);
+
+      // Close modal and clear form immediately
+      setShowJoinForm(false);
+      setEdpCode('');
+      setJoinError('');
+      setJoinSuccess('');
     } catch (error: any) {
       console.error('Failed to join class:', error);
       const errorMessage = error.message || 'Failed to join class. Please try again.';
@@ -937,101 +932,107 @@ function MyClasses() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-gray-900">My Classes</h2>
-          <button
+          <Button
             onClick={() => {
               setShowJoinForm(true);
-              setSubjectCode('');
+              setEdpCode('');
               setJoinError('');
               setJoinSuccess('');
             }}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+            variant="primary"
+            icon={<Plus className="h-4 w-4" />}
           >
             Join Class
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* Join Class Modal */}
       {showJoinForm && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowJoinForm(false);
-              setSubjectCode('');
+              setEdpCode('');
               setJoinError('');
               setJoinSuccess('');
             }
           }}
         >
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 relative">
-            <button
+            <Button
               type="button"
               onClick={() => {
                 setShowJoinForm(false);
-                setSubjectCode('');
+                setEdpCode('');
                 setJoinError('');
                 setJoinSuccess('');
               }}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold transition-colors z-10"
+              variant="secondary"
+              size="sm"
+              className="absolute top-4 right-4"
             >
               ×
-            </button>
-            
+            </Button>
+
             <div className="p-6">
               <div className="mb-6">
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Join a Class</h3>
-                <p className="text-sm text-gray-600">Enter the Subject Code to join a class</p>
+                <p className="text-sm text-gray-600">Enter the EDP Code to join a class</p>
               </div>
-              
+
               <form onSubmit={handleJoinClass} className="space-y-4">
                 <div>
-                  <label htmlFor="subjectCode" className="block text-sm font-medium text-gray-700 mb-2">
-                    Subject Code
+                  <label htmlFor="edpCode" className="block text-sm font-medium text-gray-700 mb-2">
+                    EDP Code
                   </label>
                   <input
-                    id="subjectCode"
+                    id="edpCode"
                     type="text"
-                    value={subjectCode}
-                    onChange={(e) => setSubjectCode(e.target.value.toUpperCase())}
+                    value={edpCode}
+                    onChange={(e) => setEdpCode(e.target.value.toUpperCase())}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     required
                     autoFocus
                   />
                 </div>
-                
+
                 {joinError && (
                   <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
                     {joinError}
                   </div>
                 )}
-                
+
                 {joinSuccess && (
                   <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md">
                     {joinSuccess}
                   </div>
                 )}
-                
+
                 <div className="flex gap-3 pt-4">
-                  <button
+                  <Button
                     type="button"
                     onClick={() => {
                       setShowJoinForm(false);
-                      setSubjectCode('');
+                      setEdpCode('');
                       setJoinError('');
                       setJoinSuccess('');
                     }}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                    variant="outline"
+                    className="flex-1"
                   >
                     Cancel
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="submit"
                     disabled={joining}
-                    className="flex-1 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    loading={joining}
+                    variant="primary"
+                    className="flex-1"
                   >
-                    {joining ? 'Joining...' : 'Join Class'}
-                  </button>
+                    Join Class
+                  </Button>
                 </div>
               </form>
             </div>
@@ -1049,20 +1050,22 @@ function MyClasses() {
         <div className="bg-white shadow rounded-lg p-12 text-center">
           <Library className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <p className="text-gray-500 font-medium">No classes enrolled</p>
-          <p className="text-gray-400 text-sm mt-2">Join a class using a Subject Code to get started.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {classes.map((cls) => (
-            <div 
-              key={cls.class_id} 
+            <div
+              key={cls.class_id}
               className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
             >
               <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3">
-                <h3 className="text-white font-semibold text-lg">{cls.subject_name || cls.subject_code}</h3>
-                <p className="text-white text-sm opacity-90">{cls.subject_code}</p>
+                <h3 className="text-white font-semibold text-lg">{cls.descriptive_title || cls.subject_name || cls.subject_code}</h3>
+                <p className="text-white text-sm opacity-90">Subject Code: {cls.subject_code}</p>
+                {cls.offering_code && (
+                  <p className="text-white text-xs opacity-75">EDP Code: {cls.offering_code}</p>
+                )}
               </div>
-              
+
               <div className="px-4 py-4 bg-white">
                 <div className="space-y-2 text-sm">
                   {cls.teacher_name && (
@@ -1101,7 +1104,7 @@ function MyClasses() {
 
 function StudentDashboard() {
   const location = useLocation();
-  
+
   const navigationItems = [
     { name: 'Dashboard', href: '/student', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/student' },
     { name: 'My Classes', href: '/student/classes', icon: <Library className="h-5 w-5" />, current: location.pathname === '/student/classes' },
@@ -1122,3 +1125,4 @@ function StudentDashboard() {
 }
 
 export default StudentDashboard;
+

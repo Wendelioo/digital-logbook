@@ -1,0 +1,241 @@
+================================================================================
+          DIGITAL LOGBOOK - BUSINESS MODEL CANVAS
+================================================================================
+
+PROJECT: PC Laboratory Attendance Tracking System (Wails Desktop Application)
+DATE: January 14, 2026
+
+================================================================================
+KEY PARTNERS
+================================================================================
+• Academic Institution Administration
+  - Decision makers for system adoption
+  - Provider of infrastructure and labs
+
+• IT Support Team
+  - System maintenance and troubleshooting
+  - Database management and backups
+  - User account provisioning
+
+• PC Laboratory Staff
+  - Daily operations and student supervision
+  - Equipment maintenance feedback
+
+• Educational Technology Vendors
+  - Integration support (if needed)
+  - Deployment consulting
+
+================================================================================
+KEY ACTIVITIES
+================================================================================
+• Attendance Logging & Tracking
+  - Real-time student login/logout recording
+  - PC identification and session monitoring
+
+• Role-Based Access Control
+  - Multi-tier dashboard management (Admin, Teacher, Student, Working-Student)
+  - User authentication and authorization
+
+• Report Generation & Export
+  - Attendance reports (CSV, PDF)
+  - Equipment feedback reports (CSV, PDF)
+  - Custom analytics
+
+• Equipment Feedback Collection
+  - Computer hardware status monitoring
+  - Issue reporting (mouse, keyboard, monitor, CPU conditions)
+
+• User & Data Management
+  - Bulk user import (CSV)
+  - Department organization
+  - User account lifecycle management
+
+================================================================================
+VALUE PROPOSITIONS
+================================================================================
+For Students:
+• Transparent attendance verification
+• Real-time lab access history view
+• Equipment issue reporting capability
+
+For Teachers:
+• Automated attendance tracking (no manual calling)
+• Class-level attendance analytics
+• Student lab usage insights
+
+For Admins:
+• Centralized system control and oversight
+• Bulk user management
+• Comprehensive reporting and analytics
+• Equipment maintenance tracking
+
+For Working-Students:
+• Lab monitoring and management tools
+• Detailed attendance reports
+• Feedback analysis for equipment maintenance
+
+Core Value:
+• Time savings through automation
+• Reduced manual errors in attendance
+• Data-driven insights for lab operations
+• Improved equipment maintenance visibility
+
+================================================================================
+CUSTOMER RELATIONSHIPS
+================================================================================
+• Direct Support
+  - In-app notifications and status indicators
+  - Role-specific dashboards with contextual guidance
+
+• Self-Service
+  - User authentication portals
+  - Self-service report generation
+  - Equipment issue self-reporting
+
+• Automated Processes
+  - Automatic session logging and tracking
+  - Email notifications (optional)
+  - System-generated alerts for anomalies
+
+• Admin Consultation
+  - Customization for department-specific needs
+  - Data export for further analysis
+
+================================================================================
+CUSTOMER SEGMENTS
+================================================================================
+PRIMARY:
+• Students
+  - Need: Attendance verification, lab access tracking
+  - Frequency: Daily/Multiple times per week
+
+• Teachers/Faculty
+  - Need: Class attendance reports, student lab usage analytics
+  - Frequency: Weekly/Monthly reviews
+
+• Lab Administrators
+  - Need: Overall system management, user administration, reporting
+  - Frequency: Continuous
+
+• Working-Students (Lab Supervisors)
+  - Need: Lab monitoring, equipment feedback, attendance supervision
+  - Frequency: During lab hours
+
+SECONDARY:
+• Department Heads
+  - Need: Departmental analytics and reports
+  - Frequency: Weekly/Monthly
+
+• IT Department
+  - Need: System maintenance and security oversight
+  - Frequency: Ongoing
+
+================================================================================
+COST STRUCTURE
+================================================================================
+FIXED COSTS:
+• Development & Design
+  - Initial system development (already completed as capstone)
+  - Ongoing maintenance and bug fixes
+  - Feature enhancements (estimated 40 hours/month)
+
+• Infrastructure
+  - MySQL Database hosting
+  - Server infrastructure (if cloud-hosted)
+  - Backup and disaster recovery systems
+
+• Personnel
+  - System administrator (part-time)
+  - Support team (part-time)
+  - Database management
+
+VARIABLE COSTS:
+• User Scaling
+  - Database optimization as user base grows
+  - Server capacity upgrades
+
+• Integration Services
+  - Custom integrations with institutional systems (SSO, LMS, etc.)
+  - Data migration services
+
+MINIMAL LICENSING COSTS:
+• MySQL (Open Source - Free)
+• Go/Wails (Open Source - Free)
+• React (Open Source - Free)
+• Tailwind CSS (Open Source - Free)
+• Third-party libraries (gofpdf, go-docx) - Open Source/Free
+
+================================================================================
+REVENUE STREAMS
+================================================================================
+PRIMARY:
+• Institutional Licensing Fee
+  - Annual subscription per institution
+  - Tiered pricing based on:
+    * Number of users (students, teachers, admins)
+    * Number of laboratories
+    * Number of PC workstations
+
+• Support & Maintenance Package
+  - Premium support tier (24/7 availability)
+  - Customization services
+  - Integration services with existing systems
+
+SECONDARY:
+• Data Analytics Module (Premium Add-on)
+  - Advanced reporting and predictive analytics
+  - Custom dashboard builder
+  - Data export to institutional data warehouse
+
+• Training & Consultation Services
+  - Administrator training
+  - Workflow optimization consulting
+  - System deployment assistance
+
+POTENTIAL:
+• SaaS Model (Multi-tenant cloud version)
+  - Monthly/annual subscription per institution
+  - Hosted cloud deployment
+  - Automatic updates and backups
+
+• White-label Solutions
+  - Customizable branding for institutions
+  - Separate pricing tier
+
+================================================================================
+COST vs REVENUE ANALYSIS
+================================================================================
+ASSUMPTIONS (Example: Mid-size Institution):
+• 500 students
+• 50 teachers
+• 5 lab administrators
+• 10 working-students
+• 3 PC laboratories with 50 workstations each
+
+ESTIMATED ANNUAL REVENUE:
+• Base License: $3,000 - $5,000/year
+• Support Package: $500 - $1,000/year
+• Total: ~$4,000 - $6,000/year per institution
+
+ESTIMATED ANNUAL COSTS:
+• Development (10 hours/week @ $50/hr): $26,000/year
+• Server hosting: $2,000 - $3,000/year
+• Database backup/infrastructure: $1,000 - $2,000/year
+• Admin support (20 hours/month @ $25/hr): $6,000/year
+• Total: ~$35,000 - $37,000/year
+
+BREAK-EVEN POINT:
+• Need 6-10 institutional customers to break even
+• Scalable after break-even due to minimal marginal costs
+
+================================================================================
+KEY METRICS & KPIs
+================================================================================
+• User Adoption Rate: % of students/staff using system
+• System Uptime: 99%+ target availability
+• Report Generation Time: < 5 seconds for standard reports
+• Daily Active Users: Tracking engagement
+• Equipment Issue Resolution Time: Average days to fix reported items
+• Customer Satisfaction: NPS score and support ticket resolution rate
+
+================================================================================

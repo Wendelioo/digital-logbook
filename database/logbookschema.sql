@@ -6,7 +6,7 @@ CREATE DATABASE IF NOT EXISTS logbookdb
 
 USE logbookdb;
 
--- Drop existing tables and views (in reverse dependency order)
+-- Drop existing tables (in reverse dependency order)
 DROP TABLE IF EXISTS attendance;
 DROP TABLE IF EXISTS classlist;
 DROP TABLE IF EXISTS classes;
@@ -18,11 +18,6 @@ DROP TABLE IF EXISTS teachers;
 DROP TABLE IF EXISTS admins;
 DROP TABLE IF EXISTS departments;
 DROP TABLE IF EXISTS users;
-
-DROP VIEW IF EXISTS v_classlist_complete;
-DROP VIEW IF EXISTS v_classes_complete;
-DROP VIEW IF EXISTS v_users_complete;
-DROP VIEW IF EXISTS v_login_logs_complete;
 
 -- ============================================================================
 -- CORE USER MANAGEMENT
@@ -144,12 +139,9 @@ CREATE TABLE students (
 -- This allows multiple teachers to teach the same subject (different sections)
 CREATE TABLE subjects (
     subject_code VARCHAR(20) PRIMARY KEY COMMENT 'Unique subject code (e.g., IT301, CS101)',
-    subject_name VARCHAR(200) NOT NULL COMMENT 'Full subject name',
     description TEXT NULL COMMENT 'Subject description and learning objectives',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
-    INDEX idx_subject_name (subject_name)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Classes table: Specific class instances of subjects (e.g., IT301 Section A, Semester 1, 2024)
@@ -157,11 +149,10 @@ CREATE TABLE classes (
     class_id INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Internal database identifier',
     subject_code VARCHAR(20) NOT NULL COMMENT 'Foreign key to subjects.subject_code',
     teacher_user_id INT NOT NULL COMMENT 'Foreign key to teachers.user_id - assigned instructor',
-    offering_code VARCHAR(50) NULL COMMENT 'Institutional offering code (e.g., IT301-A-2024-1)',
+    edp_code VARCHAR(50) NULL COMMENT 'EDP code - Institutional offering code (e.g., IT301-A-2024-1)',
+    descriptive_title VARCHAR(255) NULL COMMENT 'Descriptive title for the class (e.g., Introduction to Programming, Web Development)',
     schedule VARCHAR(100) NULL COMMENT 'Class schedule (e.g., MWF 8:00-9:00 AM)',
     room VARCHAR(50) NULL COMMENT 'Classroom or lab location',
-    year_level VARCHAR(20) NULL COMMENT 'Year level (e.g., 1st Year, 2nd Year)',
-    section VARCHAR(50) NULL COMMENT 'Section identifier (e.g., A, B, C)',
     semester VARCHAR(20) NULL COMMENT 'Semester (e.g., 1st Semester, 2nd Semester)',
     school_year VARCHAR(20) NULL COMMENT 'Academic year (e.g., 2024-2025)',
     is_active BOOLEAN DEFAULT TRUE COMMENT 'Class status flag',
@@ -175,11 +166,10 @@ CREATE TABLE classes (
     
     INDEX idx_subject_code (subject_code),
     INDEX idx_teacher_user_id (teacher_user_id),
-    INDEX idx_year_section (year_level, section),
     INDEX idx_is_active (is_active),
     INDEX idx_semester_year (semester, school_year),
     INDEX idx_classes_teacher_active (teacher_user_id, is_active),
-    INDEX idx_offering_code (offering_code),
+    INDEX idx_edp_code (edp_code),
     INDEX idx_created_by_user_id (created_by_user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

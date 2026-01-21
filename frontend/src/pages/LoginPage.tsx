@@ -1,8 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { User, Lock, Eye, EyeOff } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, UserPlus } from 'lucide-react';
+import { CreateUser, GetDepartments } from '../../wailsjs/go/main/App';
+import { main } from '../../wailsjs/go/models';
 import backgroundImage from '../../../assets/background/background.jpg';
+
+type Department = main.Department;
 
 const roleRoutes: { [key: string]: string } = {
   student: '/student',
@@ -12,35 +16,56 @@ const roleRoutes: { [key: string]: string } = {
 };
 
 function LoginPage() {
-  const [selectedRole, setSelectedRole] = useState<string>('teacher');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [departments, setDepartments] = useState<Department[]>([]);
+  
+  const [registrationData, setRegistrationData] = useState({
+    studentCode: '',
+    firstName: '',
+    middleName: '',
+    lastName: ''
+  });
   
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  // Load departments when registration mode is activated
+  useEffect(() => {
+    if (isRegistering) {
+      const loadDepartments = async () => {
+        try {
+          const data = await GetDepartments();
+          const activeDepartments = (data || []).filter((dept: Department) => dept.is_active);
+          setDepartments(activeDepartments);
+        } catch (error) {
+          console.error('Failed to load departments:', error);
+        }
+      };
+      loadDepartments();
+    }
+  }, [isRegistering]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRole || !username || !password) {
+    if (!username || !password) {
       setError('Please fill in all fields');
       return;
     }
 
     setLoading(true);
     setError('');
+    setSuccessMessage('');
 
     try {
       const userData = await login(username, password);
       
       if (userData) {
-        if (userData.role !== selectedRole) {
-          setError(`Please select the correct login type: ${userData.role}`);
-          return;
-        }
-        
         navigate(roleRoutes[userData.role]);
       } else {
         setError('Invalid credentials');
@@ -54,34 +79,63 @@ function LoginPage() {
     }
   };
 
-  const getLabelText = () => {
-    switch (selectedRole) {
-      case 'student':
-      case 'working_student':
-        return 'Student ID';
-      case 'teacher':
-        return 'Teacher ID';
-      case 'admin':
-        return 'Admin ID';
-      default:
-        return 'Username';
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!registrationData.studentCode || !registrationData.firstName || !registrationData.lastName) {
+      setError('Please fill in all required fields');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      const fullName = `${registrationData.lastName}, ${registrationData.firstName}${registrationData.middleName ? ' ' + registrationData.middleName : ''}`;
+
+      const result = await CreateUser(
+        registrationData.studentCode,
+        fullName,
+        registrationData.firstName,
+        registrationData.middleName,
+        registrationData.lastName,
+        '',
+        'student',
+        '',
+        registrationData.studentCode, // student_id
+        '', // year level
+        '', // section
+        '', // email - can be updated in profile settings
+        '', // contact number - can be updated in profile settings
+        '' // departmentCode
+      );
+
+      
+      
+      // Reset registration form
+      setRegistrationData({
+        studentCode: '',
+        firstName: '',
+        middleName: '',
+        lastName: ''
+      });
+      
+      // Switch back to login mode after 3 seconds
+      setTimeout(() => {
+        setIsRegistering(false);
+        setSuccessMessage('');
+        setUsername(registrationData.studentCode); // Pre-fill username with student code
+      }, 3000);
+    } catch (err) {
+      console.error('Registration error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getPlaceholderText = () => {
-    switch (selectedRole) {
-      case 'student':
-        return 'e.g., 2024-12345';
-      case 'working_student':
-        return 'e.g., 2024-12345';
-      case 'teacher':
-        return 'e.g., T-2024-001';
-      case 'admin':
-        return 'e.g., A-2024-001';
-      default:
-        return 'Enter your ID';
-    }
-  };
+
 
   return (
     <div className="min-h-screen flex">
@@ -139,37 +193,33 @@ function LoginPage() {
           {/* Form Header */}
           <div className="mb-8">
             <h2 className="text-3xl font-bold text-gray-900 mb-2 tracking-tight">
-              Welcome Back
+              {isRegistering ? 'Create Account' : 'Welcome Back'}
             </h2>
             <p className="text-gray-500 text-sm">
-              Sign in to continue and access your account.
+              {isRegistering ? 'Register an account to get started.' : 'Sign in to continue and access your account.'}
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-5">
-            {/* Role Selection */}
-            <div>
-              <label htmlFor="role" className="block text-sm font-semibold text-gray-800 mb-2.5">
-                Account Type
-              </label>
-              <select
-                id="role"
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                required
-              >
-                <option value="student">Student</option>
-                <option value="working_student">Working Student</option>
-                <option value="teacher">Teacher</option>
-                <option value="admin">Admin</option>
-              </select>
+          {/* Success Message */}
+          {successMessage && (
+            <div className="mb-5 bg-green-50 border-l-4 border-green-500 text-green-700 px-4 py-3 rounded-r-lg text-sm font-medium">
+              {successMessage}
             </div>
+          )}
 
+          {/* Error Message */}
+          {error && (
+            <div className="mb-5 bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded-r-lg text-sm font-medium">
+              {error}
+            </div>
+          )}
+
+          {!isRegistering ? (
+            <form onSubmit={handleLogin} className="space-y-5">
             {/* Username/ID Field */}
             <div>
               <label htmlFor="username" className="block text-sm font-semibold text-gray-800 mb-2.5">
-                {getLabelText()}
+                ID or Username
               </label>
               <div className="relative">
                 <input
@@ -236,7 +286,7 @@ function LoginPage() {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={loading || !selectedRole}
+              disabled={loading}
               className="w-full bg-teal-600 text-white py-3.5 px-4 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-semibold text-base shadow-md hover:shadow-lg"
             >
               {loading ? (
@@ -249,7 +299,136 @@ function LoginPage() {
                 </span>
               ) : 'Sign In'}
             </button>
+
+            {/* Register Link */}
+            <div className="mt-4 text-center">
+              <p className="text-sm text-gray-600">
+                Don't have an account?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRegistering(true);
+                    setError('');
+                    setSuccessMessage('');
+                  }}
+                  className="text-teal-600 hover:text-teal-700 font-semibold transition-colors"
+                >
+                  Register here
+                </button>
+              </p>
+            </div>
           </form>
+          ) : (
+            <form onSubmit={handleRegister} className="space-y-5">
+              {/* Student Code Field */}
+              <div>
+                <label htmlFor="studentCode" className="block text-sm font-semibold text-gray-800 mb-2.5">
+                  Student Code <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    id="studentCode"
+                    value={registrationData.studentCode}
+                    onChange={(e) => setRegistrationData({ ...registrationData, studentCode: e.target.value })}
+                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                    required
+                  />
+                  <User className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                </div>
+              </div>
+
+              {/* First Name Field */}
+              <div>
+                <label htmlFor="firstName" className="block text-sm font-semibold text-gray-800 mb-2.5">
+                  First Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="firstName"
+                  value={registrationData.firstName}
+                  onChange={(e) => setRegistrationData({ ...registrationData, firstName: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  required
+                />
+              </div>
+
+              {/* Middle Name Field */}
+              <div>
+                <label htmlFor="middleName" className="block text-sm font-semibold text-gray-800 mb-2.5">
+                  Middle Name
+                </label>
+                <input
+                  type="text"
+                  id="middleName"
+                  value={registrationData.middleName}
+                  onChange={(e) => setRegistrationData({ ...registrationData, middleName: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Last Name Field */}
+              <div>
+                <label htmlFor="lastName" className="block text-sm font-semibold text-gray-800 mb-2.5">
+                  Last Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="lastName"
+                  value={registrationData.lastName}
+                  onChange={(e) => setRegistrationData({ ...registrationData, lastName: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  required
+                />
+              </div>
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-teal-600 text-white py-3.5 px-4 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-semibold text-base shadow-md hover:shadow-lg"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Registering...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center">
+                    <UserPlus className="w-5 h-5 mr-2" />
+                    Create Account
+                  </span>
+                )}
+              </button>
+
+              {/* Back to Login Link */}
+              <div className="mt-4 text-center">
+                <p className="text-sm text-gray-600">
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRegistering(false);
+                      setError('');
+                      setSuccessMessage('');
+                      setRegistrationData({
+                        studentCode: '',
+                        firstName: '',
+                        middleName: '',
+                        lastName: ''
+                      });
+                    }}
+                    className="text-teal-600 hover:text-teal-700 font-semibold transition-colors"
+                  >
+                    Sign in here
+                  </button>
+                </p>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     </div>
