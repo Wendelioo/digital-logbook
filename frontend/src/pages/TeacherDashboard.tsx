@@ -47,7 +47,14 @@ import {
   GetSubjects,
   GetAllTeachers,
   GenerateAttendanceFromLogs,
-  GetTeacherClassesWithAttendance
+  GetTeacherClassesWithAttendance,
+  GetArchivedAttendanceSheets,
+  ArchiveAttendanceSheet,
+  UnarchiveAttendanceSheet,
+  GetArchivedClasses,
+  ArchiveClass,
+  UnarchiveClass,
+  DeleteAttendanceSheet
 } from '../../wailsjs/go/main/App';
 import { useAuth } from '../contexts/AuthContext';
 import { main } from '../../wailsjs/go/models';
@@ -204,68 +211,6 @@ function DashboardOverview() {
           </div>
         </div>
       </div>
-
-      {/* Classes List - Card Grid */}
-      {!loading && classes.length > 0 && (
-        <div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {classes.map((cls) => {
-              const { icon, headerColor, iconColor } = getSubjectIconAndColor(cls.subject_code, cls.subject_name);
-              return (
-                <div
-                  key={cls.class_id}
-                  className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow cursor-pointer"
-                  onClick={() => navigate(`/teacher/class-management/${cls.class_id}`)}
-                >
-                  {/* Card Header */}
-                  <div className={`${headerColor} px-4 py-3 flex items-center ${icon ? 'justify-between' : 'justify-start'}`}>
-                    <div className="flex-1">
-                      <h3 className="text-white font-semibold text-lg">{cls.subject_name}</h3>
-                      <p className="text-white text-sm opacity-90">{cls.subject_code}</p>
-                    </div>
-                    {icon && (
-                      <div className={iconColor}>
-                        {icon}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Card Body */}
-                  <div className="px-4 py-4 bg-white">
-                    <div className="flex items-center mb-3">
-                      <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center mr-3">
-                        <Users className="h-5 w-5 text-gray-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{cls.teacher_name}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center text-sm text-gray-600">
-                      <Users className="h-4 w-4 mr-2" />
-                      <span>{cls.enrolled_count} students</span>
-                    </div>
-                    {cls.schedule && (
-                      <div className="flex items-center text-sm text-gray-600 mt-2">
-                        <Clock className="h-4 w-4 mr-2" />
-                        <span>{cls.schedule}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {!loading && classes.length === 0 && (
-        <div className="bg-white shadow rounded-lg p-12 text-center">
-          <h3 className="mt-4 text-lg font-medium text-gray-900">No classes found</h3>
-          <p className="mt-2 text-sm text-gray-500">
-            You don't have any assigned classes yet.
-          </p>
-        </div>
-      )}
     </div>
   );
 }
@@ -355,13 +300,6 @@ function ClassManagement() {
           <h2 className="text-2xl font-bold text-gray-900">Class Management</h2>
           <div className="flex items-center gap-2">
             <Button
-              onClick={() => setShowGenerateModal(true)}
-              variant="success"
-              icon={<CalendarPlus className="h-4 w-4" />}
-            >
-              GENERATE ATTENDANCE
-            </Button>
-            <Button
               onClick={() => navigate('/teacher/create-classlist')}
               variant="primary"
               icon={<Plus className="h-4 w-4" />}
@@ -438,7 +376,7 @@ function ClassManagement() {
               {currentClasses.map((cls, index) => (
                 <tr key={cls.class_id} className="hover:bg-gray-50">
                   <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                    {cls.offering_code || '-'}
+                    {cls.edp_code || '-'}
                   </td>
                   <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                     {cls.subject_code || '-'}
@@ -468,7 +406,29 @@ function ClassManagement() {
                       />
                       <Button
                         onClick={async () => {
-                          if (window.confirm('Are you sure you want to delete this class?')) {
+                          if (window.confirm('Are you sure you want to archive this class? It will be moved to the Archive section.')) {
+                            try {
+                              await ArchiveClass(cls.class_id);
+                              // Reload classes
+                              const data = await GetTeacherClassesByUserID(user?.id || 0);
+                              setClasses(data || []);
+                              setFilteredClasses(data || []);
+                              alert('Class archived successfully!');
+                            } catch (error) {
+                              console.error('Failed to archive class:', error);
+                              alert('Failed to archive class. Please try again.');
+                            }
+                          }
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="text-orange-600 hover:bg-orange-50"
+                        icon={<Archive className="h-3 w-3" />}
+                        title="Archive"
+                      />
+                      <Button
+                        onClick={async () => {
+                          if (window.confirm('Are you sure you want to delete this class? This action cannot be undone.')) {
                             try {
                               await DeleteClass(cls.class_id);
                               // Reload classes
@@ -662,7 +622,7 @@ function ClassManagement() {
                   variant="success"
                   loading={generating}
                 >
-                  Generate Attendance
+                  Generate
                 </Button>
               </div>
             </div>
@@ -1375,31 +1335,30 @@ function ClassManagementDetail() {
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
       <div className="min-h-screen p-4 md:p-8">
-        {/* Close Button */}
-        <button
-          onClick={() => navigate('/teacher/class-management')}
-          className="fixed top-4 right-4 z-50 p-3 bg-white hover:bg-gray-100 rounded-full shadow-lg transition-all duration-200 hover:scale-110"
-          title="Close"
-        >
-          <X className="h-6 w-6 text-gray-700" />
-        </button>
-
         {error && (
           <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md">
             {error}
           </div>
         )}
 
-        {/* Single Class List Sheet */}
-        <div className="bg-white shadow-2xl rounded-lg border-2 border-black max-w-7xl mx-auto">
-        <div className="p-6">
+        {/* Single Class List Sheet - Bond Paper Style */}
+        <div className="bg-white max-w-4xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
+          {/* Close Button - Inside Sheet */}
+          <button
+            onClick={() => navigate('/teacher/class-management')}
+            className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
+            title="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+
           {/* Sheet Title and Controls */}
-          <div className="flex justify-between items-start mb-6 pb-4 border-b-2 border-gray-300">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-1">CLASS LIST</h2>
-              <p className="text-sm text-gray-600">School Year {classInfo.school_year || 'N/A'} - {classInfo.semester || 'N/A'}</p>
+          <div className="mb-6 pb-4 border-b border-gray-400">
+            <div className="text-center mb-4">
+              <h2 className="text-xl font-bold text-gray-900 tracking-wide">CLASS LIST</h2>
+              <p className="text-xs text-gray-600 mt-1">School Year {classInfo.school_year || 'N/A'} • {classInfo.semester || 'N/A'}</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex justify-end items-center gap-2">
               <Button
                 onClick={loadClassDetails}
                 disabled={loading}
@@ -1436,41 +1395,41 @@ function ClassManagementDetail() {
 
           {/* Combined Class Info and Student List Table */}
           <div className="overflow-hidden">
-            <table className="min-w-full border-collapse border-2 border-black">
+            <table className="min-w-full" style={{ tableLayout: 'fixed' }}>
               {/* Class Information Header */}
               <thead>
-                <tr className="bg-gray-800">
-                  <th colSpan={6} className="px-4 py-3 text-center border-b-2 border-black">
-                    <div className="text-white font-bold text-lg">CLASS INFORMATION</div>
+                <tr>
+                  <th colSpan={6} className="px-4 py-2 text-left border-b-2 border-gray-900">
+                    <div className="text-gray-900 font-bold text-sm tracking-wide">CLASS INFORMATION</div>
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-gray-50">
+              <tbody className="bg-white text-sm">
                 <tr>
-                  <td className="border border-gray-400 px-4 py-2 font-semibold text-gray-700 w-1/6">Subject Code:</td>
-                  <td className="border border-gray-400 px-4 py-2 text-gray-900">{classInfo.subject_code || 'N/A'}</td>
-                  <td className="border border-gray-400 px-4 py-2 font-semibold text-gray-700 w-1/6">Schedule:</td>
-                  <td className="border border-gray-400 px-4 py-2 text-gray-900" colSpan={3}>{classInfo.schedule || 'N/A'}</td>
+                  <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '120px' }}>Subject Code:</td>
+                  <td className="px-4 py-2 text-gray-900">{classInfo.subject_code || 'N/A'}</td>
+                  <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '100px' }}>Schedule:</td>
+                  <td className="px-4 py-2 text-gray-900" colSpan={3}>{classInfo.schedule || 'N/A'}</td>
                 </tr>
                 <tr>
-                  <td className="border border-gray-400 px-4 py-2 font-semibold text-gray-700">Subject Name:</td>
-                  <td className="border border-gray-400 px-4 py-2 text-gray-900">{classInfo.subject_name || 'N/A'}</td>
-                  <td className="border border-gray-400 px-4 py-2 font-semibold text-gray-700">Room:</td>
-                  <td className="border border-gray-400 px-4 py-2 text-gray-900" colSpan={3}>{classInfo.room || 'N/A'}</td>
+                  <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Subject Name:</td>
+                  <td className="px-4 py-2 text-gray-900">{classInfo.subject_name || 'N/A'}</td>
+                  <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Room:</td>
+                  <td className="px-4 py-2 text-gray-900" colSpan={3}>{classInfo.room || 'N/A'}</td>
                 </tr>
                 <tr>
-                  <td className="border border-gray-400 px-4 py-2 font-semibold text-gray-700">Instructor:</td>
-                  <td className="border border-gray-400 px-4 py-2 text-gray-900" colSpan={5}>{classInfo.teacher_name || 'N/A'}</td>
+                  <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Instructor:</td>
+                  <td className="px-4 py-2 text-gray-900" colSpan={5}>{classInfo.teacher_name || 'N/A'}</td>
                 </tr>
               </tbody>
 
               {/* Student List Header */}
               <thead>
-                <tr className="bg-gray-800">
-                  <th colSpan={6} className="px-4 py-3 border-y-2 border-black">
-                    <div className="flex items-center justify-between text-white">
-                      <span className="font-bold text-lg">STUDENTS LIST</span>
-                      <div className="flex items-center gap-4 text-sm">
+                <tr>
+                  <th colSpan={6} className="px-4 py-3 text-left border-b-2 border-gray-900">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-900 font-bold text-sm tracking-wide">STUDENTS LIST</span>
+                      <div className="flex items-center gap-4 text-xs text-gray-600">
                         <span>Total: {filteredStudents.length}</span>
                         <div className="relative">
                           <input
@@ -1478,9 +1437,9 @@ function ClassManagementDetail() {
                             placeholder="Search..."
                             value={studentSearchTerm}
                             onChange={(e) => setStudentSearchTerm(e.target.value)}
-                            className="pl-8 pr-3 py-1 text-sm border border-gray-500 rounded bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="pl-7 pr-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-400"
                           />
-                          <svg className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                           </svg>
                         </div>
@@ -1488,41 +1447,41 @@ function ClassManagementDetail() {
                     </div>
                   </th>
                 </tr>
-                <tr className="bg-gray-700">
-                  <th className="border border-gray-400 px-3 py-2 text-center text-xs font-bold text-white uppercase">No.</th>
-                  <th className="border border-gray-400 px-4 py-2 text-left text-xs font-bold text-white uppercase">Student ID</th>
-                  <th className="border border-gray-400 px-4 py-2 text-left text-xs font-bold text-white uppercase">Name</th>
-                  <th className="border border-gray-400 px-4 py-2 text-left text-xs font-bold text-white uppercase">Email</th>
-                  <th className="border border-gray-400 px-4 py-2 text-left text-xs font-bold text-white uppercase">Contact</th>
+                <tr className="bg-gray-100">
+                  <th className="px-1 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '25px' }}>No.</th>
+                  <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '70px' }}>Student ID</th>
+                  <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '130px' }}>Name</th>
+                  <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase">Email</th>
+                  <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '85px' }}>Contact</th>
                   {isEditMode && (
-                    <th className="border border-gray-400 px-4 py-2 text-center text-xs font-bold text-white uppercase">Actions</th>
+                    <th className="px-1 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '65px' }}>Actions</th>
                   )}
-                  {!isEditMode && <th className="border border-gray-400 px-4 py-2"></th>}
+                  {!isEditMode && <th style={{ width: '10px' }}></th>}
                 </tr>
               </thead>
 
               {/* Student Rows */}
-              <tbody className="bg-white">
+              <tbody className="bg-white text-xs">
                 {filteredStudents.length > 0 ? (
                   filteredStudents.map((student, index) => (
-                    <tr key={student.student_user_id} className="hover:bg-blue-50">
-                      <td className="border border-gray-400 px-3 py-2 text-center text-sm font-bold text-gray-900">
+                    <tr key={student.student_user_id} className="hover:bg-gray-50 border-b border-gray-100">
+                      <td className="px-1 py-1.5 text-center font-medium text-gray-900">
                         {index + 1}
                       </td>
-                      <td className="border border-gray-400 px-4 py-2 text-sm font-semibold text-gray-900">
+                      <td className="px-1 py-1.5 font-medium text-gray-900 text-xs">
                         {student.student_code}
                       </td>
-                      <td className="border border-gray-400 px-4 py-2 text-sm text-gray-900">
+                      <td className="px-1 py-1.5 text-gray-900">
                         {student.last_name}, {student.first_name} {student.middle_name ? student.middle_name.charAt(0) + '.' : ''}
                       </td>
-                      <td className="border border-gray-400 px-4 py-2 text-sm text-gray-700">
+                      <td className="px-1 py-1.5 text-gray-700">
                         {student.email || '—'}
                       </td>
-                      <td className="border border-gray-400 px-4 py-2 text-sm text-gray-700">
+                      <td className="px-1 py-1.5 text-gray-700">
                         {student.contact_number || '—'}
                       </td>
                       {isEditMode && (
-                        <td className="border border-gray-400 px-4 py-2 text-center">
+                        <td className="px-3 py-1.5 text-center">
                           <Button
                             onClick={() => handleRemoveStudent(student.student_user_id, student.class_id)}
                             variant="danger"
@@ -1533,14 +1492,14 @@ function ClassManagementDetail() {
                           </Button>
                         </td>
                       )}
-                      {!isEditMode && <td className="border border-gray-400"></td>}
+                      {!isEditMode && <td></td>}
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={6} className="border border-gray-400 px-6 py-12 text-center">
-                      <Users className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-                      <p className="text-gray-500 font-medium">No students enrolled</p>
+                    <td colSpan={6} className="px-6 py-8 text-center">
+                      <Users className="mx-auto h-10 w-10 text-gray-400 mb-2" />
+                      <p className="text-gray-500 text-sm">No students enrolled</p>
                     </td>
                   </tr>
                 )}
@@ -1548,7 +1507,6 @@ function ClassManagementDetail() {
             </table>
           </div>
         </div>
-      </div>
 
       {/* Add Student Modal */}
       {showAddModal && (
@@ -1804,8 +1762,10 @@ function ClassManagementDetail() {
 
 function AttendanceClassSelection() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [classes, setClasses] = useState<Class[]>([]);
+  const [allTeacherClasses, setAllTeacherClasses] = useState<Class[]>([]);
   const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -1814,6 +1774,32 @@ function AttendanceClassSelection() {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [activeAttendanceMap, setActiveAttendanceMap] = useState<Map<number, string>>(new Map());
   const [loadingAttendance, setLoadingAttendance] = useState(false);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string>('');
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Load all teacher classes for the modal dropdown
+  useEffect(() => {
+    const loadAllClasses = async () => {
+      if (!user?.id) return;
+      try {
+        const data = await GetTeacherClassesByUserID(user.id);
+        setAllTeacherClasses(data || []);
+      } catch (error) {
+        console.error('Failed to load all teacher classes:', error);
+      }
+    };
+    loadAllClasses();
+  }, [user?.id, refreshKey]);
+
+  // Refresh when navigating back to this page
+  useEffect(() => {
+    if (location.pathname === '/teacher/attendance') {
+      setRefreshKey(prev => prev + 1);
+    }
+  }, [location.pathname]);
 
   // Check for active attendance sheets (attendance records for today or recent dates)
   useEffect(() => {
@@ -1854,7 +1840,7 @@ function AttendanceClassSelection() {
     };
 
     checkActiveAttendance();
-  }, [classes, user?.id]);
+  }, [classes, user?.id, refreshKey]);
 
   useEffect(() => {
     const loadClasses = async () => {
@@ -1876,7 +1862,7 @@ function AttendanceClassSelection() {
     };
 
     loadClasses();
-  }, [user?.id]);
+  }, [user?.id, refreshKey]);
 
   useEffect(() => {
     let filtered = classes;
@@ -1911,7 +1897,6 @@ function AttendanceClassSelection() {
     }
   };
 
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1932,7 +1917,16 @@ function AttendanceClassSelection() {
     <div className="flex flex-col">
       {/* Header Section */}
       <div className="flex-shrink-0 mb-2">
-        <h2 className="text-xl font-bold text-gray-900">Attendance Management</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-900">Attendance Management</h2>
+          <Button
+            onClick={() => setShowGenerateModal(true)}
+            variant="primary"
+            icon={<Plus className="h-4 w-4" />}
+          >
+            ADD ATTENDANCE
+          </Button>
+        </div>
       </div>
 
       {error && (
@@ -2002,8 +1996,9 @@ function AttendanceClassSelection() {
               </thead>
               <tbody className="bg-white">
                 {currentClasses.map((cls) => {
-                  const activeDate = activeAttendanceMap.get(cls.class_id);
-                  const hasActiveAttendance = !!activeDate;
+                  // Use latest_attendance_date from the class directly, or fall back to activeAttendanceMap
+                  const latestDate = (cls as any).latest_attendance_date || activeAttendanceMap.get(cls.class_id);
+                  const hasActiveAttendance = !!latestDate;
 
                   return (
                     <tr
@@ -2011,7 +2006,7 @@ function AttendanceClassSelection() {
                       className={`hover:bg-gray-50 ${hasActiveAttendance ? 'bg-green-50' : ''}`}
                     >
                       <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                        {cls.offering_code || '-'}
+                        {cls.edp_code || '-'}
                       </td>
                       <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                         {cls.subject_code || '-'}
@@ -2023,18 +2018,63 @@ function AttendanceClassSelection() {
                         {cls.schedule || '-'}
                       </td>
                       <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                        {hasActiveAttendance ? activeDate : '-'}
+                        {hasActiveAttendance ? new Date(latestDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-'}
                       </td>
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
-                        <Button
-                          onClick={() => navigate(`/teacher/attendance/${cls.class_id}${hasActiveAttendance ? `?date=${activeDate}` : ''}`)}
-                          variant="outline"
-                          size="sm"
-                          className="text-blue-600 hover:text-blue-900"
-                          icon={hasActiveAttendance ? <Eye className="h-4 w-4" /> : undefined}
-                        >
-                          {hasActiveAttendance ? 'View' : 'Manage'}
-                        </Button>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm font-medium">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            onClick={() => navigate(`/teacher/attendance/${cls.class_id}${hasActiveAttendance ? `?date=${latestDate}` : ''}`)}
+                            variant="outline"
+                            size="sm"
+                            className="text-blue-600 bg-blue-50 hover:bg-blue-100"
+                            icon={<Eye className="h-3 w-3" />}
+                            title="View"
+                            disabled={!hasActiveAttendance}
+                          />
+                          <Button
+                            onClick={async () => {
+                              if (!hasActiveAttendance) return;
+                              if (window.confirm('Are you sure you want to archive this attendance? It will be moved to the Archive section.')) {
+                                try {
+                                  await ArchiveAttendanceSheet(cls.class_id, latestDate);
+                                  // Refresh the class list
+                                  setRefreshKey(prev => prev + 1);
+                                  alert('Attendance archived successfully!');
+                                } catch (error) {
+                                  console.error('Failed to archive attendance:', error);
+                                  alert('Failed to archive attendance. Please try again.');
+                                }
+                              }
+                            }}
+                            variant="outline"
+                            size="sm"
+                            className="text-orange-600 hover:bg-orange-50"
+                            icon={<Archive className="h-3 w-3" />}
+                            title="Archive"
+                            disabled={!hasActiveAttendance}
+                          />
+                          <Button
+                            onClick={async () => {
+                              if (!hasActiveAttendance) return;
+                              if (window.confirm('Are you sure you want to delete this attendance? This action cannot be undone.')) {
+                                try {
+                                  await DeleteAttendanceSheet(cls.class_id, latestDate);
+                                  // Refresh the class list
+                                  setRefreshKey(prev => prev + 1);
+                                  alert('Attendance deleted successfully!');
+                                } catch (error) {
+                                  console.error('Failed to delete attendance:', error);
+                                  alert('Failed to delete attendance. Please try again.');
+                                }
+                              }
+                            }}
+                            variant="danger"
+                            size="sm"
+                            icon={<Trash2 className="h-3 w-3" />}
+                            title="Delete"
+                            disabled={!hasActiveAttendance}
+                          />
+                        </div>
                       </td>
                     </tr>
                   );
@@ -2107,6 +2147,126 @@ function AttendanceClassSelection() {
         </div>
       )}
 
+      {/* Generate Attendance Modal */}
+      {showGenerateModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+          <div className="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-xl font-semibold text-gray-900">Generate Attendance</h3>
+              <button
+                onClick={() => {
+                  setShowGenerateModal(false);
+                  setSelectedClassId(null);
+                  setGenerateError('');
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {generateError && (
+                <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm">
+                  {generateError}
+                </div>
+              )}
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Class
+                </label>
+                <select
+                  value={selectedClassId || ''}
+                  onChange={(e) => setSelectedClassId(Number(e.target.value) || null)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={generating}
+                >
+                  <option value="">-- Select a class --</option>
+                  {allTeacherClasses.map((cls) => (
+                    <option key={cls.class_id} value={cls.class_id}>
+                      {cls.subject_code} - {cls.subject_name} {cls.schedule ? `(${cls.schedule})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Date
+                </label>
+                <input
+                  type="date"
+                  value={new Date().toISOString().split('T')[0]}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-600 cursor-not-allowed"
+                />
+                <p className="mt-1 text-xs text-gray-500">Date is automatically set to today</p>
+              </div>
+
+              <div className="flex justify-end gap-2 mt-6">
+                <Button
+                  onClick={() => {
+                    setShowGenerateModal(false);
+                    setSelectedClassId(null);
+                    setGenerateError('');
+                  }}
+                  disabled={generating}
+                  variant="secondary"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (!selectedClassId) {
+                      setGenerateError('Please select a class');
+                      return;
+                    }
+
+                    setGenerating(true);
+                    setGenerateError('');
+
+                    try {
+                      const today = new Date().toISOString().split('T')[0];
+                      await GenerateAttendanceFromLogs(selectedClassId, today, user?.id || 0);
+
+                      // Update the active attendance map immediately
+                      setActiveAttendanceMap(prev => {
+                        const newMap = new Map(prev);
+                        newMap.set(selectedClassId, today);
+                        return newMap;
+                      });
+
+                      // Close modal
+                      setShowGenerateModal(false);
+                      setSelectedClassId(null);
+                      
+                      // Navigate to the attendance detail page for the class
+                      navigate(`/teacher/attendance/${selectedClassId}?date=${today}`);
+                    } catch (error) {
+                      console.error('Failed to generate attendance:', error);
+                      const errorMessage = error instanceof Error ? error.message : 'Failed to generate attendance';
+                      if (errorMessage.includes('schedule')) {
+                        setGenerateError('Class schedule is not set. Please set the schedule first.');
+                      } else {
+                        setGenerateError(errorMessage);
+                      }
+                    } finally {
+                      setGenerating(false);
+                    }
+                  }}
+                  disabled={generating || !selectedClassId}
+                  variant="success"
+                  loading={generating}
+                >
+                  Generate
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -2114,117 +2274,119 @@ function AttendanceClassSelection() {
 function StoredAttendance() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [classes, setClasses] = useState<Class[]>([]);
-  const [allAttendanceRecords, setAllAttendanceRecords] = useState<Attendance[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingAttendance, setLoadingAttendance] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [entriesPerPage, setEntriesPerPage] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [filteredRecords, setFilteredRecords] = useState<Attendance[]>([]);
+  const [activeTab, setActiveTab] = useState<'attendance' | 'classes'>('attendance');
+  
+  // Attendance state
+  const [archivedSheets, setArchivedSheets] = useState<any[]>([]);
+  const [loadingAttendance, setLoadingAttendance] = useState(true);
+  const [attendanceSearchTerm, setAttendanceSearchTerm] = useState('');
+  const [attendanceEntriesPerPage, setAttendanceEntriesPerPage] = useState(10);
+  const [attendanceCurrentPage, setAttendanceCurrentPage] = useState(1);
+  const [filteredAttendance, setFilteredAttendance] = useState<any[]>([]);
+  const [unarchivingAttendance, setUnarchivingAttendance] = useState<string | null>(null);
+  
+  // Classes state
+  const [archivedClasses, setArchivedClasses] = useState<Class[]>([]);
+  const [loadingClasses, setLoadingClasses] = useState(true);
+  const [classSearchTerm, setClassSearchTerm] = useState('');
+  const [classEntriesPerPage, setClassEntriesPerPage] = useState(10);
+  const [classCurrentPage, setClassCurrentPage] = useState(1);
+  const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
+  const [unarchivingClass, setUnarchivingClass] = useState<number | null>(null);
 
   useEffect(() => {
-    const loadClasses = async () => {
-      if (!user?.id) return;
-      setLoading(true);
-      try {
-        const data = await GetTeacherClassesByUserID(user.id);
-        setClasses(data || []);
-      } catch (error) {
-        console.error('Failed to load classes:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadClasses();
+    loadArchivedSheets();
+    loadArchivedClassesList();
   }, [user?.id]);
 
   useEffect(() => {
-    if (classes.length > 0) {
-      loadAllStoredAttendance();
+    // Filter attendance records based on search term
+    if (!attendanceSearchTerm) {
+      setFilteredAttendance(archivedSheets);
+    } else {
+      const searchLower = attendanceSearchTerm.toLowerCase();
+      const filtered = archivedSheets.filter((sheet) => {
+        const subjectName = (sheet.subject_name || '').toLowerCase();
+        const subjectCode = (sheet.subject_code || '').toLowerCase();
+        const dateStr = new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).toLowerCase();
+        return subjectName.includes(searchLower) || subjectCode.includes(searchLower) || dateStr.includes(searchLower);
+      });
+      setFilteredAttendance(filtered);
     }
-  }, [classes.length]);
+    setAttendanceCurrentPage(1);
+  }, [attendanceSearchTerm, archivedSheets]);
 
   useEffect(() => {
-    // Filter records based on search term
-    if (!searchTerm) {
-      setFilteredRecords(allAttendanceRecords);
+    // Filter classes based on search term
+    if (!classSearchTerm) {
+      setFilteredClasses(archivedClasses);
     } else {
-      const searchLower = searchTerm.toLowerCase();
-      const filtered = allAttendanceRecords.filter((record) => {
-        const classSubjectName = ((record as any).classSubjectName || record.subject_name || '').toLowerCase();
-        const dateStr = new Date(record.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).toLowerCase();
-        return classSubjectName.includes(searchLower) || dateStr.includes(searchLower);
+      const searchLower = classSearchTerm.toLowerCase();
+      const filtered = archivedClasses.filter((cls) => {
+        const subjectName = (cls.subject_name || '').toLowerCase();
+        const subjectCode = (cls.subject_code || '').toLowerCase();
+        const schoolYear = (cls.school_year || '').toLowerCase();
+        return subjectName.includes(searchLower) || subjectCode.includes(searchLower) || schoolYear.includes(searchLower);
       });
-      setFilteredRecords(filtered);
+      setFilteredClasses(filtered);
     }
-    setCurrentPage(1);
-  }, [searchTerm, allAttendanceRecords]);
+    setClassCurrentPage(1);
+  }, [classSearchTerm, archivedClasses]);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'present':
-        return 'bg-green-100 text-green-800';
-      case 'absent':
-        return 'bg-red-100 text-red-800';
-      case 'late':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'excused':
-        return 'bg-blue-100 text-blue-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const loadAllStoredAttendance = async () => {
-    if (!user?.id || classes.length === 0) return;
+  const loadArchivedSheets = async () => {
+    if (!user?.id) return;
     setLoadingAttendance(true);
     try {
-      const allRecords: (Attendance & { classSubjectName?: string })[] = [];
-      const today = new Date();
-      const datesToCheck: string[] = [];
-
-      for (let i = 0; i < 90; i++) {
-        const date = new Date(today);
-        date.setDate(date.getDate() - i);
-        datesToCheck.push(date.toISOString().split('T')[0]);
-      }
-
-      for (const cls of classes) {
-        for (const date of datesToCheck) {
-          try {
-            const records = await GetClassAttendance(cls.class_id, date);
-            const savedRecords = records || [];
-            if (savedRecords.length > 0) {
-              // Only add the first record with metadata for the sheet
-              allRecords.push({
-                ...savedRecords[0],
-                classSubjectName: cls.subject_name,
-                class_id: cls.class_id,
-                // Store the count of students for this attendance sheet
-                student_count: savedRecords.length
-              } as any);
-            }
-          } catch (err) {
-            continue;
-          }
-        }
-      }
-
-      allRecords.sort((a, b) => {
-        const dateA = new Date(a.date).getTime();
-        const dateB = new Date(b.date).getTime();
-        return dateB - dateA;
-      });
-
-      setAllAttendanceRecords(allRecords as Attendance[]);
+      const sheets = await GetArchivedAttendanceSheets(user.id);
+      setArchivedSheets(sheets || []);
     } catch (error) {
-      console.error('Failed to load all attendance:', error);
-      setAllAttendanceRecords([]);
+      console.error('Failed to load archived sheets:', error);
+      setArchivedSheets([]);
     } finally {
       setLoadingAttendance(false);
     }
   };
+
+  const loadArchivedClassesList = async () => {
+    if (!user?.id) return;
+    setLoadingClasses(true);
+    try {
+      const classes = await GetArchivedClasses(user.id);
+      setArchivedClasses(classes || []);
+    } catch (error) {
+      console.error('Failed to load archived classes:', error);
+      setArchivedClasses([]);
+    } finally {
+      setLoadingClasses(false);
+    }
+  };
+
+  const handleUnarchiveAttendance = async (classId: number, date: string) => {
+    const key = `${classId}-${date}`;
+    setUnarchivingAttendance(key);
+    try {
+      await UnarchiveAttendanceSheet(classId, date);
+      await loadArchivedSheets();
+    } catch (error) {
+      console.error('Failed to unarchive:', error);
+    } finally {
+      setUnarchivingAttendance(null);
+    }
+  };
+
+  const handleUnarchiveClass = async (classId: number) => {
+    setUnarchivingClass(classId);
+    try {
+      await UnarchiveClass(classId);
+      await loadArchivedClassesList();
+    } catch (error) {
+      console.error('Failed to unarchive class:', error);
+    } finally {
+      setUnarchivingClass(null);
+    }
+  };
+
+  const loading = activeTab === 'attendance' ? loadingAttendance : loadingClasses;
 
   if (loading) {
     return (
@@ -2236,170 +2398,419 @@ function StoredAttendance() {
     );
   }
 
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredRecords.length / entriesPerPage);
-  const startIndex = (currentPage - 1) * entriesPerPage;
-  const endIndex = startIndex + entriesPerPage;
-  const currentRecords = filteredRecords.slice(startIndex, endIndex);
-  const startEntry = filteredRecords.length > 0 ? startIndex + 1 : 0;
-  const endEntry = Math.min(endIndex, filteredRecords.length);
+  // Calculate pagination for attendance
+  const attendanceTotalPages = Math.ceil(filteredAttendance.length / attendanceEntriesPerPage);
+  const attendanceStartIndex = (attendanceCurrentPage - 1) * attendanceEntriesPerPage;
+  const attendanceEndIndex = attendanceStartIndex + attendanceEntriesPerPage;
+  const currentAttendanceRecords = filteredAttendance.slice(attendanceStartIndex, attendanceEndIndex);
+  const attendanceStartEntry = filteredAttendance.length > 0 ? attendanceStartIndex + 1 : 0;
+  const attendanceEndEntry = Math.min(attendanceEndIndex, filteredAttendance.length);
+
+  // Calculate pagination for classes
+  const classTotalPages = Math.ceil(filteredClasses.length / classEntriesPerPage);
+  const classStartIndex = (classCurrentPage - 1) * classEntriesPerPage;
+  const classEndIndex = classStartIndex + classEntriesPerPage;
+  const currentClassRecords = filteredClasses.slice(classStartIndex, classEndIndex);
+  const classStartEntry = filteredClasses.length > 0 ? classStartIndex + 1 : 0;
+  const classEndEntry = Math.min(classEndIndex, filteredClasses.length);
 
   return (
     <div className="flex flex-col h-full p-6">
       {/* Header Section */}
       <div className="flex-shrink-0 mb-4">
         <h2 className="text-2xl font-bold text-gray-900">Archive</h2>
+        <p className="text-sm text-gray-500 mt-1">
+          View archived attendance sheets and class lists.
+        </p>
       </div>
 
-      {/* Controls Section */}
-      <div className="flex-shrink-0 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-700">Show</span>
-            <select
-              value={entriesPerPage}
-              onChange={(e) => {
-                setEntriesPerPage(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
-            >
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-            </select>
-            <span className="text-sm text-gray-700">entries</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-700">Search</span>
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              placeholder=""
-            />
-          </div>
-        </div>
+      {/* Tabs */}
+      <div className="flex-shrink-0 mb-4 border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('attendance')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'attendance'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Attendance Sheets
+            {archivedSheets.length > 0 && (
+              <span className="ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">
+                {archivedSheets.length}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('classes')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'classes'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Class Lists
+            {archivedClasses.length > 0 && (
+              <span className="ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">
+                {archivedClasses.length}
+              </span>
+            )}
+          </button>
+        </nav>
       </div>
 
-      {/* Table Section */}
-      <div className="flex-1 overflow-x-auto">
-        {loadingAttendance ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      {/* Attendance Tab Content */}
+      {activeTab === 'attendance' && (
+        <>
+          {/* Controls Section */}
+          <div className="flex-shrink-0 mb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-700">Show</span>
+                <select
+                  value={attendanceEntriesPerPage}
+                  onChange={(e) => {
+                    setAttendanceEntriesPerPage(Number(e.target.value));
+                    setAttendanceCurrentPage(1);
+                  }}
+                  className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <span className="text-sm text-gray-700">entries</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-700">Search</span>
+                <input
+                  type="text"
+                  value={attendanceSearchTerm}
+                  onChange={(e) => setAttendanceSearchTerm(e.target.value)}
+                  className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder=""
+                />
+              </div>
+            </div>
           </div>
-        ) : filteredRecords.length > 0 ? (
-          <div className="border-2 border-gray-300">
-            <table className="min-w-full border-collapse">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
-                    Date
-                  </th>
-                  <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
-                    Class/Subject
-                  </th>
-                  <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
-                    Students
-                  </th>
-                  <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
-                    Action
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white">
-                {currentRecords.map((record) => (
-                  <tr key={`${record.class_id}-${record.date}`} className="hover:bg-gray-50">
-                    <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(record.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                    </td>
-                    <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                      {(record as any).classSubjectName || record.subject_name || '-'}
-                    </td>
-                    <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                      {(record as any).student_count || 0} student{(record as any).student_count !== 1 ? 's' : ''}
-                    </td>
-                    <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
+
+          {/* Table Section */}
+          <div className="flex-1 overflow-x-auto">
+            {filteredAttendance.length > 0 ? (
+              <div className="border-2 border-gray-300">
+                <table className="min-w-full border-collapse">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                        Date
+                      </th>
+                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                        Subject
+                      </th>
+                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                        Summary
+                      </th>
+                      <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {currentAttendanceRecords.map((sheet) => (
+                      <tr key={`${sheet.class_id}-${sheet.date}`} className="hover:bg-gray-50">
+                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                        </td>
+                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          <div className="font-medium">{sheet.subject_name}</div>
+                          <div className="text-xs text-gray-500">{sheet.subject_code}</div>
+                        </td>
+                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                              {sheet.present_count} Present
+                            </span>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                              {sheet.absent_count} Absent
+                            </span>
+                            {sheet.late_count > 0 && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                                {sheet.late_count} Late
+                              </span>
+                            )}
+                            {sheet.excused_count > 0 && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                {sheet.excused_count} Excused
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">{sheet.student_count} total students</div>
+                        </td>
+                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              onClick={() => {
+                                navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}`);
+                              }}
+                              variant="outline"
+                              size="sm"
+                              className="text-blue-600 hover:text-blue-900"
+                              icon={<Eye className="h-4 w-4" />}
+                            >
+                              View
+                            </Button>
+                            <Button
+                              onClick={() => handleUnarchiveAttendance(sheet.class_id, sheet.date)}
+                              variant="outline"
+                              size="sm"
+                              className="text-orange-600 hover:text-orange-900"
+                              disabled={unarchivingAttendance === `${sheet.class_id}-${sheet.date}`}
+                            >
+                              {unarchivingAttendance === `${sheet.class_id}-${sheet.date}` ? 'Removing...' : 'Unarchive'}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                {attendanceSearchTerm ? (
+                  <>
+                    <svg className="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">No matching archived records found</h3>
+                    <div className="mt-4">
                       <Button
-                        onClick={() => {
-                          navigate(`/teacher/attendance/${record.class_id}?date=${record.date}`);
-                        }}
+                        onClick={() => setAttendanceSearchTerm('')}
                         variant="outline"
                         size="sm"
-                        className="text-blue-600 hover:text-blue-900"
-                        icon={<Eye className="h-4 w-4" />}
                       >
-                        View
+                        Clear Search
                       </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="text-center py-12">
-            {searchTerm ? (
-              <>
-                <svg className="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No matching attendance records found</h3>
-                <div className="mt-4">
-                  <Button
-                    onClick={() => setSearchTerm('')}
-                    variant="outline"
-                    size="sm"
-                  >
-                    Clear Search
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <>
-                <h3 className="text-sm font-medium text-gray-900">No saved attendance records found</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  Attendance records will appear here once you generate them.
-                </p>
-              </>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Archive className="mx-auto h-12 w-12 text-gray-300" />
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">No archived attendance sheets</h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Archive attendance sheets from the Attendance Management page to see them here.
+                    </p>
+                  </>
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
 
-      {/* Pagination Section */}
-      {filteredRecords.length > 0 && (
-        <div className="flex-shrink-0 mt-4 flex items-center justify-between">
-          <div className="text-sm text-gray-700">
-            Showing {startEntry} to {endEntry} of {filteredRecords.length} entries
+          {/* Pagination Section */}
+          {filteredAttendance.length > 0 && (
+            <div className="flex-shrink-0 mt-4 flex items-center justify-between">
+              <div className="text-sm text-gray-700">
+                Showing {attendanceStartEntry} to {attendanceEndEntry} of {filteredAttendance.length} entries
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  onClick={() => setAttendanceCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={attendanceCurrentPage === 1}
+                  variant="outline"
+                  size="sm"
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                >
+                  {attendanceCurrentPage}
+                </Button>
+                <Button
+                  onClick={() => setAttendanceCurrentPage(prev => Math.min(attendanceTotalPages, prev + 1))}
+                  disabled={attendanceCurrentPage === attendanceTotalPages}
+                  variant="outline"
+                  size="sm"
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Classes Tab Content */}
+      {activeTab === 'classes' && (
+        <>
+          {/* Controls Section */}
+          <div className="flex-shrink-0 mb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-700">Show</span>
+                <select
+                  value={classEntriesPerPage}
+                  onChange={(e) => {
+                    setClassEntriesPerPage(Number(e.target.value));
+                    setClassCurrentPage(1);
+                  }}
+                  className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+                <span className="text-sm text-gray-700">entries</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-700">Search</span>
+                <input
+                  type="text"
+                  value={classSearchTerm}
+                  onChange={(e) => setClassSearchTerm(e.target.value)}
+                  className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder=""
+                />
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <Button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              variant="outline"
-              size="sm"
-            >
-              Previous
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-            >
-              {currentPage}
-            </Button>
-            <Button
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              variant="outline"
-              size="sm"
-            >
-              Next
-            </Button>
+
+          {/* Table Section */}
+          <div className="flex-1 overflow-x-auto">
+            {filteredClasses.length > 0 ? (
+              <div className="border-2 border-gray-300">
+                <table className="min-w-full border-collapse">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                        Subject
+                      </th>
+                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                        Schedule
+                      </th>
+                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                        School Year
+                      </th>
+                      <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                        Students
+                      </th>
+                      <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {currentClassRecords.map((cls) => (
+                      <tr key={cls.class_id} className="hover:bg-gray-50">
+                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          <div className="font-medium">{cls.subject_name}</div>
+                          <div className="text-xs text-gray-500">{cls.subject_code}</div>
+                        </td>
+                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          {cls.schedule || '-'}
+                        </td>
+                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          <div>{cls.school_year || '-'}</div>
+                          <div className="text-xs text-gray-500">{cls.semester || ''}</div>
+                        </td>
+                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm text-gray-600">
+                          {cls.enrolled_count} enrolled
+                        </td>
+                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              onClick={() => navigate(`/teacher/class-management/${cls.class_id}?mode=view`)}
+                              variant="outline"
+                              size="sm"
+                              className="text-blue-600 hover:text-blue-900"
+                              icon={<Eye className="h-4 w-4" />}
+                            >
+                              View
+                            </Button>
+                            <Button
+                              onClick={() => handleUnarchiveClass(cls.class_id)}
+                              variant="outline"
+                              size="sm"
+                              className="text-orange-600 hover:text-orange-900"
+                              disabled={unarchivingClass === cls.class_id}
+                            >
+                              {unarchivingClass === cls.class_id ? 'Restoring...' : 'Unarchive'}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                {classSearchTerm ? (
+                  <>
+                    <svg className="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">No matching archived classes found</h3>
+                    <div className="mt-4">
+                      <Button
+                        onClick={() => setClassSearchTerm('')}
+                        variant="outline"
+                        size="sm"
+                      >
+                        Clear Search
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Library className="mx-auto h-12 w-12 text-gray-300" />
+                    <h3 className="mt-2 text-sm font-medium text-gray-900">No archived classes</h3>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Archive classes from the Class Management page to see them here.
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
           </div>
-        </div>
+
+          {/* Pagination Section */}
+          {filteredClasses.length > 0 && (
+            <div className="flex-shrink-0 mt-4 flex items-center justify-between">
+              <div className="text-sm text-gray-700">
+                Showing {classStartEntry} to {classEndEntry} of {filteredClasses.length} entries
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  onClick={() => setClassCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={classCurrentPage === 1}
+                  variant="outline"
+                  size="sm"
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                >
+                  {classCurrentPage}
+                </Button>
+                <Button
+                  onClick={() => setClassCurrentPage(prev => Math.min(classTotalPages, prev + 1))}
+                  disabled={classCurrentPage === classTotalPages}
+                  variant="outline"
+                  size="sm"
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -2412,15 +2823,21 @@ function AttendanceManagementDetail() {
   const { user } = useAuth();
   const [selectedClass, setSelectedClass] = useState<Class | null>(null);
   const [attendanceRecords, setAttendanceRecords] = useState<Attendance[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>('');
-  const [loading, setLoading] = useState(false);
+  // Initialize selectedDate from URL params immediately
+  const initialDate = searchParams.get('date') || '';
+  const [selectedDate, setSelectedDate] = useState<string>(initialDate);
+  const [loading, setLoading] = useState(true); // Start with loading true
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [error, setError] = useState<string>('');
-  const [hasSelectedDate, setHasSelectedDate] = useState(false);
+  // Initialize hasSelectedDate based on URL params
+  const [hasSelectedDate, setHasSelectedDate] = useState(!!initialDate);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [pendingDate, setPendingDate] = useState<string>('');
   const [generating, setGenerating] = useState(false);
   const [isGenerated, setIsGenerated] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const loadClass = async () => {
@@ -2574,6 +2991,7 @@ function AttendanceManagementDetail() {
     // Save all attendance records
     if (!selectedClass || !selectedDate) return;
 
+    setSaving(true);
     try {
       // Initialize attendance if not already done
       if (attendanceRecords.length === 0) {
@@ -2584,58 +3002,99 @@ function AttendanceManagementDetail() {
       // Small delay to ensure save completes
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Navigate to stored attendance page
-      navigate('/teacher/stored-attendance', { replace: true });
+      // Navigate back to attendance management - the attendance is now active/saved
+      navigate('/teacher/attendance', { replace: true });
     } catch (error) {
       console.error('Failed to save attendance:', error);
       alert('Failed to save attendance. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelClick = () => {
+    // Just navigate back directly without confirmation
+    navigate('/teacher/attendance');
+  };
+
+  const handleConfirmCancel = () => {
+    setShowCancelConfirm(false);
+    navigate('/teacher/attendance');
+  };
+
+  const handleArchive = async () => {
+    if (!selectedClass || !selectedDate) return;
+
+    setArchiving(true);
+    try {
+      await ArchiveAttendanceSheet(selectedClass.class_id, selectedDate);
+      // Navigate to archive page after successful archive
+      navigate('/teacher/stored-attendance', { replace: true });
+    } catch (error) {
+      console.error('Failed to archive attendance:', error);
+      alert('Failed to archive attendance. Please try again.');
+    } finally {
+      setArchiving(false);
     }
   };
 
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
       <div className="min-h-screen p-4 md:p-8">
-        {/* Close Button */}
-        <button
-          onClick={() => navigate('/teacher/attendance')}
-          className="fixed top-4 right-4 z-50 p-3 bg-white hover:bg-gray-100 rounded-full shadow-lg transition-all duration-200 hover:scale-110"
-          title="Close"
-        >
-          <X className="h-6 w-6 text-gray-700" />
-        </button>
-
         {error && (
           <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md max-w-7xl mx-auto">
             {error}
           </div>
         )}
 
-        {/* Date Picker (only if no date selected yet) */}
-        {!hasSelectedDate && selectedClass && (
-          <div className="bg-white shadow rounded-lg p-6 mb-6 border border-gray-300 max-w-7xl mx-auto">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Date for Attendance</h3>
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1 max-w-xs">
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => handleDateChange(e.target.value)}
-                  className="block w-full px-4 py-2 pr-10 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
-                />
-                <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
-              </div>
+        {/* Loading state */}
+        {loading && (
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+          </div>
+        )}
+
+        {/* No date picker needed - attendance is only created via ADD ATTENDANCE button */}
+        {!loading && !hasSelectedDate && selectedClass && (
+          <div className="bg-white shadow rounded-lg p-6 mb-6 border border-gray-300 max-w-4xl mx-auto relative">
+            {/* Close Button */}
+            <button
+              onClick={() => navigate('/teacher/attendance')}
+              className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
+              title="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <div className="text-center py-8">
+              <Calendar className="mx-auto h-12 w-12 text-gray-300 mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Attendance Selected</h3>
+              <p className="text-sm text-gray-500 mb-4">Use the "ADD ATTENDANCE" button to create a new attendance sheet for this class.</p>
+              <Button
+                onClick={() => navigate('/teacher/attendance')}
+                variant="outline"
+              >
+                Back to Attendance Management
+              </Button>
             </div>
           </div>
         )}
 
-        {/* Single Attendance Sheet */}
-        {selectedClass && hasSelectedDate && (
-          <div className="bg-white shadow-2xl rounded-lg border-2 border-black max-w-7xl mx-auto">
-          <div className="p-6">
+        {/* Single Attendance Sheet - Bond Paper Style */}
+        {!loading && selectedClass && hasSelectedDate && (
+          <div className="bg-white max-w-4xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
+            {/* Close Button - Inside Sheet */}
+            <button
+              onClick={handleCancelClick}
+              className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
+              title="Close"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
             {/* Sheet Title */}
-            <div className="mb-6 pb-4 border-b-2 border-gray-300">
-              <h2 className="text-2xl font-bold text-gray-900 mb-1">ATTENDANCE SHEET</h2>
-              <p className="text-sm text-gray-600">
+            <div className="mb-6 pb-4 border-b border-gray-400 text-center">
+              <h2 className="text-xl font-bold text-gray-900 tracking-wide">ATTENDANCE SHEET</h2>
+              <p className="text-xs text-gray-600 mt-1">
                 {new Date(selectedDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
               </p>
             </div>
@@ -2646,105 +3105,115 @@ function AttendanceManagementDetail() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                 <p className="mt-2 text-sm text-gray-500">Loading attendance records...</p>
               </div>
-            ) : attendanceRecords.length > 0 ? (
+            ) : (
               <>
                 <div className="overflow-hidden">
-                  <table className="min-w-full border-collapse border-2 border-black">
+                  <table className="min-w-full" style={{ tableLayout: 'fixed' }}>
                     {/* Class Information Header */}
                     <thead>
-                      <tr className="bg-gray-800">
-                        <th colSpan={7} className="px-4 py-3 text-center border-b-2 border-black">
-                          <div className="text-white font-bold text-lg">CLASS INFORMATION</div>
+                      <tr>
+                        <th colSpan={7} className="px-4 py-2 text-left border-b-2 border-gray-900">
+                          <div className="text-gray-900 font-bold text-sm tracking-wide">CLASS INFORMATION</div>
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="bg-gray-50">
+                    <tbody className="bg-white text-sm">
                       <tr>
-                        <td className="border border-gray-400 px-4 py-2 font-semibold text-gray-700 w-1/7">Subject:</td>
-                        <td className="border border-gray-400 px-4 py-2 text-gray-900" colSpan={2}>{selectedClass.subject_code} - {selectedClass.subject_name}</td>
-                        <td className="border border-gray-400 px-4 py-2 font-semibold text-gray-700 w-1/7">Schedule:</td>
-                        <td className="border border-gray-400 px-4 py-2 text-gray-900" colSpan={3}>{selectedClass.schedule || '—'}</td>
+                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '90px' }}>Subject:</td>
+                        <td className="px-3 py-2 text-gray-900" colSpan={2}>{selectedClass.subject_code} - {selectedClass.subject_name}</td>
+                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '80px' }}>Schedule:</td>
+                        <td className="px-3 py-2 text-gray-900" colSpan={3}>{selectedClass.schedule || '—'}</td>
                       </tr>
                       <tr>
-                        <td className="border border-gray-400 px-4 py-2 font-semibold text-gray-700">Instructor:</td>
-                        <td className="border border-gray-400 px-4 py-2 text-gray-900" colSpan={2}>{selectedClass.teacher_name || '—'}</td>
-                        <td className="border border-gray-400 px-4 py-2 font-semibold text-gray-700">Room:</td>
-                        <td className="border border-gray-400 px-4 py-2 text-gray-900" colSpan={3}>{selectedClass.room || '—'}</td>
+                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">Instructor:</td>
+                        <td className="px-3 py-2 text-gray-900" colSpan={2}>{selectedClass.teacher_name || '—'}</td>
+                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">Room:</td>
+                        <td className="px-3 py-2 text-gray-900" colSpan={3}>{selectedClass.room || '—'}</td>
                       </tr>
                     </tbody>
 
                     {/* Attendance List Header */}
                     <thead>
-                      <tr className="bg-gray-800">
-                        <th colSpan={7} className="px-4 py-3 border-y-2 border-black">
-                          <div className="flex items-center justify-between text-white">
-                            <span className="font-bold text-lg">DAILY ATTENDANCE RECORD</span>
-                            <span className="text-sm">Total Students: {attendanceRecords.length}</span>
+                      <tr>
+                        <th colSpan={7} className="px-4 py-3 text-left border-b-2 border-gray-900">
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-900 font-bold text-sm tracking-wide">DAILY ATTENDANCE RECORD</span>
+                            <span className="text-xs text-gray-600">Total Students: {attendanceRecords.length}</span>
                           </div>
                         </th>
                       </tr>
-                      <tr className="bg-gray-700">
-                        <th className="border border-gray-400 px-3 py-2 text-center text-xs font-bold text-white uppercase">No.</th>
-                        <th className="border border-gray-400 px-4 py-2 text-left text-xs font-bold text-white uppercase">Student ID</th>
-                        <th className="border border-gray-400 px-4 py-2 text-left text-xs font-bold text-white uppercase">Student Name</th>
-                        <th className="border border-gray-400 px-4 py-2 text-center text-xs font-bold text-white uppercase">Time In</th>
-                        <th className="border border-gray-400 px-4 py-2 text-center text-xs font-bold text-white uppercase">Time Out</th>
-                        <th className="border border-gray-400 px-4 py-2 text-center text-xs font-bold text-white uppercase">Status</th>
-                        <th className="border border-gray-400 px-4 py-2 text-left text-xs font-bold text-white uppercase">Remarks</th>
+                      <tr className="bg-gray-100">
+                        <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '40px' }}>No.</th>
+                        <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '90px' }}>Student ID</th>
+                        <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase">Student Name</th>
+                        <th className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '70px' }}>Time In</th>
+                        <th className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '70px' }}>Time Out</th>
+                        <th className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Status</th>
+                        <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>Remarks</th>
                       </tr>
                     </thead>
 
                     {/* Student Attendance Rows */}
-                    <tbody className="bg-white">
-                      {attendanceRecords.map((record, index) => (
-                        <tr key={`${record.class_id}-${record.student_user_id}-${record.date}`} className="hover:bg-green-50">
-                          <td className="border border-gray-400 px-3 py-2 text-center text-sm font-bold text-gray-900">
-                            {index + 1}
-                          </td>
-                          <td className="border border-gray-400 px-4 py-2 text-sm font-semibold text-gray-900">
-                            {record.student_code}
-                          </td>
-                          <td className="border border-gray-400 px-4 py-2 text-sm text-gray-900">
-                            {record.last_name}, {record.first_name} {record.middle_name ? record.middle_name.charAt(0) + '.' : ''}
-                          </td>
-                          <td className="border border-gray-400 px-4 py-2 text-center text-sm">
-                            {record.time_in ? (
-                              <span className="text-green-700 font-bold">{record.time_in}</span>
-                            ) : (
-                              <span className="text-gray-400 font-medium">—</span>
-                            )}
-                          </td>
-                          <td className="border border-gray-400 px-4 py-2 text-center text-sm">
-                            {record.time_out ? (
-                              <span className="text-blue-700 font-bold">{record.time_out}</span>
-                            ) : (
-                              <span className="text-gray-400 font-medium">—</span>
-                            )}
-                          </td>
-                          <td className="border border-gray-400 px-4 py-2 text-center text-sm">
-                            {record.status ? (
-                              <span className={`px-3 py-1 text-xs font-bold rounded-full ${getStatusColor(record.status)}`}>
-                                {record.status === 'present' ? 'PRESENT' : record.status === 'absent' ? 'ABSENT' : record.status === 'late' ? 'LATE' : record.status.toUpperCase()}
-                              </span>
-                            ) : (
-                              <span className="px-3 py-1 text-xs font-bold rounded-full bg-gray-200 text-gray-600">
-                                NO STATUS
-                              </span>
-                            )}
-                          </td>
-                          <td className="border border-gray-400 px-4 py-2 text-sm text-gray-700">
-                            {record.remarks || '—'}
+                    <tbody className="bg-white text-xs">
+                      {attendanceRecords.length > 0 ? (
+                        attendanceRecords.map((record, index) => (
+                          <tr key={`${record.class_id}-${record.student_user_id}-${record.date}`} className="hover:bg-gray-50 border-b border-gray-100">
+                            <td className="px-2 py-1.5 text-center font-medium text-gray-900">
+                              {index + 1}
+                            </td>
+                            <td className="px-3 py-1.5 font-medium text-gray-900">
+                              {record.student_code}
+                            </td>
+                            <td className="px-3 py-1.5 text-gray-900">
+                              {record.last_name}, {record.first_name} {record.middle_name ? record.middle_name.charAt(0) + '.' : ''}
+                            </td>
+                            <td className="px-3 py-1.5 text-center">
+                              {record.time_in ? (
+                                <span className="text-green-700 font-medium">{record.time_in}</span>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1.5 text-center">
+                              {record.time_out ? (
+                                <span className="text-blue-700 font-medium">{record.time_out}</span>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1.5 text-center">
+                              {record.status ? (
+                                <span className={`px-2 py-0.5 text-xs font-medium rounded ${getStatusColor(record.status)}`}>
+                                  {record.status === 'present' ? 'PRESENT' : record.status === 'absent' ? 'ABSENT' : record.status === 'late' ? 'LATE' : record.status.toUpperCase()}
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-gray-600">
+                                  NO STATUS
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1.5 text-gray-700">
+                              {record.remarks || '—'}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-8 text-center">
+                            <ClipboardList className="mx-auto h-8 w-8 text-gray-300 mb-2" />
+                            <p className="text-sm text-gray-500">No students enrolled in this class yet.</p>
+                            <p className="text-xs text-gray-400 mt-1">Students will appear here once they are enrolled.</p>
                           </td>
                         </tr>
-                      ))}
+                      )}
                     </tbody>
 
                     {/* Summary Footer */}
                     <tfoot>
-                      <tr className="bg-gray-100 border-t-2 border-black">
-                        <td colSpan={7} className="px-6 py-4">
-                          <div className="flex justify-between items-center">
-                            <div className="flex gap-6 text-sm font-bold">
+                      <tr className="border-t-2 border-gray-900">
+                        <td colSpan={7} className="px-4 py-3">
+                          <div className="flex justify-between items-center text-xs">
+                            <div className="flex gap-4 font-medium">
                               <span className="text-green-700">
                                 Present: {attendanceRecords.filter(r => r.status === 'present').length}
                               </span>
@@ -2758,8 +3227,8 @@ function AttendanceManagementDetail() {
                                 No Status: {attendanceRecords.filter(r => !r.status || r.status === '').length}
                               </span>
                             </div>
-                            <div className="text-sm font-bold text-gray-900">
-                              Total: <span className="text-blue-600 text-lg ml-1">{attendanceRecords.length}</span>
+                            <div className="font-bold text-gray-900">
+                              Total: {attendanceRecords.length}
                             </div>
                           </div>
                         </td>
@@ -2768,40 +3237,9 @@ function AttendanceManagementDetail() {
                   </table>
                 </div>
               </>
-            ) : (
-              <div className="px-6 py-12 text-center">
-                <ClipboardList className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-2 text-sm font-medium text-gray-900">No enrolled students found</h3>
-                <p className="mt-1 text-sm text-gray-500">
-                  This class has no enrolled students. Please add students to the class first.
-                </p>
-                {selectedClass && (
-                  <Button
-                    onClick={() => navigate(`/teacher/class-management/${selectedClass.class_id}`)}
-                    variant="primary"
-                    className="mt-4"
-                  >
-                    Go to Class Management
-                  </Button>
-                )}
-              </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* Save Button */}
-      {selectedClass && (hasSelectedDate || isGenerated) && attendanceRecords.length > 0 && (
-        <div className="flex justify-center mt-6 max-w-7xl mx-auto">
-          <Button
-            onClick={handleSaveAll}
-            variant="primary"
-            className="px-8 py-3 text-base"
-          >
-            Save Attendance
-          </Button>
-        </div>
-      )}
+        )}
 
       {/* Generate Attendance Modal */}
       {showGenerateModal && (
@@ -2866,8 +3304,8 @@ function AttendanceManagementDetail() {
                 <div className="flex items-start">
                   <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
                   <p className="text-sm text-blue-800">
-                    This will create attendance records for all enrolled students on the selected date.
-                    All students will initially be marked as absent.
+                    This will create an attendance sheet for the selected date.
+                    Enrolled students will initially be marked as absent. You can still create an attendance sheet even if no students are enrolled yet.
                   </p>
                 </div>
               </div>
@@ -2889,16 +3327,47 @@ function AttendanceManagementDetail() {
                   loading={generating}
                   icon={!generating ? <CheckCircle className="h-4 w-4" /> : undefined}
                 >
-                  Generate Attendance
+                  Generate
                 </Button>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Cancel Confirmation Modal */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+            <div className="text-center">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100 mb-4">
+                <AlertCircle className="h-6 w-6 text-yellow-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Cancel Attendance?</h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Are you sure you want to cancel? Any unsaved changes will be lost.
+              </p>
+              <div className="flex justify-center gap-3">
+                <Button
+                  onClick={() => setShowCancelConfirm(false)}
+                  variant="secondary"
+                >
+                  No
+                </Button>
+                <Button
+                  onClick={handleConfirmCancel}
+                  variant="danger"
+                >
+                  Yes
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      </div>
     </div>
-  </div>
-);
+  );
 }
 
 function TeacherDashboard() {

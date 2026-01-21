@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"time"
@@ -90,7 +91,7 @@ func (a *App) GetAllClasses() ([]CourseClass, error) {
 
 	query := `
 		SELECT 
-			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code as offering_code,
+			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
 			c.teacher_user_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
@@ -117,10 +118,10 @@ func (a *App) GetAllClasses() ([]CourseClass, error) {
 	var classes []CourseClass
 	for rows.Next() {
 		var class CourseClass
-		var descriptiveTitle, offeringCode, schedule, room, semester, schoolYear sql.NullString
+		var descriptiveTitle, edpCode, schedule, room, semester, schoolYear sql.NullString
 		var createdBy sql.NullInt64
 		err := rows.Scan(
-			&class.ClassID, &class.SubjectCode, &descriptiveTitle, &offeringCode,
+			&class.ClassID, &class.SubjectCode, &descriptiveTitle, &edpCode,
 			&class.TeacherUserID, &class.TeacherName,
 			&schedule, &room, &semester, &schoolYear,
 			&class.EnrolledCount, &class.IsActive, &createdBy,
@@ -131,8 +132,8 @@ func (a *App) GetAllClasses() ([]CourseClass, error) {
 		if descriptiveTitle.Valid {
 			class.DescriptiveTitle = &descriptiveTitle.String
 		}
-		if offeringCode.Valid {
-			class.OfferingCode = &offeringCode.String
+		if edpCode.Valid {
+			class.EdpCode = &edpCode.String
 		}
 		if schedule.Valid {
 			class.Schedule = &schedule.String
@@ -181,7 +182,7 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 
 	query := `
 		SELECT 
-			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code as offering_code,
+			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
 			c.teacher_user_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
@@ -194,7 +195,7 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 			FROM classlist 
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE c.teacher_user_id = ? AND c.is_active = TRUE 
+		WHERE c.teacher_user_id = ? AND c.is_active = TRUE AND (c.is_archived = FALSE OR c.is_archived IS NULL)
 		ORDER BY c.subject_code, c.semester, c.school_year
 	`
 	rows, err := a.db.Query(query, teacherID)
@@ -206,11 +207,11 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 	var classes []CourseClass
 	for rows.Next() {
 		var class CourseClass
-		var subjectName, descriptiveTitle, offeringCode, schedule, room, semester, schoolYear sql.NullString
+		var subjectName, descriptiveTitle, edpCode, schedule, room, semester, schoolYear sql.NullString
 		var teacherName sql.NullString
 		var createdBy sql.NullInt64
 		err := rows.Scan(
-			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &offeringCode,
+			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &edpCode,
 			&class.TeacherUserID, &teacherName,
 			&schedule, &room, &semester, &schoolYear,
 			&class.EnrolledCount, &class.IsActive, &createdBy,
@@ -224,8 +225,8 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 		if descriptiveTitle.Valid {
 			class.DescriptiveTitle = &descriptiveTitle.String
 		}
-		if offeringCode.Valid {
-			class.OfferingCode = &offeringCode.String
+		if edpCode.Valid {
+			class.EdpCode = &edpCode.String
 		}
 		if teacherName.Valid {
 			class.TeacherName = &teacherName.String
@@ -266,11 +267,15 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 
 	query := `
 		SELECT 
-			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code as offering_code,
+			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
 			c.teacher_user_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
-			c.is_active, c.created_by_user_id
+			c.is_active, c.created_by_user_id,
+			DATE_FORMAT(COALESCE(
+				(SELECT MAX(a.date) FROM attendance a WHERE a.class_id = c.class_id),
+				(SELECT MAX(ash.date) FROM attendance_sheets ash WHERE ash.class_id = c.class_id AND ash.is_archived = FALSE)
+			), '%Y-%m-%d') as latest_attendance_date
 		FROM classes c
 		LEFT JOIN subjects s ON c.subject_code = s.subject_code
 		LEFT JOIN teachers t ON c.teacher_user_id = t.user_id
@@ -279,11 +284,11 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 			FROM classlist 
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		INNER JOIN (
-			SELECT DISTINCT class_id 
-			FROM attendance
-		) attendance_exists ON c.class_id = attendance_exists.class_id
 		WHERE c.teacher_user_id = ? AND c.is_active = TRUE 
+		AND (
+			EXISTS (SELECT 1 FROM attendance WHERE attendance.class_id = c.class_id)
+			OR EXISTS (SELECT 1 FROM attendance_sheets WHERE attendance_sheets.class_id = c.class_id AND attendance_sheets.is_archived = FALSE)
+		)
 		ORDER BY c.subject_code, c.semester, c.school_year
 	`
 	rows, err := a.db.Query(query, teacherID)
@@ -295,16 +300,18 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 	var classes []CourseClass
 	for rows.Next() {
 		var class CourseClass
-		var subjectName, descriptiveTitle, offeringCode, schedule, room, semester, schoolYear sql.NullString
+		var subjectName, descriptiveTitle, edpCode, schedule, room, semester, schoolYear sql.NullString
 		var teacherName sql.NullString
 		var createdBy sql.NullInt64
+		var latestDate sql.NullString
 		err := rows.Scan(
-			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &offeringCode,
+			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &edpCode,
 			&class.TeacherUserID, &teacherName,
 			&schedule, &room, &semester, &schoolYear,
-			&class.EnrolledCount, &class.IsActive, &createdBy,
+			&class.EnrolledCount, &class.IsActive, &createdBy, &latestDate,
 		)
 		if err != nil {
+			log.Printf("⚠ Failed to scan class row: %v", err)
 			continue
 		}
 		if subjectName.Valid {
@@ -313,8 +320,8 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 		if descriptiveTitle.Valid {
 			class.DescriptiveTitle = &descriptiveTitle.String
 		}
-		if offeringCode.Valid {
-			class.OfferingCode = &offeringCode.String
+		if edpCode.Valid {
+			class.EdpCode = &edpCode.String
 		}
 		if teacherName.Valid {
 			class.TeacherName = &teacherName.String
@@ -334,6 +341,9 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 		if createdBy.Valid {
 			createdByInt := int(createdBy.Int64)
 			class.CreatedByUserID = &createdByInt
+		}
+		if latestDate.Valid {
+			class.LatestAttendanceDate = &latestDate.String
 		}
 		classes = append(classes, class)
 	}
@@ -418,7 +428,7 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 
 	query := `
 		SELECT 
-			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code as offering_code,
+			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
 			c.teacher_user_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
@@ -445,12 +455,12 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 	var classes []CourseClass
 	for rows.Next() {
 		var class CourseClass
-		var subjectName, descriptiveTitle, offeringCode, schedule, room, semester, schoolYear sql.NullString
+		var subjectName, descriptiveTitle, edpCode, schedule, room, semester, schoolYear sql.NullString
 		var teacherName sql.NullString
 		var createdBy sql.NullInt64
 		var createdAt time.Time
 		err := rows.Scan(
-			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &offeringCode,
+			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &edpCode,
 			&class.TeacherUserID, &teacherName,
 			&schedule, &room, &semester, &schoolYear,
 			&class.EnrolledCount, &class.IsActive, &createdBy, &createdAt,
@@ -464,8 +474,8 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 		if descriptiveTitle.Valid {
 			class.DescriptiveTitle = &descriptiveTitle.String
 		}
-		if offeringCode.Valid {
-			class.OfferingCode = &offeringCode.String
+		if edpCode.Valid {
+			class.EdpCode = &edpCode.String
 		}
 		if teacherName.Valid {
 			class.TeacherName = &teacherName.String
@@ -498,7 +508,7 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 // ==============================================================================
 
 // CreateClass creates a new class instance (by working student)
-func (a *App) CreateClass(subjectCode string, teacherUserID int, offeringCode, schedule, room, yearLevel, section, semester, schoolYear, descriptiveTitle string, createdBy int) (int, error) {
+func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedule, room, yearLevel, section, semester, schoolYear, descriptiveTitle string, createdBy int) (int, error) {
 	if a.db == nil {
 		return 0, fmt.Errorf("database not connected")
 	}
@@ -518,7 +528,7 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, offeringCode, s
 	result, err := a.db.Exec(
 		query,
 		subjectCode, teacherUserID,
-		nullString(offeringCode),
+		nullString(edpCode),
 		nullString(schedule), nullString(room),
 		nullString(semester), nullString(schoolYear),
 		nullString(descriptiveTitle),
@@ -838,7 +848,7 @@ func (a *App) GetClassesByEDPCode(edpCode string) ([]CourseClass, error) {
 
 	query := `
 		SELECT 
-			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code as offering_code,
+			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
 			c.teacher_user_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
@@ -864,12 +874,12 @@ func (a *App) GetClassesByEDPCode(edpCode string) ([]CourseClass, error) {
 	var classes []CourseClass
 	for rows.Next() {
 		var class CourseClass
-		var subjectName, descriptiveTitle, offeringCode, schedule, room, semester, schoolYear sql.NullString
+		var subjectName, descriptiveTitle, edpCode, schedule, room, semester, schoolYear sql.NullString
 		var teacherName sql.NullString
 		var createdBy sql.NullInt64
 		var createdAt time.Time
 		err := rows.Scan(
-			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &offeringCode,
+			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &edpCode,
 			&class.TeacherUserID, &teacherName,
 			&schedule, &room, &semester, &schoolYear,
 			&class.EnrolledCount, &class.IsActive, &createdBy, &createdAt,
@@ -883,8 +893,8 @@ func (a *App) GetClassesByEDPCode(edpCode string) ([]CourseClass, error) {
 		if descriptiveTitle.Valid {
 			class.DescriptiveTitle = &descriptiveTitle.String
 		}
-		if offeringCode.Valid {
-			class.OfferingCode = &offeringCode.String
+		if edpCode.Valid {
+			class.EdpCode = &edpCode.String
 		}
 		if teacherName.Valid {
 			class.TeacherName = &teacherName.String
@@ -1051,9 +1061,10 @@ func (a *App) GetAllRegisteredStudents(yearLevelFilter, sectionFilter string) ([
 	var students []ClassStudent
 	for rows.Next() {
 		var student ClassStudent
-		var middleName, email, contactNumber, profilePhoto sql.NullString
+		var middleName, email, contactNumber sql.NullString
+		var photoBytes []byte // Changed to handle BLOB
 		err := rows.Scan(&student.ID, &student.StudentID, &student.FirstName, &middleName,
-			&student.LastName, &email, &contactNumber, &profilePhoto)
+			&student.LastName, &email, &contactNumber, &photoBytes)
 		if err != nil {
 			continue
 		}
@@ -1066,8 +1077,12 @@ func (a *App) GetAllRegisteredStudents(yearLevelFilter, sectionFilter string) ([
 		if contactNumber.Valid {
 			student.ContactNumber = &contactNumber.String
 		}
-		if profilePhoto.Valid {
-			student.ProfilePhoto = &profilePhoto.String
+		// Convert binary BLOB to Base64 data URL for frontend
+		if len(photoBytes) > 0 {
+			mimeType := detectImageMimeType(photoBytes)
+			base64Data := base64.StdEncoding.EncodeToString(photoBytes)
+			dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
+			student.ProfilePhoto = &dataURL
 		}
 		students = append(students, student)
 	}
@@ -1079,4 +1094,148 @@ func (a *App) GetAllRegisteredStudents(yearLevelFilter, sectionFilter string) ([
 // Note: section column no longer exists in the schema, returning empty array
 func (a *App) GetAvailableSections() ([]string, error) {
 	return []string{}, nil
+}
+
+// ==============================================================================
+// CLASS ARCHIVING
+// ==============================================================================
+
+// ArchiveClass marks a class as archived
+func (a *App) ArchiveClass(classID int) error {
+	if a.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	query := `
+		UPDATE classes 
+		SET is_archived = TRUE,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE class_id = ?
+	`
+
+	result, err := a.db.Exec(query, classID)
+	if err != nil {
+		log.Printf("⚠ Failed to archive class: %v", err)
+		return err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("✓ Archived class: class_id=%d, affected=%d", classID, rowsAffected)
+	return nil
+}
+
+// UnarchiveClass removes the archived flag from a class
+func (a *App) UnarchiveClass(classID int) error {
+	if a.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	query := `
+		UPDATE classes 
+		SET is_archived = FALSE,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE class_id = ?
+	`
+
+	result, err := a.db.Exec(query, classID)
+	if err != nil {
+		log.Printf("⚠ Failed to unarchive class: %v", err)
+		return err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("✓ Unarchived class: class_id=%d, affected=%d", classID, rowsAffected)
+	return nil
+}
+
+// GetArchivedClasses returns all archived classes for a teacher
+func (a *App) GetArchivedClasses(teacherUserID int) ([]CourseClass, error) {
+	if a.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	query := `
+		SELECT 
+			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
+			c.teacher_user_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
+			c.schedule, c.room, c.semester, c.school_year,
+			COALESCE(enrollment_count.count, 0) as enrolled_count,
+			c.is_active, c.created_by_user_id
+		FROM classes c
+		LEFT JOIN subjects s ON c.subject_code = s.subject_code
+		LEFT JOIN teachers t ON c.teacher_user_id = t.user_id
+		LEFT JOIN (
+			SELECT class_id, COUNT(*) as count 
+			FROM classlist 
+			WHERE status = 'active'
+			GROUP BY class_id
+		) enrollment_count ON c.class_id = enrollment_count.class_id
+		WHERE c.teacher_user_id = ? AND c.is_archived = TRUE
+		ORDER BY c.school_year DESC, c.semester DESC, s.subject_code
+	`
+
+	rows, err := a.db.Query(query, teacherUserID)
+	if err != nil {
+		log.Printf("⚠ Failed to query archived classes: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var classes []CourseClass
+	for rows.Next() {
+		var cls CourseClass
+		var subjectName, descriptiveTitle, edpCode, teacherName, schedule, room, semester, schoolYear sql.NullString
+		var createdByUserID sql.NullInt64
+
+		err := rows.Scan(
+			&cls.ClassID, &cls.SubjectCode, &subjectName, &descriptiveTitle, &edpCode,
+			&cls.TeacherUserID, &teacherName,
+			&schedule, &room, &semester, &schoolYear,
+			&cls.EnrolledCount, &cls.IsActive, &createdByUserID,
+		)
+		if err != nil {
+			log.Printf("⚠ Failed to scan archived class: %v", err)
+			continue
+		}
+
+		if subjectName.Valid {
+			cls.SubjectName = subjectName.String
+		}
+		if descriptiveTitle.Valid {
+			dt := descriptiveTitle.String
+			cls.DescriptiveTitle = &dt
+		}
+		if edpCode.Valid {
+			oc := edpCode.String
+			cls.EdpCode = &oc
+		}
+		if teacherName.Valid {
+			tn := teacherName.String
+			cls.TeacherName = &tn
+		}
+		if schedule.Valid {
+			s := schedule.String
+			cls.Schedule = &s
+		}
+		if room.Valid {
+			r := room.String
+			cls.Room = &r
+		}
+		if semester.Valid {
+			sem := semester.String
+			cls.Semester = &sem
+		}
+		if schoolYear.Valid {
+			sy := schoolYear.String
+			cls.SchoolYear = &sy
+		}
+		if createdByUserID.Valid {
+			id := int(createdByUserID.Int64)
+			cls.CreatedByUserID = &id
+		}
+
+		classes = append(classes, cls)
+	}
+
+	return classes, nil
 }

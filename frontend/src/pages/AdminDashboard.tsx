@@ -24,7 +24,11 @@ import {
   FolderOpen,
   GraduationCap,
   BarChart3,
-  AlertCircle
+  AlertCircle,
+  Archive,
+  RotateCcw,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import {
   GetAdminDashboard,
@@ -36,16 +40,27 @@ import {
   DeleteUser,
   GetAllLogs,
   GetFeedback,
-  ExportLogsCSV,
-  ExportLogsPDF,
-  ExportFeedbackCSV,
-  ExportFeedbackPDF,
   GetDepartments,
   CreateDepartment,
   UpdateDepartment,
-  DeleteDepartment
+  DeleteDepartment,
+  GetLogDates,
+  GetFeedbackDates,
+  ArchiveLogsByDate,
+  ArchiveFeedbackByDate,
+  GetArchivedLogSheets,
+  GetArchivedFeedbackSheets,
+  GetArchivedLogsByDate,
+  GetArchivedFeedbackByDate,
+  UnarchiveLogSheet,
+  UnarchiveFeedbackSheet,
+  ExportArchivedLogSheetCSV,
+  ExportArchivedLogSheetPDF,
+  ExportArchivedFeedbackSheetCSV,
+  ExportArchivedFeedbackSheetPDF
 } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DashboardStats {
   total_students: number;
@@ -86,6 +101,26 @@ interface LoginLog {
 
 // Use the generated Feedback model from main
 type Feedback = main.Feedback;
+
+// Archive sheet types
+interface ArchivedLogSheet {
+  date: string;
+  total_logins: number;
+  student_count: number;
+  teacher_count: number;
+  admin_count: number;
+  working_student_count: number;
+  unique_pcs: number;
+}
+
+interface ArchivedFeedbackSheet {
+  date: string;
+  total_reports: number;
+  good_count: number;
+  issue_count: number;
+  unique_pcs: number;
+  unique_students: number;
+}
 
 function DashboardOverview() {
   const [stats, setStats] = useState<DashboardStats>({
@@ -1164,9 +1199,14 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
 }
 
 function ViewLogs() {
+  const { user } = useAuth();
   const [logs, setLogs] = useState<LoginLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+
+  // Available dates for archiving
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [archiving, setArchiving] = useState(false);
 
   // General search
   const [searchQuery, setSearchQuery] = useState('');
@@ -1177,6 +1217,7 @@ function ViewLogs() {
 
   useEffect(() => {
     loadLogs();
+    loadAvailableDates();
   }, []);
 
   const loadLogs = async () => {
@@ -1197,30 +1238,49 @@ function ViewLogs() {
     }
   };
 
+  const loadAvailableDates = async () => {
+    try {
+      const dates = await GetLogDates();
+      setAvailableDates(dates || []);
+    } catch (error) {
+      console.error('Failed to load log dates:', error);
+    }
+  };
+
   const clearFilters = () => {
     setSearchQuery('');
     setDateFilter('');
   };
 
-  const handleExportLogs = async () => {
+  // Archive by date handler
+  const handleArchiveByDate = async (date: string) => {
+    if (!confirm(`Are you sure you want to archive all logs for ${date}? Archived logs can be exported from the Archive section.`)) {
+      return;
+    }
+
+    setArchiving(true);
     try {
-      const filename = await ExportLogsCSV();
-      alert(`Logs exported to ${filename}`);
+      const count = await ArchiveLogsByDate(date, user?.id || 0);
+      alert(`Successfully archived ${count} log(s) for ${date}`);
+      loadLogs();
+      loadAvailableDates();
     } catch (error) {
-      console.error('Failed to export logs:', error);
-      alert('Failed to export logs');
+      console.error('Failed to archive logs:', error);
+      alert('Failed to archive logs');
+    } finally {
+      setArchiving(false);
     }
   };
 
-  const handleExportLogsPDF = async () => {
-    try {
-      const filename = await ExportLogsPDF();
-      alert(`Logs exported to ${filename}`);
-    } catch (error) {
-      console.error('Failed to export logs:', error);
-      alert('Failed to export logs');
+  // Group logs by date for display
+  const groupedLogs = logs.reduce((groups, log) => {
+    const date = log.login_time ? new Date(log.login_time).toISOString().split('T')[0] : 'unknown';
+    if (!groups[date]) {
+      groups[date] = [];
     }
-  };
+    groups[date].push(log);
+    return groups;
+  }, {} as Record<string, LoginLog[]>);
 
   // Apply filters to logs
   const filteredLogs = logs.filter((log) => {
@@ -1245,6 +1305,16 @@ function ViewLogs() {
     return matchesSearch && matchesDate;
   });
 
+  // Group filtered logs by date for display
+  const groupedFilteredLogs = filteredLogs.reduce((groups, log) => {
+    const date = log.login_time ? new Date(log.login_time).toISOString().split('T')[0] : 'unknown';
+    if (!groups[date]) {
+      groups[date] = [];
+    }
+    groups[date].push(log);
+    return groups;
+  }, {} as Record<string, LoginLog[]>);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1258,23 +1328,8 @@ function ViewLogs() {
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">View Logs</h2>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={handleExportLogs}
-              variant="outline"
-              icon={<Download className="h-4 w-4" />}
-            >
-              Export CSV
-            </Button>
-            <Button
-              onClick={handleExportLogsPDF}
-              variant="danger"
-              icon={<Download className="h-4 w-4" />}
-            >
-              Export PDF
-            </Button>
+            <h2 className="text-2xl font-bold text-gray-900">Log Entries</h2>
+            <p className="text-sm text-gray-500 mt-1">View all login logs. Use filters to find and archive logs by date.</p>
           </div>
         </div>
 
@@ -1316,7 +1371,7 @@ function ViewLogs() {
 
             {/* Dropdown Filters Panel */}
             {showFilters && (
-              <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+              <div className="absolute right-0 mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-3">
                     <label className="text-sm font-medium text-gray-700">Filter by Date:</label>
@@ -1325,7 +1380,7 @@ function ViewLogs() {
                         onClick={() => setDateFilter('')}
                         className="text-xs text-gray-600 hover:text-gray-900 underline"
                       >
-                        Clear
+                        Clear Filter
                       </button>
                     )}
                   </div>
@@ -1366,114 +1421,134 @@ function ViewLogs() {
         </div>
       )}
 
-      {/* Logs Table */}
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <div className="max-h-[70vh] overflow-y-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50 sticky top-0 z-10">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ID Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Full Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    User Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    PC Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Time-In
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Time-Out
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredLogs.length > 0 ? (
-                  filteredLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {log.user_id_number || log.user_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {log.user_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-                          {log.user_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {log.pc_number || <span className="text-gray-400">N/A</span>}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {log.login_time ? new Date(log.login_time).toLocaleTimeString('en-US', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                          hour12: true
-                        }) : '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {log.logout_time ? (
-                          new Date(log.logout_time).toLocaleTimeString('en-US', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                            hour12: true
-                          })
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {log.login_time ? new Date(log.login_time).toLocaleDateString('en-US', {
+      {/* Logs Grouped by Date */}
+      <div className="space-y-4">
+        {Object.keys(groupedFilteredLogs).length > 0 ? (
+          Object.entries(groupedFilteredLogs)
+            .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
+            .map(([date, dateLogs]) => (
+              <div key={date} className="bg-white shadow rounded-lg overflow-hidden">
+                {/* Date Header with Archive Button */}
+                <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="h-5 w-5 text-primary-500" />
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {new Date(date).toLocaleDateString('en-US', {
+                          weekday: 'long',
                           year: 'numeric',
-                          month: 'short',
+                          month: 'long',
                           day: 'numeric'
-                        }) : '-'}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center">
-                      <p className="text-gray-500 font-medium">No logs found</p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                        })}
+                      </h3>
+                      <p className="text-sm text-gray-500">{dateLogs.length} log entries</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleArchiveByDate(date)}
+                    disabled={archiving}
+                    className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg flex items-center gap-2 transition-colors"
+                  >
+                    <Archive className="h-4 w-4" />
+                    Archive
+                  </button>
+                </div>
+                
+                {/* Logs Table for this Date */}
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID Number</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Type</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PC Number</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time-In</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time-Out</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {dateLogs.map((log) => (
+                        <tr key={log.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {log.user_id_number || log.user_name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {log.user_name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+                              {log.user_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {log.pc_number || <span className="text-gray-400">N/A</span>}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {log.login_time ? new Date(log.login_time).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                              hour12: true
+                            }) : '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {log.logout_time ? (
+                              new Date(log.logout_time).toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                                hour12: true
+                              })
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))
+        ) : (
+          <div className="bg-white shadow rounded-lg p-12 text-center">
+            <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500 font-medium">No logs found</p>
+            <p className="text-gray-400 text-sm mt-1">
+              {searchQuery || dateFilter ? 'Try adjusting your search or filters' : 'No login logs recorded yet'}
+            </p>
           </div>
-        </div>
-        <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
-          <div className="text-sm text-gray-700">
-            Showing <span className="font-medium">{filteredLogs.length}</span> of <span className="font-medium">{logs.length}</span> logs
-          </div>
+        )}
+      </div>
+
+      {/* Summary Footer */}
+      {Object.keys(groupedFilteredLogs).length > 0 && (
+        <div className="mt-4 px-4 py-3 bg-white rounded-lg shadow text-sm text-gray-600 flex justify-between items-center">
+          <span>
+            Showing <span className="font-medium">{filteredLogs.length}</span> logs across <span className="font-medium">{Object.keys(groupedFilteredLogs).length}</span> days
+          </span>
           {(searchQuery || dateFilter) && (
-            <div className="text-sm text-gray-500 flex items-center gap-1">
-              <Search className="h-4 w-4" />
-              <span>Search/Filters active</span>
-            </div>
+            <span className="text-gray-500 flex items-center gap-1">
+              <Filter className="h-4 w-4" />
+              Filters active
+            </span>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
 function Reports() {
+  const { user } = useAuth();
   const [reports, setReports] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+
+  // Available dates for archiving
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [archiving, setArchiving] = useState(false);
 
   // General search
   const [searchQuery, setSearchQuery] = useState('');
@@ -1488,6 +1563,7 @@ function Reports() {
 
   useEffect(() => {
     loadReports();
+    loadAvailableDates();
   }, []);
 
   const loadReports = async () => {
@@ -1508,28 +1584,37 @@ function Reports() {
     }
   };
 
+  const loadAvailableDates = async () => {
+    try {
+      const dates = await GetFeedbackDates();
+      setAvailableDates(dates || []);
+    } catch (error) {
+      console.error('Failed to load feedback dates:', error);
+    }
+  };
+
   const clearFilters = () => {
     setSearchQuery('');
     setDateFilter('');
   };
 
-  const handleExportReports = async () => {
-    try {
-      const filename = await ExportFeedbackCSV();
-      alert(`Reports exported to ${filename}`);
-    } catch (error) {
-      console.error('Failed to export reports:', error);
-      alert('Failed to export reports');
+  // Archive by date handler
+  const handleArchiveByDate = async (date: string) => {
+    if (!confirm(`Are you sure you want to archive all reports for ${date}? Archived reports can be exported from the Archive section.`)) {
+      return;
     }
-  };
 
-  const handleExportReportsPDF = async () => {
+    setArchiving(true);
     try {
-      const filename = await ExportFeedbackPDF();
-      alert(`Reports exported to ${filename}`);
+      const count = await ArchiveFeedbackByDate(date, user?.id || 0);
+      alert(`Successfully archived ${count} report(s) for ${date}`);
+      loadReports();
+      loadAvailableDates();
     } catch (error) {
-      console.error('Failed to export reports:', error);
-      alert('Failed to export reports');
+      console.error('Failed to archive reports:', error);
+      alert('Failed to archive reports');
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -1554,6 +1639,17 @@ function Reports() {
     return matchesSearch && matchesDate;
   });
 
+  // Group filtered reports by date
+  const groupedFilteredReports = filteredReports.reduce((groups, report) => {
+    // Handle both "YYYY-MM-DD HH:MM:SS" and "YYYY-MM-DDTHH:MM:SS" formats
+    const date = report.date_submitted ? report.date_submitted.split(/[T\s]/)[0] : 'unknown';
+    if (!groups[date]) {
+      groups[date] = [];
+    }
+    groups[date].push(report);
+    return groups;
+  }, {} as Record<string, Feedback[]>);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1569,22 +1665,7 @@ function Reports() {
         <div className="flex justify-between items-start mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
-          </div>
-          <div className="flex gap-3">
-            <Button
-              onClick={handleExportReports}
-              variant="outline"
-              icon={<Download className="h-4 w-4" />}
-            >
-              Export CSV
-            </Button>
-            <Button
-              onClick={handleExportReportsPDF}
-              variant="primary"
-              icon={<Download className="h-4 w-4" />}
-            >
-              Export PDF
-            </Button>
+            <p className="text-sm text-gray-500 mt-1">View all equipment feedback. Use filters to find and archive reports by date.</p>
           </div>
         </div>
 
@@ -1626,7 +1707,7 @@ function Reports() {
 
             {/* Dropdown Filters Panel */}
             {showFilters && (
-              <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+              <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-3">
                     <label className="text-sm font-medium text-gray-700">Filter by Date:</label>
@@ -1674,112 +1755,122 @@ function Reports() {
         </div>
       )}
 
-      {/* Reports Table */}
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <div className="max-h-[70vh] overflow-y-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gradient-to-r from-gray-50 to-gray-100 sticky top-0 z-10">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Student ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Full Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    PC Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Forwarded By
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredReports.map((report) => (
-                  <tr key={report.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-700">
-                        {report.student_id_str}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {report.student_name}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                        {report.pc_number}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-gray-900">{report.forwarded_by_name || 'Unknown'}</span>
-                        {report.forwarded_at && (
-                          <span className="text-xs text-gray-500">
-                            {new Date(report.forwarded_at).toLocaleString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-700">
-                        {report.date_submitted ? new Date(report.date_submitted).toLocaleDateString('en-US', {
+      {/* Reports Grouped by Date */}
+      <div className="space-y-4">
+        {Object.keys(groupedFilteredReports).length > 0 ? (
+          Object.entries(groupedFilteredReports)
+            .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
+            .map(([date, dateReports]) => (
+              <div key={date} className="bg-white shadow rounded-lg overflow-hidden">
+                {/* Date Header with Archive Button */}
+                <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="h-5 w-5 text-primary-500" />
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {new Date(date).toLocaleDateString('en-US', {
+                          weekday: 'long',
                           year: 'numeric',
-                          month: 'short',
+                          month: 'long',
                           day: 'numeric'
-                        }) : '-'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <Button
-                        onClick={() => {
-                          setSelectedReport(report);
-                          setShowReportModal(true);
-                        }}
-                        variant="primary"
-                        icon={<Eye className="h-4 w-4" />}
-                      >
-                        View Details
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-                {filteredReports.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center">
-                      <p className="text-gray-500 font-medium">No reports available</p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                        })}
+                      </h3>
+                      <p className="text-sm text-gray-500">{dateReports.length} equipment reports</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleArchiveByDate(date)}
+                    disabled={archiving}
+                    className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg flex items-center gap-2 transition-colors"
+                  >
+                    <Archive className="h-4 w-4" />
+                    Archive
+                  </button>
+                </div>
+                
+                {/* Reports Table for this Date */}
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student ID</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PC Number</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Forwarded By</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {dateReports.map((report) => (
+                        <tr key={report.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {report.student_id_str}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {report.student_name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                              {report.pc_number}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium text-gray-900">{report.forwarded_by_name || 'Unknown'}</span>
+                              {report.forwarded_at && (
+                                <span className="text-xs text-gray-500">
+                                  {new Date(report.forwarded_at).toLocaleString('en-US', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <Button
+                              onClick={() => {
+                                setSelectedReport(report);
+                                setShowReportModal(true);
+                              }}
+                              variant="primary"
+                              icon={<Eye className="h-4 w-4" />}
+                            >
+                              View Details
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))
+        ) : (
+          <div className="bg-white shadow rounded-lg p-12 text-center">
+            <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500 font-medium">No reports found</p>
+            <p className="text-gray-400 text-sm mt-1">
+              {searchQuery || dateFilter ? 'Try adjusting your search or filters' : 'No equipment reports submitted yet'}
+            </p>
           </div>
-        </div>
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
-          <div className="text-sm text-gray-600">
-            Showing <span className="font-semibold text-gray-900">{filteredReports.length}</span> of <span className="font-semibold text-gray-900">{reports.length}</span> report{reports.length !== 1 ? 's' : ''}
-          </div>
+        )}
+      </div>
+
+      {/* Summary Footer */}
+      {Object.keys(groupedFilteredReports).length > 0 && (
+        <div className="mt-4 px-4 py-3 bg-white rounded-lg shadow text-sm text-gray-600 flex justify-between items-center">
+          <span>
+            Showing <span className="font-medium">{filteredReports.length}</span> reports across <span className="font-medium">{Object.keys(groupedFilteredReports).length}</span> days
+          </span>
           {(searchQuery || dateFilter) && (
-            <div className="text-sm text-gray-500 flex items-center gap-2">
+            <span className="text-gray-500 flex items-center gap-1">
               <Filter className="h-4 w-4" />
-              <span>Filters active</span>
-            </div>
+              Filters active
+            </span>
           )}
         </div>
-      </div>
+      )}
 
       {/* Report Details Modal */}
       {showReportModal && selectedReport && (
@@ -2370,6 +2461,489 @@ function DepartmentManagement() {
   );
 }
 
+// Archive Management Component (Document-based)
+function ArchiveManagement() {
+  const [activeTab, setActiveTab] = useState<'logs' | 'reports'>('logs');
+  const [logSheets, setLogSheets] = useState<ArchivedLogSheet[]>([]);
+  const [feedbackSheets, setFeedbackSheets] = useState<ArchivedFeedbackSheet[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
+  const [processing, setProcessing] = useState(false);
+
+  // View modal state
+  const [viewingSheet, setViewingSheet] = useState<{ type: 'logs' | 'reports'; date: string } | null>(null);
+  const [viewData, setViewData] = useState<LoginLog[] | Feedback[]>([]);
+  const [loadingView, setLoadingView] = useState(false);
+
+  useEffect(() => {
+    loadArchivedSheets();
+  }, []);
+
+  const loadArchivedSheets = async () => {
+    setLoading(true);
+    try {
+      const [logs, reports] = await Promise.all([
+        GetArchivedLogSheets(),
+        GetArchivedFeedbackSheets()
+      ]);
+      setLogSheets(logs || []);
+      setFeedbackSheets(reports || []);
+      setError('');
+    } catch (err) {
+      console.error('Failed to load archived sheets:', err);
+      setError('Failed to load archived data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // View sheet details
+  const handleViewSheet = async (type: 'logs' | 'reports', date: string) => {
+    setViewingSheet({ type, date });
+    setLoadingView(true);
+    try {
+      if (type === 'logs') {
+        const data = await GetArchivedLogsByDate(date);
+        setViewData(data || []);
+      } else {
+        const data = await GetArchivedFeedbackByDate(date);
+        setViewData(data || []);
+      }
+    } catch (err) {
+      console.error('Failed to load sheet details:', err);
+      alert('Failed to load sheet details');
+    } finally {
+      setLoadingView(false);
+    }
+  };
+
+  // Unarchive sheet
+  const handleUnarchiveSheet = async (type: 'logs' | 'reports', date: string) => {
+    if (!confirm(`Are you sure you want to unarchive all ${type === 'logs' ? 'logs' : 'reports'} for ${date}?`)) {
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      if (type === 'logs') {
+        await UnarchiveLogSheet(date);
+      } else {
+        await UnarchiveFeedbackSheet(date);
+      }
+      alert(`Successfully unarchived ${type} for ${date}`);
+      loadArchivedSheets();
+    } catch (err) {
+      console.error('Failed to unarchive sheet:', err);
+      alert('Failed to unarchive sheet');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // Export handlers
+  const handleExportCSV = async (type: 'logs' | 'reports', date: string) => {
+    try {
+      let filename: string;
+      if (type === 'logs') {
+        filename = await ExportArchivedLogSheetCSV(date);
+      } else {
+        filename = await ExportArchivedFeedbackSheetCSV(date);
+      }
+      alert(`Exported to ${filename}`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to export');
+    }
+  };
+
+  const handleExportPDF = async (type: 'logs' | 'reports', date: string) => {
+    try {
+      let filename: string;
+      if (type === 'logs') {
+        filename = await ExportArchivedLogSheetPDF(date);
+      } else {
+        filename = await ExportArchivedFeedbackSheetPDF(date);
+      }
+      alert(`Exported to ${filename}`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to export');
+    }
+  };
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-500"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="mb-6">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Archive</h2>
+            <p className="text-sm text-gray-500 mt-1">View, export, and manage archived login logs and equipment reports by date</p>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="border-b border-gray-200 mb-4">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'logs'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Login Logs ({logSheets.length} sheets)
+            </button>
+            <button
+              onClick={() => setActiveTab('reports')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'reports'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Equipment Reports ({feedbackSheets.length} sheets)
+            </button>
+          </nav>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
+      {/* Log Sheets */}
+      {activeTab === 'logs' && (
+        <div className="flex-1 overflow-x-auto">
+          {logSheets.length > 0 ? (
+            <div className="border-2 border-gray-300">
+              <table className="min-w-full border-collapse">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Date</th>
+                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Name</th>
+                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Summary</th>
+                    <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white">
+                  {logSheets.map((sheet) => (
+                    <tr key={sheet.date} className="hover:bg-gray-50">
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                      </td>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        <div className="font-medium">Login Logs - {formatDate(sheet.date)}</div>
+                        <div className="text-xs text-gray-500">{sheet.date}</div>
+                      </td>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                            {sheet.total_logins} Total Logins
+                          </span>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            {sheet.student_count} Students
+                          </span>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                            {sheet.teacher_count} Teachers
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">{sheet.unique_pcs} unique PCs</div>
+                      </td>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleViewSheet('logs', sheet.date)}
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 border border-primary-300 rounded-lg hover:bg-primary-50"
+                            title="View Details"
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            View
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Archive className="mx-auto h-12 w-12 text-gray-300" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No archived log sheets</h3>
+              <p className="mt-1 text-sm text-gray-500">Archive logs by date from the Log Entries page to see them here.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Feedback Sheets */}
+      {activeTab === 'reports' && (
+        <div className="flex-1 overflow-x-auto">
+          {feedbackSheets.length > 0 ? (
+            <div className="border-2 border-gray-300">
+              <table className="min-w-full border-collapse">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Date</th>
+                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Name</th>
+                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Summary</th>
+                    <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white">
+                  {feedbackSheets.map((sheet) => (
+                    <tr key={sheet.date} className="hover:bg-gray-50">
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                      </td>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        <div className="font-medium">Equipment Reports - {formatDate(sheet.date)}</div>
+                        <div className="text-xs text-gray-500">{sheet.date}</div>
+                      </td>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                            {sheet.total_reports} Total Reports
+                          </span>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            {sheet.good_count} Good
+                          </span>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                            {sheet.issue_count} Issues
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">{sheet.unique_pcs} unique PCs • {sheet.unique_students} students</div>
+                      </td>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleViewSheet('reports', sheet.date)}
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 border border-primary-300 rounded-lg hover:bg-primary-50"
+                            title="View Details"
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            View
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Archive className="mx-auto h-12 w-12 text-gray-300" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No archived report sheets</h3>
+              <p className="mt-1 text-sm text-gray-500">Archive reports by date from the Reports page to see them here.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* View Sheet Modal - Bond Paper Style */}
+      {viewingSheet && (
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
+          <div className="min-h-screen p-4 md:p-8">
+            {/* Bond Paper Container */}
+            <div className="bg-white max-w-5xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
+              {/* Close Button - Inside Sheet */}
+              <button
+                onClick={() => setViewingSheet(null)}
+                className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              {/* Sheet Title and Controls */}
+              <div className="mb-6 pb-4 border-b border-gray-400">
+                <div className="text-center mb-4">
+                  <h2 className="text-xl font-bold text-gray-900 tracking-wide">
+                    {viewingSheet.type === 'logs' ? 'LOG ENTRIES' : 'EQUIPMENT REPORTS'}
+                  </h2>
+                  <p className="text-xs text-gray-600 mt-1">{formatDate(viewingSheet.date)}</p>
+                </div>
+                <div className="flex justify-end items-center gap-2">
+                  <button
+                    onClick={() => handleExportCSV(viewingSheet.type, viewingSheet.date)}
+                    className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-700 border border-gray-300 rounded hover:bg-gray-50 flex items-center gap-1"
+                  >
+                    <Download className="h-4 w-4" />
+                    CSV
+                  </button>
+                  <button
+                    onClick={() => handleExportPDF(viewingSheet.type, viewingSheet.date)}
+                    className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded flex items-center gap-1"
+                  >
+                    <Download className="h-4 w-4" />
+                    PDF
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleUnarchiveSheet(viewingSheet.type, viewingSheet.date);
+                      setViewingSheet(null);
+                    }}
+                    disabled={processing}
+                    className="px-3 py-1.5 text-sm font-medium text-amber-600 hover:text-amber-700 border border-amber-300 rounded hover:bg-amber-50 flex items-center gap-1"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Unarchive
+                  </button>
+                </div>
+              </div>
+
+              {/* Sheet Content */}
+              <div className="overflow-hidden">
+                {loadingView ? (
+                  <div className="flex items-center justify-center h-32">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+                  </div>
+                ) : viewingSheet.type === 'logs' ? (
+                  <>
+                    {/* Log Summary Header */}
+                    <table className="min-w-full" style={{ tableLayout: 'fixed' }}>
+                      <thead>
+                        <tr>
+                          <th colSpan={6} className="px-4 py-2 text-left border-b-2 border-gray-900">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-900 font-bold text-sm tracking-wide">LOG ENTRIES</span>
+                              <span className="text-xs text-gray-600">Total: {(viewData as LoginLog[]).length} records</span>
+                            </div>
+                          </th>
+                        </tr>
+                        <tr className="bg-gray-100">
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '40px' }}>No.</th>
+                          <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>ID Number</th>
+                          <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase">Full Name</th>
+                          <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>User Type</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '70px' }}>PC</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '150px' }}>Time In / Out</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white text-xs">
+                        {(viewData as LoginLog[]).length > 0 ? (
+                          (viewData as LoginLog[]).map((log, index) => (
+                            <tr key={log.id} className="hover:bg-gray-50 border-b border-gray-100">
+                              <td className="px-2 py-1.5 text-center font-medium text-gray-900">{index + 1}</td>
+                              <td className="px-2 py-1.5 font-medium text-gray-900">{log.user_id_number}</td>
+                              <td className="px-2 py-1.5 text-gray-900">{log.user_name}</td>
+                              <td className="px-2 py-1.5">
+                                <span className="px-2 py-0.5 bg-primary-100 text-primary-800 rounded text-xs font-medium">
+                                  {log.user_type.replace('_', ' ')}
+                                </span>
+                              </td>
+                              <td className="px-2 py-1.5 text-center text-gray-700">{log.pc_number || '-'}</td>
+                              <td className="px-2 py-1.5 text-center text-gray-700">
+                                <div>{log.login_time ? new Date(log.login_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
+                                <div className="text-gray-400">{log.logout_time ? new Date(log.logout_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                              No log entries found for this date.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </>
+                ) : (
+                  <>
+                    {/* Equipment Report Table */}
+                    <table className="min-w-full" style={{ tableLayout: 'fixed' }}>
+                      <thead>
+                        <tr>
+                          <th colSpan={7} className="px-4 py-2 text-left border-b-2 border-gray-900">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-900 font-bold text-sm tracking-wide">EQUIPMENT CONDITION REPORTS</span>
+                              <span className="text-xs text-gray-600">Total: {(viewData as Feedback[]).length} reports</span>
+                            </div>
+                          </th>
+                        </tr>
+                        <tr className="bg-gray-100">
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '40px' }}>No.</th>
+                          <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase">Student</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '60px' }}>PC</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>System</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Monitor</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Keyboard</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Mouse</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white text-xs">
+                        {(viewData as Feedback[]).length > 0 ? (
+                          (viewData as Feedback[]).map((report, index) => (
+                            <tr key={report.id} className="hover:bg-gray-50 border-b border-gray-100">
+                              <td className="px-2 py-1.5 text-center font-medium text-gray-900">{index + 1}</td>
+                              <td className="px-2 py-1.5">
+                                <div className="font-medium text-gray-900">{report.student_name}</div>
+                                <div className="text-gray-500">{report.student_id_str}</div>
+                              </td>
+                              <td className="px-2 py-1.5 text-center text-gray-700">{report.pc_number}</td>
+                              <td className="px-2 py-1.5 text-center">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  report.equipment_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                }`}>{report.equipment_condition}</span>
+                              </td>
+                              <td className="px-2 py-1.5 text-center">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  report.monitor_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                }`}>{report.monitor_condition}</span>
+                              </td>
+                              <td className="px-2 py-1.5 text-center">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  report.keyboard_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                }`}>{report.keyboard_condition}</span>
+                              </td>
+                              <td className="px-2 py-1.5 text-center">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  report.mouse_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                }`}>{report.mouse_condition}</span>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                              No equipment reports found for this date.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminDashboard() {
   const location = useLocation();
 
@@ -2377,8 +2951,9 @@ function AdminDashboard() {
     { name: 'Dashboard', href: '/admin', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/admin' },
     { name: 'Manage Users', href: '/admin/users', icon: <Users className="h-5 w-5" />, current: location.pathname === '/admin/users' },
     { name: 'Departments', href: '/admin/departments', icon: <GraduationCap className="h-5 w-5" />, current: location.pathname === '/admin/departments' },
-    { name: 'View Logs', href: '/admin/logs', icon: <FolderOpen className="h-5 w-5" />, current: location.pathname === '/admin/logs' },
+    { name: 'Log Entries', href: '/admin/logs', icon: <FolderOpen className="h-5 w-5" />, current: location.pathname === '/admin/logs' },
     { name: 'Reports', href: '/admin/reports', icon: <BarChart3 className="h-5 w-5" />, current: location.pathname === '/admin/reports' },
+    { name: 'Archive', href: '/admin/archive', icon: <Archive className="h-5 w-5" />, current: location.pathname === '/admin/archive' },
   ];
 
   return (
@@ -2389,6 +2964,7 @@ function AdminDashboard() {
         <Route path="departments" element={<DepartmentManagement />} />
         <Route path="logs" element={<ViewLogs />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="archive" element={<ArchiveManagement />} />
       </Routes>
     </Layout>
   );

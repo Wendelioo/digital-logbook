@@ -18,6 +18,84 @@ export namespace main {
 	        this.recent_logins = source["recent_logins"];
 	    }
 	}
+	export class ArchivedAttendanceSheet {
+	    class_id: number;
+	    date: string;
+	    subject_code: string;
+	    subject_name: string;
+	    edp_code: string;
+	    schedule: string;
+	    student_count: number;
+	    present_count: number;
+	    absent_count: number;
+	    late_count: number;
+	    excused_count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ArchivedAttendanceSheet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.class_id = source["class_id"];
+	        this.date = source["date"];
+	        this.subject_code = source["subject_code"];
+	        this.subject_name = source["subject_name"];
+	        this.edp_code = source["edp_code"];
+	        this.schedule = source["schedule"];
+	        this.student_count = source["student_count"];
+	        this.present_count = source["present_count"];
+	        this.absent_count = source["absent_count"];
+	        this.late_count = source["late_count"];
+	        this.excused_count = source["excused_count"];
+	    }
+	}
+	export class ArchivedFeedbackSheet {
+	    date: string;
+	    total_reports: number;
+	    good_count: number;
+	    issue_count: number;
+	    unique_pcs: number;
+	    unique_students: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ArchivedFeedbackSheet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.total_reports = source["total_reports"];
+	        this.good_count = source["good_count"];
+	        this.issue_count = source["issue_count"];
+	        this.unique_pcs = source["unique_pcs"];
+	        this.unique_students = source["unique_students"];
+	    }
+	}
+	export class ArchivedLogSheet {
+	    date: string;
+	    total_logins: number;
+	    student_count: number;
+	    teacher_count: number;
+	    admin_count: number;
+	    working_student_count: number;
+	    unique_pcs: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ArchivedLogSheet(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.date = source["date"];
+	        this.total_logins = source["total_logins"];
+	        this.student_count = source["student_count"];
+	        this.teacher_count = source["teacher_count"];
+	        this.admin_count = source["admin_count"];
+	        this.working_student_count = source["working_student_count"];
+	        this.unique_pcs = source["unique_pcs"];
+	    }
+	}
 	export class Attendance {
 	    id: number;
 	    class_id: number;
@@ -142,7 +220,7 @@ export namespace main {
 	    subject_code: string;
 	    subject_name: string;
 	    descriptive_title?: string;
-	    offering_code?: string;
+	    edp_code?: string;
 	    section?: string;
 	    schedule?: string;
 	    room?: string;
@@ -156,6 +234,7 @@ export namespace main {
 	    is_active: boolean;
 	    created_by_user_id?: number;
 	    created_at: string;
+	    latest_attendance_date?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CourseClass(source);
@@ -168,7 +247,7 @@ export namespace main {
 	        this.subject_code = source["subject_code"];
 	        this.subject_name = source["subject_name"];
 	        this.descriptive_title = source["descriptive_title"];
-	        this.offering_code = source["offering_code"];
+	        this.edp_code = source["edp_code"];
 	        this.section = source["section"];
 	        this.schedule = source["schedule"];
 	        this.room = source["room"];
@@ -182,6 +261,7 @@ export namespace main {
 	        this.is_active = source["is_active"];
 	        this.created_by_user_id = source["created_by_user_id"];
 	        this.created_at = source["created_at"];
+	        this.latest_attendance_date = source["latest_attendance_date"];
 	    }
 	}
 	export class Department {

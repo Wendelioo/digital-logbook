@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"strings"
@@ -192,7 +193,7 @@ type CourseClass struct {
 	SubjectCode    string  `json:"subject_code"`
 	SubjectName    string  `json:"subject_name"`
 	DescriptiveTitle *string `json:"descriptive_title,omitempty"`
-	OfferingCode   *string `json:"offering_code,omitempty"`
+	EdpCode        *string `json:"edp_code,omitempty"`
 	Section        *string `json:"section,omitempty"`
 	Schedule       *string `json:"schedule,omitempty"`
 	Room           *string `json:"room,omitempty"`
@@ -206,6 +207,7 @@ type CourseClass struct {
 	IsActive       bool    `json:"is_active"`
 	CreatedByUserID *int   `json:"created_by_user_id,omitempty"`
 	CreatedAt      string  `json:"created_at"`
+	LatestAttendanceDate *string `json:"latest_attendance_date,omitempty"`
 }
 
 // Attendance represents an attendance record
@@ -352,7 +354,7 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	// Get all attendance records for this student
 	query := `
 		SELECT 
-			a.class_id, a.student_user_id, a.date,
+			a.class_id, a.student_user_id, DATE_FORMAT(a.date, '%Y-%m-%d') as date,
 			stu.student_number,
 			stu.first_name, stu.middle_name, stu.last_name,
 			c.subject_code, s.description as subject_name,
@@ -444,30 +446,54 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 // ==============================================================================
 
 // UpdateUserPhoto updates a user's profile photo
+// Note: This method accepts data URL format and stores it as Base64
+// Use UpdateUserProfilePhoto (in users.go) for proper BLOB storage
 func (a *App) UpdateUserPhoto(userID int, userRole, photoURL string) error {
 	if a.db == nil {
 		return fmt.Errorf("database not connected")
+	}
+
+	// Extract base64 data from data URL and decode to binary
+	// The photoURL is expected to be in format: "data:image/jpeg;base64,/9j/4AAQ..."
+	base64Data := photoURL
+	if strings.HasPrefix(photoURL, "data:") {
+		parts := strings.Split(photoURL, ",")
+		if len(parts) == 2 {
+			base64Data = parts[1]
+		}
+	}
+
+	// Decode Base64 to binary for storage
+	imageBytes, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return fmt.Errorf("failed to decode base64 image: %w", err)
 	}
 
 	// Update photo in respective table based on role
 	var query string
 	switch userRole {
 	case "admin":
-		query = `UPDATE admins SET photo_url = ? WHERE user_id = ?`
+		query = `UPDATE admins SET profile_photo = ? WHERE user_id = ?`
 	case "teacher":
-		query = `UPDATE teachers SET photo_url = ? WHERE user_id = ?`
+		query = `UPDATE teachers SET profile_photo = ? WHERE user_id = ?`
 	case "student":
-		query = `UPDATE students SET photo_url = ? WHERE user_id = ?`
+		query = `UPDATE students SET profile_photo = ? WHERE user_id = ?`
 	case "working_student":
 		// Working students might be stored in a different table
 		// For now, assuming they're in students table
-		query = `UPDATE students SET photo_url = ? WHERE user_id = ?`
+		query = `UPDATE students SET profile_photo = ? WHERE user_id = ?`
 	default:
 		return fmt.Errorf("invalid user role: %s", userRole)
 	}
 
-	_, err := a.db.Exec(query, photoURL, userID)
-	return err
+	// Store as binary BLOB (not as text string)
+	_, err = a.db.Exec(query, imageBytes, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update profile photo: %w", err)
+	}
+
+	log.Printf("Profile photo updated for user ID %d (%s) - %d bytes", userID, userRole, len(imageBytes))
+	return nil
 }
 
 // ==============================================================================

@@ -801,3 +801,119 @@ func getColumnValue(record []string, colIdx int, found bool) string {
 	}
 	return ""
 }
+
+// ==============================================================================
+// PROFILE PHOTO MANAGEMENT
+// ==============================================================================
+
+// UpdateUserProfilePhoto updates the profile photo for a user
+// Accepts Base64-encoded image data (with or without data URL prefix)
+// Stores as binary BLOB in the database
+func (a *App) UpdateUserProfilePhoto(userID int, imageBase64 string) error {
+	if a.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	// Remove data URL prefix if present (e.g., "data:image/jpeg;base64,")
+	base64Data := imageBase64
+	if strings.HasPrefix(imageBase64, "data:") {
+		parts := strings.Split(imageBase64, ",")
+		if len(parts) == 2 {
+			base64Data = parts[1]
+		}
+	}
+
+	// Decode Base64 to binary
+	imageBytes, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return fmt.Errorf("failed to decode base64 image: %w", err)
+	}
+
+	// Validate image size (max 5MB)
+	maxSize := 5 * 1024 * 1024 // 5MB
+	if len(imageBytes) > maxSize {
+		return fmt.Errorf("image too large: %d bytes (max %d bytes)", len(imageBytes), maxSize)
+	}
+
+	// Validate minimum size
+	if len(imageBytes) < 100 {
+		return fmt.Errorf("image too small: %d bytes (minimum 100 bytes)", len(imageBytes))
+	}
+
+	// Determine which table to update based on user role
+	var query string
+	var role string
+	err = a.db.QueryRow("SELECT user_type FROM users WHERE id = ?", userID).Scan(&role)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("user not found")
+		}
+		return err
+	}
+
+	switch role {
+	case "admin":
+		query = "UPDATE admins SET profile_photo = ? WHERE user_id = ?"
+	case "teacher":
+		query = "UPDATE teachers SET profile_photo = ? WHERE user_id = ?"
+	case "student", "working_student":
+		query = "UPDATE students SET profile_photo = ? WHERE user_id = ?"
+	default:
+		return fmt.Errorf("invalid user role: %s", role)
+	}
+
+	// Store binary data in database
+	result, err := a.db.Exec(query, imageBytes, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update profile photo: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("no rows updated - user profile not found")
+	}
+
+	log.Printf("Profile photo updated for user ID %d (%s) - %d bytes", userID, role, len(imageBytes))
+	return nil
+}
+
+// DeleteUserProfilePhoto removes the profile photo for a user
+func (a *App) DeleteUserProfilePhoto(userID int) error {
+	if a.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	// Determine which table to update based on user role
+	var query string
+	var role string
+	err := a.db.QueryRow("SELECT user_type FROM users WHERE id = ?", userID).Scan(&role)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("user not found")
+		}
+		return err
+	}
+
+	switch role {
+	case "admin":
+		query = "UPDATE admins SET profile_photo = NULL WHERE user_id = ?"
+	case "teacher":
+		query = "UPDATE teachers SET profile_photo = NULL WHERE user_id = ?"
+	case "student", "working_student":
+		query = "UPDATE students SET profile_photo = NULL WHERE user_id = ?"
+	default:
+		return fmt.Errorf("invalid user role: %s", role)
+	}
+
+	_, err = a.db.Exec(query, userID)
+	if err != nil {
+		return fmt.Errorf("failed to delete profile photo: %w", err)
+	}
+
+	log.Printf("Profile photo deleted for user ID %d (%s)", userID, role)
+	return nil
+}
