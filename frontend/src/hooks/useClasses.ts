@@ -24,7 +24,7 @@ interface LegacyCourseClass {
   class_id: number;
   subject_code: string;
   subject_name?: string;
-  offering_code: string;
+  edp_code: string;
   teacher_user_id: number;
   teacher_name?: string;
   schedule?: string;
@@ -144,7 +144,7 @@ export const useClasses = () => {
   const createClass = useCallback(async (
     subjectCode: string,
     teacherUserID: number,
-    offeringCode: string,
+    edpCode: string,
     schedule: string,
     room: string,
     yearLevel: string,
@@ -160,7 +160,7 @@ export const useClasses = () => {
       const classID = await CreateClass(
         subjectCode,
         teacherUserID,
-        offeringCode,
+        edpCode,
         schedule,
         room,
         yearLevel,

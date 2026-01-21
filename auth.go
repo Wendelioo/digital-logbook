@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"os"
@@ -169,12 +170,13 @@ func (a *App) loadUserProfile(user *User) error {
 	}
 
 	var firstName, middleName, lastName, gender sql.NullString
-	var employeeID, studentID, photoURL sql.NullString
+	var employeeID, studentID sql.NullString
 	var email, contactNumber sql.NullString
+	var photoBytes []byte // Changed from sql.NullString to handle BLOB
 
 	switch user.Role {
 	case "admin":
-		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &gender, &employeeID, &email, &photoURL)
+		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &gender, &employeeID, &email, &photoBytes)
 		if err != nil {
 			return err
 		}
@@ -185,7 +187,7 @@ func (a *App) loadUserProfile(user *User) error {
 			user.EmployeeID = &employeeID.String
 		}
 	case "teacher":
-		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &employeeID, &email, &contactNumber, &photoURL)
+		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &employeeID, &email, &contactNumber, &photoBytes)
 		if err != nil {
 			return err
 		}
@@ -196,7 +198,7 @@ func (a *App) loadUserProfile(user *User) error {
 			user.ContactNumber = &contactNumber.String
 		}
 	case "student", "working_student":
-		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &studentID, &email, &contactNumber, &photoURL)
+		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &studentID, &email, &contactNumber, &photoBytes)
 		if err != nil {
 			return err
 		}
@@ -221,11 +223,42 @@ func (a *App) loadUserProfile(user *User) error {
 	if email.Valid {
 		user.Email = &email.String
 	}
-	if photoURL.Valid {
-		user.PhotoURL = &photoURL.String
+	// Convert binary BLOB to Base64 data URL for frontend
+	if len(photoBytes) > 0 {
+		mimeType := detectImageMimeType(photoBytes)
+		base64Data := base64.StdEncoding.EncodeToString(photoBytes)
+		dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
+		user.PhotoURL = &dataURL
 	}
 
 	return nil
+}
+
+// detectImageMimeType detects the MIME type from image binary data
+func detectImageMimeType(data []byte) string {
+	if len(data) < 4 {
+		return "application/octet-stream"
+	}
+
+	// JPEG magic number: FF D8 FF
+	if data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
+		return "image/jpeg"
+	}
+	// PNG magic number: 89 50 4E 47
+	if data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 {
+		return "image/png"
+	}
+	// GIF magic number: 47 49 46
+	if data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46 {
+		return "image/gif"
+	}
+	// WebP magic number: 52 49 46 46 ... 57 45 42 50
+	if len(data) >= 12 && data[0] == 0x52 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x46 &&
+		data[8] == 0x57 && data[9] == 0x45 && data[10] == 0x42 && data[11] == 0x50 {
+		return "image/webp"
+	}
+
+	return "image/jpeg" // Default fallback
 }
 
 // createLoginLog creates a login log entry and returns the log ID

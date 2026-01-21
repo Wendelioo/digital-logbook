@@ -1061,8 +1061,8 @@ function MyClasses() {
               <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3">
                 <h3 className="text-white font-semibold text-lg">{cls.descriptive_title || cls.subject_name || cls.subject_code}</h3>
                 <p className="text-white text-sm opacity-90">Subject Code: {cls.subject_code}</p>
-                {cls.offering_code && (
-                  <p className="text-white text-xs opacity-75">EDP Code: {cls.offering_code}</p>
+                {cls.edp_code && (
+                  <p className="text-white text-xs opacity-75">EDP Code: {cls.edp_code}</p>
                 )}
               </div>
 

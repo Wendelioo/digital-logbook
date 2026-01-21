@@ -394,16 +394,36 @@ func (a *App) GenerateAttendanceFromLogs(classID int, date string, recordedBy in
 		return fmt.Errorf("failed to parse schedule: %w", err)
 	}
 
+	// Validate the date format
+	_, err = time.Parse("2006-01-02", date)
+	if err != nil {
+		return fmt.Errorf("invalid date format: %w", err)
+	}
+
+	// Create attendance sheet record (even if no students enrolled)
+	// This allows tracking of initialized attendance sessions
+	sheetQuery := `
+		INSERT INTO attendance_sheets (class_id, date, created_by, created_at)
+		VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		ON DUPLICATE KEY UPDATE
+			updated_at = CURRENT_TIMESTAMP
+	`
+	_, err = a.db.Exec(sheetQuery, classID, date, recordedBy)
+	if err != nil {
+		log.Printf("⚠ Failed to create attendance sheet: %v", err)
+		// Continue anyway - this is not critical
+	}
+
 	// Get all enrolled students
 	students, err := a.GetClassStudents(classID)
 	if err != nil {
 		return fmt.Errorf("failed to get class students: %w", err)
 	}
 
-	// Validate the date format
-	_, err = time.Parse("2006-01-02", date)
-	if err != nil {
-		return fmt.Errorf("invalid date format: %w", err)
+	// If no students enrolled, still log success (sheet was created)
+	if len(students) == 0 {
+		log.Printf("✓ Attendance sheet created for class %d on %s (no students enrolled)", classID, date)
+		return nil
 	}
 
 	// For each student, check login logs and create attendance record
@@ -631,4 +651,134 @@ func parseScheduleStartTime(schedule string) (time.Time, error) {
 
 	// Convert to today's date with the parsed time
 	return time.Date(0, 1, 1, startTime.Hour(), startTime.Minute(), 0, 0, time.UTC), nil
+}
+
+// ==============================================================================
+// ATTENDANCE ARCHIVING
+// ==============================================================================
+
+// ArchiveAttendanceSheet marks all attendance records for a class on a specific date as archived
+func (a *App) ArchiveAttendanceSheet(classID int, date string) error {
+	if a.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	query := `
+		UPDATE attendance 
+		SET is_archived = TRUE,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE class_id = ? AND date = ?
+	`
+
+	result, err := a.db.Exec(query, classID, date)
+	if err != nil {
+		log.Printf("⚠ Failed to archive attendance sheet: %v", err)
+		return err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("✓ Archived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
+	return nil
+}
+
+// UnarchiveAttendanceSheet removes the archived flag from attendance records
+func (a *App) UnarchiveAttendanceSheet(classID int, date string) error {
+	if a.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	query := `
+		UPDATE attendance 
+		SET is_archived = FALSE,
+		    updated_at = CURRENT_TIMESTAMP
+		WHERE class_id = ? AND date = ?
+	`
+
+	result, err := a.db.Exec(query, classID, date)
+	if err != nil {
+		log.Printf("⚠ Failed to unarchive attendance sheet: %v", err)
+		return err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("✓ Unarchived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
+	return nil
+}
+
+// ArchivedAttendanceSheet represents a summary of an archived attendance sheet
+type ArchivedAttendanceSheet struct {
+	ClassID       int    `json:"class_id"`
+	Date          string `json:"date"`
+	SubjectCode   string `json:"subject_code"`
+	SubjectName   string `json:"subject_name"`
+	EdpCode       string `json:"edp_code"`
+	Schedule      string `json:"schedule"`
+	StudentCount  int    `json:"student_count"`
+	PresentCount  int    `json:"present_count"`
+	AbsentCount   int    `json:"absent_count"`
+	LateCount     int    `json:"late_count"`
+	ExcusedCount  int    `json:"excused_count"`
+}
+
+// GetArchivedAttendanceSheets gets all archived attendance sheets for a teacher
+func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendanceSheet, error) {
+	if a.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	query := `
+		SELECT 
+			a.class_id,
+			a.date,
+			s.subject_code,
+			s.description as subject_name,
+			c.edp_code,
+			c.schedule,
+			COUNT(*) as student_count,
+			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) as present_count,
+			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) as absent_count,
+			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) as late_count,
+			SUM(CASE WHEN a.status = 'excused' THEN 1 ELSE 0 END) as excused_count
+		FROM attendance a
+		JOIN classes c ON a.class_id = c.class_id
+		JOIN subjects s ON c.subject_code = s.subject_code
+		WHERE c.teacher_user_id = ? AND a.is_archived = TRUE
+		GROUP BY a.class_id, a.date, s.subject_code, s.description, c.edp_code, c.schedule
+		ORDER BY a.date DESC, s.subject_code
+	`
+
+	rows, err := a.db.Query(query, teacherUserID)
+	if err != nil {
+		log.Printf("⚠ Failed to query archived attendance sheets: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sheets []ArchivedAttendanceSheet
+	for rows.Next() {
+		var sheet ArchivedAttendanceSheet
+		var edpCode, schedule sql.NullString
+
+		err := rows.Scan(
+			&sheet.ClassID, &sheet.Date,
+			&sheet.SubjectCode, &sheet.SubjectName,
+			&edpCode, &schedule,
+			&sheet.StudentCount, &sheet.PresentCount, &sheet.AbsentCount, &sheet.LateCount, &sheet.ExcusedCount,
+		)
+		if err != nil {
+			log.Printf("⚠ Failed to scan archived attendance sheet: %v", err)
+			continue
+		}
+
+		if edpCode.Valid {
+			sheet.EdpCode = edpCode.String
+		}
+		if schedule.Valid {
+			sheet.Schedule = schedule.String
+		}
+
+		sheets = append(sheets, sheet)
+	}
+
+	return sheets, nil
 }

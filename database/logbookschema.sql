@@ -74,7 +74,7 @@ CREATE TABLE admins (
     last_name VARCHAR(100) NOT NULL,
     email VARCHAR(255) NULL,
     contact_number VARCHAR(20) NULL,
-    profile_photo MEDIUMTEXT NULL COMMENT 'Base64-encoded profile photo data URL',
+    profile_photo MEDIUMBLOB NULL COMMENT 'Binary image data (JPEG/PNG) - stores up to 16MB',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
@@ -94,7 +94,7 @@ CREATE TABLE teachers (
     email VARCHAR(255) NULL,
     contact_number VARCHAR(20) NULL,
     department_code VARCHAR(20) NULL COMMENT 'Foreign key to departments.department_code',
-    profile_photo MEDIUMTEXT NULL COMMENT 'Base64-encoded profile photo data URL',
+    profile_photo MEDIUMBLOB NULL COMMENT 'Binary image data (JPEG/PNG) - stores up to 16MB',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
@@ -119,7 +119,7 @@ CREATE TABLE students (
     email VARCHAR(255) NULL,
     contact_number VARCHAR(20) NULL,
     is_working_student BOOLEAN DEFAULT FALSE COMMENT 'Flag to distinguish working students from regular students',
-    profile_photo MEDIUMTEXT NULL COMMENT 'Base64-encoded profile photo data URL',
+    profile_photo MEDIUMBLOB NULL COMMENT 'Binary image data (JPEG/PNG) - stores up to 16MB',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
@@ -156,6 +156,7 @@ CREATE TABLE classes (
     semester VARCHAR(20) NULL COMMENT 'Semester (e.g., 1st Semester, 2nd Semester)',
     school_year VARCHAR(20) NULL COMMENT 'Academic year (e.g., 2024-2025)',
     is_active BOOLEAN DEFAULT TRUE COMMENT 'Class status flag',
+    is_archived BOOLEAN DEFAULT FALSE COMMENT 'Whether this class has been archived by teacher',
     created_by_user_id INT NULL COMMENT 'Foreign key to users.id - user who created this class record (can be admin, teacher, or working student)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -170,7 +171,8 @@ CREATE TABLE classes (
     INDEX idx_semester_year (semester, school_year),
     INDEX idx_classes_teacher_active (teacher_user_id, is_active),
     INDEX idx_edp_code (edp_code),
-    INDEX idx_created_by_user_id (created_by_user_id)
+    INDEX idx_created_by_user_id (created_by_user_id),
+    INDEX idx_classes_archived (is_archived, teacher_user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE classlist (
@@ -178,6 +180,7 @@ CREATE TABLE classlist (
     student_user_id INT NOT NULL,
     enrollment_date DATE DEFAULT (CURDATE()),
     status ENUM('active', 'dropped', 'completed') DEFAULT 'active',
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Whether this classlist entry has been archived',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
@@ -188,7 +191,8 @@ CREATE TABLE classlist (
     INDEX idx_status (status),
     INDEX idx_enrollment_date (enrollment_date),
     INDEX idx_classlist_class_status (class_id, status),
-    INDEX idx_classlist_student_status (student_user_id, status)
+    INDEX idx_classlist_student_status (student_user_id, status),
+    INDEX idx_classlist_archived (is_archived, class_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
@@ -207,6 +211,7 @@ CREATE TABLE attendance (
     pc_number VARCHAR(20) NULL COMMENT 'Computer/terminal number used by student',
     status ENUM('present', 'absent', 'late', 'excused') NOT NULL DEFAULT 'present' COMMENT 'Attendance status',
     remarks TEXT NULL COMMENT 'Additional notes or comments',
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Whether this attendance record has been archived by teacher',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
@@ -218,7 +223,29 @@ CREATE TABLE attendance (
     INDEX idx_attendance_date_classlist (date DESC, class_id, student_user_id),
     INDEX idx_pc_number (pc_number),
     INDEX idx_attendance_status_date (status, date DESC),
-    INDEX idx_attendance_student_date (student_user_id, date DESC)
+    INDEX idx_attendance_student_date (student_user_id, date DESC),
+    INDEX idx_attendance_archived (is_archived, class_id, date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- Attendance Sheets table: Tracks initialized attendance sessions
+-- This allows tracking attendance generation even for classes with no enrolled students
+CREATE TABLE attendance_sheets (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    class_id INT NOT NULL COMMENT 'Foreign key to classes.class_id',
+    date DATE NOT NULL COMMENT 'Date of the attendance sheet',
+    created_by INT NULL COMMENT 'User ID who created/initialized the attendance',
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Whether this sheet is archived',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    UNIQUE KEY unique_class_date (class_id, date),
+    FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    
+    INDEX idx_class_id (class_id),
+    INDEX idx_date (date),
+    INDEX idx_is_archived (is_archived)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE login_logs (
@@ -228,17 +255,23 @@ CREATE TABLE login_logs (
     login_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     logout_time DATETIME NULL,
     login_status ENUM('success', 'failed', 'logout') DEFAULT 'success',
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Whether this log has been archived by admin',
+    archived_at DATETIME NULL COMMENT 'Timestamp when the log was archived',
+    archived_by_user_id INT NULL COMMENT 'User ID who archived this log',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (archived_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
     
     INDEX idx_user_id (user_id),
     INDEX idx_login_time (login_time),
     INDEX idx_pc_number (pc_number),
     INDEX idx_login_status (login_status),
     INDEX idx_login_logs_user_time (user_id, login_time DESC),
-    INDEX idx_login_logs_status_time (login_status, login_time DESC)
+    INDEX idx_login_logs_status_time (login_status, login_time DESC),
+    INDEX idx_login_logs_archived (is_archived, login_time DESC),
+    INDEX idx_login_logs_archived_at (archived_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================================
@@ -260,12 +293,16 @@ CREATE TABLE feedback (
     forwarded_at DATETIME NULL COMMENT 'Timestamp when feedback was forwarded',
     reviewed_by_user_id INT NULL COMMENT 'Foreign key to users.id - admin/teacher who reviewed the feedback',
     date_submitted DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Timestamp when feedback was submitted',
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE COMMENT 'Whether this feedback has been archived by admin',
+    archived_at DATETIME NULL COMMENT 'Timestamp when the feedback was archived',
+    archived_by_user_id INT NULL COMMENT 'User ID who archived this feedback',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
     FOREIGN KEY (student_user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (forwarded_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (reviewed_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (archived_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
     
     INDEX idx_student_user_id (student_user_id),
     INDEX idx_date_submitted (date_submitted),
@@ -276,7 +313,9 @@ CREATE TABLE feedback (
     INDEX idx_forwarded_by_user_id (forwarded_by_user_id),
     INDEX idx_forwarded_at (forwarded_at),
     INDEX idx_feedback_status_date (status, date_submitted DESC),
-    INDEX idx_feedback_pc_date (pc_number, date_submitted DESC)
+    INDEX idx_feedback_pc_date (pc_number, date_submitted DESC),
+    INDEX idx_feedback_archived (is_archived, date_submitted DESC),
+    INDEX idx_feedback_archived_at (archived_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE OR REPLACE VIEW v_users_complete AS

@@ -207,22 +207,25 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
       // Save the data URL to the database
       await UpdateUserPhoto(user.id, user.role, photoPreview);
       
-      // Update user object in localStorage
+      // Update user object in localStorage and context
       const updatedUser = {
         ...user,
         photo_url: photoPreview
       };
       localStorage.setItem('user', JSON.stringify(updatedUser));
       
-      // Update user in context by reloading the page
-      // This ensures the photo appears everywhere (sidebar, etc.)
-      setPhotoFile(null);
-      alert('Photo updated successfully!');
+      // Update the context with the new photo
+      if (updateUser) {
+        updateUser(updatedUser);
+      }
       
-      // Reload to refresh user data everywhere
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      // Clear the photo file state
+      setPhotoFile(null);
+      
+      // Close the modal
+      setShowAccountModal(false);
+      
+      alert('Photo updated successfully!');
     } catch (error) {
       console.error('Failed to update photo:', error);
       alert('Failed to update photo. Make sure you are connected to the database.');

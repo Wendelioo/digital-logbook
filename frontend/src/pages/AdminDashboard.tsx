@@ -24,7 +24,11 @@ import {
   FolderOpen,
   GraduationCap,
   BarChart3,
-  AlertCircle
+  AlertCircle,
+  Archive,
+  RotateCcw,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import {
   GetAdminDashboard,
@@ -36,16 +40,27 @@ import {
   DeleteUser,
   GetAllLogs,
   GetFeedback,
-  ExportLogsCSV,
-  ExportLogsPDF,
-  ExportFeedbackCSV,
-  ExportFeedbackPDF,
   GetDepartments,
   CreateDepartment,
   UpdateDepartment,
-  DeleteDepartment
+  DeleteDepartment,
+  GetLogDates,
+  GetFeedbackDates,
+  ArchiveLogsByDate,
+  ArchiveFeedbackByDate,
+  GetArchivedLogSheets,
+  GetArchivedFeedbackSheets,
+  GetArchivedLogsByDate,
+  GetArchivedFeedbackByDate,
+  UnarchiveLogSheet,
+  UnarchiveFeedbackSheet,
+  ExportArchivedLogSheetCSV,
+  ExportArchivedLogSheetPDF,
+  ExportArchivedFeedbackSheetCSV,
+  ExportArchivedFeedbackSheetPDF
 } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DashboardStats {
   total_students: number;
@@ -86,6 +101,26 @@ interface LoginLog {
 
 // Use the generated Feedback model from main
 type Feedback = main.Feedback;
+
+// Archive sheet types
+interface ArchivedLogSheet {
+  date: string;
+  total_logins: number;
+  student_count: number;
+  teacher_count: number;
+  admin_count: number;
+  working_student_count: number;
+  unique_pcs: number;
+}
+
+interface ArchivedFeedbackSheet {
+  date: string;
+  total_reports: number;
+  good_count: number;
+  issue_count: number;
+  unique_pcs: number;
+  unique_students: number;
+}
 
 function DashboardOverview() {
   const [stats, setStats] = useState<DashboardStats>({
@@ -1164,9 +1199,14 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
 }
 
 function ViewLogs() {
+  const { user } = useAuth();
   const [logs, setLogs] = useState<LoginLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+
+  // Available dates for archiving
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [archiving, setArchiving] = useState(false);
 
   // General search
   const [searchQuery, setSearchQuery] = useState('');
@@ -1177,6 +1217,7 @@ function ViewLogs() {
 
   useEffect(() => {
     loadLogs();
+    loadAvailableDates();
   }, []);
 
   const loadLogs = async () => {
@@ -1197,30 +1238,49 @@ function ViewLogs() {
     }
   };
 
+  const loadAvailableDates = async () => {
+    try {
+      const dates = await GetLogDates();
+      setAvailableDates(dates || []);
+    } catch (error) {
+      console.error('Failed to load log dates:', error);
+    }
+  };
+
   const clearFilters = () => {
     setSearchQuery('');
     setDateFilter('');
   };
 
-  const handleExportLogs = async () => {
+  // Archive by date handler
+  const handleArchiveByDate = async (date: string) => {
+    if (!confirm(`Are you sure you want to archive all logs for ${date}? Archived logs can be exported from the Archive section.`)) {
+      return;
+    }
+
+    setArchiving(true);
     try {
-      const filename = await ExportLogsCSV();
-      alert(`Logs exported to ${filename}`);
+      const count = await ArchiveLogsByDate(date, user?.id || 0);
+      alert(`Successfully archived ${count} log(s) for ${date}`);
+      loadLogs();
+      loadAvailableDates();
     } catch (error) {
-      console.error('Failed to export logs:', error);
-      alert('Failed to export logs');
+      console.error('Failed to archive logs:', error);
+      alert('Failed to archive logs');
+    } finally {
+      setArchiving(false);
     }
   };
 
-  const handleExportLogsPDF = async () => {
-    try {
-      const filename = await ExportLogsPDF();
-      alert(`Logs exported to ${filename}`);
-    } catch (error) {
-      console.error('Failed to export logs:', error);
-      alert('Failed to export logs');
+  // Group logs by date for display
+  const groupedLogs = logs.reduce((groups, log) => {
+    const date = log.login_time ? new Date(log.login_time).toISOString().split('T')[0] : 'unknown';
+    if (!groups[date]) {
+      groups[date] = [];
     }
-  };
+    groups[date].push(log);
+    return groups;
+  }, {} as Record<string, LoginLog[]>);
 
   // Apply filters to logs
   const filteredLogs = logs.filter((log) => {
@@ -1245,6 +1305,9 @@ function ViewLogs() {
     return matchesSearch && matchesDate;
   });
 
+  // Check if showing filtered view by date - show archive button
+  const showArchiveButton = dateFilter && availableDates.includes(dateFilter);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1258,23 +1321,20 @@ function ViewLogs() {
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">View Logs</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Log Entries</h2>
+            <p className="text-sm text-gray-500 mt-1">Filter by date and archive entire days</p>
           </div>
           <div className="flex gap-2">
-            <Button
-              onClick={handleExportLogs}
-              variant="outline"
-              icon={<Download className="h-4 w-4" />}
-            >
-              Export CSV
-            </Button>
-            <Button
-              onClick={handleExportLogsPDF}
-              variant="danger"
-              icon={<Download className="h-4 w-4" />}
-            >
-              Export PDF
-            </Button>
+            {showArchiveButton && (
+              <Button
+                onClick={() => handleArchiveByDate(dateFilter)}
+                disabled={archiving}
+                variant="primary"
+                icon={<Archive className="h-4 w-4" />}
+              >
+                {archiving ? 'Archiving...' : `Archive ${dateFilter}`}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1399,7 +1459,10 @@ function ViewLogs() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredLogs.length > 0 ? (
                   filteredLogs.map((log) => (
-                    <tr key={log.id} className="hover:bg-gray-50 transition-colors">
+                    <tr 
+                      key={log.id} 
+                      className="hover:bg-gray-50 transition-colors"
+                    >
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {log.user_id_number || log.user_name}
                       </td>
@@ -1471,9 +1534,14 @@ function ViewLogs() {
 }
 
 function Reports() {
+  const { user } = useAuth();
   const [reports, setReports] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+
+  // Available dates for archiving
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [archiving, setArchiving] = useState(false);
 
   // General search
   const [searchQuery, setSearchQuery] = useState('');
@@ -1488,6 +1556,7 @@ function Reports() {
 
   useEffect(() => {
     loadReports();
+    loadAvailableDates();
   }, []);
 
   const loadReports = async () => {
@@ -1508,28 +1577,37 @@ function Reports() {
     }
   };
 
+  const loadAvailableDates = async () => {
+    try {
+      const dates = await GetFeedbackDates();
+      setAvailableDates(dates || []);
+    } catch (error) {
+      console.error('Failed to load feedback dates:', error);
+    }
+  };
+
   const clearFilters = () => {
     setSearchQuery('');
     setDateFilter('');
   };
 
-  const handleExportReports = async () => {
-    try {
-      const filename = await ExportFeedbackCSV();
-      alert(`Reports exported to ${filename}`);
-    } catch (error) {
-      console.error('Failed to export reports:', error);
-      alert('Failed to export reports');
+  // Archive by date handler
+  const handleArchiveByDate = async (date: string) => {
+    if (!confirm(`Are you sure you want to archive all reports for ${date}? Archived reports can be exported from the Archive section.`)) {
+      return;
     }
-  };
 
-  const handleExportReportsPDF = async () => {
+    setArchiving(true);
     try {
-      const filename = await ExportFeedbackPDF();
-      alert(`Reports exported to ${filename}`);
+      const count = await ArchiveFeedbackByDate(date, user?.id || 0);
+      alert(`Successfully archived ${count} report(s) for ${date}`);
+      loadReports();
+      loadAvailableDates();
     } catch (error) {
-      console.error('Failed to export reports:', error);
-      alert('Failed to export reports');
+      console.error('Failed to archive reports:', error);
+      alert('Failed to archive reports');
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -1554,6 +1632,9 @@ function Reports() {
     return matchesSearch && matchesDate;
   });
 
+  // Check if showing filtered view by date - show archive button
+  const showArchiveButton = dateFilter && availableDates.includes(dateFilter);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1569,22 +1650,19 @@ function Reports() {
         <div className="flex justify-between items-start mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
+            <p className="text-sm text-gray-500 mt-1">Filter by date and archive entire days</p>
           </div>
           <div className="flex gap-3">
-            <Button
-              onClick={handleExportReports}
-              variant="outline"
-              icon={<Download className="h-4 w-4" />}
-            >
-              Export CSV
-            </Button>
-            <Button
-              onClick={handleExportReportsPDF}
-              variant="primary"
-              icon={<Download className="h-4 w-4" />}
-            >
-              Export PDF
-            </Button>
+            {showArchiveButton && (
+              <Button
+                onClick={() => handleArchiveByDate(dateFilter)}
+                disabled={archiving}
+                variant="primary"
+                icon={<Archive className="h-4 w-4" />}
+              >
+                {archiving ? 'Archiving...' : `Archive ${dateFilter}`}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1703,7 +1781,10 @@ function Reports() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredReports.map((report) => (
-                  <tr key={report.id} className="hover:bg-gray-50 transition-colors">
+                  <tr 
+                    key={report.id} 
+                    className="hover:bg-gray-50 transition-colors"
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-700">
                         {report.student_id_str}
@@ -2370,6 +2451,473 @@ function DepartmentManagement() {
   );
 }
 
+// Archive Management Component (Document-based)
+function ArchiveManagement() {
+  const [activeTab, setActiveTab] = useState<'logs' | 'reports'>('logs');
+  const [logSheets, setLogSheets] = useState<ArchivedLogSheet[]>([]);
+  const [feedbackSheets, setFeedbackSheets] = useState<ArchivedFeedbackSheet[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
+  const [processing, setProcessing] = useState(false);
+
+  // View modal state
+  const [viewingSheet, setViewingSheet] = useState<{ type: 'logs' | 'reports'; date: string } | null>(null);
+  const [viewData, setViewData] = useState<LoginLog[] | Feedback[]>([]);
+  const [loadingView, setLoadingView] = useState(false);
+
+  useEffect(() => {
+    loadArchivedSheets();
+  }, []);
+
+  const loadArchivedSheets = async () => {
+    setLoading(true);
+    try {
+      const [logs, reports] = await Promise.all([
+        GetArchivedLogSheets(),
+        GetArchivedFeedbackSheets()
+      ]);
+      setLogSheets(logs || []);
+      setFeedbackSheets(reports || []);
+      setError('');
+    } catch (err) {
+      console.error('Failed to load archived sheets:', err);
+      setError('Failed to load archived data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // View sheet details
+  const handleViewSheet = async (type: 'logs' | 'reports', date: string) => {
+    setViewingSheet({ type, date });
+    setLoadingView(true);
+    try {
+      if (type === 'logs') {
+        const data = await GetArchivedLogsByDate(date);
+        setViewData(data || []);
+      } else {
+        const data = await GetArchivedFeedbackByDate(date);
+        setViewData(data || []);
+      }
+    } catch (err) {
+      console.error('Failed to load sheet details:', err);
+      alert('Failed to load sheet details');
+    } finally {
+      setLoadingView(false);
+    }
+  };
+
+  // Unarchive sheet
+  const handleUnarchiveSheet = async (type: 'logs' | 'reports', date: string) => {
+    if (!confirm(`Are you sure you want to unarchive all ${type === 'logs' ? 'logs' : 'reports'} for ${date}?`)) {
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      if (type === 'logs') {
+        await UnarchiveLogSheet(date);
+      } else {
+        await UnarchiveFeedbackSheet(date);
+      }
+      alert(`Successfully unarchived ${type} for ${date}`);
+      loadArchivedSheets();
+    } catch (err) {
+      console.error('Failed to unarchive sheet:', err);
+      alert('Failed to unarchive sheet');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // Export handlers
+  const handleExportCSV = async (type: 'logs' | 'reports', date: string) => {
+    try {
+      let filename: string;
+      if (type === 'logs') {
+        filename = await ExportArchivedLogSheetCSV(date);
+      } else {
+        filename = await ExportArchivedFeedbackSheetCSV(date);
+      }
+      alert(`Exported to ${filename}`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to export');
+    }
+  };
+
+  const handleExportPDF = async (type: 'logs' | 'reports', date: string) => {
+    try {
+      let filename: string;
+      if (type === 'logs') {
+        filename = await ExportArchivedLogSheetPDF(date);
+      } else {
+        filename = await ExportArchivedFeedbackSheetPDF(date);
+      }
+      alert(`Exported to ${filename}`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to export');
+    }
+  };
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-500"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="mb-6">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Archive</h2>
+            <p className="text-sm text-gray-500 mt-1">View, export, and manage archived login logs and equipment reports by date</p>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="border-b border-gray-200 mb-4">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'logs'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Login Logs ({logSheets.length} sheets)
+            </button>
+            <button
+              onClick={() => setActiveTab('reports')}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'reports'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Equipment Reports ({feedbackSheets.length} sheets)
+            </button>
+          </nav>
+        </div>
+      </div>
+
+      {error && (
+        <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
+          <p className="text-sm text-red-700">{error}</p>
+        </div>
+      )}
+
+      {/* Log Sheets */}
+      {activeTab === 'logs' && (
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {logSheets.length > 0 ? (
+                  logSheets.map((sheet) => (
+                    <tr key={sheet.date} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <Calendar className="h-5 w-5 text-gray-400 mr-3" />
+                          <span className="text-sm text-gray-900">{sheet.date}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <FileText className="h-5 w-5 text-primary-500 mr-3" />
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">Login Logs - {formatDate(sheet.date)}</div>
+                            <div className="text-xs text-gray-500">{sheet.total_logins} records</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            onClick={() => handleViewSheet('logs', sheet.date)}
+                            className="px-3 py-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 border border-primary-300 rounded-lg hover:bg-primary-50"
+                            title="View Details"
+                          >
+                            <Eye className="h-4 w-4 inline mr-1" />
+                            View
+                          </button>
+                          <button
+                            onClick={() => handleExportCSV('logs', sheet.date)}
+                            className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                            title="Export as CSV"
+                          >
+                            CSV
+                          </button>
+                          <button
+                            onClick={() => handleExportPDF('logs', sheet.date)}
+                            className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg"
+                            title="Export as PDF"
+                          >
+                            PDF
+                          </button>
+                          <button
+                            onClick={() => handleUnarchiveSheet('logs', sheet.date)}
+                            disabled={processing}
+                            className="px-3 py-1.5 text-sm font-medium text-amber-600 hover:text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-50"
+                            title="Restore to active logs"
+                          >
+                            <RotateCcw className="h-4 w-4 inline mr-1" />
+                            Unarchive
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={3} className="px-6 py-12 text-center">
+                      <Archive className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500 font-medium">No archived log sheets</p>
+                      <p className="text-gray-400 text-sm mt-1">Archive logs by date from the View Logs page</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Feedback Sheets */}
+      {activeTab === 'reports' && (
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {feedbackSheets.length > 0 ? (
+                  feedbackSheets.map((sheet) => (
+                    <tr key={sheet.date} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <Calendar className="h-5 w-5 text-gray-400 mr-3" />
+                          <span className="text-sm text-gray-900">{sheet.date}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <FileText className="h-5 w-5 text-primary-500 mr-3" />
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">Equipment Reports - {formatDate(sheet.date)}</div>
+                            <div className="text-xs text-gray-500">{sheet.total_reports} records</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            onClick={() => handleViewSheet('reports', sheet.date)}
+                            className="px-3 py-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 border border-primary-300 rounded-lg hover:bg-primary-50"
+                            title="View Details"
+                          >
+                            <Eye className="h-4 w-4 inline mr-1" />
+                            View
+                          </button>
+                          <button
+                            onClick={() => handleExportCSV('reports', sheet.date)}
+                            className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                            title="Export as CSV"
+                          >
+                            CSV
+                          </button>
+                          <button
+                            onClick={() => handleExportPDF('reports', sheet.date)}
+                            className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg"
+                            title="Export as PDF"
+                          >
+                            PDF
+                          </button>
+                          <button
+                            onClick={() => handleUnarchiveSheet('reports', sheet.date)}
+                            disabled={processing}
+                            className="px-3 py-1.5 text-sm font-medium text-amber-600 hover:text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-50"
+                            title="Restore to active reports"
+                          >
+                            <RotateCcw className="h-4 w-4 inline mr-1" />
+                            Unarchive
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={3} className="px-6 py-12 text-center">
+                      <Archive className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500 font-medium">No archived report sheets</p>
+                      <p className="text-gray-400 text-sm mt-1">Archive reports by date from the Reports page</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* View Sheet Modal */}
+      {viewingSheet && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          onClick={() => setViewingSheet(null)}
+        >
+          <div
+            className="relative bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden m-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center p-6 border-b border-gray-200">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">
+                  {viewingSheet.type === 'logs' ? 'Login Logs' : 'Equipment Reports'} - {formatDate(viewingSheet.date)}
+                </h3>
+                <p className="text-sm text-gray-500 mt-1">{viewingSheet.date}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => handleExportCSV(viewingSheet.type, viewingSheet.date)}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Export CSV
+                </button>
+                <button
+                  onClick={() => handleExportPDF(viewingSheet.type, viewingSheet.date)}
+                  className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Export PDF
+                </button>
+                <button
+                  onClick={() => setViewingSheet(null)}
+                  className="text-gray-400 hover:text-gray-500 p-2"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 max-h-[70vh] overflow-y-auto">
+              {loadingView ? (
+                <div className="flex items-center justify-center h-32">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+                </div>
+              ) : viewingSheet.type === 'logs' ? (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID Number</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Full Name</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">User Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">PC Number</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time-In</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time-Out</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {(viewData as LoginLog[]).map((log) => (
+                      <tr key={log.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-900">{log.user_id_number}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{log.user_name}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span className="px-2 py-1 bg-primary-100 text-primary-800 rounded text-xs font-medium">
+                            {log.user_type.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{log.pc_number || '-'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {log.login_time ? new Date(log.login_time).toLocaleTimeString() : '-'}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {log.logout_time ? new Date(log.logout_time).toLocaleTimeString() : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">PC</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Equipment</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monitor</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Keyboard</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mouse</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {(viewData as Feedback[]).map((report) => (
+                      <tr key={report.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <div className="text-sm font-medium text-gray-900">{report.student_name}</div>
+                          <div className="text-xs text-gray-500">{report.student_id_str}</div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{report.pc_number}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            report.equipment_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                          }`}>{report.equipment_condition}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            report.monitor_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                          }`}>{report.monitor_condition}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            report.keyboard_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                          }`}>{report.keyboard_condition}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            report.mouse_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                          }`}>{report.mouse_condition}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminDashboard() {
   const location = useLocation();
 
@@ -2377,8 +2925,9 @@ function AdminDashboard() {
     { name: 'Dashboard', href: '/admin', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/admin' },
     { name: 'Manage Users', href: '/admin/users', icon: <Users className="h-5 w-5" />, current: location.pathname === '/admin/users' },
     { name: 'Departments', href: '/admin/departments', icon: <GraduationCap className="h-5 w-5" />, current: location.pathname === '/admin/departments' },
-    { name: 'View Logs', href: '/admin/logs', icon: <FolderOpen className="h-5 w-5" />, current: location.pathname === '/admin/logs' },
+    { name: 'Log Entries', href: '/admin/logs', icon: <FolderOpen className="h-5 w-5" />, current: location.pathname === '/admin/logs' },
     { name: 'Reports', href: '/admin/reports', icon: <BarChart3 className="h-5 w-5" />, current: location.pathname === '/admin/reports' },
+    { name: 'Archive', href: '/admin/archive', icon: <Archive className="h-5 w-5" />, current: location.pathname === '/admin/archive' },
   ];
 
   return (
@@ -2389,6 +2938,7 @@ function AdminDashboard() {
         <Route path="departments" element={<DepartmentManagement />} />
         <Route path="logs" element={<ViewLogs />} />
         <Route path="reports" element={<Reports />} />
+        <Route path="archive" element={<ArchiveManagement />} />
       </Routes>
     </Layout>
   );

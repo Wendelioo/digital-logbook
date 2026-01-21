@@ -192,7 +192,7 @@ type CourseClass struct {
 	SubjectCode    string  `json:"subject_code"`
 	SubjectName    string  `json:"subject_name"`
 	DescriptiveTitle *string `json:"descriptive_title,omitempty"`
-	OfferingCode   *string `json:"offering_code,omitempty"`
+	EdpCode        *string `json:"edp_code,omitempty"`
 	Section        *string `json:"section,omitempty"`
 	Schedule       *string `json:"schedule,omitempty"`
 	Room           *string `json:"room,omitempty"`
@@ -444,6 +444,8 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 // ==============================================================================
 
 // UpdateUserPhoto updates a user's profile photo
+// Note: This method accepts data URL format and stores it as Base64
+// Use UpdateUserProfilePhoto (in users.go) for proper BLOB storage
 func (a *App) UpdateUserPhoto(userID int, userRole, photoURL string) error {
 	if a.db == nil {
 		return fmt.Errorf("database not connected")
@@ -453,15 +455,15 @@ func (a *App) UpdateUserPhoto(userID int, userRole, photoURL string) error {
 	var query string
 	switch userRole {
 	case "admin":
-		query = `UPDATE admins SET photo_url = ? WHERE user_id = ?`
+		query = `UPDATE admins SET profile_photo = ? WHERE user_id = ?`
 	case "teacher":
-		query = `UPDATE teachers SET photo_url = ? WHERE user_id = ?`
+		query = `UPDATE teachers SET profile_photo = ? WHERE user_id = ?`
 	case "student":
-		query = `UPDATE students SET photo_url = ? WHERE user_id = ?`
+		query = `UPDATE students SET profile_photo = ? WHERE user_id = ?`
 	case "working_student":
 		// Working students might be stored in a different table
 		// For now, assuming they're in students table
-		query = `UPDATE students SET photo_url = ? WHERE user_id = ?`
+		query = `UPDATE students SET profile_photo = ? WHERE user_id = ?`
 	default:
 		return fmt.Errorf("invalid user role: %s", userRole)
 	}
