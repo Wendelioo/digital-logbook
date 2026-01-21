@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"strings"
@@ -206,6 +207,7 @@ type CourseClass struct {
 	IsActive       bool    `json:"is_active"`
 	CreatedByUserID *int   `json:"created_by_user_id,omitempty"`
 	CreatedAt      string  `json:"created_at"`
+	LatestAttendanceDate *string `json:"latest_attendance_date,omitempty"`
 }
 
 // Attendance represents an attendance record
@@ -352,7 +354,7 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	// Get all attendance records for this student
 	query := `
 		SELECT 
-			a.class_id, a.student_user_id, a.date,
+			a.class_id, a.student_user_id, DATE_FORMAT(a.date, '%Y-%m-%d') as date,
 			stu.student_number,
 			stu.first_name, stu.middle_name, stu.last_name,
 			c.subject_code, s.description as subject_name,
@@ -451,6 +453,22 @@ func (a *App) UpdateUserPhoto(userID int, userRole, photoURL string) error {
 		return fmt.Errorf("database not connected")
 	}
 
+	// Extract base64 data from data URL and decode to binary
+	// The photoURL is expected to be in format: "data:image/jpeg;base64,/9j/4AAQ..."
+	base64Data := photoURL
+	if strings.HasPrefix(photoURL, "data:") {
+		parts := strings.Split(photoURL, ",")
+		if len(parts) == 2 {
+			base64Data = parts[1]
+		}
+	}
+
+	// Decode Base64 to binary for storage
+	imageBytes, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return fmt.Errorf("failed to decode base64 image: %w", err)
+	}
+
 	// Update photo in respective table based on role
 	var query string
 	switch userRole {
@@ -468,8 +486,14 @@ func (a *App) UpdateUserPhoto(userID int, userRole, photoURL string) error {
 		return fmt.Errorf("invalid user role: %s", userRole)
 	}
 
-	_, err := a.db.Exec(query, photoURL, userID)
-	return err
+	// Store as binary BLOB (not as text string)
+	_, err = a.db.Exec(query, imageBytes, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update profile photo: %w", err)
+	}
+
+	log.Printf("Profile photo updated for user ID %d (%s) - %d bytes", userID, userRole, len(imageBytes))
+	return nil
 }
 
 // ==============================================================================

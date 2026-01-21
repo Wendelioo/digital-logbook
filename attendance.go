@@ -86,7 +86,7 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 		SELECT 
 			cl.class_id,
 			cl.student_user_id,
-			COALESCE(a.date, ?) as date,
+			COALESCE(DATE_FORMAT(a.date, '%Y-%m-%d'), ?) as date,
 			stu.student_number,
 			stu.first_name,
 			stu.middle_name,
@@ -177,10 +177,10 @@ func (a *App) InitializeAttendanceForClass(classID int, date string, recordedBy 
 		WHERE cl.class_id = ? AND cl.status = 'active'
 		ON DUPLICATE KEY UPDATE 
 			remarks = CASE 
-				WHEN time_in IS NULL AND (remarks IS NULL OR remarks = '') THEN 'Not yet logged in'
-				ELSE remarks
+				WHEN attendance.time_in IS NULL AND (attendance.remarks IS NULL OR attendance.remarks = '') THEN 'Not yet logged in'
+				ELSE attendance.remarks
 			END,
-			class_id=class_id
+			attendance.class_id = attendance.class_id
 	`
 
 	_, err := a.db.Exec(query, date, classID)
@@ -217,6 +217,42 @@ func (a *App) UpdateAttendanceRecord(classID, studentUserID int, date, timeIn, t
 	}
 
 	log.Printf("✓ Attendance record updated: class_id=%d, student_user_id=%d, date=%s, status=%s", classID, studentUserID, date, status)
+	return nil
+}
+
+// DeleteAttendanceSheet deletes an attendance sheet and all its records for a class on a specific date
+func (a *App) DeleteAttendanceSheet(classID int, date string) error {
+	if a.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	// Start a transaction
+	tx, err := a.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Delete attendance records for this class and date
+	_, err = tx.Exec("DELETE FROM attendance WHERE class_id = ? AND date = ?", classID, date)
+	if err != nil {
+		log.Printf("⚠ Failed to delete attendance records: %v", err)
+		return fmt.Errorf("failed to delete attendance records: %w", err)
+	}
+
+	// Delete the attendance sheet record if it exists
+	_, err = tx.Exec("DELETE FROM attendance_sheets WHERE class_id = ? AND date = ?", classID, date)
+	if err != nil {
+		log.Printf("⚠ Failed to delete attendance sheet: %v", err)
+		return fmt.Errorf("failed to delete attendance sheet: %w", err)
+	}
+
+	// Commit the transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	log.Printf("✓ Attendance sheet deleted: class_id=%d, date=%s", classID, date)
 	return nil
 }
 
@@ -270,7 +306,7 @@ func (a *App) ExportAttendanceCSV(classID int) (string, error) {
 
 	query := `
 		SELECT 
-			a.class_id, a.student_user_id, a.date, a.time_in, a.time_out, a.status, a.remarks,
+			a.class_id, a.student_user_id, DATE_FORMAT(a.date, '%Y-%m-%d') as date, a.time_in, a.time_out, a.status, a.remarks,
 			stu.student_number, stu.first_name, stu.middle_name, stu.last_name,
 			c.subject_code, s.description as subject_name
 		FROM attendance a
@@ -729,7 +765,7 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 	query := `
 		SELECT 
 			a.class_id,
-			a.date,
+			DATE_FORMAT(a.date, '%Y-%m-%d') as date,
 			s.subject_code,
 			s.description as subject_name,
 			c.edp_code,

@@ -234,6 +234,7 @@ export namespace main {
 	    is_active: boolean;
 	    created_by_user_id?: number;
 	    created_at: string;
+	    latest_attendance_date?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CourseClass(source);
@@ -260,6 +261,7 @@ export namespace main {
 	        this.is_active = source["is_active"];
 	        this.created_by_user_id = source["created_by_user_id"];
 	        this.created_at = source["created_at"];
+	        this.latest_attendance_date = source["latest_attendance_date"];
 	    }
 	}
 	export class Department {

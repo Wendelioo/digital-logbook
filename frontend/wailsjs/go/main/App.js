@@ -54,6 +54,10 @@ export function CreateUsersBulkFromFile(arg1, arg2) {
   return window['go']['main']['App']['CreateUsersBulkFromFile'](arg1, arg2);
 }
 
+export function DeleteAttendanceSheet(arg1, arg2) {
+  return window['go']['main']['App']['DeleteAttendanceSheet'](arg1, arg2);
+}
+
 export function DeleteClass(arg1) {
   return window['go']['main']['App']['DeleteClass'](arg1);
 }

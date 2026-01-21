@@ -53,7 +53,8 @@ import {
   UnarchiveAttendanceSheet,
   GetArchivedClasses,
   ArchiveClass,
-  UnarchiveClass
+  UnarchiveClass,
+  DeleteAttendanceSheet
 } from '../../wailsjs/go/main/App';
 import { useAuth } from '../contexts/AuthContext';
 import { main } from '../../wailsjs/go/models';
@@ -621,7 +622,7 @@ function ClassManagement() {
                   variant="success"
                   loading={generating}
                 >
-                  Generate Attendance
+                  Generate
                 </Button>
               </div>
             </div>
@@ -1839,7 +1840,7 @@ function AttendanceClassSelection() {
     };
 
     checkActiveAttendance();
-  }, [classes, user?.id]);
+  }, [classes, user?.id, refreshKey]);
 
   useEffect(() => {
     const loadClasses = async () => {
@@ -1895,7 +1896,6 @@ function AttendanceClassSelection() {
         return 'bg-gray-100 text-gray-800';
     }
   };
-
 
   if (loading) {
     return (
@@ -1996,8 +1996,9 @@ function AttendanceClassSelection() {
               </thead>
               <tbody className="bg-white">
                 {currentClasses.map((cls) => {
-                  const activeDate = activeAttendanceMap.get(cls.class_id);
-                  const hasActiveAttendance = !!activeDate;
+                  // Use latest_attendance_date from the class directly, or fall back to activeAttendanceMap
+                  const latestDate = (cls as any).latest_attendance_date || activeAttendanceMap.get(cls.class_id);
+                  const hasActiveAttendance = !!latestDate;
 
                   return (
                     <tr
@@ -2017,18 +2018,63 @@ function AttendanceClassSelection() {
                         {cls.schedule || '-'}
                       </td>
                       <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                        {hasActiveAttendance ? activeDate : '-'}
+                        {hasActiveAttendance ? new Date(latestDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-'}
                       </td>
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
-                        <Button
-                          onClick={() => navigate(`/teacher/attendance/${cls.class_id}${hasActiveAttendance ? `?date=${activeDate}` : ''}`)}
-                          variant="outline"
-                          size="sm"
-                          className="text-blue-600 hover:text-blue-900"
-                          icon={hasActiveAttendance ? <Eye className="h-4 w-4" /> : undefined}
-                        >
-                          {hasActiveAttendance ? 'View' : 'Manage'}
-                        </Button>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm font-medium">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            onClick={() => navigate(`/teacher/attendance/${cls.class_id}${hasActiveAttendance ? `?date=${latestDate}` : ''}`)}
+                            variant="outline"
+                            size="sm"
+                            className="text-blue-600 bg-blue-50 hover:bg-blue-100"
+                            icon={<Eye className="h-3 w-3" />}
+                            title="View"
+                            disabled={!hasActiveAttendance}
+                          />
+                          <Button
+                            onClick={async () => {
+                              if (!hasActiveAttendance) return;
+                              if (window.confirm('Are you sure you want to archive this attendance? It will be moved to the Archive section.')) {
+                                try {
+                                  await ArchiveAttendanceSheet(cls.class_id, latestDate);
+                                  // Refresh the class list
+                                  setRefreshKey(prev => prev + 1);
+                                  alert('Attendance archived successfully!');
+                                } catch (error) {
+                                  console.error('Failed to archive attendance:', error);
+                                  alert('Failed to archive attendance. Please try again.');
+                                }
+                              }
+                            }}
+                            variant="outline"
+                            size="sm"
+                            className="text-orange-600 hover:bg-orange-50"
+                            icon={<Archive className="h-3 w-3" />}
+                            title="Archive"
+                            disabled={!hasActiveAttendance}
+                          />
+                          <Button
+                            onClick={async () => {
+                              if (!hasActiveAttendance) return;
+                              if (window.confirm('Are you sure you want to delete this attendance? This action cannot be undone.')) {
+                                try {
+                                  await DeleteAttendanceSheet(cls.class_id, latestDate);
+                                  // Refresh the class list
+                                  setRefreshKey(prev => prev + 1);
+                                  alert('Attendance deleted successfully!');
+                                } catch (error) {
+                                  console.error('Failed to delete attendance:', error);
+                                  alert('Failed to delete attendance. Please try again.');
+                                }
+                              }
+                            }}
+                            variant="danger"
+                            size="sm"
+                            icon={<Trash2 className="h-3 w-3" />}
+                            title="Delete"
+                            disabled={!hasActiveAttendance}
+                          />
+                        </div>
                       </td>
                     </tr>
                   );
@@ -2184,6 +2230,13 @@ function AttendanceClassSelection() {
                       const today = new Date().toISOString().split('T')[0];
                       await GenerateAttendanceFromLogs(selectedClassId, today, user?.id || 0);
 
+                      // Update the active attendance map immediately
+                      setActiveAttendanceMap(prev => {
+                        const newMap = new Map(prev);
+                        newMap.set(selectedClassId, today);
+                        return newMap;
+                      });
+
                       // Close modal
                       setShowGenerateModal(false);
                       setSelectedClassId(null);
@@ -2195,8 +2248,6 @@ function AttendanceClassSelection() {
                       const errorMessage = error instanceof Error ? error.message : 'Failed to generate attendance';
                       if (errorMessage.includes('schedule')) {
                         setGenerateError('Class schedule is not set. Please set the schedule first.');
-                      } else if (errorMessage.includes('students')) {
-                        setGenerateError('No students enrolled in this class. Please enroll students first.');
                       } else {
                         setGenerateError(errorMessage);
                       }
@@ -2208,7 +2259,7 @@ function AttendanceClassSelection() {
                   variant="success"
                   loading={generating}
                 >
-                  Generate Attendance
+                  Generate
                 </Button>
               </div>
             </div>
@@ -2772,16 +2823,21 @@ function AttendanceManagementDetail() {
   const { user } = useAuth();
   const [selectedClass, setSelectedClass] = useState<Class | null>(null);
   const [attendanceRecords, setAttendanceRecords] = useState<Attendance[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>('');
-  const [loading, setLoading] = useState(false);
+  // Initialize selectedDate from URL params immediately
+  const initialDate = searchParams.get('date') || '';
+  const [selectedDate, setSelectedDate] = useState<string>(initialDate);
+  const [loading, setLoading] = useState(true); // Start with loading true
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [error, setError] = useState<string>('');
-  const [hasSelectedDate, setHasSelectedDate] = useState(false);
+  // Initialize hasSelectedDate based on URL params
+  const [hasSelectedDate, setHasSelectedDate] = useState(!!initialDate);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [pendingDate, setPendingDate] = useState<string>('');
   const [generating, setGenerating] = useState(false);
   const [isGenerated, setIsGenerated] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const loadClass = async () => {
@@ -2935,6 +2991,7 @@ function AttendanceManagementDetail() {
     // Save all attendance records
     if (!selectedClass || !selectedDate) return;
 
+    setSaving(true);
     try {
       // Initialize attendance if not already done
       if (attendanceRecords.length === 0) {
@@ -2945,12 +3002,24 @@ function AttendanceManagementDetail() {
       // Small delay to ensure save completes
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Navigate to stored attendance page
-      navigate('/teacher/stored-attendance', { replace: true });
+      // Navigate back to attendance management - the attendance is now active/saved
+      navigate('/teacher/attendance', { replace: true });
     } catch (error) {
       console.error('Failed to save attendance:', error);
       alert('Failed to save attendance. Please try again.');
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const handleCancelClick = () => {
+    // Just navigate back directly without confirmation
+    navigate('/teacher/attendance');
+  };
+
+  const handleConfirmCancel = () => {
+    setShowCancelConfirm(false);
+    navigate('/teacher/attendance');
   };
 
   const handleArchive = async () => {
@@ -2978,8 +3047,15 @@ function AttendanceManagementDetail() {
           </div>
         )}
 
-        {/* Date Picker (only if no date selected yet) */}
-        {!hasSelectedDate && selectedClass && (
+        {/* Loading state */}
+        {loading && (
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+          </div>
+        )}
+
+        {/* No date picker needed - attendance is only created via ADD ATTENDANCE button */}
+        {!loading && !hasSelectedDate && selectedClass && (
           <div className="bg-white shadow rounded-lg p-6 mb-6 border border-gray-300 max-w-4xl mx-auto relative">
             {/* Close Button */}
             <button
@@ -2989,27 +3065,26 @@ function AttendanceManagementDetail() {
             >
               <X className="h-5 w-5" />
             </button>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Date for Attendance</h3>
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1 max-w-xs">
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => handleDateChange(e.target.value)}
-                  className="block w-full px-4 py-2 pr-10 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
-                />
-                <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
-              </div>
+            <div className="text-center py-8">
+              <Calendar className="mx-auto h-12 w-12 text-gray-300 mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Attendance Selected</h3>
+              <p className="text-sm text-gray-500 mb-4">Use the "ADD ATTENDANCE" button to create a new attendance sheet for this class.</p>
+              <Button
+                onClick={() => navigate('/teacher/attendance')}
+                variant="outline"
+              >
+                Back to Attendance Management
+              </Button>
             </div>
           </div>
         )}
 
         {/* Single Attendance Sheet - Bond Paper Style */}
-        {selectedClass && hasSelectedDate && (
+        {!loading && selectedClass && hasSelectedDate && (
           <div className="bg-white max-w-4xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
             {/* Close Button - Inside Sheet */}
             <button
-              onClick={() => navigate('/teacher/attendance')}
+              onClick={handleCancelClick}
               className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
               title="Close"
             >
@@ -3030,7 +3105,7 @@ function AttendanceManagementDetail() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                 <p className="mt-2 text-sm text-gray-500">Loading attendance records...</p>
               </div>
-            ) : attendanceRecords.length > 0 ? (
+            ) : (
               <>
                 <div className="overflow-hidden">
                   <table className="min-w-full" style={{ tableLayout: 'fixed' }}>
@@ -3080,47 +3155,57 @@ function AttendanceManagementDetail() {
 
                     {/* Student Attendance Rows */}
                     <tbody className="bg-white text-xs">
-                      {attendanceRecords.map((record, index) => (
-                        <tr key={`${record.class_id}-${record.student_user_id}-${record.date}`} className="hover:bg-gray-50 border-b border-gray-100">
-                          <td className="px-2 py-1.5 text-center font-medium text-gray-900">
-                            {index + 1}
-                          </td>
-                          <td className="px-3 py-1.5 font-medium text-gray-900">
-                            {record.student_code}
-                          </td>
-                          <td className="px-3 py-1.5 text-gray-900">
-                            {record.last_name}, {record.first_name} {record.middle_name ? record.middle_name.charAt(0) + '.' : ''}
-                          </td>
-                          <td className="px-3 py-1.5 text-center">
-                            {record.time_in ? (
-                              <span className="text-green-700 font-medium">{record.time_in}</span>
-                            ) : (
-                              <span className="text-gray-400">—</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-1.5 text-center">
-                            {record.time_out ? (
-                              <span className="text-blue-700 font-medium">{record.time_out}</span>
-                            ) : (
-                              <span className="text-gray-400">—</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-1.5 text-center">
-                            {record.status ? (
-                              <span className={`px-2 py-0.5 text-xs font-medium rounded ${getStatusColor(record.status)}`}>
-                                {record.status === 'present' ? 'PRESENT' : record.status === 'absent' ? 'ABSENT' : record.status === 'late' ? 'LATE' : record.status.toUpperCase()}
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-gray-600">
-                                NO STATUS
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-1.5 text-gray-700">
-                            {record.remarks || '—'}
+                      {attendanceRecords.length > 0 ? (
+                        attendanceRecords.map((record, index) => (
+                          <tr key={`${record.class_id}-${record.student_user_id}-${record.date}`} className="hover:bg-gray-50 border-b border-gray-100">
+                            <td className="px-2 py-1.5 text-center font-medium text-gray-900">
+                              {index + 1}
+                            </td>
+                            <td className="px-3 py-1.5 font-medium text-gray-900">
+                              {record.student_code}
+                            </td>
+                            <td className="px-3 py-1.5 text-gray-900">
+                              {record.last_name}, {record.first_name} {record.middle_name ? record.middle_name.charAt(0) + '.' : ''}
+                            </td>
+                            <td className="px-3 py-1.5 text-center">
+                              {record.time_in ? (
+                                <span className="text-green-700 font-medium">{record.time_in}</span>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1.5 text-center">
+                              {record.time_out ? (
+                                <span className="text-blue-700 font-medium">{record.time_out}</span>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1.5 text-center">
+                              {record.status ? (
+                                <span className={`px-2 py-0.5 text-xs font-medium rounded ${getStatusColor(record.status)}`}>
+                                  {record.status === 'present' ? 'PRESENT' : record.status === 'absent' ? 'ABSENT' : record.status === 'late' ? 'LATE' : record.status.toUpperCase()}
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-gray-600">
+                                  NO STATUS
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-1.5 text-gray-700">
+                              {record.remarks || '—'}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="px-4 py-8 text-center">
+                            <ClipboardList className="mx-auto h-8 w-8 text-gray-300 mb-2" />
+                            <p className="text-sm text-gray-500">No students enrolled in this class yet.</p>
+                            <p className="text-xs text-gray-400 mt-1">Students will appear here once they are enrolled.</p>
                           </td>
                         </tr>
-                      ))}
+                      )}
                     </tbody>
 
                     {/* Summary Footer */}
@@ -3151,45 +3236,7 @@ function AttendanceManagementDetail() {
                     </tfoot>
                   </table>
                 </div>
-
-                {/* Save and Archive Buttons - Inside Bond Paper */}
-                <div className="flex justify-center gap-4 mt-8 pt-6 border-t border-gray-300">
-                  <Button
-                    onClick={handleSaveAll}
-                    variant="primary"
-                    className="px-8 py-3 text-base"
-                  >
-                    Save Attendance
-                  </Button>
-                  <Button
-                    onClick={handleArchive}
-                    variant="outline"
-                    className="px-8 py-3 text-base"
-                    icon={<Archive className="h-5 w-5" />}
-                    disabled={archiving}
-                  >
-                    {archiving ? 'Archiving...' : 'Archive'}
-                  </Button>
-                </div>
               </>
-            ) : (
-              <div className="px-6 py-8 text-center">
-                <ClipboardList className="mx-auto h-10 w-10 text-gray-400" />
-                <h3 className="mt-2 text-xs font-medium text-gray-900">No enrolled students found</h3>
-                <p className="mt-1 text-xs text-gray-500">
-                  This class has no enrolled students. Please add students to the class first.
-                </p>
-                {selectedClass && (
-                  <Button
-                    onClick={() => navigate(`/teacher/class-management/${selectedClass.class_id}`)}
-                    variant="primary"
-                    size="sm"
-                    className="mt-4"
-                  >
-                    Go to Class Management
-                  </Button>
-                )}
-              </div>
             )}
           </div>
         )}
@@ -3257,8 +3304,8 @@ function AttendanceManagementDetail() {
                 <div className="flex items-start">
                   <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 mr-2 flex-shrink-0" />
                   <p className="text-sm text-blue-800">
-                    This will create attendance records for all enrolled students on the selected date.
-                    All students will initially be marked as absent.
+                    This will create an attendance sheet for the selected date.
+                    Enrolled students will initially be marked as absent. You can still create an attendance sheet even if no students are enrolled yet.
                   </p>
                 </div>
               </div>
@@ -3280,7 +3327,38 @@ function AttendanceManagementDetail() {
                   loading={generating}
                   icon={!generating ? <CheckCircle className="h-4 w-4" /> : undefined}
                 >
-                  Generate Attendance
+                  Generate
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Confirmation Modal */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-6">
+            <div className="text-center">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100 mb-4">
+                <AlertCircle className="h-6 w-6 text-yellow-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Cancel Attendance?</h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Are you sure you want to cancel? Any unsaved changes will be lost.
+              </p>
+              <div className="flex justify-center gap-3">
+                <Button
+                  onClick={() => setShowCancelConfirm(false)}
+                  variant="secondary"
+                >
+                  No
+                </Button>
+                <Button
+                  onClick={handleConfirmCancel}
+                  variant="danger"
+                >
+                  Yes
                 </Button>
               </div>
             </div>

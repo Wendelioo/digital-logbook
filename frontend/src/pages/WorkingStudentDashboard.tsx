@@ -1294,7 +1294,7 @@ function EquipmentReports() {
                   onClick={handleBatchForwardClick}
                   icon={<Send className="h-4 w-4" />}
                 >
-                  Forward Selected ({selectedFeedbackIds.size})
+                  Forward ({selectedFeedbackIds.size})
                 </Button>
               </div>
             </div>

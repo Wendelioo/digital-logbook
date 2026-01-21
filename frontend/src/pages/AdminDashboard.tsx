@@ -1305,8 +1305,15 @@ function ViewLogs() {
     return matchesSearch && matchesDate;
   });
 
-  // Check if showing filtered view by date - show archive button
-  const showArchiveButton = dateFilter && availableDates.includes(dateFilter);
+  // Group filtered logs by date for display
+  const groupedFilteredLogs = filteredLogs.reduce((groups, log) => {
+    const date = log.login_time ? new Date(log.login_time).toISOString().split('T')[0] : 'unknown';
+    if (!groups[date]) {
+      groups[date] = [];
+    }
+    groups[date].push(log);
+    return groups;
+  }, {} as Record<string, LoginLog[]>);
 
   if (loading) {
     return (
@@ -1322,19 +1329,7 @@ function ViewLogs() {
         <div className="flex justify-between items-center mb-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Log Entries</h2>
-            <p className="text-sm text-gray-500 mt-1">Filter by date and archive entire days</p>
-          </div>
-          <div className="flex gap-2">
-            {showArchiveButton && (
-              <Button
-                onClick={() => handleArchiveByDate(dateFilter)}
-                disabled={archiving}
-                variant="primary"
-                icon={<Archive className="h-4 w-4" />}
-              >
-                {archiving ? 'Archiving...' : `Archive ${dateFilter}`}
-              </Button>
-            )}
+            <p className="text-sm text-gray-500 mt-1">View all login logs. Use filters to find and archive logs by date.</p>
           </div>
         </div>
 
@@ -1376,7 +1371,7 @@ function ViewLogs() {
 
             {/* Dropdown Filters Panel */}
             {showFilters && (
-              <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+              <div className="absolute right-0 mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-3">
                     <label className="text-sm font-medium text-gray-700">Filter by Date:</label>
@@ -1385,7 +1380,7 @@ function ViewLogs() {
                         onClick={() => setDateFilter('')}
                         className="text-xs text-gray-600 hover:text-gray-900 underline"
                       >
-                        Clear
+                        Clear Filter
                       </button>
                     )}
                   </div>
@@ -1426,109 +1421,121 @@ function ViewLogs() {
         </div>
       )}
 
-      {/* Logs Table */}
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <div className="max-h-[70vh] overflow-y-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50 sticky top-0 z-10">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ID Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Full Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    User Type
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    PC Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Time-In
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Time-Out
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredLogs.length > 0 ? (
-                  filteredLogs.map((log) => (
-                    <tr 
-                      key={log.id} 
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {log.user_id_number || log.user_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {log.user_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-                          {log.user_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {log.pc_number || <span className="text-gray-400">N/A</span>}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {log.login_time ? new Date(log.login_time).toLocaleTimeString('en-US', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                          hour12: true
-                        }) : '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {log.logout_time ? (
-                          new Date(log.logout_time).toLocaleTimeString('en-US', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                            hour12: true
-                          })
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {log.login_time ? new Date(log.login_time).toLocaleDateString('en-US', {
+      {/* Logs Grouped by Date */}
+      <div className="space-y-4">
+        {Object.keys(groupedFilteredLogs).length > 0 ? (
+          Object.entries(groupedFilteredLogs)
+            .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
+            .map(([date, dateLogs]) => (
+              <div key={date} className="bg-white shadow rounded-lg overflow-hidden">
+                {/* Date Header with Archive Button */}
+                <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="h-5 w-5 text-primary-500" />
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {new Date(date).toLocaleDateString('en-US', {
+                          weekday: 'long',
                           year: 'numeric',
-                          month: 'short',
+                          month: 'long',
                           day: 'numeric'
-                        }) : '-'}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center">
-                      <p className="text-gray-500 font-medium">No logs found</p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                        })}
+                      </h3>
+                      <p className="text-sm text-gray-500">{dateLogs.length} log entries</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleArchiveByDate(date)}
+                    disabled={archiving}
+                    className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg flex items-center gap-2 transition-colors"
+                  >
+                    <Archive className="h-4 w-4" />
+                    Archive
+                  </button>
+                </div>
+                
+                {/* Logs Table for this Date */}
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID Number</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Type</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PC Number</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time-In</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time-Out</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {dateLogs.map((log) => (
+                        <tr key={log.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {log.user_id_number || log.user_name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {log.user_name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+                              {log.user_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {log.pc_number || <span className="text-gray-400">N/A</span>}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {log.login_time ? new Date(log.login_time).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                              hour12: true
+                            }) : '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {log.logout_time ? (
+                              new Date(log.logout_time).toLocaleTimeString('en-US', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                second: '2-digit',
+                                hour12: true
+                              })
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))
+        ) : (
+          <div className="bg-white shadow rounded-lg p-12 text-center">
+            <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500 font-medium">No logs found</p>
+            <p className="text-gray-400 text-sm mt-1">
+              {searchQuery || dateFilter ? 'Try adjusting your search or filters' : 'No login logs recorded yet'}
+            </p>
           </div>
-        </div>
-        <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
-          <div className="text-sm text-gray-700">
-            Showing <span className="font-medium">{filteredLogs.length}</span> of <span className="font-medium">{logs.length}</span> logs
-          </div>
+        )}
+      </div>
+
+      {/* Summary Footer */}
+      {Object.keys(groupedFilteredLogs).length > 0 && (
+        <div className="mt-4 px-4 py-3 bg-white rounded-lg shadow text-sm text-gray-600 flex justify-between items-center">
+          <span>
+            Showing <span className="font-medium">{filteredLogs.length}</span> logs across <span className="font-medium">{Object.keys(groupedFilteredLogs).length}</span> days
+          </span>
           {(searchQuery || dateFilter) && (
-            <div className="text-sm text-gray-500 flex items-center gap-1">
-              <Search className="h-4 w-4" />
-              <span>Search/Filters active</span>
-            </div>
+            <span className="text-gray-500 flex items-center gap-1">
+              <Filter className="h-4 w-4" />
+              Filters active
+            </span>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1632,8 +1639,16 @@ function Reports() {
     return matchesSearch && matchesDate;
   });
 
-  // Check if showing filtered view by date - show archive button
-  const showArchiveButton = dateFilter && availableDates.includes(dateFilter);
+  // Group filtered reports by date
+  const groupedFilteredReports = filteredReports.reduce((groups, report) => {
+    // Handle both "YYYY-MM-DD HH:MM:SS" and "YYYY-MM-DDTHH:MM:SS" formats
+    const date = report.date_submitted ? report.date_submitted.split(/[T\s]/)[0] : 'unknown';
+    if (!groups[date]) {
+      groups[date] = [];
+    }
+    groups[date].push(report);
+    return groups;
+  }, {} as Record<string, Feedback[]>);
 
   if (loading) {
     return (
@@ -1650,19 +1665,7 @@ function Reports() {
         <div className="flex justify-between items-start mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
-            <p className="text-sm text-gray-500 mt-1">Filter by date and archive entire days</p>
-          </div>
-          <div className="flex gap-3">
-            {showArchiveButton && (
-              <Button
-                onClick={() => handleArchiveByDate(dateFilter)}
-                disabled={archiving}
-                variant="primary"
-                icon={<Archive className="h-4 w-4" />}
-              >
-                {archiving ? 'Archiving...' : `Archive ${dateFilter}`}
-              </Button>
-            )}
+            <p className="text-sm text-gray-500 mt-1">View all equipment feedback. Use filters to find and archive reports by date.</p>
           </div>
         </div>
 
@@ -1704,7 +1707,7 @@ function Reports() {
 
             {/* Dropdown Filters Panel */}
             {showFilters && (
-              <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+              <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-3">
                     <label className="text-sm font-medium text-gray-700">Filter by Date:</label>
@@ -1752,115 +1755,122 @@ function Reports() {
         </div>
       )}
 
-      {/* Reports Table */}
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <div className="max-h-[70vh] overflow-y-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gradient-to-r from-gray-50 to-gray-100 sticky top-0 z-10">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Student ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Full Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    PC Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Forwarded By
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredReports.map((report) => (
-                  <tr 
-                    key={report.id} 
-                    className="hover:bg-gray-50 transition-colors"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-700">
-                        {report.student_id_str}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {report.student_name}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                        {report.pc_number}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium text-gray-900">{report.forwarded_by_name || 'Unknown'}</span>
-                        {report.forwarded_at && (
-                          <span className="text-xs text-gray-500">
-                            {new Date(report.forwarded_at).toLocaleString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-700">
-                        {report.date_submitted ? new Date(report.date_submitted).toLocaleDateString('en-US', {
+      {/* Reports Grouped by Date */}
+      <div className="space-y-4">
+        {Object.keys(groupedFilteredReports).length > 0 ? (
+          Object.entries(groupedFilteredReports)
+            .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
+            .map(([date, dateReports]) => (
+              <div key={date} className="bg-white shadow rounded-lg overflow-hidden">
+                {/* Date Header with Archive Button */}
+                <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="h-5 w-5 text-primary-500" />
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        {new Date(date).toLocaleDateString('en-US', {
+                          weekday: 'long',
                           year: 'numeric',
-                          month: 'short',
+                          month: 'long',
                           day: 'numeric'
-                        }) : '-'}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <Button
-                        onClick={() => {
-                          setSelectedReport(report);
-                          setShowReportModal(true);
-                        }}
-                        variant="primary"
-                        icon={<Eye className="h-4 w-4" />}
-                      >
-                        View Details
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-                {filteredReports.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center">
-                      <p className="text-gray-500 font-medium">No reports available</p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                        })}
+                      </h3>
+                      <p className="text-sm text-gray-500">{dateReports.length} equipment reports</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleArchiveByDate(date)}
+                    disabled={archiving}
+                    className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg flex items-center gap-2 transition-colors"
+                  >
+                    <Archive className="h-4 w-4" />
+                    Archive
+                  </button>
+                </div>
+                
+                {/* Reports Table for this Date */}
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student ID</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PC Number</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Forwarded By</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {dateReports.map((report) => (
+                        <tr key={report.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {report.student_id_str}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {report.student_name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                              {report.pc_number}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-medium text-gray-900">{report.forwarded_by_name || 'Unknown'}</span>
+                              {report.forwarded_at && (
+                                <span className="text-xs text-gray-500">
+                                  {new Date(report.forwarded_at).toLocaleString('en-US', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <Button
+                              onClick={() => {
+                                setSelectedReport(report);
+                                setShowReportModal(true);
+                              }}
+                              variant="primary"
+                              icon={<Eye className="h-4 w-4" />}
+                            >
+                              View Details
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))
+        ) : (
+          <div className="bg-white shadow rounded-lg p-12 text-center">
+            <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-500 font-medium">No reports found</p>
+            <p className="text-gray-400 text-sm mt-1">
+              {searchQuery || dateFilter ? 'Try adjusting your search or filters' : 'No equipment reports submitted yet'}
+            </p>
           </div>
-        </div>
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
-          <div className="text-sm text-gray-600">
-            Showing <span className="font-semibold text-gray-900">{filteredReports.length}</span> of <span className="font-semibold text-gray-900">{reports.length}</span> report{reports.length !== 1 ? 's' : ''}
-          </div>
+        )}
+      </div>
+
+      {/* Summary Footer */}
+      {Object.keys(groupedFilteredReports).length > 0 && (
+        <div className="mt-4 px-4 py-3 bg-white rounded-lg shadow text-sm text-gray-600 flex justify-between items-center">
+          <span>
+            Showing <span className="font-medium">{filteredReports.length}</span> reports across <span className="font-medium">{Object.keys(groupedFilteredReports).length}</span> days
+          </span>
           {(searchQuery || dateFilter) && (
-            <div className="text-sm text-gray-500 flex items-center gap-2">
+            <span className="text-gray-500 flex items-center gap-1">
               <Filter className="h-4 w-4" />
-              <span>Filters active</span>
-            </div>
+              Filters active
+            </span>
           )}
         </div>
-      </div>
+      )}
 
       {/* Report Details Modal */}
       {showReportModal && selectedReport && (
@@ -2622,294 +2632,310 @@ function ArchiveManagement() {
 
       {/* Log Sheets */}
       {activeTab === 'logs' && (
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {logSheets.length > 0 ? (
-                  logSheets.map((sheet) => (
+        <div className="flex-1 overflow-x-auto">
+          {logSheets.length > 0 ? (
+            <div className="border-2 border-gray-300">
+              <table className="min-w-full border-collapse">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Date</th>
+                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Name</th>
+                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Summary</th>
+                    <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white">
+                  {logSheets.map((sheet) => (
                     <tr key={sheet.date} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <Calendar className="h-5 w-5 text-gray-400 mr-3" />
-                          <span className="text-sm text-gray-900">{sheet.date}</span>
-                        </div>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <FileText className="h-5 w-5 text-primary-500 mr-3" />
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">Login Logs - {formatDate(sheet.date)}</div>
-                            <div className="text-xs text-gray-500">{sheet.total_logins} records</div>
-                          </div>
-                        </div>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        <div className="font-medium">Login Logs - {formatDate(sheet.date)}</div>
+                        <div className="text-xs text-gray-500">{sheet.date}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <div className="flex gap-2 justify-end">
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                            {sheet.total_logins} Total Logins
+                          </span>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            {sheet.student_count} Students
+                          </span>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                            {sheet.teacher_count} Teachers
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">{sheet.unique_pcs} unique PCs</div>
+                      </td>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
+                        <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => handleViewSheet('logs', sheet.date)}
-                            className="px-3 py-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 border border-primary-300 rounded-lg hover:bg-primary-50"
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 border border-primary-300 rounded-lg hover:bg-primary-50"
                             title="View Details"
                           >
-                            <Eye className="h-4 w-4 inline mr-1" />
+                            <Eye className="h-4 w-4 mr-1" />
                             View
-                          </button>
-                          <button
-                            onClick={() => handleExportCSV('logs', sheet.date)}
-                            className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                            title="Export as CSV"
-                          >
-                            CSV
-                          </button>
-                          <button
-                            onClick={() => handleExportPDF('logs', sheet.date)}
-                            className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg"
-                            title="Export as PDF"
-                          >
-                            PDF
-                          </button>
-                          <button
-                            onClick={() => handleUnarchiveSheet('logs', sheet.date)}
-                            disabled={processing}
-                            className="px-3 py-1.5 text-sm font-medium text-amber-600 hover:text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-50"
-                            title="Restore to active logs"
-                          >
-                            <RotateCcw className="h-4 w-4 inline mr-1" />
-                            Unarchive
                           </button>
                         </div>
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={3} className="px-6 py-12 text-center">
-                      <Archive className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500 font-medium">No archived log sheets</p>
-                      <p className="text-gray-400 text-sm mt-1">Archive logs by date from the View Logs page</p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Archive className="mx-auto h-12 w-12 text-gray-300" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No archived log sheets</h3>
+              <p className="mt-1 text-sm text-gray-500">Archive logs by date from the Log Entries page to see them here.</p>
+            </div>
+          )}
         </div>
       )}
 
       {/* Feedback Sheets */}
       {activeTab === 'reports' && (
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {feedbackSheets.length > 0 ? (
-                  feedbackSheets.map((sheet) => (
+        <div className="flex-1 overflow-x-auto">
+          {feedbackSheets.length > 0 ? (
+            <div className="border-2 border-gray-300">
+              <table className="min-w-full border-collapse">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Date</th>
+                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Name</th>
+                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Summary</th>
+                    <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white">
+                  {feedbackSheets.map((sheet) => (
                     <tr key={sheet.date} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <Calendar className="h-5 w-5 text-gray-400 mr-3" />
-                          <span className="text-sm text-gray-900">{sheet.date}</span>
-                        </div>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <FileText className="h-5 w-5 text-primary-500 mr-3" />
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">Equipment Reports - {formatDate(sheet.date)}</div>
-                            <div className="text-xs text-gray-500">{sheet.total_reports} records</div>
-                          </div>
-                        </div>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        <div className="font-medium">Equipment Reports - {formatDate(sheet.date)}</div>
+                        <div className="text-xs text-gray-500">{sheet.date}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                        <div className="flex gap-2 justify-end">
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                            {sheet.total_reports} Total Reports
+                          </span>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            {sheet.good_count} Good
+                          </span>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                            {sheet.issue_count} Issues
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">{sheet.unique_pcs} unique PCs • {sheet.unique_students} students</div>
+                      </td>
+                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
+                        <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => handleViewSheet('reports', sheet.date)}
-                            className="px-3 py-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 border border-primary-300 rounded-lg hover:bg-primary-50"
+                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 border border-primary-300 rounded-lg hover:bg-primary-50"
                             title="View Details"
                           >
-                            <Eye className="h-4 w-4 inline mr-1" />
+                            <Eye className="h-4 w-4 mr-1" />
                             View
-                          </button>
-                          <button
-                            onClick={() => handleExportCSV('reports', sheet.date)}
-                            className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-                            title="Export as CSV"
-                          >
-                            CSV
-                          </button>
-                          <button
-                            onClick={() => handleExportPDF('reports', sheet.date)}
-                            className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg"
-                            title="Export as PDF"
-                          >
-                            PDF
-                          </button>
-                          <button
-                            onClick={() => handleUnarchiveSheet('reports', sheet.date)}
-                            disabled={processing}
-                            className="px-3 py-1.5 text-sm font-medium text-amber-600 hover:text-amber-700 border border-amber-300 rounded-lg hover:bg-amber-50"
-                            title="Restore to active reports"
-                          >
-                            <RotateCcw className="h-4 w-4 inline mr-1" />
-                            Unarchive
                           </button>
                         </div>
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={3} className="px-6 py-12 text-center">
-                      <Archive className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500 font-medium">No archived report sheets</p>
-                      <p className="text-gray-400 text-sm mt-1">Archive reports by date from the Reports page</p>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Archive className="mx-auto h-12 w-12 text-gray-300" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No archived report sheets</h3>
+              <p className="mt-1 text-sm text-gray-500">Archive reports by date from the Reports page to see them here.</p>
+            </div>
+          )}
         </div>
       )}
 
-      {/* View Sheet Modal */}
+      {/* View Sheet Modal - Bond Paper Style */}
       {viewingSheet && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
-          onClick={() => setViewingSheet(null)}
-        >
-          <div
-            className="relative bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden m-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center p-6 border-b border-gray-200">
-              <div>
-                <h3 className="text-xl font-bold text-gray-900">
-                  {viewingSheet.type === 'logs' ? 'Login Logs' : 'Equipment Reports'} - {formatDate(viewingSheet.date)}
-                </h3>
-                <p className="text-sm text-gray-500 mt-1">{viewingSheet.date}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => handleExportCSV(viewingSheet.type, viewingSheet.date)}
-                  className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2"
-                >
-                  <Download className="h-4 w-4" />
-                  Export CSV
-                </button>
-                <button
-                  onClick={() => handleExportPDF(viewingSheet.type, viewingSheet.date)}
-                  className="px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg flex items-center gap-2"
-                >
-                  <Download className="h-4 w-4" />
-                  Export PDF
-                </button>
-                <button
-                  onClick={() => setViewingSheet(null)}
-                  className="text-gray-400 hover:text-gray-500 p-2"
-                >
-                  <X className="h-6 w-6" />
-                </button>
-              </div>
-            </div>
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
+          <div className="min-h-screen p-4 md:p-8">
+            {/* Bond Paper Container */}
+            <div className="bg-white max-w-5xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
+              {/* Close Button - Inside Sheet */}
+              <button
+                onClick={() => setViewingSheet(null)}
+                className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
 
-            <div className="p-6 max-h-[70vh] overflow-y-auto">
-              {loadingView ? (
-                <div className="flex items-center justify-center h-32">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+              {/* Sheet Title and Controls */}
+              <div className="mb-6 pb-4 border-b border-gray-400">
+                <div className="text-center mb-4">
+                  <h2 className="text-xl font-bold text-gray-900 tracking-wide">
+                    {viewingSheet.type === 'logs' ? 'LOG ENTRIES' : 'EQUIPMENT REPORTS'}
+                  </h2>
+                  <p className="text-xs text-gray-600 mt-1">{formatDate(viewingSheet.date)}</p>
                 </div>
-              ) : viewingSheet.type === 'logs' ? (
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID Number</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Full Name</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">User Type</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">PC Number</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time-In</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Time-Out</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {(viewData as LoginLog[]).map((log) => (
-                      <tr key={log.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-900">{log.user_id_number}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{log.user_name}</td>
-                        <td className="px-4 py-3 text-sm">
-                          <span className="px-2 py-1 bg-primary-100 text-primary-800 rounded text-xs font-medium">
-                            {log.user_type.replace('_', ' ')}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{log.pc_number || '-'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          {log.login_time ? new Date(log.login_time).toLocaleTimeString() : '-'}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">
-                          {log.logout_time ? new Date(log.logout_time).toLocaleTimeString() : '-'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Student</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">PC</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Equipment</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Monitor</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Keyboard</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mouse</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {(viewData as Feedback[]).map((report) => (
-                      <tr key={report.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">
-                          <div className="text-sm font-medium text-gray-900">{report.student_name}</div>
-                          <div className="text-xs text-gray-500">{report.student_id_str}</div>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-700">{report.pc_number}</td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            report.equipment_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                          }`}>{report.equipment_condition}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            report.monitor_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                          }`}>{report.monitor_condition}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            report.keyboard_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                          }`}>{report.keyboard_condition}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
-                            report.mouse_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                          }`}>{report.mouse_condition}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+                <div className="flex justify-end items-center gap-2">
+                  <button
+                    onClick={() => handleExportCSV(viewingSheet.type, viewingSheet.date)}
+                    className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-700 border border-gray-300 rounded hover:bg-gray-50 flex items-center gap-1"
+                  >
+                    <Download className="h-4 w-4" />
+                    CSV
+                  </button>
+                  <button
+                    onClick={() => handleExportPDF(viewingSheet.type, viewingSheet.date)}
+                    className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded flex items-center gap-1"
+                  >
+                    <Download className="h-4 w-4" />
+                    PDF
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleUnarchiveSheet(viewingSheet.type, viewingSheet.date);
+                      setViewingSheet(null);
+                    }}
+                    disabled={processing}
+                    className="px-3 py-1.5 text-sm font-medium text-amber-600 hover:text-amber-700 border border-amber-300 rounded hover:bg-amber-50 flex items-center gap-1"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Unarchive
+                  </button>
+                </div>
+              </div>
+
+              {/* Sheet Content */}
+              <div className="overflow-hidden">
+                {loadingView ? (
+                  <div className="flex items-center justify-center h-32">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+                  </div>
+                ) : viewingSheet.type === 'logs' ? (
+                  <>
+                    {/* Log Summary Header */}
+                    <table className="min-w-full" style={{ tableLayout: 'fixed' }}>
+                      <thead>
+                        <tr>
+                          <th colSpan={6} className="px-4 py-2 text-left border-b-2 border-gray-900">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-900 font-bold text-sm tracking-wide">LOG ENTRIES</span>
+                              <span className="text-xs text-gray-600">Total: {(viewData as LoginLog[]).length} records</span>
+                            </div>
+                          </th>
+                        </tr>
+                        <tr className="bg-gray-100">
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '40px' }}>No.</th>
+                          <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>ID Number</th>
+                          <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase">Full Name</th>
+                          <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>User Type</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '70px' }}>PC</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '150px' }}>Time In / Out</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white text-xs">
+                        {(viewData as LoginLog[]).length > 0 ? (
+                          (viewData as LoginLog[]).map((log, index) => (
+                            <tr key={log.id} className="hover:bg-gray-50 border-b border-gray-100">
+                              <td className="px-2 py-1.5 text-center font-medium text-gray-900">{index + 1}</td>
+                              <td className="px-2 py-1.5 font-medium text-gray-900">{log.user_id_number}</td>
+                              <td className="px-2 py-1.5 text-gray-900">{log.user_name}</td>
+                              <td className="px-2 py-1.5">
+                                <span className="px-2 py-0.5 bg-primary-100 text-primary-800 rounded text-xs font-medium">
+                                  {log.user_type.replace('_', ' ')}
+                                </span>
+                              </td>
+                              <td className="px-2 py-1.5 text-center text-gray-700">{log.pc_number || '-'}</td>
+                              <td className="px-2 py-1.5 text-center text-gray-700">
+                                <div>{log.login_time ? new Date(log.login_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
+                                <div className="text-gray-400">{log.logout_time ? new Date(log.logout_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                              No log entries found for this date.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </>
+                ) : (
+                  <>
+                    {/* Equipment Report Table */}
+                    <table className="min-w-full" style={{ tableLayout: 'fixed' }}>
+                      <thead>
+                        <tr>
+                          <th colSpan={7} className="px-4 py-2 text-left border-b-2 border-gray-900">
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-900 font-bold text-sm tracking-wide">EQUIPMENT CONDITION REPORTS</span>
+                              <span className="text-xs text-gray-600">Total: {(viewData as Feedback[]).length} reports</span>
+                            </div>
+                          </th>
+                        </tr>
+                        <tr className="bg-gray-100">
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '40px' }}>No.</th>
+                          <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase">Student</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '60px' }}>PC</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>System</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Monitor</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Keyboard</th>
+                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Mouse</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white text-xs">
+                        {(viewData as Feedback[]).length > 0 ? (
+                          (viewData as Feedback[]).map((report, index) => (
+                            <tr key={report.id} className="hover:bg-gray-50 border-b border-gray-100">
+                              <td className="px-2 py-1.5 text-center font-medium text-gray-900">{index + 1}</td>
+                              <td className="px-2 py-1.5">
+                                <div className="font-medium text-gray-900">{report.student_name}</div>
+                                <div className="text-gray-500">{report.student_id_str}</div>
+                              </td>
+                              <td className="px-2 py-1.5 text-center text-gray-700">{report.pc_number}</td>
+                              <td className="px-2 py-1.5 text-center">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  report.equipment_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                }`}>{report.equipment_condition}</span>
+                              </td>
+                              <td className="px-2 py-1.5 text-center">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  report.monitor_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                }`}>{report.monitor_condition}</span>
+                              </td>
+                              <td className="px-2 py-1.5 text-center">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  report.keyboard_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                }`}>{report.keyboard_condition}</span>
+                              </td>
+                              <td className="px-2 py-1.5 text-center">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                  report.mouse_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                }`}>{report.mouse_condition}</span>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
+                              No equipment reports found for this date.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>

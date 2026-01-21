@@ -271,7 +271,11 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 			c.teacher_user_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
-			c.is_active, c.created_by_user_id
+			c.is_active, c.created_by_user_id,
+			DATE_FORMAT(COALESCE(
+				(SELECT MAX(a.date) FROM attendance a WHERE a.class_id = c.class_id),
+				(SELECT MAX(ash.date) FROM attendance_sheets ash WHERE ash.class_id = c.class_id AND ash.is_archived = FALSE)
+			), '%Y-%m-%d') as latest_attendance_date
 		FROM classes c
 		LEFT JOIN subjects s ON c.subject_code = s.subject_code
 		LEFT JOIN teachers t ON c.teacher_user_id = t.user_id
@@ -299,13 +303,15 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 		var subjectName, descriptiveTitle, edpCode, schedule, room, semester, schoolYear sql.NullString
 		var teacherName sql.NullString
 		var createdBy sql.NullInt64
+		var latestDate sql.NullString
 		err := rows.Scan(
 			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &edpCode,
 			&class.TeacherUserID, &teacherName,
 			&schedule, &room, &semester, &schoolYear,
-			&class.EnrolledCount, &class.IsActive, &createdBy,
+			&class.EnrolledCount, &class.IsActive, &createdBy, &latestDate,
 		)
 		if err != nil {
+			log.Printf("⚠ Failed to scan class row: %v", err)
 			continue
 		}
 		if subjectName.Valid {
@@ -335,6 +341,9 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 		if createdBy.Valid {
 			createdByInt := int(createdBy.Int64)
 			class.CreatedByUserID = &createdByInt
+		}
+		if latestDate.Valid {
+			class.LatestAttendanceDate = &latestDate.String
 		}
 		classes = append(classes, class)
 	}

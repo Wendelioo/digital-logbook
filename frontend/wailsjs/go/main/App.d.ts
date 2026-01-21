@@ -28,6 +28,8 @@ export function CreateUsersBulk(arg1:string):Promise<Record<string, any>>;
 
 export function CreateUsersBulkFromFile(arg1:string,arg2:string):Promise<Record<string, any>>;
 
+export function DeleteAttendanceSheet(arg1:number,arg2:string):Promise<void>;
+
 export function DeleteClass(arg1:number):Promise<void>;
 
 export function DeleteDepartment(arg1:string):Promise<void>;
