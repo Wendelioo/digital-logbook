@@ -290,6 +290,10 @@ export function GetTeacherID(arg1) {
   return window['go']['main']['App']['GetTeacherID'](arg1);
 }
 
+export function GetTeacherLoginLogs(arg1) {
+  return window['go']['main']['App']['GetTeacherLoginLogs'](arg1);
+}
+
 export function GetUsers() {
   return window['go']['main']['App']['GetUsers']();
 }

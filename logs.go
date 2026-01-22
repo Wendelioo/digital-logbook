@@ -196,6 +196,95 @@ func (a *App) GetStudentLoginLogs(userID int) ([]LoginLog, error) {
 	return logs, nil
 }
 
+// GetTeacherLoginLogs returns login logs for a specific teacher (limited to 100 most recent)
+func (a *App) GetTeacherLoginLogs(userID int) ([]LoginLog, error) {
+	if a.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	log.Printf("GetTeacherLoginLogs called for userID: %d", userID)
+
+	query := `
+		SELECT 
+			ll.id, 
+			ll.user_id, 
+			COALESCE(u.user_type, 'unknown') as user_type, 
+			ll.pc_number, 
+			ll.login_time, 
+			ll.logout_time,
+			COALESCE(
+				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
+					THEN CONCAT(s.last_name, ', ', s.first_name,
+						CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
+					ELSE NULL END,
+				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
+					THEN CONCAT(t.last_name, ', ', t.first_name,
+						CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
+					ELSE NULL END,
+				CASE WHEN a.last_name IS NOT NULL AND a.first_name IS NOT NULL
+					THEN CONCAT(a.last_name, ', ', a.first_name,
+						CASE WHEN a.middle_name IS NOT NULL THEN CONCAT(' ', a.middle_name) ELSE '' END)
+					ELSE NULL END,
+				u.username
+			) as full_name,
+			COALESCE(
+				s.student_number,
+				t.employee_number,
+				a.employee_number,
+				u.username
+			) as user_id_number
+		FROM login_logs ll
+		JOIN users u ON ll.user_id = u.id
+		LEFT JOIN students s ON u.id = s.user_id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.user_id AND u.user_type = 'teacher'
+		LEFT JOIN admins a ON u.id = a.user_id AND u.user_type = 'admin'
+		WHERE ll.user_id = ? AND u.user_type = 'teacher'
+		ORDER BY ll.login_time DESC 
+		LIMIT 100
+	`
+
+	rows, err := a.db.Query(query, userID)
+	if err != nil {
+		log.Printf("Error querying teacher login logs: %v", err)
+		return nil, fmt.Errorf("failed to query login logs: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []LoginLog
+	for rows.Next() {
+		var logEntry LoginLog
+		var pcNumber sql.NullString
+		var loginTime time.Time
+		var logoutTime sql.NullTime
+		var userIDNumber sql.NullString
+
+		err := rows.Scan(&logEntry.ID, &logEntry.UserID, &logEntry.UserType, &pcNumber, &loginTime, &logoutTime, &logEntry.UserName, &userIDNumber)
+		if err != nil {
+			log.Printf("Error scanning login log row for teacher: %v", err)
+			continue
+		}
+
+		logEntry.LoginTime = loginTime.Format("2006-01-02 15:04:05")
+		if pcNumber.Valid {
+			logEntry.PCNumber = &pcNumber.String
+		}
+		if logoutTime.Valid {
+			formattedLogoutTime := logoutTime.Time.Format("2006-01-02 15:04:05")
+			logEntry.LogoutTime = &formattedLogoutTime
+		}
+		if userIDNumber.Valid {
+			logEntry.UserIDNumber = userIDNumber.String
+		} else {
+			logEntry.UserIDNumber = logEntry.UserName
+		}
+
+		logs = append(logs, logEntry)
+	}
+
+	log.Printf("GetTeacherLoginLogs returning %d logs for user %d", len(logs), userID)
+	return logs, nil
+}
+
 // ==============================================================================
 // LOGIN LOG EXPORT FUNCTIONS
 // ==============================================================================

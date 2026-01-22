@@ -88,6 +88,13 @@ function DashboardOverview() {
     };
 
     loadDashboard();
+
+    // Auto-refresh every 30 seconds to keep dashboard data up-to-date
+    const refreshInterval = setInterval(() => {
+      if (user) loadDashboard();
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
   }, [user]);
 
   if (loading) {
@@ -237,7 +244,7 @@ function DashboardOverview() {
               className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all duration-200"
             >
               <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-500 transition-colors duration-200">
-                <ClipboardList className="h-6 w-6 text-blue-600 group-hover:text-white transition-colors duration-200" />
+                <Clock className="h-6 w-6 text-blue-600 group-hover:text-white transition-colors duration-200" />
               </div>
               <div className="ml-4 flex-1">
                 <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors duration-200">
@@ -310,6 +317,13 @@ function LoginHistory() {
     };
 
     loadLoginLogs();
+
+    // Auto-refresh every 30 seconds to show updated login history
+    const refreshInterval = setInterval(() => {
+      if (user) loadLoginLogs();
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
   }, [user]);
 
   // Filter logs based on date and search
@@ -575,6 +589,13 @@ function FeedbackHistory() {
     };
 
     loadFeedback();
+
+    // Auto-refresh every 30 seconds to show updated feedback history
+    const refreshInterval = setInterval(() => {
+      if (user) loadFeedback();
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
   }, [user]);
 
   // Filter feedback based on date and search
@@ -1108,7 +1129,7 @@ function StudentDashboard() {
   const navigationItems = [
     { name: 'Dashboard', href: '/student', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/student' },
     { name: 'My Classes', href: '/student/classes', icon: <Library className="h-5 w-5" />, current: location.pathname === '/student/classes' },
-    { name: 'Login History', href: '/student/attendance', icon: <ClipboardList className="h-5 w-5" />, current: location.pathname === '/student/attendance' },
+    { name: 'Login History', href: '/student/attendance', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/student/attendance' },
     { name: 'Feedback History', href: '/student/feedback', icon: <MessageSquare className="h-5 w-5" />, current: location.pathname === '/student/feedback' },
   ];
 

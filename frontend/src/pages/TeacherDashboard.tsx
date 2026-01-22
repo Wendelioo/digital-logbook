@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Button from '../components/Button';
 import {
@@ -56,6 +56,7 @@ import {
   UnarchiveClass,
   DeleteAttendanceSheet
 } from '../../wailsjs/go/main/App';
+import TeacherLoginHistory from './TeacherLoginHistory';
 import { useAuth } from '../contexts/AuthContext';
 import { main } from '../../wailsjs/go/models';
 
@@ -210,6 +211,22 @@ function DashboardOverview() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Link
+          to="login-history"
+          className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all duration-200"
+        >
+          <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-500 transition-colors duration-200">
+            <Clock className="h-6 w-6 text-blue-600 group-hover:text-white transition-colors duration-200" />
+          </div>
+          <div className="ml-4 flex-1">
+            <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">View Login History</h3>
+            <p className="text-sm text-gray-500 mt-0.5">View your login and logout records</p>
+          </div>
+        </Link>
       </div>
     </div>
   );
@@ -3377,6 +3394,7 @@ function TeacherDashboard() {
     { name: 'Dashboard', href: '/teacher', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/teacher' },
     { name: 'Class Management', href: '/teacher/class-management', icon: <Library className="h-5 w-5" />, current: location.pathname.startsWith('/teacher/class-management') },
     { name: 'Attendance', href: '/teacher/attendance', icon: <CalendarPlus className="h-5 w-5" />, current: location.pathname.startsWith('/teacher/attendance') && !location.pathname.includes('/stored') },
+    { name: 'Login History', href: '/teacher/login-history', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/teacher/login-history' },
     { name: 'Archive', href: '/teacher/stored-attendance', icon: <Archive className="h-5 w-5" />, current: location.pathname === '/teacher/stored-attendance' },
   ];
 
@@ -3389,6 +3407,7 @@ function TeacherDashboard() {
         <Route path="class-management/:id" element={<ClassManagementDetail />} />
         <Route path="attendance/:id" element={<AttendanceManagementDetail />} />
         <Route path="attendance" element={<AttendanceClassSelection />} />
+        <Route path="login-history" element={<TeacherLoginHistory />} />
         <Route path="stored-attendance" element={<StoredAttendance />} />
       </Routes>
     </Layout>
