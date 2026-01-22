@@ -112,12 +112,6 @@ function DashboardOverview() {
 
   return (
     <div className="space-y-6">
-      {/* Welcome Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg shadow-lg p-6 text-white">
-        <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.first_name || user?.name}!</h1>
-        <p className="text-blue-100">Here's an overview of your attendance and activity</p>
-      </div>
-
       {/* Last Login Information */}
       {lastLogin && (
         <div className="bg-white shadow-md rounded-lg border border-gray-200 overflow-hidden">
@@ -1134,7 +1128,7 @@ function StudentDashboard() {
   ];
 
   return (
-    <Layout navigationItems={navigationItems} title="Student Dashboard">
+    <Layout navigationItems={navigationItems}>
       <Routes>
         <Route index element={<DashboardOverview />} />
         <Route path="classes" element={<MyClasses />} />

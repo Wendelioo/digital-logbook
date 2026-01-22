@@ -92,10 +92,6 @@ function DashboardOverview() {
 
   return (
     <div>
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900">Working Student Dashboard</h2>
-      </div>
-
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <div className="bg-white overflow-hidden shadow rounded-lg">
@@ -1810,7 +1806,7 @@ function WorkingStudentDashboard() {
   ];
 
   return (
-    <Layout navigationItems={navigationItems} title="Working Student Dashboard">
+    <Layout navigationItems={navigationItems}>
       <Routes>
         <Route index element={<DashboardOverview />} />
         <Route path="manage-users" element={<ManageUsers />} />

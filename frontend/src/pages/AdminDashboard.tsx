@@ -190,10 +190,6 @@ function DashboardOverview() {
 
   return (
     <div>
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((card, index) => (
           <div key={index} className="bg-white overflow-hidden shadow rounded-lg">
@@ -2981,7 +2977,7 @@ function AdminDashboard() {
   ];
 
   return (
-    <Layout navigationItems={navigationItems} title="Admin Dashboard">
+    <Layout navigationItems={navigationItems}>
       <Routes>
         <Route index element={<DashboardOverview />} />
         <Route path="users" element={<UserManagement />} />
