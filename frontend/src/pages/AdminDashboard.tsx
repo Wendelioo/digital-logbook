@@ -157,25 +157,25 @@ function DashboardOverview() {
     {
       title: 'Total Students',
       value: stats.total_students,
-      color: 'bg-blue-500',
+      color: 'bg-gray-500',
       icon: <Users className="h-8 w-8" />
     },
     {
       title: 'Teachers',
       value: stats.total_teachers,
-      color: 'bg-green-500',
+      color: 'bg-gray-500',
       icon: <Users className="h-8 w-8" />
     },
     {
       title: 'Working Students',
       value: stats.working_students,
-      color: 'bg-purple-500',
+      color: 'bg-gray-500',
       icon: <Users className="h-8 w-8" />
     },
     {
       title: 'Recent Logins',
       value: stats.recent_logins,
-      color: 'bg-orange-500',
+      color: 'bg-gray-500',
       icon: <ClipboardList className="h-8 w-8" />
     }
   ];
@@ -189,56 +189,110 @@ function DashboardOverview() {
   }
 
   return (
+<<<<<<< HEAD
     <div>
+=======
+    <div className="space-y-8">
+      <div className="mb-2">
+        <h2 className="text-4xl font-medium text-gray-900 tracking-tight" style={{ fontFamily: 'Intel, sans-serif' }}>Status Overview</h2>
+        <p className="text-gray-500 text-base mt-2">Monitor your institution's key metrics and activities</p>
+      </div>
+
+>>>>>>> f3390aa (Describe what you changed)
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statCards.map((card, index) => (
-          <div key={index} className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
+        {statCards.map((card, index) => {
+          // Monochrome icon circles mapping
+          const colorMap: {[key: string]: {circle: string, text: string}} = {
+            'bg-gray-500': { circle: 'bg-gray-100', text: 'text-gray-600' }
+          };
+          const colors = colorMap[card.color] || { circle: 'bg-gray-100', text: 'text-gray-600' };
+          
+          return (
+            <div 
+              key={index} 
+              className="bg-white rounded-[12px] p-6 border border-gray-200 hover:border-primary-500 transition-all duration-300 cursor-pointer"
+              style={{
+                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+              }}
+            >
               <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className={`${card.color} rounded-md p-3 text-white`}>
+                <div className={`${colors.circle} rounded-full p-4 flex-shrink-0 flex items-center justify-center`}>
+                  <div className={`${colors.text} h-6 w-6`}>
                     {card.icon}
                   </div>
                 </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      {card.title}
-                    </dt>
-                    <dd className="text-3xl font-bold text-gray-900">
-                      {card.value}
-                    </dd>
-                  </dl>
+                <div className="ml-4 flex-1">
+                  <p className="text-sm font-medium text-gray-500 mb-1">
+                    {card.title}
+                  </p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {card.value}
+                  </p>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      <div className="mt-8 bg-white shadow rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="mt-12 bg-white rounded-[12px] p-8 border border-gray-200" style={{ boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}>
+        <h3 className="text-xl font-semibold text-gray-900 mb-6">Quick Actions</h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Link
             to="users"
-            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            className="group p-6 rounded-[12px] border border-gray-200 transition-all duration-300 hover:border-gray-400 hover:bg-gray-50 cursor-pointer"
           >
-            <UserPlus className="h-6 w-6 text-primary-600 mr-3" />
-            <span className="text-gray-900">Manage Users</span>
+            <div className="flex items-start space-x-4">
+              <div className="flex-shrink-0 p-3 rounded-[8px] bg-gray-100 transition-colors">
+                <UserPlus className="h-6 w-6 text-gray-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-lg font-semibold text-gray-900 transition-colors">
+                  Manage Users
+                </h4>
+                <p className="text-sm text-gray-500 mt-1">
+                  Add, edit, or remove staff and students
+                </p>
+              </div>
+            </div>
           </Link>
+
           <Link
             to="logs"
-            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            className="group p-6 rounded-[12px] border border-gray-200 transition-all duration-300 hover:border-gray-400 hover:bg-gray-50 cursor-pointer"
           >
-            <ClipboardList className="h-6 w-6 text-primary-600 mr-3" />
-            <span className="text-gray-900">View Logs</span>
+            <div className="flex items-start space-x-4">
+              <div className="flex-shrink-0 p-3 rounded-[8px] bg-gray-100 transition-colors">
+                <ClipboardList className="h-6 w-6 text-gray-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-lg font-semibold text-gray-900 transition-colors">
+                  View Logs
+                </h4>
+                <p className="text-sm text-gray-500 mt-1">
+                  Track attendance and login history
+                </p>
+              </div>
+            </div>
           </Link>
+
           <Link
             to="reports"
-            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            className="group p-6 rounded-[12px] border border-gray-200 transition-all duration-300 hover:border-gray-400 hover:bg-gray-50 cursor-pointer"
           >
-            <FileText className="h-6 w-6 text-primary-600 mr-3" />
-            <span className="text-gray-900">Export Reports</span>
+            <div className="flex items-start space-x-4">
+              <div className="flex-shrink-0 p-3 rounded-[8px] bg-gray-100 transition-colors">
+                <FileText className="h-6 w-6 text-gray-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-lg font-semibold text-gray-900 transition-colors">
+                  Export Reports
+                </h4>
+                <p className="text-sm text-gray-500 mt-1">
+                  Generate and download attendance reports
+                </p>
+              </div>
+            </div>
           </Link>
         </div>
       </div>
@@ -608,14 +662,14 @@ function UserManagement() {
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
-        <Button
+        <h2 className="text-3xl font-medium text-gray-900">User Management</h2>
+        <button
           onClick={() => setShowForm(true)}
-          variant="primary"
-          icon={<Plus className="h-4 w-4" />}
+          className="inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 px-4 py-2 text-base gap-2 bg-gray-200 text-gray-900 hover:bg-gray-400 hover:text-white focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
+          <Plus className="h-4 w-4" />
           ADD NEW
-        </Button>
+        </button>
       </div>
 
       {/* Notification */}
@@ -980,28 +1034,28 @@ function UserManagement() {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <div className="max-h-[60vh] overflow-y-auto">
+          <div className="max-h-[60vh] overflow-y-auto border border-gray-200 rounded-[12px]">
             {currentUsers.length > 0 ? (
               <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-blue-600 sticky top-0 z-10">
+                <thead className="bg-gray-700 sticky top-0 z-10">
                   <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                       User ID
                     </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                       Full Name
                     </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                       User Type
                     </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                       Action
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {currentUsers.map((user, index) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
+                    <tr key={user.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {user.employee_id || user.student_id || user.name || '-'}
                       </td>
@@ -1015,28 +1069,27 @@ function UserManagement() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex items-center gap-2">
-                          <Button
+                          <button
                             onClick={() => setViewingUser(user)}
-                            variant="outline"
-                            size="sm"
-                            icon={<Eye className="h-3 w-3" />}
+                            className="inline-flex items-center justify-center text-gray-600 hover:text-blue-600 transition-colors p-1.5 hover:bg-blue-50 rounded-lg"
                             title="View"
-                            className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                          />
-                          <Button
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          <button
                             onClick={() => handleEdit(user)}
-                            variant="primary"
-                            size="sm"
-                            icon={<Edit className="h-3 w-3" />}
+                            className="inline-flex items-center justify-center text-gray-600 hover:text-green-600 transition-colors p-1.5 hover:bg-green-50 rounded-lg"
                             title="Edit"
-                          />
-                          <Button
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button
                             onClick={() => handleDelete(user.id)}
-                            variant="danger"
-                            size="sm"
-                            icon={<Trash2 className="h-3 w-3" />}
+                            className="inline-flex items-center justify-center text-gray-600 hover:text-red-600 transition-colors p-1.5 hover:bg-red-50 rounded-lg"
                             title="Delete"
-                          />
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1056,28 +1109,25 @@ function UserManagement() {
               Showing {startEntry} to {endEntry} of {sortedUsers.length} entries
             </div>
             <div className="flex gap-2">
-              <Button
+              <button
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
-                variant="outline"
-                size="sm"
+                className="inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 px-3 py-1.5 text-sm gap-1.5 bg-gray-200 text-gray-900 hover:bg-gray-400 hover:text-white focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Previous
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
+              </button>
+              <button
+                className="inline-flex items-center justify-center font-medium rounded-lg px-3 py-1.5 text-sm gap-1.5 bg-gray-700 text-white"
               >
                 {currentPage}
-              </Button>
-              <Button
+              </button>
+              <button
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
-                variant="outline"
-                size="sm"
+                className="inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 px-3 py-1.5 text-sm gap-1.5 bg-gray-200 text-gray-900 hover:bg-gray-400 hover:text-white focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next
-              </Button>
+              </button>
             </div>
           </div>
         )}
@@ -2202,15 +2252,15 @@ function DepartmentManagement() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Department Management</h2>
+          <h2 className="text-3xl font-medium text-gray-900">Department Management</h2>
         </div>
-        <Button
+        <button
           onClick={() => setShowForm(true)}
-          variant="primary"
-          icon={<Plus className="w-5 h-5" />}
+          className="inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 px-4 py-2 text-base gap-2 bg-gray-200 text-gray-900 hover:bg-gray-400 hover:text-white focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
+          <Plus className="w-4 h-4" />
           Add Department
-        </Button>
+        </button>
       </div>
 
       {/* Notification */}
@@ -2374,21 +2424,21 @@ function DepartmentManagement() {
       <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+            <thead className="bg-gray-700">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                   #
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                   Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                   Description
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-semibold text-white uppercase tracking-wider">
                   Action
                 </th>
               </tr>
@@ -2415,20 +2465,20 @@ function DepartmentManagement() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
-                      <Button
+                      <button
                         onClick={() => handleEdit(dept)}
-                        variant="primary"
-                        size="sm"
-                        icon={<Edit className="h-3 w-3" />}
+                        className="inline-flex items-center justify-center text-gray-600 hover:text-green-600 transition-colors p-1.5 hover:bg-green-50 rounded-lg"
                         title="Edit"
-                      />
-                      <Button
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
                         onClick={() => handleDelete(dept.department_code)}
-                        variant="danger"
-                        size="sm"
-                        icon={<Trash2 className="h-3 w-3" />}
+                        className="inline-flex items-center justify-center text-gray-600 hover:text-red-600 transition-colors p-1.5 hover:bg-red-50 rounded-lg"
                         title="Delete"
-                      />
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -2443,37 +2493,38 @@ function DepartmentManagement() {
             </tbody>
           </table>
         </div>
-        <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="px-6 py-3 bg-white border-t border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="text-sm text-gray-600">
             Showing <span className="font-medium">{total === 0 ? 0 : startIndex + 1}</span> to <span className="font-medium">{endIndex}</span> of <span className="font-medium">{total}</span> entries
           </div>
           <div className="flex items-center gap-2">
-            <Button
+            <button
               onClick={() => setPage(Math.max(1, currentPage - 1))}
               disabled={currentPage === 1}
-              variant="outline"
-              size="sm"
+              className="inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 px-3 py-1.5 text-sm gap-1.5 bg-gray-200 text-gray-900 hover:bg-gray-400 hover:text-white focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Previous
-            </Button>
+            </button>
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-              <Button
+              <button
                 key={pageNum}
                 onClick={() => setPage(pageNum)}
-                variant={currentPage === pageNum ? 'primary' : 'outline'}
-                size="sm"
+                className={`inline-flex items-center justify-center font-medium rounded-lg px-3 py-1.5 text-sm gap-1.5 transition-colors ${
+                  currentPage === pageNum
+                    ? 'bg-gray-700 text-white'
+                    : 'bg-gray-200 text-gray-900 hover:bg-gray-400 hover:text-white'
+                }`}
               >
                 {pageNum}
-              </Button>
+              </button>
             ))}
-            <Button
+            <button
               onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
               disabled={currentPage === totalPages}
-              variant="outline"
-              size="sm"
+              className="inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 px-3 py-1.5 text-sm gap-1.5 bg-gray-200 text-gray-900 hover:bg-gray-400 hover:text-white focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
-            </Button>
+            </button>
           </div>
         </div>
       </div>
@@ -2977,7 +3028,11 @@ function AdminDashboard() {
   ];
 
   return (
+<<<<<<< HEAD
     <Layout navigationItems={navigationItems}>
+=======
+    <Layout navigationItems={navigationItems} title="Admin Control Panel">
+>>>>>>> f3390aa (Describe what you changed)
       <Routes>
         <Route index element={<DashboardOverview />} />
         <Route path="users" element={<UserManagement />} />

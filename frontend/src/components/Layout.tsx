@@ -451,10 +451,10 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
   return (
     <div className="h-screen overflow-hidden bg-gray-50">
       {/* Static sidebar - always visible - Icon-only design */}
-      <div className="fixed left-0 top-0 bottom-0 flex flex-col w-16 bg-gray-200 shadow-lg border-r border-gray-300 z-10">
+      <div className="fixed left-0 top-0 bottom-0 flex flex-col w-16 bg-white shadow-lg border-r border-gray-100 z-10">
         {/* Navigation Section - Icon only */}
-        <div className="flex-1 pt-2 pb-4 overflow-y-auto overflow-x-hidden">
-              <nav className="flex flex-col items-center space-y-3 px-2">
+        <div className="flex-1 pt-4 pb-4 overflow-y-auto overflow-x-hidden">
+              <nav className="flex flex-col items-center space-y-2 px-2">
                 {navigationItems.map((item) => (
                   <Link
                     key={item.name}
@@ -462,13 +462,16 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                     title={item.name}
                     className={`${
                       item.current
-                        ? 'bg-purple-100 rounded-lg'
-                        : 'hover:bg-gray-300 rounded-lg'
-                    } group flex items-center justify-center w-12 h-12 transition-all duration-200 ease-in-out`}
+                        ? 'bg-gradient-to-r from-primary-50 to-primary-100 rounded-xl'
+                        : 'hover:bg-gray-100 rounded-xl'
+                    } group flex items-center justify-center w-12 h-12 transition-all duration-200 ease-in-out relative`}
                   >
-                    <div className={`${item.current ? 'text-purple-700' : 'text-gray-600 group-hover:text-gray-800'} transition-colors duration-200 [&>svg]:w-6 [&>svg]:h-6`}>
+                    <div className={`${item.current ? 'text-primary-600' : 'text-gray-600 group-hover:text-gray-800'} transition-colors duration-200 [&>svg]:w-5 [&>svg]:h-5`}>
                       {item.icon}
                     </div>
+                    {item.current && (
+                      <div className="absolute right-0 w-1 h-6 bg-primary-600 rounded-l-full"></div>
+                    )}
                   </Link>
                 ))}
               </nav>
@@ -480,7 +483,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
             <img 
               src={photoPreview || user?.photo_url} 
               alt="Profile" 
-              className="h-10 w-10 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-gray-400 transition-all"
+              className="h-10 w-10 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-primary-300 transition-all shadow-sm"
               data-profile-icon
               onClick={(e) => {
                 e.stopPropagation();
@@ -489,14 +492,14 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
             />
           ) : (
             <div 
-              className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-gray-400 transition-all"
+              className="h-10 w-10 rounded-full bg-gray-100 flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-primary-300 transition-all shadow-sm"
               data-profile-icon
               onClick={(e) => {
                 e.stopPropagation();
                 setProfileDropdownOpen(!profileDropdownOpen);
               }}
             >
-              <User className="h-6 w-6 text-gray-600" />
+              <User className="h-5 w-5 text-gray-600" />
             </div>
           )}
         </div>
@@ -540,7 +543,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
         )}
 
       {/* Main content */}
-      <div className="flex flex-col h-screen bg-gray-50 ml-16 overflow-hidden">
+      <div className="flex flex-col h-screen bg-gray-150 ml-16 overflow-hidden">
         {/* Top navigation */}
         <div className="flex-shrink-0 flex h-16 bg-white shadow-md border-b border-gray-300 z-10">
           <div className="flex-1 px-4 flex justify-between">
@@ -548,7 +551,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
               <div className="w-full flex md:ml-0">
                 <div className="relative w-full text-gray-400 focus-within:text-gray-600">
                   <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none">
-                    <span className="text-xl lg:text-2xl font-semibold text-gray-900">{title}</span>
+                    <span className="text-xl lg:text-2xl font-semibold text-gray-900" style={{ fontFamily: 'Intel, sans-serif' }}>{title}</span>
                   </div>
                 </div>
               </div>

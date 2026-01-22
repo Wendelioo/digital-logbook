@@ -112,6 +112,15 @@ function DashboardOverview() {
 
   return (
     <div className="space-y-6">
+<<<<<<< HEAD
+=======
+      {/* Welcome Header */}
+      <div className="bg-gradient-to-r from-blue-900 to-blue-800 rounded-lg shadow-lg p-6 text-white">
+        <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.first_name || user?.name}!</h1>
+        <p className="text-blue-100">Here's an overview of your attendance and activity</p>
+      </div>
+
+>>>>>>> f3390aa (Describe what you changed)
       {/* Last Login Information */}
       {lastLogin && (
         <div className="bg-white shadow-md rounded-lg border border-gray-200 overflow-hidden">
