@@ -146,6 +146,8 @@ export function GetTeacherDashboard(arg1:number):Promise<main.TeacherDashboard>;
 
 export function GetTeacherID(arg1:number):Promise<number>;
 
+export function GetTeacherLoginLogs(arg1:number):Promise<Array<main.LoginLog>>;
+
 export function GetUsers():Promise<Array<main.User>>;
 
 export function GetUsersByType(arg1:string):Promise<Array<main.User>>;

@@ -38,6 +38,7 @@ import {
   CreateUsersBulk,
   CreateUsersBulkFromFile
 } from '../../wailsjs/go/main/App';
+import WorkingStudentLoginHistory from './WorkingStudentLoginHistory';
 import { useAuth } from '../contexts/AuthContext';
 import { main } from '../../wailsjs/go/models';
 
@@ -133,6 +134,20 @@ function DashboardOverview() {
           </div>
           <div className="ml-3">
             <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">Student Management</h3>
+          </div>
+        </Link>
+        <Link
+          to="login-history"
+          className="group flex items-center p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200"
+        >
+          <div className="flex-shrink-0">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
+              <Clock className="h-5 w-5 text-white" />
+            </div>
+          </div>
+          <div className="ml-3">
+            <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">View Login History</h3>
+            <p className="text-sm text-gray-500">View your login and logout records</p>
           </div>
         </Link>
       </div>
@@ -1790,6 +1805,7 @@ function WorkingStudentDashboard() {
   const navigationItems = [
     { name: 'Dashboard', href: '/working-student', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/working-student' },
     { name: 'Student Management', href: '/working-student/manage-users', icon: <Users className="h-5 w-5" />, current: location.pathname === '/working-student/manage-users' },
+    { name: 'Login History', href: '/working-student/login-history', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/working-student/login-history' },
     { name: 'Equipment Reports', href: '/working-student/equipment-reports', icon: <BarChart3 className="h-5 w-5" />, current: location.pathname === '/working-student/equipment-reports' },
   ];
 
@@ -1798,6 +1814,7 @@ function WorkingStudentDashboard() {
       <Routes>
         <Route index element={<DashboardOverview />} />
         <Route path="manage-users" element={<ManageUsers />} />
+        <Route path="login-history" element={<WorkingStudentLoginHistory />} />
         <Route path="equipment-reports" element={<EquipmentReports />} />
       </Routes>
     </Layout>
