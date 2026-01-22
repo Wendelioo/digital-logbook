@@ -151,11 +151,6 @@ function DashboardOverview() {
 
   return (
     <div className="p-6">
-      {/* Welcome Message */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Welcome, {user?.first_name || user?.name || 'Teacher'}!</h1>
-      </div>
-
       {/* Error Message */}
       {error && (
         <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md">
@@ -3399,7 +3394,7 @@ function TeacherDashboard() {
   ];
 
   return (
-    <Layout navigationItems={navigationItems} title="Teacher Dashboard">
+    <Layout navigationItems={navigationItems}>
       <Routes>
         <Route index element={<DashboardOverview />} />
         <Route path="class-management" element={<ClassManagement />} />
