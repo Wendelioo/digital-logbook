@@ -16,7 +16,7 @@ import LogoutFeedbackModal from './LogoutFeedbackModal';
 interface LayoutProps {
   children: React.ReactNode;
   navigationItems: NavigationItem[];
-  title: string;
+  title?: string;
 }
 
 interface NavigationItem {
