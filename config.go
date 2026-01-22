@@ -23,8 +23,8 @@ func GetDBConfig() DBConfig {
 	return DBConfig{
 		Host:     getEnv("DB_HOST", "localhost"),
 		Port:     getEnv("DB_PORT", "3306"),
-		Username: getEnv("DB_USERNAME", "root"),
-		Password: getEnv("DB_PASSWORD", "root"),
+		Username: getEnv("DB_USERNAME", "computerlab"),
+		Password: getEnv("DB_PASSWORD", "computer123"),
 		Database: getEnv("DB_DATABASE", "logbookdb"),
 	}
 }
