@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Button from '../components/Button';
+import { Card, CardHeader, CardBody, StatCard } from '../components/Card';
+import Table from '../components/Table';
+import { Badge, StatusBadge } from '../components/Badge';
 import { 
   LayoutDashboard, 
   UserPlus, 
@@ -94,27 +97,12 @@ function DashboardOverview() {
     <div>
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                  <Users className="h-5 w-5 text-white" />
-                </div>
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Students Registered
-                  </dt>
-                  <dd className="text-3xl font-bold text-gray-900">
-                    {stats.students_registered}
-                  </dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          title="Students Registered"
+          value={stats.students_registered}
+          icon={<Users className="h-6 w-6" />}
+          color="blue"
+        />
       </div>
 
       {/* Quick Actions */}

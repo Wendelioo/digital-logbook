@@ -2,6 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Button from '../components/Button';
+import { Card, CardHeader, CardBody, StatCard } from '../components/Card';
+import Table from '../components/Table';
+import { FormGroup, FormRow, InputField, SelectField } from '../components/Form';
+import { Badge, StatusBadge } from '../components/Badge';
+import Modal from '../components/Modal';
 import {
   LayoutDashboard,
   Users,
@@ -153,33 +158,6 @@ function DashboardOverview() {
     return () => clearInterval(refreshInterval);
   }, []);
 
-  const statCards = [
-    {
-      title: 'Total Students',
-      value: stats.total_students,
-      color: 'bg-blue-500',
-      icon: <Users className="h-8 w-8" />
-    },
-    {
-      title: 'Teachers',
-      value: stats.total_teachers,
-      color: 'bg-green-500',
-      icon: <Users className="h-8 w-8" />
-    },
-    {
-      title: 'Working Students',
-      value: stats.working_students,
-      color: 'bg-purple-500',
-      icon: <Users className="h-8 w-8" />
-    },
-    {
-      title: 'Recent Logins',
-      value: stats.recent_logins,
-      color: 'bg-orange-500',
-      icon: <ClipboardList className="h-8 w-8" />
-    }
-  ];
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -191,57 +169,60 @@ function DashboardOverview() {
   return (
     <div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statCards.map((card, index) => (
-          <div key={index} className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className={`${card.color} rounded-md p-3 text-white`}>
-                    {card.icon}
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      {card.title}
-                    </dt>
-                    <dd className="text-3xl font-bold text-gray-900">
-                      {card.value}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
+        <StatCard
+          title="Total Students"
+          value={stats.total_students}
+          icon={<Users className="h-6 w-6" />}
+          color="blue"
+        />
+        <StatCard
+          title="Teachers"
+          value={stats.total_teachers}
+          icon={<Users className="h-6 w-6" />}
+          color="green"
+        />
+        <StatCard
+          title="Working Students"
+          value={stats.working_students}
+          icon={<Users className="h-6 w-6" />}
+          color="indigo"
+        />
+        <StatCard
+          title="Recent Logins"
+          value={stats.recent_logins}
+          icon={<ClipboardList className="h-6 w-6" />}
+          color="yellow"
+        />
       </div>
 
-      <div className="mt-8 bg-white shadow rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Link
-            to="users"
-            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <UserPlus className="h-6 w-6 text-primary-600 mr-3" />
-            <span className="text-gray-900">Manage Users</span>
-          </Link>
-          <Link
-            to="logs"
-            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <ClipboardList className="h-6 w-6 text-primary-600 mr-3" />
-            <span className="text-gray-900">View Logs</span>
-          </Link>
-          <Link
-            to="reports"
-            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <FileText className="h-6 w-6 text-primary-600 mr-3" />
-            <span className="text-gray-900">Export Reports</span>
-          </Link>
-        </div>
-      </div>
+      <Card className="mt-8">
+        <CardHeader title="Quick Actions" />
+        <CardBody>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Link
+              to="users"
+              className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <UserPlus className="h-6 w-6 text-primary-600 mr-3" />
+              <span className="text-gray-900">Manage Users</span>
+            </Link>
+            <Link
+              to="logs"
+              className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <ClipboardList className="h-6 w-6 text-primary-600 mr-3" />
+              <span className="text-gray-900">View Logs</span>
+            </Link>
+            <Link
+              to="reports"
+              className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <FileText className="h-6 w-6 text-primary-600 mr-3" />
+              <span className="text-gray-900">Export Reports</span>
+            </Link>
+          </div>
+        </CardBody>
+      </Card>
     </div>
   );
 }
@@ -620,37 +601,39 @@ function UserManagement() {
 
       {/* Notification */}
       {notification && (
-        <div className={`fixed top-4 right-4 z-50 max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out ${notification.type === 'success' ? 'border-l-4 border-green-400' : 'border-l-4 border-red-400'
+        <div className="fixed top-4 right-4 z-50 max-w-sm">
+          <div className={`bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out animate-slideIn ${
+            notification.type === 'success' ? 'border-l-4 border-success-500' : 'border-l-4 border-danger-500'
           }`}>
-          <div className="p-4">
-            <div className="flex items-start">
-              <div className="flex-shrink-0">
-                {notification.type === 'success' ? (
-                  <svg className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                ) : (
-                  <svg className="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                )}
-              </div>
-              <div className="ml-3 w-0 flex-1 pt-0.5">
-                <p className={`text-sm font-medium ${notification.type === 'success' ? 'text-green-800' : 'text-red-800'
+            <div className="p-4">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  {notification.type === 'success' ? (
+                    <svg className="h-6 w-6 text-success-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ) : (
+                    <svg className="h-6 w-6 text-danger-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )}
+                </div>
+                <div className="ml-3 w-0 flex-1 pt-0.5">
+                  <p className={`text-sm font-medium ${
+                    notification.type === 'success' ? 'text-success-800' : 'text-danger-800'
                   }`}>
-                  {notification.message}
-                </p>
-              </div>
-              <div className="ml-4 flex-shrink-0 flex">
-                <button
-                  className="bg-white rounded-md inline-flex text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  onClick={() => setNotification(null)}
-                >
-                  <span className="sr-only">Close</span>
-                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                  </svg>
-                </button>
+                    {notification.message}
+                  </p>
+                </div>
+                <div className="ml-4 flex-shrink-0 flex">
+                  <button
+                    className="bg-white rounded-md inline-flex text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    onClick={() => setNotification(null)}
+                  >
+                    <span className="sr-only">Close</span>
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -658,22 +641,167 @@ function UserManagement() {
       )}
 
       {/* User Form Modal */}
-      {showForm && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowForm(false);
-              setEditingUser(null);
-              setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', year: '', section: '', email: '', contactNumber: '', departmentCode: '' });
-              setAvatarFile(null);
-              setAvatarPreview(null);
-            }
-          }}
-        >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 relative max-h-[90vh] flex flex-col">
-            {/* Close Button */}
-            <button
+      <Modal
+        isOpen={showForm}
+        onClose={() => {
+          setShowForm(false);
+          setEditingUser(null);
+          setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', year: '', section: '', email: '', contactNumber: '', departmentCode: '' });
+          setAvatarFile(null);
+          setAvatarPreview(null);
+        }}
+        title={editingUser ? `Edit ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}` : `Add ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}`}
+        size="lg"
+      >
+        <form onSubmit={handleSubmit}>
+          <FormGroup>
+            {/* Role Selection - Hidden if editing */}
+            {!editingUser && (
+              <SelectField
+                label="Role"
+                value={formData.role}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                options={[
+                  { value: 'teacher', label: 'Teacher' },
+                  { value: 'student', label: 'Student' },
+                  { value: 'working_student', label: 'Working Student' }
+                ]}
+              />
+            )}
+
+            <FormRow columns={2}>
+              {/* Personal Information */}
+              <InputField
+                label="First Name"
+                value={formData.firstName}
+                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                required
+              />
+              <InputField
+                label="Middle Name"
+                value={formData.middleName}
+                onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
+              />
+              <InputField
+                label="Last Name"
+                value={formData.lastName}
+                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                required
+              />
+              <InputField
+                label="Contact Number"
+                type="tel"
+                value={formData.contactNumber}
+                onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
+                placeholder="09789436123"
+              />
+            </FormRow>
+
+            <FormRow columns={2}>
+              {/* Account Information */}
+              {formData.role === 'teacher' && (
+                <SelectField
+                  label="Department"
+                  value={formData.departmentCode}
+                  onChange={(e) => setFormData({ ...formData, departmentCode: e.target.value })}
+                  options={[
+                    { value: '', label: 'Please Select Here' },
+                    ...departments.filter(dept => dept.is_active).map(dept => ({
+                      value: dept.department_code,
+                      label: `${dept.department_code} - ${dept.department_name}`
+                    }))
+                  ]}
+                />
+              )}
+              <InputField
+                label="Email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
+              <InputField
+                label="Username"
+                value={formData.role === 'teacher' ? formData.employeeId : formData.studentId}
+                onChange={(e) => {
+                  if (formData.role === 'teacher') {
+                    setFormData({ ...formData, employeeId: e.target.value, password: e.target.value });
+                  } else {
+                    setFormData({ ...formData, studentId: e.target.value, password: e.target.value });
+                  }
+                }}
+                required
+                placeholder={formData.role === 'teacher' ? 'Teacher ID' : 'Student ID'}
+              />
+              <InputField
+                label="Password"
+                type={showPassword ? "text" : "password"}
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                required={!editingUser}
+                icon={
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                }
+              />
+              <InputField
+                label="Confirm Password"
+                type={showConfirmPassword ? "text" : "password"}
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                required={!editingUser}
+                icon={
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="text-gray-500 hover:text-gray-700"
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                }
+              />
+            </FormRow>
+
+            {/* User Avatar */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">User Avatar</label>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    id="avatar-upload"
+                    accept="image/*"
+                    onChange={handleAvatarChange}
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="avatar-upload"
+                    className="px-4 py-2 bg-gray-100 border border-gray-300 rounded-md text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-200"
+                  >
+                    Choose File
+                  </label>
+                  <span className="text-sm text-gray-500">
+                    {avatarFile ? avatarFile.name : 'No file chosen'}
+                  </span>
+                </div>
+                <div className="w-full h-32 bg-gray-100 rounded-md flex items-center justify-center overflow-hidden border border-gray-200">
+                  {avatarPreview ? (
+                    <img src={avatarPreview} alt="Avatar preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="text-gray-400 text-sm">No image selected</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </FormGroup>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-3 mt-6">
+            <Button
               type="button"
               onClick={() => {
                 setShowForm(false);
@@ -682,246 +810,19 @@ function UserManagement() {
                 setAvatarFile(null);
                 setAvatarPreview(null);
               }}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold transition-colors z-10"
+              variant="secondary"
             >
-              ×
-            </button>
-
-            {/* Header */}
-            <div className="p-4 pb-3 flex-shrink-0 border-b border-gray-200">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <Plus className="h-5 w-5" />
-                {editingUser ? `Edit ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}` : `Add ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}`}
-              </h3>
-            </div>
-
-            <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
-              <div className="p-4">
-                {/* Role Selection - Hidden if editing */}
-                {!editingUser && (
-                  <div className="mb-4">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Role</label>
-                    <select
-                      value={formData.role}
-                      onChange={(e) => {
-                        const newRole = e.target.value;
-                        setFormData({
-                          ...formData,
-                          role: newRole
-                        });
-                      }}
-                      className="w-full max-w-xs px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="teacher">Teacher</option>
-                      <option value="student">Student</option>
-                      <option value="working_student">Working Student</option>
-                    </select>
-                  </div>
-                )}
-
-                {/* Two Column Layout */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Left Column - Personal Information */}
-                  <div className="space-y-3">
-                    <h4 className="text-xs font-semibold text-gray-700 mb-3">Personal Information</h4>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">First Name</label>
-                      <input
-                        type="text"
-                        value={formData.firstName}
-                        onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Middle Name</label>
-                      <input
-                        type="text"
-                        value={formData.middleName}
-                        onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Last Name</label>
-                      <input
-                        type="text"
-                        value={formData.lastName}
-                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Contact</label>
-                      <input
-                        type="tel"
-                        value={formData.contactNumber}
-                        onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="09789436123"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Right Column - Account Information and Avatar */}
-                  <div className="space-y-3">
-                    <h4 className="text-xs font-semibold text-gray-700 mb-3">Account Information</h4>
-
-                    {formData.role === 'teacher' ? (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
-                        <select
-                          value={formData.departmentCode}
-                          onChange={(e) => setFormData({ ...formData, departmentCode: e.target.value })}
-                          className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        >
-                          <option value="">Please Select Here</option>
-                          {departments.filter(dept => dept.is_active).map((dept) => (
-                            <option key={dept.department_code} value={dept.department_code}>
-                              {dept.department_code} - {dept.department_name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : null}
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Username</label>
-                      <input
-                        type="text"
-                        value={formData.role === 'teacher' ? formData.employeeId : formData.studentId}
-                        onChange={(e) => {
-                          if (formData.role === 'teacher') {
-                            setFormData({ ...formData, employeeId: e.target.value, password: e.target.value });
-                          } else {
-                            setFormData({ ...formData, studentId: e.target.value, password: e.target.value });
-                          }
-                        }}
-                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                        placeholder={formData.role === 'teacher' ? 'Teacher ID' : 'Student ID'}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Password</label>
-                      <div className="relative">
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          value={formData.password}
-                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                          className="w-full px-2.5 py-1.5 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          required={!editingUser}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                        >
-                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Confirm Password</label>
-                      <div className="relative">
-                        <input
-                          type={showConfirmPassword ? "text" : "password"}
-                          value={formData.confirmPassword}
-                          onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                          className="w-full px-2.5 py-1.5 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          required={!editingUser}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                        >
-                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* User Avatar */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">User Avatar</label>
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="file"
-                            id="avatar-upload"
-                            accept="image/*"
-                            onChange={handleAvatarChange}
-                            className="hidden"
-                          />
-                          <label
-                            htmlFor="avatar-upload"
-                            className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-200"
-                          >
-                            Choose File
-                          </label>
-                          <span className="text-xs text-gray-500">
-                            {avatarFile ? avatarFile.name : 'No file chosen'}
-                          </span>
-                        </div>
-                        <div className="w-full h-32 bg-gray-200 rounded-md flex items-center justify-center overflow-hidden">
-                          {avatarPreview ? (
-                            <img src={avatarPreview} alt="Avatar preview" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="text-gray-400 text-xs">No image selected</div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="border-t border-gray-200 p-4 flex justify-end gap-3">
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setShowForm(false);
-                    setEditingUser(null);
-                    setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', year: '', section: '', email: '', contactNumber: '', departmentCode: '' });
-                    setAvatarFile(null);
-                    setAvatarPreview(null);
-                  }}
-                  variant="secondary"
-                  size="sm"
-                >
-                  CANCEL
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="sm"
-                >
-                  SAVE
-                </Button>
-              </div>
-            </form>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+            >
+              {editingUser ? 'Update' : 'Create'}
+            </Button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
       {error && (
         <div className="mb-4 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md">
@@ -937,119 +838,113 @@ function UserManagement() {
         departmentName={undefined}
       />
 
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-          <div className="text-sm text-gray-600">
-            Show <select
-              value={entriesPerPage}
-              onChange={(e) => {
-                setEntriesPerPage(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="border border-gray-300 rounded px-2 py-1 mx-1"
-            >
-              <option value="10">10</option>
-              <option value="25">25</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-            </select> entries
-          </div>
-          <div className="flex items-center gap-4">
-            <select
-              value={userTypeFilter}
-              onChange={(e) => setUserTypeFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            >
-              <option value="">All Users</option>
-              <option value="teacher">Teacher</option>
-              <option value="student">Student</option>
-              <option value="working_student">Working Student</option>
-            </select>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <div className="max-h-[60vh] overflow-y-auto">
-            {currentUsers.length > 0 ? (
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-blue-600 sticky top-0 z-10">
-                  <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                      User ID
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                      Full Name
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                      User Type
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {currentUsers.map((user, index) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {user.employee_id || user.student_id || user.name || '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {user.first_name && user.last_name
-                          ? `${user.last_name}, ${user.first_name}${user.middle_name ? ' ' + user.middle_name : ''}`
-                          : user.name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {user.role.replace('_', ' ')}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            onClick={() => setViewingUser(user)}
-                            variant="outline"
-                            size="sm"
-                            icon={<Eye className="h-3 w-3" />}
-                            title="View"
-                            className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                          />
-                          <Button
-                            onClick={() => handleEdit(user)}
-                            variant="primary"
-                            size="sm"
-                            icon={<Edit className="h-3 w-3" />}
-                            title="Edit"
-                          />
-                          <Button
-                            onClick={() => handleDelete(user.id)}
-                            variant="danger"
-                            size="sm"
-                            icon={<Trash2 className="h-3 w-3" />}
-                            title="Delete"
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div className="px-6 py-12 text-center">
-                <p className="text-gray-500">No data available.</p>
+      <Card>
+        <CardHeader 
+          title="User Management"
+          action={
+            <>
+              <div className="text-sm text-gray-600">
+                Show <select
+                  value={entriesPerPage}
+                  onChange={(e) => {
+                    setEntriesPerPage(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="border border-gray-300 rounded px-2 py-1 mx-1"
+                >
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select> entries
               </div>
-            )}
-          </div>
-        </div>
+              <div className="flex items-center gap-4">
+                <select
+                  value={userTypeFilter}
+                  onChange={(e) => setUserTypeFilter(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="">All Users</option>
+                  <option value="teacher">Teacher</option>
+                  <option value="student">Student</option>
+                  <option value="working_student">Working Student</option>
+                </select>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+            </>
+          }
+        />
+        <CardBody className="p-0">
+          <Table
+            columns={[
+              {
+                key: 'user_id',
+                label: 'User ID',
+                render: (user: User) => user.employee_id || user.student_id || user.name || '-'
+              },
+              {
+                key: 'name',
+                label: 'Full Name',
+                sortable: true,
+                render: (user: User) => user.first_name && user.last_name
+                  ? `${user.last_name}, ${user.first_name}${user.middle_name ? ' ' + user.middle_name : ''}`
+                  : user.name
+              },
+              {
+                key: 'role',
+                label: 'User Type',
+                sortable: true,
+                render: (user: User) => (
+                  <StatusBadge
+                    status={user.role === 'teacher' ? 'success' : user.role === 'student' ? 'active' : 'pending'}
+                    label={user.role.replace('_', ' ')}
+                  />
+                )
+              },
+              {
+                key: 'action',
+                label: 'Action',
+                render: (user: User) => (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={() => setViewingUser(user)}
+                      variant="outline"
+                      size="sm"
+                      icon={<Eye className="h-3 w-3" />}
+                      title="View"
+                    />
+                    <Button
+                      onClick={() => handleEdit(user)}
+                      variant="primary"
+                      size="sm"
+                      icon={<Edit className="h-3 w-3" />}
+                      title="Edit"
+                    />
+                    <Button
+                      onClick={() => handleDelete(user.id)}
+                      variant="danger"
+                      size="sm"
+                      icon={<Trash2 className="h-3 w-3" />}
+                      title="Delete"
+                    />
+                  </div>
+                )
+              }
+            ]}
+            data={currentUsers}
+            loading={loading}
+            emptyMessage="No users found"
+          />
+        </CardBody>
         {currentUsers.length > 0 && (
           <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center">
             <div className="text-sm text-gray-600">
@@ -1081,7 +976,7 @@ function UserManagement() {
             </div>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

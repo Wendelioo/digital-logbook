@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Button from '../components/Button';
+import { Card, CardHeader, CardBody, StatCard } from '../components/Card';
+import Table from '../components/Table';
+import { Badge, StatusBadge } from '../components/Badge';
 import {
   LayoutDashboard,
   Users,
@@ -167,45 +170,18 @@ function DashboardOverview() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Library className="h-8 w-8 text-blue-600" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Active Classes
-                  </dt>
-                  <dd className="text-3xl font-bold text-gray-900">
-                    {activeClasses}
-                  </dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Users className="h-8 w-8 text-purple-600" />
-              </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Total Students
-                  </dt>
-                  <dd className="text-3xl font-bold text-gray-900">
-                    {totalStudents}
-                  </dd>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </div>
+        <StatCard
+          title="Active Classes"
+          value={activeClasses}
+          icon={<Library className="h-6 w-6" />}
+          color="blue"
+        />
+        <StatCard
+          title="Total Students"
+          value={totalStudents}
+          icon={<Users className="h-6 w-6" />}
+          color="green"
+        />
       </div>
 
       {/* Quick Actions */}

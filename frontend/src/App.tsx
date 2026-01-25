@@ -2,10 +2,10 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
-import AdminDashboard from './pages/AdminDashboard';
-import TeacherDashboard from './pages/TeacherDashboard';
-import StudentDashboard from './pages/StudentDashboard';
-import WorkingStudentDashboard from './pages/WorkingStudentDashboard';
+import Admin from './pages/Admin';
+import Teacher from './pages/Teacher';
+import Student from './pages/Student';
+import WorkingStudent from './pages/WorkingStudent';
 import './style.css';
 
 // Inner routes component that uses auth context
@@ -41,7 +41,7 @@ function AppRoutes() {
             element={
               <ProtectedRoute>
                 <RoleRoute allowedRoles={['admin']}>
-                  <AdminDashboard />
+                  <Admin />
                 </RoleRoute>
               </ProtectedRoute>
             } 
@@ -51,7 +51,7 @@ function AppRoutes() {
             element={
               <ProtectedRoute>
                 <RoleRoute allowedRoles={['teacher']}>
-                  <TeacherDashboard />
+                  <Teacher />
                 </RoleRoute>
               </ProtectedRoute>
             } 
@@ -61,7 +61,7 @@ function AppRoutes() {
             element={
               <ProtectedRoute>
                 <RoleRoute allowedRoles={['student']}>
-                  <StudentDashboard />
+                  <Student />
                 </RoleRoute>
               </ProtectedRoute>
             } 
@@ -71,7 +71,7 @@ function AppRoutes() {
             element={
               <ProtectedRoute>
                 <RoleRoute allowedRoles={['working_student']}>
-                  <WorkingStudentDashboard />
+                  <WorkingStudent />
                 </RoleRoute>
               </ProtectedRoute>
             } 
