@@ -53,14 +53,14 @@ const Button: React.FC<ButtonProps> = ({
   const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none';
   
   const variantClasses = {
-    primary: 'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 focus:ring-primary-500 shadow-sm hover:shadow',
-    secondary: 'bg-gray-600 text-white hover:bg-gray-700 active:bg-gray-800 focus:ring-gray-500 shadow-sm hover:shadow',
-    danger: 'bg-danger-600 text-white hover:bg-danger-700 active:bg-danger-800 focus:ring-danger-500 shadow-sm hover:shadow',
-    success: 'bg-success-600 text-white hover:bg-success-700 active:bg-success-800 focus:ring-success-500 shadow-sm hover:shadow',
-    warning: 'bg-warning-600 text-white hover:bg-warning-700 active:bg-warning-800 focus:ring-warning-500 shadow-sm hover:shadow',
-    outline: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 active:bg-gray-100 focus:ring-primary-500 shadow-sm',
-    ghost: 'text-gray-700 hover:bg-gray-100 active:bg-gray-200 focus:ring-gray-300',
-    link: 'text-primary-600 hover:text-primary-700 underline-offset-4 hover:underline focus:ring-primary-500',
+    primary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900 active:bg-gray-100 focus:ring-gray-400 shadow-sm',
+    secondary: 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:border-gray-300 hover:text-gray-800 active:bg-gray-100 focus:ring-gray-300 shadow-sm',
+    danger: 'bg-white text-danger-600 border border-danger-300 hover:bg-danger-50 hover:border-danger-400 hover:text-danger-700 active:bg-danger-100 focus:ring-danger-400 shadow-sm',
+    success: 'bg-white text-success-600 border border-success-300 hover:bg-success-50 hover:border-success-400 hover:text-success-700 active:bg-success-100 focus:ring-success-400 shadow-sm',
+    warning: 'bg-white text-warning-600 border border-warning-300 hover:bg-warning-50 hover:border-warning-400 hover:text-warning-700 active:bg-warning-100 focus:ring-warning-400 shadow-sm',
+    outline: 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-50 hover:text-gray-700 hover:border-gray-300 active:bg-gray-100 focus:ring-gray-300',
+    ghost: 'text-gray-600 hover:bg-gray-100 hover:text-gray-800 active:bg-gray-200 focus:ring-gray-300',
+    link: 'text-gray-600 hover:text-gray-800 underline-offset-4 hover:underline focus:ring-gray-400',
   };
   
   const sizeClasses = {

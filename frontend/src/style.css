@@ -93,6 +93,35 @@ body {
     .badge-gray {
         @apply bg-gray-100 text-gray-800;
     }
+    
+    /* Icon Color Utilities - White & Gray Theme */
+    .icon-neutral {
+        @apply text-gray-600;
+    }
+    
+    .icon-neutral-hover:hover {
+        @apply text-gray-800;
+    }
+    
+    .icon-muted {
+        @apply text-gray-400;
+    }
+    
+    .icon-primary {
+        @apply text-primary-600;
+    }
+    
+    .icon-success {
+        @apply text-success-600;
+    }
+    
+    .icon-danger {
+        @apply text-danger-600;
+    }
+    
+    .icon-warning {
+        @apply text-warning-600;
+    }
 }
 
 /* Fix for modal overlay issues */

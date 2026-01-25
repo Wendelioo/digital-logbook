@@ -6,7 +6,7 @@ import { CreateUser, GetDepartments } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
 import Button from '../components/Button';
 import { InputField } from '../components/Form';
-import backgroundImage from '../../../assets/background/background.jpg';
+import backgroundImage from '../assets/background/background.jpg';
 
 type Department = main.Department;
 

@@ -510,7 +510,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
           onClick={(e) => e.stopPropagation()}
         >
           {/* User Info Header */}
-          <div className="px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700">
+          <div className="px-4 py-3 bg-gradient-to-r from-gray-700 to-gray-800">
             <div className="flex items-center space-x-3">
               {user?.photo_url || photoPreview ? (
                 <img 
@@ -525,7 +525,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
               )}
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-white truncate">{user?.first_name || user?.name || 'User'}</div>
-                <div className="text-xs text-blue-100 capitalize">{user?.role?.replace('_', ' ') || 'Role'}</div>
+                <div className="text-xs text-gray-300 capitalize">{user?.role?.replace('_', ' ') || 'Role'}</div>
               </div>
             </div>
           </div>
@@ -534,7 +534,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
           <div className="py-1">
             <button
               type="button"
-              className="flex items-center w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 text-left transition-colors"
+              className="flex items-center w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 text-left transition-colors"
               onClick={(e) => {
                 e.stopPropagation();
                 setShowAccountModal(true);
@@ -600,7 +600,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
         >
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[calc(100vh-2rem)] flex flex-col z-[10001] my-4">
             {/* Modal Header - Fixed */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 py-5 flex justify-between items-center flex-shrink-0 rounded-t-xl">
+            <div className="bg-gradient-to-r from-gray-700 to-gray-800 px-8 py-5 flex justify-between items-center flex-shrink-0 rounded-t-xl">
               <div className="flex items-center space-x-3">
                 <div className="bg-white/20 p-2 rounded-lg">
                   <Settings className="h-6 w-6 text-white" />
@@ -625,7 +625,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                   onClick={() => setActiveTab('profile')}
                   className={`py-4 px-6 border-b-3 font-semibold text-sm transition-all ${
                     activeTab === 'profile'
-                      ? 'border-blue-600 text-blue-700 bg-white'
+                      ? 'border-gray-700 text-gray-900 bg-white'
                       : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-100'
                   }`}
                 >
@@ -638,7 +638,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                   onClick={() => setActiveTab('password')}
                   className={`py-4 px-6 border-b-3 font-semibold text-sm transition-all ${
                     activeTab === 'password'
-                      ? 'border-blue-600 text-blue-700 bg-white'
+                      ? 'border-gray-700 text-gray-900 bg-white'
                       : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-100'
                   }`}
                 >
@@ -687,14 +687,14 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                               <img 
                                 src={photoPreview} 
                                 alt="Profile" 
-                                className="h-20 w-20 rounded-full object-cover border-4 border-blue-100 shadow-md"
+                                className="h-20 w-20 rounded-full object-cover border-4 border-gray-200 shadow-md"
                               />
                             ) : (
-                              <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center border-4 border-blue-100 shadow-md">
-                                <User className="h-10 w-10 text-blue-600" />
+                              <div className="h-20 w-20 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center border-4 border-gray-200 shadow-md">
+                                <User className="h-10 w-10 text-gray-600" />
                               </div>
                             )}
-                            <div className="absolute bottom-0 right-0 bg-blue-600 rounded-full p-1.5 shadow-lg">
+                            <div className="absolute bottom-0 right-0 bg-gray-700 rounded-full p-1.5 shadow-lg">
                               <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -717,7 +717,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                               <button
                                 type="button"
                                 onClick={() => fileInputRef.current?.click()}
-                                className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
+                                className="px-4 py-2 bg-white text-gray-700 border border-gray-300 text-sm rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors font-medium shadow-sm"
                               >
                                 Choose Photo
                               </button>
@@ -781,7 +781,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                               onChange={(e) => editingProfile && setProfileFormData({ ...profileFormData, lastName: e.target.value })}
                               className={`w-full px-4 py-2.5 border rounded-lg ${
                                 editingProfile 
-                                  ? 'border-blue-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent' 
+                                  ? 'border-gray-300 bg-white focus:ring-2 focus:ring-gray-500 focus:border-transparent' 
                                   : 'border-gray-300 bg-gray-50 text-gray-600'
                               }`}
                               disabled={!editingProfile}
@@ -798,7 +798,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                               onChange={(e) => editingProfile && setProfileFormData({ ...profileFormData, firstName: e.target.value })}
                               className={`w-full px-4 py-2.5 border rounded-lg ${
                                 editingProfile 
-                                  ? 'border-blue-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent' 
+                                  ? 'border-gray-300 bg-white focus:ring-2 focus:ring-gray-500 focus:border-transparent' 
                                   : 'border-gray-300 bg-gray-50 text-gray-600'
                               }`}
                               disabled={!editingProfile}
@@ -815,7 +815,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                               onChange={(e) => editingProfile && setProfileFormData({ ...profileFormData, middleName: e.target.value })}
                               className={`w-full px-4 py-2.5 border rounded-lg ${
                                 editingProfile 
-                                  ? 'border-blue-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent' 
+                                  ? 'border-gray-300 bg-white focus:ring-2 focus:ring-gray-500 focus:border-transparent' 
                                   : 'border-gray-300 bg-gray-50 text-gray-600'
                               }`}
                               disabled={!editingProfile}
@@ -838,7 +838,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                               onChange={(e) => editingProfile && setProfileFormData({ ...profileFormData, contactNumber: e.target.value })}
                               className={`w-full px-4 py-2.5 border rounded-lg ${
                                 editingProfile 
-                                  ? 'border-blue-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent' 
+                                  ? 'border-gray-300 bg-white focus:ring-2 focus:ring-gray-500 focus:border-transparent' 
                                   : 'border-gray-300 bg-gray-50 text-gray-600'
                               }`}
                               disabled={!editingProfile}
@@ -854,7 +854,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                               onChange={(e) => editingProfile && setProfileFormData({ ...profileFormData, email: e.target.value })}
                               className={`w-full px-4 py-2.5 border rounded-lg ${
                                 editingProfile 
-                                  ? 'border-blue-300 bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent' 
+                                  ? 'border-gray-300 bg-white focus:ring-2 focus:ring-gray-500 focus:border-transparent' 
                                   : 'border-gray-300 bg-gray-50 text-gray-600'
                               }`}
                               disabled={!editingProfile}
@@ -891,7 +891,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                           <button
                             type="submit"
                             disabled={savingProfile}
-                            className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-sm flex items-center space-x-2"
+                            className="px-6 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed shadow-sm flex items-center space-x-2"
                           >
                             {savingProfile ? (
                               <>
@@ -929,11 +929,11 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                                   className="h-20 w-20 rounded-full object-cover border-4 border-blue-100 shadow-md"
                                 />
                               ) : (
-                                <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center border-4 border-blue-100 shadow-md">
-                                  <User className="h-10 w-10 text-blue-600" />
+                                <div className="h-20 w-20 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center border-4 border-gray-200 shadow-md">
+                                  <User className="h-10 w-10 text-gray-600" />
                                 </div>
                               )}
-                              <div className="absolute bottom-0 right-0 bg-blue-600 rounded-full p-1.5 shadow-lg">
+                              <div className="absolute bottom-0 right-0 bg-gray-700 rounded-full p-1.5 shadow-lg">
                                 <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -955,7 +955,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                                 <button
                                   type="button"
                                   onClick={() => fileInputRef.current?.click()}
-                                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
+                                  className="px-4 py-2 bg-white text-gray-700 border border-gray-300 text-sm rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors font-medium shadow-sm"
                                 >
                                   Choose Photo
                                 </button>
@@ -964,7 +964,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                                     <button
                                       type="button"
                                       onClick={handlePhotoSave}
-                                      className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors font-medium shadow-sm"
+                                      className="px-4 py-2 bg-success-600 text-white border border-success-600 text-sm rounded-lg hover:bg-success-700 hover:border-success-700 transition-colors font-medium shadow-sm"
                                     >
                                       Save Photo
                                     </button>
@@ -1092,7 +1092,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                   <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
                     {/* Title */}
                     <div className="flex items-center space-x-3 mb-5">
-                      <div className="bg-blue-100 p-3 rounded-lg">
+                      <div className="bg-gray-100 p-3 rounded-lg">
                         <Lock className="h-6 w-6 text-blue-600" />
                       </div>
                       <h4 className="text-xl font-bold text-gray-900">Change Password</h4>
@@ -1131,7 +1131,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                           id="oldPassword"
                           value={oldPassword}
                           onChange={(e) => setOldPassword(e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent bg-white text-gray-900"
                           required
                         />
                       </div>
@@ -1146,7 +1146,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                           id="newPassword"
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent bg-white text-gray-900"
                           required
                         />
                       </div>
@@ -1161,7 +1161,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                           id="confirmPassword"
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent bg-white text-gray-900"
                           required
                         />
                       </div>
@@ -1169,7 +1169,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                       <div className="pt-2">
                         <button
                           type="submit"
-                          className="w-full px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-md hover:shadow-lg flex items-center justify-center space-x-2"
+                          className="w-full px-6 py-3 bg-gradient-to-r from-gray-700 to-gray-800 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-md hover:shadow-lg flex items-center justify-center space-x-2"
                         >
                           <Lock className="h-5 w-5" />
                           <span>Update Password</span>
@@ -1223,7 +1223,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                 <button
                   type="button"
                   onClick={handleLogoutConfirm}
-                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm shadow-md"
+                  className="flex-1 px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors font-medium text-sm shadow-sm"
                 >
                   Yes
                 </button>
