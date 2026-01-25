@@ -18,6 +18,345 @@ import (
 // LOGIN LOG QUERIES
 // ==============================================================================
 
+// GetTodayLogs returns only today's non-archived login logs
+func (a *App) GetTodayLogs() ([]LoginLog, error) {
+	if a.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	query := `
+		SELECT 
+			ll.id, 
+			ll.user_id, 
+			COALESCE(u.user_type, 'unknown') as user_type, 
+			ll.pc_number, 
+			ll.login_time, 
+			ll.logout_time,
+			COALESCE(
+				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
+					THEN CONCAT(s.last_name, ', ', s.first_name,
+						CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
+					ELSE NULL END,
+				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
+					THEN CONCAT(t.last_name, ', ', t.first_name,
+						CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
+					ELSE NULL END,
+				CASE WHEN a.last_name IS NOT NULL AND a.first_name IS NOT NULL
+					THEN CONCAT(a.last_name, ', ', a.first_name,
+						CASE WHEN a.middle_name IS NOT NULL THEN CONCAT(' ', a.middle_name) ELSE '' END)
+					ELSE NULL END,
+				u.username
+			) as full_name,
+			COALESCE(
+				s.student_number,
+				t.employee_number,
+				a.employee_number,
+				u.username
+			) as user_id_number
+		FROM login_logs ll
+		JOIN users u ON ll.user_id = u.id
+		LEFT JOIN students s ON u.id = s.user_id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.user_id AND u.user_type = 'teacher'
+		LEFT JOIN admins a ON u.id = a.user_id AND u.user_type = 'admin'
+		WHERE DATE(ll.login_time) = CURDATE()
+		AND (ll.is_archived = FALSE OR ll.is_archived IS NULL)
+		ORDER BY ll.login_time DESC
+	`
+
+	rows, err := a.db.Query(query)
+	if err != nil {
+		log.Printf("Error querying today's logs: %v", err)
+		return nil, fmt.Errorf("failed to query today's logs: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []LoginLog
+	for rows.Next() {
+		var logEntry LoginLog
+		var pcNumber sql.NullString
+		var loginTime time.Time
+		var logoutTime sql.NullTime
+		var userIDNumber sql.NullString
+
+		err := rows.Scan(&logEntry.ID, &logEntry.UserID, &logEntry.UserType, &pcNumber, &loginTime, &logoutTime, &logEntry.UserName, &userIDNumber)
+		if err != nil {
+			log.Printf("Error scanning today's log row: %v", err)
+			continue
+		}
+
+		logEntry.LoginTime = loginTime.Format("2006-01-02 15:04:05")
+		if pcNumber.Valid {
+			logEntry.PCNumber = &pcNumber.String
+		}
+		if logoutTime.Valid {
+			formattedLogoutTime := logoutTime.Time.Format("2006-01-02 15:04:05")
+			logEntry.LogoutTime = &formattedLogoutTime
+		}
+		if userIDNumber.Valid {
+			logEntry.UserIDNumber = userIDNumber.String
+		} else {
+			logEntry.UserIDNumber = logEntry.UserName
+		}
+
+		logs = append(logs, logEntry)
+	}
+
+	log.Printf("GetTodayLogs returning %d logs", len(logs))
+	return logs, nil
+}
+
+// GetPastLogs returns non-archived logs from previous days within a date range
+func (a *App) GetPastLogs(startDate, endDate string) ([]LoginLog, error) {
+	if a.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	query := `
+		SELECT 
+			ll.id, 
+			ll.user_id, 
+			COALESCE(u.user_type, 'unknown') as user_type, 
+			ll.pc_number, 
+			ll.login_time, 
+			ll.logout_time,
+			COALESCE(
+				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
+					THEN CONCAT(s.last_name, ', ', s.first_name,
+						CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
+					ELSE NULL END,
+				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
+					THEN CONCAT(t.last_name, ', ', t.first_name,
+						CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
+					ELSE NULL END,
+				CASE WHEN a.last_name IS NOT NULL AND a.first_name IS NOT NULL
+					THEN CONCAT(a.last_name, ', ', a.first_name,
+						CASE WHEN a.middle_name IS NOT NULL THEN CONCAT(' ', a.middle_name) ELSE '' END)
+					ELSE NULL END,
+				u.username
+			) as full_name,
+			COALESCE(
+				s.student_number,
+				t.employee_number,
+				a.employee_number,
+				u.username
+			) as user_id_number
+		FROM login_logs ll
+		JOIN users u ON ll.user_id = u.id
+		LEFT JOIN students s ON u.id = s.user_id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.user_id AND u.user_type = 'teacher'
+		LEFT JOIN admins a ON u.id = a.user_id AND u.user_type = 'admin'
+		WHERE DATE(ll.login_time) < CURDATE()
+		AND (ll.is_archived = FALSE OR ll.is_archived IS NULL)
+		AND DATE(ll.login_time) BETWEEN ? AND ?
+		ORDER BY ll.login_time DESC
+		LIMIT 1000
+	`
+
+	rows, err := a.db.Query(query, startDate, endDate)
+	if err != nil {
+		log.Printf("Error querying past logs: %v", err)
+		return nil, fmt.Errorf("failed to query past logs: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []LoginLog
+	for rows.Next() {
+		var logEntry LoginLog
+		var pcNumber sql.NullString
+		var loginTime time.Time
+		var logoutTime sql.NullTime
+		var userIDNumber sql.NullString
+
+		err := rows.Scan(&logEntry.ID, &logEntry.UserID, &logEntry.UserType, &pcNumber, &loginTime, &logoutTime, &logEntry.UserName, &userIDNumber)
+		if err != nil {
+			log.Printf("Error scanning past log row: %v", err)
+			continue
+		}
+
+		logEntry.LoginTime = loginTime.Format("2006-01-02 15:04:05")
+		if pcNumber.Valid {
+			logEntry.PCNumber = &pcNumber.String
+		}
+		if logoutTime.Valid {
+			formattedLogoutTime := logoutTime.Time.Format("2006-01-02 15:04:05")
+			logEntry.LogoutTime = &formattedLogoutTime
+		}
+		if userIDNumber.Valid {
+			logEntry.UserIDNumber = userIDNumber.String
+		} else {
+			logEntry.UserIDNumber = logEntry.UserName
+		}
+
+		logs = append(logs, logEntry)
+	}
+
+	log.Printf("GetPastLogs returning %d logs for range %s to %s", len(logs), startDate, endDate)
+	return logs, nil
+}
+
+// ArchiveSelectedLogs archives multiple logs at once
+func (a *App) ArchiveSelectedLogs(logIDs []int, archivedByUserID int) error {
+	if a.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	if len(logIDs) == 0 {
+		return fmt.Errorf("no log IDs provided")
+	}
+
+	// Build placeholders for IN clause
+	placeholders := make([]string, len(logIDs))
+	args := make([]interface{}, len(logIDs)+1)
+	args[0] = archivedByUserID
+	
+	for i, id := range logIDs {
+		placeholders[i] = "?"
+		args[i+1] = id
+	}
+
+	query := fmt.Sprintf(`
+		UPDATE login_logs 
+		SET is_archived = TRUE, 
+			archived_at = NOW(), 
+			archived_by_user_id = ?
+		WHERE id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	result, err := a.db.Exec(query, args...)
+	if err != nil {
+		log.Printf("Error archiving logs: %v", err)
+		return fmt.Errorf("failed to archive logs: %w", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("Archived %d log entries", rowsAffected)
+	return nil
+}
+
+// UnarchiveLogs restores archived logs back to active state
+func (a *App) UnarchiveLogs(logIDs []int) error {
+	if a.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	if len(logIDs) == 0 {
+		return fmt.Errorf("no log IDs provided")
+	}
+
+	placeholders := make([]string, len(logIDs))
+	args := make([]interface{}, len(logIDs))
+	
+	for i, id := range logIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		UPDATE login_logs 
+		SET is_archived = FALSE, 
+			archived_at = NULL, 
+			archived_by_user_id = NULL
+		WHERE id IN (%s)
+	`, strings.Join(placeholders, ","))
+
+	result, err := a.db.Exec(query, args...)
+	if err != nil {
+		log.Printf("Error unarchiving logs: %v", err)
+		return fmt.Errorf("failed to unarchive logs: %w", err)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("Unarchived %d log entries", rowsAffected)
+	return nil
+}
+
+// GetArchivedLogs returns all archived logs grouped by archive date
+func (a *App) GetArchivedLogs() ([]LoginLog, error) {
+	if a.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	query := `
+		SELECT 
+			ll.id, 
+			ll.user_id, 
+			COALESCE(u.user_type, 'unknown') as user_type, 
+			ll.pc_number, 
+			ll.login_time, 
+			ll.logout_time,
+			COALESCE(
+				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
+					THEN CONCAT(s.last_name, ', ', s.first_name,
+						CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
+					ELSE NULL END,
+				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
+					THEN CONCAT(t.last_name, ', ', t.first_name,
+						CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
+					ELSE NULL END,
+				CASE WHEN a.last_name IS NOT NULL AND a.first_name IS NOT NULL
+					THEN CONCAT(a.last_name, ', ', a.first_name,
+						CASE WHEN a.middle_name IS NOT NULL THEN CONCAT(' ', a.middle_name) ELSE '' END)
+					ELSE NULL END,
+				u.username
+			) as full_name,
+			COALESCE(
+				s.student_number,
+				t.employee_number,
+				a.employee_number,
+				u.username
+			) as user_id_number
+		FROM login_logs ll
+		JOIN users u ON ll.user_id = u.id
+		LEFT JOIN students s ON u.id = s.user_id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.user_id AND u.user_type = 'teacher'
+		LEFT JOIN admins a ON u.id = a.user_id AND u.user_type = 'admin'
+		WHERE ll.is_archived = TRUE
+		ORDER BY ll.archived_at DESC, ll.login_time DESC
+		LIMIT 2000
+	`
+
+	rows, err := a.db.Query(query)
+	if err != nil {
+		log.Printf("Error querying archived logs: %v", err)
+		return nil, fmt.Errorf("failed to query archived logs: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []LoginLog
+	for rows.Next() {
+		var logEntry LoginLog
+		var pcNumber sql.NullString
+		var loginTime time.Time
+		var logoutTime sql.NullTime
+		var userIDNumber sql.NullString
+
+		err := rows.Scan(&logEntry.ID, &logEntry.UserID, &logEntry.UserType, &pcNumber, &loginTime, &logoutTime, &logEntry.UserName, &userIDNumber)
+		if err != nil {
+			log.Printf("Error scanning archived log row: %v", err)
+			continue
+		}
+
+		logEntry.LoginTime = loginTime.Format("2006-01-02 15:04:05")
+		if pcNumber.Valid {
+			logEntry.PCNumber = &pcNumber.String
+		}
+		if logoutTime.Valid {
+			formattedLogoutTime := logoutTime.Time.Format("2006-01-02 15:04:05")
+			logEntry.LogoutTime = &formattedLogoutTime
+		}
+		if userIDNumber.Valid {
+			logEntry.UserIDNumber = userIDNumber.String
+		} else {
+			logEntry.UserIDNumber = logEntry.UserName
+		}
+
+		logs = append(logs, logEntry)
+	}
+
+	log.Printf("GetArchivedLogs returning %d logs", len(logs))
+	return logs, nil
+}
+
 // GetAllLogs returns all non-archived login logs (limited to 1000 most recent)
 func (a *App) GetAllLogs() ([]LoginLog, error) {
 	if a.db == nil {

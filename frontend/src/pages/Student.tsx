@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Button from '../components/Button';
+import { Card, CardHeader, CardBody, StatCard, InfoCard } from '../components/Card';
+import Table from '../components/Table';
+import { Badge, StatusBadge } from '../components/Badge';
 import {
   LayoutDashboard,
   ClipboardList,
@@ -114,106 +117,57 @@ function DashboardOverview() {
     <div className="space-y-6">
       {/* Last Login Information */}
       {lastLogin && (
-        <div className="bg-white shadow-md rounded-lg border border-gray-200 overflow-hidden">
-          <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Account Information</h2>
-          </div>
-          <div className="p-6">
+        <Card>
+          <CardHeader title="Account Information" />
+          <CardBody>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="flex items-start space-x-4">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Clock className="h-6 w-6 text-blue-600" />
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Last Login</p>
-                  <p className="text-base font-semibold text-gray-900">
-                    {lastLogin.login_time ? new Date(lastLogin.login_time).toLocaleString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hour12: true
-                    }) : 'N/A'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-4">
-                <div className="flex-shrink-0">
-                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <svg className="h-6 w-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">Last PC Used</p>
-                  <p className="text-base font-semibold text-gray-900">
-                    {lastLogin.pc_number || 'Unknown'}
-                  </p>
-                </div>
-              </div>
+              <InfoCard
+                icon={<Clock className="h-6 w-6" />}
+                label="Last Login"
+                value={lastLogin.login_time ? new Date(lastLogin.login_time).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  hour12: true
+                }) : 'N/A'}
+                iconColor="blue"
+              />
+              <InfoCard
+                icon={<MapPin className="h-6 w-6" />}
+                label="Last PC Used"
+                value={lastLogin.pc_number || 'Unknown'}
+                iconColor="purple"
+              />
             </div>
-          </div>
-        </div>
+          </CardBody>
+        </Card>
       )}
 
       {/* Attendance Summary */}
-      <div className="bg-white shadow-md rounded-lg border border-gray-200 overflow-hidden">
-        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Attendance Summary</h2>
-        </div>
-        <div className="p-6">
+      <Card>
+        <CardHeader title="Attendance Summary" />
+        <CardBody>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6 border border-green-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center shadow-md">
-                  <CheckCircle className="h-7 w-7 text-white" />
-                </div>
-              </div>
-              <dl>
-                <dt className="text-sm font-medium text-green-700 uppercase tracking-wide mb-1">
-                  Present
-                </dt>
-                <dd className="text-4xl font-bold text-green-900">
-                  {presentCount}
-                </dd>
-              </dl>
-            </div>
-
-            <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-lg p-6 border border-red-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 bg-red-500 rounded-lg flex items-center justify-center shadow-md">
-                  <XCircle className="h-7 w-7 text-white" />
-                </div>
-              </div>
-              <dl>
-                <dt className="text-sm font-medium text-red-700 uppercase tracking-wide mb-1">
-                  Absent
-                </dt>
-                <dd className="text-4xl font-bold text-red-900">
-                  {absentCount}
-                </dd>
-              </dl>
-            </div>
-
-            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-lg p-6 border border-yellow-200">
-              <div className="flex items-center justify-between mb-4">
-                <div className="w-12 h-12 bg-yellow-500 rounded-lg flex items-center justify-center shadow-md">
-                  <AlertCircle className="h-7 w-7 text-white" />
-                </div>
-              </div>
-              <dl>
-                <dt className="text-sm font-medium text-yellow-700 uppercase tracking-wide mb-1">
-                  Seat-in
-                </dt>
-                <dd className="text-4xl font-bold text-yellow-900">
-                  {seatInCount}
-                </dd>
-              </dl>
-            </div>
+            <StatCard
+              title="Present"
+              value={presentCount}
+              icon={<CheckCircle className="h-6 w-6" />}
+              color="green"
+            />
+            <StatCard
+              title="Absent"
+              value={absentCount}
+              icon={<XCircle className="h-6 w-6" />}
+              color="red"
+            />
+            <StatCard
+              title="Seat-in"
+              value={seatInCount}
+              icon={<AlertCircle className="h-6 w-6" />}
+              color="yellow"
+            />
           </div>
 
           {/* Total Records */}
@@ -223,25 +177,23 @@ function DashboardOverview() {
               <span className="text-lg font-semibold text-gray-900">{totalAttendance}</span>
             </div>
           </div>
-        </div>
-      </div>
+        </CardBody>
+      </Card>
 
       {/* Quick Actions */}
-      <div className="bg-white shadow-md rounded-lg border border-gray-200 overflow-hidden">
-        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Quick Actions</h2>
-        </div>
-        <div className="p-6">
+      <Card>
+        <CardHeader title="Quick Actions" />
+        <CardBody>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Link
               to="attendance"
-              className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all duration-200"
+              className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-primary-500 hover:shadow-md transition-all duration-200"
             >
-              <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-500 transition-colors duration-200">
-                <Clock className="h-6 w-6 text-blue-600 group-hover:text-white transition-colors duration-200" />
+              <div className="flex-shrink-0 w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center group-hover:bg-primary-500 transition-colors duration-200">
+                <Clock className="h-6 w-6 text-primary-600 group-hover:text-white transition-colors duration-200" />
               </div>
               <div className="ml-4 flex-1">
-                <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors duration-200">
+                <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-600 transition-colors duration-200">
                   View Login History
                 </h3>
                 <p className="text-sm text-gray-500 mt-0.5">View your complete login and logout records</p>
@@ -249,21 +201,21 @@ function DashboardOverview() {
             </Link>
             <Link
               to="feedback"
-              className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-purple-500 hover:shadow-md transition-all duration-200"
+              className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-info-500 hover:shadow-md transition-all duration-200"
             >
-              <div className="flex-shrink-0 w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center group-hover:bg-purple-500 transition-colors duration-200">
-                <MessageSquare className="h-6 w-6 text-purple-600 group-hover:text-white transition-colors duration-200" />
+              <div className="flex-shrink-0 w-12 h-12 bg-info-100 rounded-lg flex items-center justify-center group-hover:bg-info-500 transition-colors duration-200">
+                <MessageSquare className="h-6 w-6 text-info-600 group-hover:text-white transition-colors duration-200" />
               </div>
               <div className="ml-4 flex-1">
-                <h3 className="text-base font-semibold text-gray-900 group-hover:text-purple-600 transition-colors duration-200">
+                <h3 className="text-base font-semibold text-gray-900 group-hover:text-info-600 transition-colors duration-200">
                   View Feedback History
                 </h3>
                 <p className="text-sm text-gray-500 mt-0.5">Review your equipment feedback submissions</p>
               </div>
             </Link>
           </div>
-        </div>
-      </div>
+        </CardBody>
+      </Card>
     </div>
   );
 }

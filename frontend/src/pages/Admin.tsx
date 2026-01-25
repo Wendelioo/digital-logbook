@@ -2,9 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Button from '../components/Button';
+import { Card, CardHeader, CardBody, StatCard } from '../components/Card';
+import Table from '../components/Table';
+import { FormGroup, FormRow, InputField, SelectField } from '../components/Form';
+import { Badge, StatusBadge } from '../components/Badge';
+import Modal from '../components/Modal';
 import {
   LayoutDashboard,
   Users,
+  User,
   ClipboardList,
   FileText,
   UserPlus,
@@ -28,7 +34,8 @@ import {
   Archive,
   RotateCcw,
   CheckSquare,
-  Square
+  Square,
+  Settings
 } from 'lucide-react';
 import {
   GetAdminDashboard,
@@ -153,33 +160,6 @@ function DashboardOverview() {
     return () => clearInterval(refreshInterval);
   }, []);
 
-  const statCards = [
-    {
-      title: 'Total Students',
-      value: stats.total_students,
-      color: 'bg-blue-500',
-      icon: <Users className="h-8 w-8" />
-    },
-    {
-      title: 'Teachers',
-      value: stats.total_teachers,
-      color: 'bg-green-500',
-      icon: <Users className="h-8 w-8" />
-    },
-    {
-      title: 'Working Students',
-      value: stats.working_students,
-      color: 'bg-purple-500',
-      icon: <Users className="h-8 w-8" />
-    },
-    {
-      title: 'Recent Logins',
-      value: stats.recent_logins,
-      color: 'bg-orange-500',
-      icon: <ClipboardList className="h-8 w-8" />
-    }
-  ];
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -191,57 +171,60 @@ function DashboardOverview() {
   return (
     <div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statCards.map((card, index) => (
-          <div key={index} className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className={`${card.color} rounded-md p-3 text-white`}>
-                    {card.icon}
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      {card.title}
-                    </dt>
-                    <dd className="text-3xl font-bold text-gray-900">
-                      {card.value}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
+        <StatCard
+          title="Total Students"
+          value={stats.total_students}
+          icon={<Users className="h-6 w-6" />}
+          color="blue"
+        />
+        <StatCard
+          title="Teachers"
+          value={stats.total_teachers}
+          icon={<Users className="h-6 w-6" />}
+          color="green"
+        />
+        <StatCard
+          title="Working Students"
+          value={stats.working_students}
+          icon={<Users className="h-6 w-6" />}
+          color="indigo"
+        />
+        <StatCard
+          title="Recent Logins"
+          value={stats.recent_logins}
+          icon={<ClipboardList className="h-6 w-6" />}
+          color="yellow"
+        />
       </div>
 
-      <div className="mt-8 bg-white shadow rounded-lg p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Link
-            to="users"
-            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <UserPlus className="h-6 w-6 text-primary-600 mr-3" />
-            <span className="text-gray-900">Manage Users</span>
-          </Link>
-          <Link
-            to="logs"
-            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <ClipboardList className="h-6 w-6 text-primary-600 mr-3" />
-            <span className="text-gray-900">View Logs</span>
-          </Link>
-          <Link
-            to="reports"
-            className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <FileText className="h-6 w-6 text-primary-600 mr-3" />
-            <span className="text-gray-900">Export Reports</span>
-          </Link>
-        </div>
-      </div>
+      <Card className="mt-8">
+        <CardHeader title="Quick Actions" />
+        <CardBody>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Link
+              to="users"
+              className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <UserPlus className="h-6 w-6 text-primary-600 mr-3" />
+              <span className="text-gray-900">Manage Users</span>
+            </Link>
+            <Link
+              to="logs"
+              className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <ClipboardList className="h-6 w-6 text-primary-600 mr-3" />
+              <span className="text-gray-900">View Logs</span>
+            </Link>
+            <Link
+              to="reports"
+              className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <FileText className="h-6 w-6 text-primary-600 mr-3" />
+              <span className="text-gray-900">Export Reports</span>
+            </Link>
+          </div>
+        </CardBody>
+      </Card>
     </div>
   );
 }
@@ -620,37 +603,39 @@ function UserManagement() {
 
       {/* Notification */}
       {notification && (
-        <div className={`fixed top-4 right-4 z-50 max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out ${notification.type === 'success' ? 'border-l-4 border-green-400' : 'border-l-4 border-red-400'
+        <div className="fixed top-4 right-4 z-50 max-w-sm">
+          <div className={`bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out animate-slideIn ${
+            notification.type === 'success' ? 'border-l-4 border-success-500' : 'border-l-4 border-danger-500'
           }`}>
-          <div className="p-4">
-            <div className="flex items-start">
-              <div className="flex-shrink-0">
-                {notification.type === 'success' ? (
-                  <svg className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                ) : (
-                  <svg className="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                )}
-              </div>
-              <div className="ml-3 w-0 flex-1 pt-0.5">
-                <p className={`text-sm font-medium ${notification.type === 'success' ? 'text-green-800' : 'text-red-800'
+            <div className="p-4">
+              <div className="flex items-start">
+                <div className="flex-shrink-0">
+                  {notification.type === 'success' ? (
+                    <svg className="h-6 w-6 text-success-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ) : (
+                    <svg className="h-6 w-6 text-danger-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )}
+                </div>
+                <div className="ml-3 w-0 flex-1 pt-0.5">
+                  <p className={`text-sm font-medium ${
+                    notification.type === 'success' ? 'text-success-800' : 'text-danger-800'
                   }`}>
-                  {notification.message}
-                </p>
-              </div>
-              <div className="ml-4 flex-shrink-0 flex">
-                <button
-                  className="bg-white rounded-md inline-flex text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  onClick={() => setNotification(null)}
-                >
-                  <span className="sr-only">Close</span>
-                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                  </svg>
-                </button>
+                    {notification.message}
+                  </p>
+                </div>
+                <div className="ml-4 flex-shrink-0 flex">
+                  <button
+                    className="bg-white rounded-md inline-flex text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                    onClick={() => setNotification(null)}
+                  >
+                    <span className="sr-only">Close</span>
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -658,21 +643,253 @@ function UserManagement() {
       )}
 
       {/* User Form Modal */}
-      {showForm && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowForm(false);
-              setEditingUser(null);
-              setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', year: '', section: '', email: '', contactNumber: '', departmentCode: '' });
-              setAvatarFile(null);
-              setAvatarPreview(null);
-            }
-          }}
-        >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 relative max-h-[90vh] flex flex-col">
-            {/* Close Button */}
+      <Modal
+        isOpen={showForm}
+        onClose={() => {
+          setShowForm(false);
+          setEditingUser(null);
+          setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', year: '', section: '', email: '', contactNumber: '', departmentCode: '' });
+          setAvatarFile(null);
+          setAvatarPreview(null);
+        }}
+        title={editingUser ? `Edit ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}` : `Add New ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}`}
+        size="lg"
+      >
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Role Selection - Only shown when adding new user */}
+          {!editingUser && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <label className="block text-sm font-semibold text-gray-900 mb-3">Select User Type</label>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { value: 'teacher', label: 'Teacher', icon: '👨‍🏫' },
+                  { value: 'student', label: 'Student', icon: '🎓' },
+                  { value: 'working_student', label: 'Working Student', icon: '👨‍💼' }
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, role: option.value })}
+                    className={`p-4 rounded-lg border-2 transition-all ${
+                      formData.role === option.value
+                        ? 'border-blue-600 bg-blue-100 shadow-md'
+                        : 'border-gray-300 bg-white hover:border-blue-300 hover:shadow-sm'
+                    }`}
+                  >
+                    <div className="text-3xl mb-2">{option.icon}</div>
+                    <div className={`text-sm font-semibold ${
+                      formData.role === option.value ? 'text-blue-900' : 'text-gray-700'
+                    }`}>
+                      {option.label}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Personal Information */}
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
+            <h4 className="text-base font-semibold text-gray-900 mb-4 flex items-center">
+              <UserPlus className="h-5 w-5 mr-2 text-blue-600" />
+              Personal Information
+            </h4>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  First Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.firstName}
+                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Middle Name
+                </label>
+                <input
+                  type="text"
+                  value={formData.middleName}
+                  onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Last Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.lastName}
+                  onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Contact Number
+                </label>
+                <input
+                  type="tel"
+                  value={formData.contactNumber}
+                  onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="09XX-XXX-XXXX"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Account Information */}
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
+            <h4 className="text-base font-semibold text-gray-900 mb-4 flex items-center">
+              <Settings className="h-5 w-5 mr-2 text-blue-600" />
+              Account Information
+            </h4>
+            <div className="grid grid-cols-2 gap-4">
+              {formData.role === 'teacher' && (
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Department
+                  </label>
+                  <select
+                    value={formData.departmentCode}
+                    onChange={(e) => setFormData({ ...formData, departmentCode: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Select Department</option>
+                    {departments.filter(dept => dept.is_active).map(dept => (
+                      <option key={dept.department_code} value={dept.department_code}>
+                        {dept.department_code} - {dept.department_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="user@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Username {formData.role === 'teacher' ? '(Employee ID)' : '(Student ID)'} <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.role === 'teacher' ? formData.employeeId : formData.studentId}
+                  onChange={(e) => {
+                    if (formData.role === 'teacher') {
+                      setFormData({ ...formData, employeeId: e.target.value, password: e.target.value });
+                    } else {
+                      setFormData({ ...formData, studentId: e.target.value, password: e.target.value });
+                    }
+                  }}
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder={formData.role === 'teacher' ? 'EMP-001' : 'STU-001'}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Password {!editingUser && <span className="text-red-500">*</span>}
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required={!editingUser}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Confirm Password {!editingUser && <span className="text-red-500">*</span>}
+                </label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={formData.confirmPassword}
+                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                    className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required={!editingUser}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  >
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Profile Photo Upload */}
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
+            <h4 className="text-base font-semibold text-gray-900 mb-4 flex items-center">
+              <User className="h-5 w-5 mr-2 text-blue-600" />
+              Profile Photo
+            </h4>
+            <div className="flex items-start space-x-6">
+              <div className="flex-shrink-0">
+                <div className="w-32 h-32 rounded-lg bg-gray-100 border-2 border-gray-300 border-dashed flex items-center justify-center overflow-hidden">
+                  {avatarPreview ? (
+                    <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="h-16 w-16 text-gray-400" />
+                  )}
+                </div>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="file"
+                  id="avatar-upload"
+                  accept="image/*"
+                  onChange={handleAvatarChange}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="avatar-upload"
+                  className="inline-flex items-center px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-50 transition-colors"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Choose Photo
+                </label>
+                <p className="mt-2 text-sm text-gray-500">
+                  {avatarFile ? avatarFile.name : 'No file selected'}
+                </p>
+                <p className="mt-1 text-xs text-gray-400">
+                  Recommended: Square image, at least 200x200px
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
             <button
               type="button"
               onClick={() => {
@@ -682,246 +899,29 @@ function UserManagement() {
                 setAvatarFile(null);
                 setAvatarPreview(null);
               }}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold transition-colors z-10"
+              className="px-5 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
             >
-              ×
+              Cancel
             </button>
-
-            {/* Header */}
-            <div className="p-4 pb-3 flex-shrink-0 border-b border-gray-200">
-              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                <Plus className="h-5 w-5" />
-                {editingUser ? `Edit ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}` : `Add ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}`}
-              </h3>
-            </div>
-
-            <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
-              <div className="p-4">
-                {/* Role Selection - Hidden if editing */}
-                {!editingUser && (
-                  <div className="mb-4">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Role</label>
-                    <select
-                      value={formData.role}
-                      onChange={(e) => {
-                        const newRole = e.target.value;
-                        setFormData({
-                          ...formData,
-                          role: newRole
-                        });
-                      }}
-                      className="w-full max-w-xs px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="teacher">Teacher</option>
-                      <option value="student">Student</option>
-                      <option value="working_student">Working Student</option>
-                    </select>
-                  </div>
-                )}
-
-                {/* Two Column Layout */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Left Column - Personal Information */}
-                  <div className="space-y-3">
-                    <h4 className="text-xs font-semibold text-gray-700 mb-3">Personal Information</h4>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">First Name</label>
-                      <input
-                        type="text"
-                        value={formData.firstName}
-                        onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Middle Name</label>
-                      <input
-                        type="text"
-                        value={formData.middleName}
-                        onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Last Name</label>
-                      <input
-                        type="text"
-                        value={formData.lastName}
-                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Contact</label>
-                      <input
-                        type="tel"
-                        value={formData.contactNumber}
-                        onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="09789436123"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Right Column - Account Information and Avatar */}
-                  <div className="space-y-3">
-                    <h4 className="text-xs font-semibold text-gray-700 mb-3">Account Information</h4>
-
-                    {formData.role === 'teacher' ? (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
-                        <select
-                          value={formData.departmentCode}
-                          onChange={(e) => setFormData({ ...formData, departmentCode: e.target.value })}
-                          className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        >
-                          <option value="">Please Select Here</option>
-                          {departments.filter(dept => dept.is_active).map((dept) => (
-                            <option key={dept.department_code} value={dept.department_code}>
-                              {dept.department_code} - {dept.department_name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : null}
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Username</label>
-                      <input
-                        type="text"
-                        value={formData.role === 'teacher' ? formData.employeeId : formData.studentId}
-                        onChange={(e) => {
-                          if (formData.role === 'teacher') {
-                            setFormData({ ...formData, employeeId: e.target.value, password: e.target.value });
-                          } else {
-                            setFormData({ ...formData, studentId: e.target.value, password: e.target.value });
-                          }
-                        }}
-                        className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        required
-                        placeholder={formData.role === 'teacher' ? 'Teacher ID' : 'Student ID'}
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Password</label>
-                      <div className="relative">
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          value={formData.password}
-                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                          className="w-full px-2.5 py-1.5 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          required={!editingUser}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                        >
-                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">Confirm Password</label>
-                      <div className="relative">
-                        <input
-                          type={showConfirmPassword ? "text" : "password"}
-                          value={formData.confirmPassword}
-                          onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                          className="w-full px-2.5 py-1.5 pr-8 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          required={!editingUser}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                        >
-                          {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* User Avatar */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">User Avatar</label>
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="file"
-                            id="avatar-upload"
-                            accept="image/*"
-                            onChange={handleAvatarChange}
-                            className="hidden"
-                          />
-                          <label
-                            htmlFor="avatar-upload"
-                            className="px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-200"
-                          >
-                            Choose File
-                          </label>
-                          <span className="text-xs text-gray-500">
-                            {avatarFile ? avatarFile.name : 'No file chosen'}
-                          </span>
-                        </div>
-                        <div className="w-full h-32 bg-gray-200 rounded-md flex items-center justify-center overflow-hidden">
-                          {avatarPreview ? (
-                            <img src={avatarPreview} alt="Avatar preview" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="text-gray-400 text-xs">No image selected</div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="border-t border-gray-200 p-4 flex justify-end gap-3">
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setShowForm(false);
-                    setEditingUser(null);
-                    setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', year: '', section: '', email: '', contactNumber: '', departmentCode: '' });
-                    setAvatarFile(null);
-                    setAvatarPreview(null);
-                  }}
-                  variant="secondary"
-                  size="sm"
-                >
-                  CANCEL
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="sm"
-                >
-                  SAVE
-                </Button>
-              </div>
-            </form>
+            <button
+              type="submit"
+              className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-medium shadow-md flex items-center space-x-2"
+            >
+              {editingUser ? (
+                <>
+                  <Edit className="h-4 w-4" />
+                  <span>Update User</span>
+                </>
+              ) : (
+                <>
+                  <UserPlus className="h-4 w-4" />
+                  <span>Create User</span>
+                </>
+              )}
+            </button>
           </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
       {error && (
         <div className="mb-4 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md">
@@ -937,8 +937,8 @@ function UserManagement() {
         departmentName={undefined}
       />
 
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+      <div className="mb-6 flex justify-between items-center">
+        <div className="flex items-center gap-4">
           <div className="text-sm text-gray-600">
             Show <select
               value={entriesPerPage}
@@ -954,104 +954,96 @@ function UserManagement() {
               <option value="100">100</option>
             </select> entries
           </div>
-          <div className="flex items-center gap-4">
-            <select
-              value={userTypeFilter}
-              onChange={(e) => setUserTypeFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            >
-              <option value="">All Users</option>
-              <option value="teacher">Teacher</option>
-              <option value="student">Student</option>
-              <option value="working_student">Working Student</option>
-            </select>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <select
+            value={userTypeFilter}
+            onChange={(e) => setUserTypeFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          >
+            <option value="">All Users</option>
+            <option value="teacher">Teacher</option>
+            <option value="student">Student</option>
+            <option value="working_student">Working Student</option>
+          </select>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
         </div>
+      </div>
+
+      <div className="bg-white shadow rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
-          <div className="max-h-[60vh] overflow-y-auto">
-            {currentUsers.length > 0 ? (
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-blue-600 sticky top-0 z-10">
-                  <tr>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                      User ID
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                      Full Name
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                      User Type
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {currentUsers.map((user, index) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {user.employee_id || user.student_id || user.name || '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {user.first_name && user.last_name
-                          ? `${user.last_name}, ${user.first_name}${user.middle_name ? ' ' + user.middle_name : ''}`
-                          : user.name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {user.role.replace('_', ' ')}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            onClick={() => setViewingUser(user)}
-                            variant="outline"
-                            size="sm"
-                            icon={<Eye className="h-3 w-3" />}
-                            title="View"
-                            className="text-blue-600 border-blue-200 hover:bg-blue-50"
-                          />
-                          <Button
-                            onClick={() => handleEdit(user)}
-                            variant="primary"
-                            size="sm"
-                            icon={<Edit className="h-3 w-3" />}
-                            title="Edit"
-                          />
-                          <Button
-                            onClick={() => handleDelete(user.id)}
-                            variant="danger"
-                            size="sm"
-                            icon={<Trash2 className="h-3 w-3" />}
-                            title="Delete"
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div className="px-6 py-12 text-center">
-                <p className="text-gray-500">No data available.</p>
-              </div>
-            )}
-          </div>
+          <Table
+            columns={[
+              {
+                key: 'user_id',
+                label: 'User ID',
+                render: (user: User) => user.employee_id || user.student_id || user.name || '-'
+              },
+              {
+                key: 'name',
+                label: 'Full Name',
+                sortable: true,
+                render: (user: User) => user.first_name && user.last_name
+                  ? `${user.last_name}, ${user.first_name}${user.middle_name ? ' ' + user.middle_name : ''}`
+                  : user.name
+              },
+              {
+                key: 'role',
+                label: 'User Type',
+                sortable: true,
+                render: (user: User) => (
+                  <StatusBadge
+                    status={user.role === 'teacher' ? 'success' : user.role === 'student' ? 'active' : 'pending'}
+                    label={user.role.replace('_', ' ')}
+                  />
+                )
+              },
+              {
+                key: 'action',
+                label: 'Action',
+                render: (user: User) => (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={() => setViewingUser(user)}
+                      variant="outline"
+                      size="sm"
+                      icon={<Eye className="h-3 w-3" />}
+                      title="View"
+                    />
+                    <Button
+                      onClick={() => handleEdit(user)}
+                      variant="primary"
+                      size="sm"
+                      icon={<Edit className="h-3 w-3" />}
+                      title="Edit"
+                    />
+                    <Button
+                      onClick={() => handleDelete(user.id)}
+                      variant="danger"
+                      size="sm"
+                      icon={<Trash2 className="h-3 w-3" />}
+                      title="Delete"
+                    />
+                  </div>
+                )
+              }
+            ]}
+            data={currentUsers}
+            loading={loading}
+            emptyMessage="No users found"
+          />
         </div>
         {currentUsers.length > 0 && (
-          <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center">
+          <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
             <div className="text-sm text-gray-600">
               Showing {startEntry} to {endEntry} of {sortedUsers.length} entries
             </div>
@@ -1219,6 +1211,14 @@ function ViewLogs() {
   // Date filter only
   const [dateFilter, setDateFilter] = useState('');
 
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Pagination for individual log tables within each date
+  const [logTablePages, setLogTablePages] = useState<Record<string, number>>({});
+  const logsPerPage = 20;
+
   const loadLogs = async () => {
     try {
       // Always load all logs - we filter on the frontend based on viewMode
@@ -1293,7 +1293,7 @@ function ViewLogs() {
     return loginTime.split(' ')[0];
   };
 
-  // Apply filters to logs (search and date filter only)
+  // Apply filters to logs (search and date filter)
   const filteredLogs = logs.filter((log) => {
     const logDate = getLogDate(log.login_time);
     const searchLower = searchQuery.toLowerCase();
@@ -1309,7 +1309,7 @@ function ViewLogs() {
       timeIn.toLowerCase().includes(searchLower) ||
       timeOut.toLowerCase().includes(searchLower);
 
-    // Date filter is now the main way to organize logs
+    // Apply date filter if provided
     const matchesDate = dateFilter === '' || logDate === dateFilter;
 
     return matchesSearch && matchesDate;
@@ -1325,6 +1325,18 @@ function ViewLogs() {
     return groups;
   }, {} as Record<string, LoginLog[]>);
 
+  // Pagination for grouped dates
+  const sortedDates = Object.keys(groupedFilteredLogs).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+  const totalPages = Math.ceil(sortedDates.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedDates = sortedDates.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, dateFilter]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1339,9 +1351,6 @@ function ViewLogs() {
         <div className="flex justify-between items-center mb-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Log Entries</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              Use the date filter to view logs for a specific day, or leave blank to see all logs.
-            </p>
           </div>
         </div>
 
@@ -1417,6 +1426,22 @@ function ViewLogs() {
         </div>
       </div>
 
+      {/* Info Banner about Past Entries */}
+      {!dateFilter && (
+        <div className="mb-4 bg-blue-50 border-l-4 border-blue-400 p-4 rounded">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <AlertCircle className="h-5 w-5 text-blue-400" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-blue-700">
+                <span className="font-medium">Tip:</span> Click the "Archive" button on any date to move those logs to long-term storage. Archived logs can be viewed and exported from the Archive section.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Error Message */}
       {error && (
         <div className="mb-4 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
@@ -1435,10 +1460,22 @@ function ViewLogs() {
 
       {/* Logs Grouped by Date */}
       <div className="space-y-4">
-        {Object.keys(groupedFilteredLogs).length > 0 ? (
-          Object.entries(groupedFilteredLogs)
-            .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
-            .map(([date, dateLogs]) => (
+        {paginatedDates.length > 0 ? (
+          paginatedDates.map((date) => {
+            const dateLogs = groupedFilteredLogs[date];
+            
+            // Pagination for this date's logs
+            const currentLogPage = logTablePages[date] || 1;
+            const totalLogPages = Math.ceil(dateLogs.length / logsPerPage);
+            const startIdx = (currentLogPage - 1) * logsPerPage;
+            const endIdx = startIdx + logsPerPage;
+            const paginatedLogs = dateLogs.slice(startIdx, endIdx);
+
+            const setLogPage = (page: number) => {
+              setLogTablePages(prev => ({ ...prev, [date]: page }));
+            };
+
+            return (
               <div key={date} className="bg-white shadow rounded-lg overflow-hidden">
                 {/* Date Header with Archive Button */}
                 <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
@@ -1480,7 +1517,7 @@ function ViewLogs() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {dateLogs.map((log) => (
+                      {paginatedLogs.map((log) => (
                         <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {log.user_id_number || log.user_name}
@@ -1521,8 +1558,62 @@ function ViewLogs() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Pagination for this date's logs */}
+                {totalLogPages > 1 && (
+                  <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
+                    <div className="text-sm text-gray-600">
+                      Showing <span className="font-medium">{startIdx + 1}</span> to <span className="font-medium">{Math.min(endIdx, dateLogs.length)}</span> of <span className="font-medium">{dateLogs.length}</span> entries
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setLogPage(Math.max(1, currentLogPage - 1))}
+                        disabled={currentLogPage === 1}
+                        className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Previous
+                      </button>
+                      
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: totalLogPages }, (_, i) => i + 1).map((page) => {
+                          if (
+                            page === 1 ||
+                            page === totalLogPages ||
+                            (page >= currentLogPage - 1 && page <= currentLogPage + 1)
+                          ) {
+                            return (
+                              <button
+                                key={page}
+                                onClick={() => setLogPage(page)}
+                                className={`px-3 py-1 text-sm font-medium rounded ${
+                                  currentLogPage === page
+                                    ? 'bg-primary-600 text-white'
+                                    : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                                }`}
+                              >
+                                {page}
+                              </button>
+                            );
+                          } else if (page === currentLogPage - 2 || page === currentLogPage + 2) {
+                            return <span key={page} className="px-1 text-gray-500">...</span>;
+                          }
+                          return null;
+                        })}
+                      </div>
+
+                      <button
+                        onClick={() => setLogPage(Math.min(totalLogPages, currentLogPage + 1))}
+                        disabled={currentLogPage === totalLogPages}
+                        className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            ))
+            );
+          })
         ) : (
           <div className="bg-white shadow rounded-lg p-12 text-center">
             <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
@@ -1546,6 +1637,55 @@ function ViewLogs() {
               Filters active
             </span>
           )}
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="mt-4 flex justify-center items-center gap-2">
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
+          
+          <div className="flex items-center gap-1">
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+              // Show first page, last page, current page, and pages around current
+              if (
+                page === 1 ||
+                page === totalPages ||
+                (page >= currentPage - 1 && page <= currentPage + 1)
+              ) {
+                return (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`px-3 py-2 text-sm font-medium rounded-lg ${
+                      currentPage === page
+                        ? 'bg-primary-600 text-white'
+                        : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                );
+              } else if (page === currentPage - 2 || page === currentPage + 2) {
+                return <span key={page} className="px-2 text-gray-500">...</span>;
+              }
+              return null;
+            })}
+          </div>
+
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
         </div>
       )}
     </div>
@@ -1685,7 +1825,6 @@ function Reports() {
         <div className="flex justify-between items-start mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
-            <p className="text-sm text-gray-500 mt-1">View all equipment feedback. Use filters to find and archive reports by date.</p>
           </div>
         </div>
 
@@ -2495,6 +2634,14 @@ function ArchiveManagement() {
   const [viewData, setViewData] = useState<LoginLog[] | Feedback[]>([]);
   const [loadingView, setLoadingView] = useState(false);
 
+  // Pagination for logs
+  const [logCurrentPage, setLogCurrentPage] = useState(1);
+  const logItemsPerPage = 10;
+
+  // Pagination for feedback
+  const [feedbackCurrentPage, setFeedbackCurrentPage] = useState(1);
+  const feedbackItemsPerPage = 10;
+
   useEffect(() => {
     loadArchivedSheets();
   }, []);
@@ -2598,6 +2745,18 @@ function ArchiveManagement() {
     });
   };
 
+  // Pagination calculations for log sheets
+  const logTotalPages = Math.ceil(logSheets.length / logItemsPerPage);
+  const logStartIndex = (logCurrentPage - 1) * logItemsPerPage;
+  const logEndIndex = logStartIndex + logItemsPerPage;
+  const paginatedLogSheets = logSheets.slice(logStartIndex, logEndIndex);
+
+  // Pagination calculations for feedback sheets
+  const feedbackTotalPages = Math.ceil(feedbackSheets.length / feedbackItemsPerPage);
+  const feedbackStartIndex = (feedbackCurrentPage - 1) * feedbackItemsPerPage;
+  const feedbackEndIndex = feedbackStartIndex + feedbackItemsPerPage;
+  const paginatedFeedbackSheets = feedbackSheets.slice(feedbackStartIndex, feedbackEndIndex);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -2613,7 +2772,6 @@ function ArchiveManagement() {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Archive</h2>
-            <p className="text-sm text-gray-500 mt-1">View, export, and manage archived login logs and equipment reports by date</p>
           </div>
         </div>
 
@@ -2654,18 +2812,19 @@ function ArchiveManagement() {
       {activeTab === 'logs' && (
         <div className="flex-1 overflow-x-auto">
           {logSheets.length > 0 ? (
-            <div className="border-2 border-gray-300">
-              <table className="min-w-full border-collapse">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Date</th>
-                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Name</th>
-                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Summary</th>
-                    <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white">
-                  {logSheets.map((sheet) => (
+            <>
+              <div className="border-2 border-gray-300">
+                <table className="min-w-full border-collapse">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Date</th>
+                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Name</th>
+                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Summary</th>
+                      <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {paginatedLogSheets.map((sheet) => (
                     <tr key={sheet.date} className="hover:bg-gray-50">
                       <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                         {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
@@ -2705,6 +2864,55 @@ function ArchiveManagement() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls for Log Sheets */}
+            {logTotalPages > 1 && (
+              <div className="mt-4 flex justify-center items-center gap-2">
+                <button
+                  onClick={() => setLogCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={logCurrentPage === 1}
+                  className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: logTotalPages }, (_, i) => i + 1).map((page) => {
+                    if (
+                      page === 1 ||
+                      page === logTotalPages ||
+                      (page >= logCurrentPage - 1 && page <= logCurrentPage + 1)
+                    ) {
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => setLogCurrentPage(page)}
+                          className={`px-3 py-2 text-sm font-medium rounded-lg ${
+                            logCurrentPage === page
+                              ? 'bg-primary-600 text-white'
+                              : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      );
+                    } else if (page === logCurrentPage - 2 || page === logCurrentPage + 2) {
+                      return <span key={page} className="px-2 text-gray-500">...</span>;
+                    }
+                    return null;
+                  })}
+                </div>
+
+                <button
+                  onClick={() => setLogCurrentPage(prev => Math.min(logTotalPages, prev + 1))}
+                  disabled={logCurrentPage === logTotalPages}
+                  className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </>
           ) : (
             <div className="text-center py-12">
               <Archive className="mx-auto h-12 w-12 text-gray-300" />
@@ -2719,18 +2927,19 @@ function ArchiveManagement() {
       {activeTab === 'reports' && (
         <div className="flex-1 overflow-x-auto">
           {feedbackSheets.length > 0 ? (
-            <div className="border-2 border-gray-300">
-              <table className="min-w-full border-collapse">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Date</th>
-                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Name</th>
-                    <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Summary</th>
-                    <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white">
-                  {feedbackSheets.map((sheet) => (
+            <>
+              <div className="border-2 border-gray-300">
+                <table className="min-w-full border-collapse">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Date</th>
+                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Name</th>
+                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Summary</th>
+                      <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {paginatedFeedbackSheets.map((sheet) => (
                     <tr key={sheet.date} className="hover:bg-gray-50">
                       <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                         {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
@@ -2770,6 +2979,55 @@ function ArchiveManagement() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls for Feedback Sheets */}
+            {feedbackTotalPages > 1 && (
+              <div className="mt-4 flex justify-center items-center gap-2">
+                <button
+                  onClick={() => setFeedbackCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={feedbackCurrentPage === 1}
+                  className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: feedbackTotalPages }, (_, i) => i + 1).map((page) => {
+                    if (
+                      page === 1 ||
+                      page === feedbackTotalPages ||
+                      (page >= feedbackCurrentPage - 1 && page <= feedbackCurrentPage + 1)
+                    ) {
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => setFeedbackCurrentPage(page)}
+                          className={`px-3 py-2 text-sm font-medium rounded-lg ${
+                            feedbackCurrentPage === page
+                              ? 'bg-primary-600 text-white'
+                              : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      );
+                    } else if (page === feedbackCurrentPage - 2 || page === feedbackCurrentPage + 2) {
+                      return <span key={page} className="px-2 text-gray-500">...</span>;
+                    }
+                    return null;
+                  })}
+                </div>
+
+                <button
+                  onClick={() => setFeedbackCurrentPage(prev => Math.min(feedbackTotalPages, prev + 1))}
+                  disabled={feedbackCurrentPage === feedbackTotalPages}
+                  className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </>
           ) : (
             <div className="text-center py-12">
               <Archive className="mx-auto h-12 w-12 text-gray-300" />
