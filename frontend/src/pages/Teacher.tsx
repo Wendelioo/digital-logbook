@@ -169,7 +169,7 @@ function DashboardOverview() {
       )}
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <StatCard
           title="Active Classes"
           value={activeClasses}
@@ -182,7 +182,46 @@ function DashboardOverview() {
           icon={<Users className="h-6 w-6" />}
           color="green"
         />
+        <StatCard
+          title="Today's Classes"
+          value={activeClasses}
+          icon={<Calendar className="h-6 w-6" />}
+          color="purple"
+        />
       </div>
+
+      {/* Today's Schedule */}
+      {activeClasses > 0 && (
+        <Card className="mb-8">
+          <CardHeader title="Today's Schedule" />
+          <CardBody>
+            <div className="space-y-3">
+              {classes.filter(cls => cls.is_active).slice(0, 3).map(cls => (
+                <Link
+                  key={cls.id}
+                  to={`classes/${cls.id}`}
+                  className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <BookOpen className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900">{cls.subject_name}</h4>
+                      <p className="text-sm text-gray-500">
+                        {cls.section} • {cls.enrolled_count} students
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-600">{cls.schedule || 'No schedule'}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -196,6 +235,18 @@ function DashboardOverview() {
           <div className="ml-4 flex-1">
             <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">View Login History</h3>
             <p className="text-sm text-gray-500 mt-0.5">View your login and logout records</p>
+          </div>
+        </Link>
+        <Link
+          to="classes"
+          className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-green-500 hover:shadow-md transition-all duration-200"
+        >
+          <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-500 transition-colors duration-200">
+            <Library className="h-6 w-6 text-green-600 group-hover:text-white transition-colors duration-200" />
+          </div>
+          <div className="ml-4 flex-1">
+            <h3 className="text-base font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Manage Classes</h3>
+            <p className="text-sm text-gray-500 mt-0.5">View and manage your classes</p>
           </div>
         </Link>
       </div>

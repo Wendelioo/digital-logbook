@@ -37,7 +37,8 @@ import {
   Square,
   Settings,
   ChevronRight,
-  ChevronDown
+  ChevronDown,
+  UserCheck
 } from 'lucide-react';
 import DateRangeFilter from '../components/DateRangeFilter';
 import ArchiveConfirmationModal from '../components/ArchiveConfirmationModal';
@@ -86,6 +87,14 @@ interface DashboardStats {
   total_teachers: number;
   working_students: number;
   recent_logins: number;
+  active_users_now: number;
+  students_logged_in: number;
+  teachers_logged_in: number;
+  working_students_logged_in: number;
+  today_logins: number;
+  today_new_users: number;
+  locked_accounts: number;
+  pending_feedback: number;
 }
 
 interface User {
@@ -146,7 +155,15 @@ function DashboardOverview() {
     total_students: 0,
     total_teachers: 0,
     working_students: 0,
-    recent_logins: 0
+    recent_logins: 0,
+    active_users_now: 0,
+    students_logged_in: 0,
+    teachers_logged_in: 0,
+    working_students_logged_in: 0,
+    today_logins: 0,
+    today_new_users: 0,
+    locked_accounts: 0,
+    pending_feedback: 0
   });
   const [loading, setLoading] = useState(true);
 
@@ -182,7 +199,8 @@ function DashboardOverview() {
 
   return (
     <div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Overview Stats - Connected to all roles */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
         <StatCard
           title="Total Students"
           value={stats.total_students}
@@ -202,11 +220,107 @@ function DashboardOverview() {
           color="indigo"
         />
         <StatCard
-          title="Recent Logins"
-          value={stats.recent_logins}
-          icon={<ClipboardList className="h-6 w-6" />}
-          color="yellow"
+          title="Active Users Now"
+          value={stats.active_users_now}
+          icon={<UserCheck className="h-6 w-6" />}
+          color="purple"
         />
+      </div>
+
+      {/* Active Users Breakdown */}
+      <Card className="mb-6">
+        <CardHeader title="Currently Active Users by Role" />
+        <CardBody>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="flex items-center p-4 bg-blue-50 rounded-lg">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
+                <GraduationCap className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Students Online</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.students_logged_in}</p>
+              </div>
+            </div>
+            <div className="flex items-center p-4 bg-green-50 rounded-lg">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
+                <User className="h-6 w-6 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Teachers Online</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.teachers_logged_in}</p>
+              </div>
+            </div>
+            <div className="flex items-center p-4 bg-indigo-50 rounded-lg">
+              <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mr-4">
+                <Users className="h-6 w-6 text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Working Students Online</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.working_students_logged_in}</p>
+              </div>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* Today's Activity & Critical Alerts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <Card>
+          <CardHeader title="Today's Activity" />
+          <CardBody>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center">
+                  <ClipboardList className="h-5 w-5 text-blue-600 mr-3" />
+                  <span className="text-sm font-medium text-gray-700">Total Logins</span>
+                </div>
+                <span className="text-lg font-bold text-gray-900">{stats.today_logins}</span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center">
+                  <UserPlus className="h-5 w-5 text-green-600 mr-3" />
+                  <span className="text-sm font-medium text-gray-700">New Users</span>
+                </div>
+                <span className="text-lg font-bold text-gray-900">{stats.today_new_users}</span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center">
+                  <BarChart3 className="h-5 w-5 text-purple-600 mr-3" />
+                  <span className="text-sm font-medium text-gray-700">Recent Activity (24h)</span>
+                </div>
+                <span className="text-lg font-bold text-gray-900">{stats.recent_logins}</span>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Critical Alerts" />
+          <CardBody>
+            <div className="space-y-4">
+              <Link 
+                to="users"
+                className="flex items-center justify-between p-3 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <AlertCircle className="h-5 w-5 text-red-600 mr-3" />
+                  <span className="text-sm font-medium text-gray-700">Locked Accounts</span>
+                </div>
+                <span className="text-lg font-bold text-red-600">{stats.locked_accounts}</span>
+              </Link>
+              <Link
+                to="reports"
+                className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <FileText className="h-5 w-5 text-yellow-600 mr-3" />
+                  <span className="text-sm font-medium text-gray-700">Pending Feedback</span>
+                </div>
+                <span className="text-lg font-bold text-yellow-600">{stats.pending_feedback}</span>
+              </Link>
+            </div>
+          </CardBody>
+        </Card>
       </div>
 
       <Card className="mt-8">

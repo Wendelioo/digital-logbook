@@ -137,7 +137,7 @@ export const StatCard: React.FC<StatCardProps> = ({
               {title}
             </dt>
             <dd className="mt-1 flex items-baseline">
-              <span className="text-3xl font-bold text-gray-900">
+              <span className="text-2xl font-bold text-gray-900">
                 {value}
               </span>
               {trend && (

@@ -117,6 +117,28 @@ function DashboardOverview() {
 
   return (
     <div className="space-y-6">
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <StatCard
+          title="Attendance Rate"
+          value={`${dashboardData.attendance_rate?.toFixed(1) || 0}%`}
+          icon={<CheckCircle className="h-6 w-6" />}
+          color="green"
+        />
+        <StatCard
+          title="Current PC Used"
+          value={dashboardData.currently_logged_in ? (dashboardData.current_pc_number || 'Logged In') : 'Not Logged In'}
+          icon={<LogIn className="h-6 w-6" />}
+          color={dashboardData.currently_logged_in ? 'blue' : 'indigo'}
+        />
+        <StatCard
+          title="Enrolled Classes"
+          value={dashboardData.enrolled_classes || 0}
+          icon={<Library className="h-6 w-6" />}
+          color="purple"
+        />
+      </div>
+
       {/* Last Login Information */}
       {lastLogin && (
         <Card>
@@ -151,7 +173,7 @@ function DashboardOverview() {
       <Card>
         <CardHeader title="Attendance Summary" />
         <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <StatCard
               title="Present"
               value={presentCount}
@@ -163,12 +185,6 @@ function DashboardOverview() {
               value={absentCount}
               icon={<XCircle className="h-6 w-6" />}
               color="red"
-            />
-            <StatCard
-              title="Seat-in"
-              value={seatInCount}
-              icon={<AlertCircle className="h-6 w-6" />}
-              color="yellow"
             />
           </div>
 

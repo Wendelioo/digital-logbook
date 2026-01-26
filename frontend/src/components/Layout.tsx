@@ -667,17 +667,17 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
         >
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[calc(100vh-2rem)] flex flex-col z-[10001] my-4">
             {/* Modal Header - Fixed */}
-            <div className="bg-gradient-to-r from-gray-700 to-gray-800 px-8 py-5 flex justify-between items-center flex-shrink-0 rounded-t-xl">
+            <div className="bg-gray-50 border-b border-gray-200 px-8 py-5 flex justify-between items-center flex-shrink-0 rounded-t-xl">
               <div className="flex items-center space-x-3">
-                <div className="bg-white/20 p-2 rounded-lg">
-                  <Settings className="h-6 w-6 text-white" />
+                <div className="bg-gray-100 p-2 rounded-lg">
+                  <Settings className="h-6 w-6 text-gray-700" />
                 </div>
-                <h3 className="text-2xl font-bold text-white">Account Settings</h3>
+                <h3 className="text-2xl font-bold text-gray-900">Account Settings</h3>
               </div>
               <button
                 type="button"
                 onClick={handleCloseAccountModal}
-                className="text-white/80 hover:text-white hover:bg-white/10 rounded-lg p-2 focus:outline-none transition-all"
+                className="text-gray-400 hover:text-gray-600 rounded-lg p-2 focus:outline-none transition-all"
               >
                 <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1236,7 +1236,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                       <div className="pt-2">
                         <button
                           type="submit"
-                          className="w-full px-6 py-3 bg-gradient-to-r from-gray-700 to-gray-800 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-md hover:shadow-lg flex items-center justify-center space-x-2"
+                          className="w-full px-6 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-all font-semibold shadow-sm flex items-center justify-center space-x-2"
                         >
                           <Lock className="h-5 w-5" />
                           <span>Update Password</span>
@@ -1263,36 +1263,32 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
           }}
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
         >
-          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md">
             {/* Modal Content */}
-            <div className="p-6">
-              {/* Icon */}
-              <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 bg-yellow-100 rounded-full">
-                <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              
+            <div className="p-8">              
               {/* Title */}
-              <h3 className="text-xl font-bold text-gray-900 text-center mb-6">
-                Are you sure you want to logout?
+              <h3 className="text-2xl font-bold text-gray-900 text-center mb-2">
+                Confirm Logout
               </h3>
+              <p className="text-gray-500 text-center mb-8">
+                Are you sure you want to logout?
+              </p>
               
               {/* Buttons */}
               <div className="flex space-x-3">
                 <button
                   type="button"
                   onClick={handleLogoutCancel}
-                  className="flex-1 px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium text-sm"
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium"
                 >
-                  No
+                  Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleLogoutConfirm}
-                  className="flex-1 px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors font-medium text-sm shadow-sm"
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
                 >
-                  Yes
+                  Logout
                 </button>
               </div>
             </div>

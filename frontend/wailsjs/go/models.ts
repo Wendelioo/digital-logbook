@@ -5,6 +5,14 @@ export namespace main {
 	    total_teachers: number;
 	    working_students: number;
 	    recent_logins: number;
+	    active_users_now: number;
+	    students_logged_in: number;
+	    teachers_logged_in: number;
+	    working_students_logged_in: number;
+	    today_logins: number;
+	    today_new_users: number;
+	    locked_accounts: number;
+	    pending_feedback: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new AdminDashboard(source);
@@ -16,6 +24,14 @@ export namespace main {
 	        this.total_teachers = source["total_teachers"];
 	        this.working_students = source["working_students"];
 	        this.recent_logins = source["recent_logins"];
+	        this.active_users_now = source["active_users_now"];
+	        this.students_logged_in = source["students_logged_in"];
+	        this.teachers_logged_in = source["teachers_logged_in"];
+	        this.working_students_logged_in = source["working_students_logged_in"];
+	        this.today_logins = source["today_logins"];
+	        this.today_new_users = source["today_new_users"];
+	        this.locked_accounts = source["locked_accounts"];
+	        this.pending_feedback = source["pending_feedback"];
 	    }
 	}
 	export class ArchivedAttendanceSheet {
@@ -363,6 +379,10 @@ export namespace main {
 	export class StudentDashboard {
 	    attendance: Attendance[];
 	    today_log?: Attendance;
+	    attendance_rate: number;
+	    currently_logged_in: boolean;
+	    current_pc_number?: string;
+	    enrolled_classes: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new StudentDashboard(source);
@@ -372,6 +392,10 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.attendance = this.convertValues(source["attendance"], Attendance);
 	        this.today_log = this.convertValues(source["today_log"], Attendance);
+	        this.attendance_rate = source["attendance_rate"];
+	        this.currently_logged_in = source["currently_logged_in"];
+	        this.current_pc_number = source["current_pc_number"];
+	        this.enrolled_classes = source["enrolled_classes"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -417,6 +441,9 @@ export namespace main {
 	export class TeacherDashboard {
 	    classes: CourseClass[];
 	    attendance: Attendance[];
+	    total_attendance_week: number;
+	    total_attendance_month: number;
+	    today_classes: CourseClass[];
 	
 	    static createFrom(source: any = {}) {
 	        return new TeacherDashboard(source);
@@ -426,6 +453,9 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.classes = this.convertValues(source["classes"], CourseClass);
 	        this.attendance = this.convertValues(source["attendance"], Attendance);
+	        this.total_attendance_week = source["total_attendance_week"];
+	        this.total_attendance_month = source["total_attendance_month"];
+	        this.today_classes = this.convertValues(source["today_classes"], CourseClass);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -495,6 +525,9 @@ export namespace main {
 	export class WorkingStudentDashboard {
 	    students_registered: number;
 	    classlists_created: number;
+	    pending_feedback: number;
+	    today_registrations: number;
+	    active_students_now: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new WorkingStudentDashboard(source);
@@ -504,6 +537,9 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.students_registered = source["students_registered"];
 	        this.classlists_created = source["classlists_created"];
+	        this.pending_feedback = source["pending_feedback"];
+	        this.today_registrations = source["today_registrations"];
+	        this.active_students_now = source["active_students_now"];
 	    }
 	}
 
