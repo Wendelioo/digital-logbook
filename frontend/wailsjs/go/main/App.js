@@ -26,6 +26,10 @@ export function ArchiveLogsByDate(arg1, arg2) {
   return window['go']['main']['App']['ArchiveLogsByDate'](arg1, arg2);
 }
 
+export function ArchiveSelectedLogs(arg1, arg2) {
+  return window['go']['main']['App']['ArchiveSelectedLogs'](arg1, arg2);
+}
+
 export function ChangePassword(arg1, arg2, arg3) {
   return window['go']['main']['App']['ChangePassword'](arg1, arg2, arg3);
 }
@@ -242,6 +246,10 @@ export function GetLogDates() {
   return window['go']['main']['App']['GetLogDates']();
 }
 
+export function GetPastLogs(arg1, arg2) {
+  return window['go']['main']['App']['GetPastLogs'](arg1, arg2);
+}
+
 export function GetPendingFeedback() {
   return window['go']['main']['App']['GetPendingFeedback']();
 }
@@ -292,6 +300,10 @@ export function GetTeacherID(arg1) {
 
 export function GetTeacherLoginLogs(arg1) {
   return window['go']['main']['App']['GetTeacherLoginLogs'](arg1);
+}
+
+export function GetTodayLogs() {
+  return window['go']['main']['App']['GetTodayLogs']();
 }
 
 export function GetUsers() {

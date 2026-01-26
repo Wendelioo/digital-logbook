@@ -19,7 +19,7 @@ const ArchiveConfirmationModal: React.FC<ArchiveConfirmationModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onCancel}>
+    <Modal isOpen={isOpen} onClose={onCancel} title="">
       <div className="p-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">

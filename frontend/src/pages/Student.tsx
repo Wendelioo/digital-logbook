@@ -31,7 +31,8 @@ import {
   GetStudentLoginLogs,
   GetStudentClasses,
   GetClassesByEDPCode,
-  JoinClassByEDPCode
+  JoinClassByEDPCode,
+  GetClassStudents
 } from '../../wailsjs/go/main/App';
 import { useAuth } from '../contexts/AuthContext';
 import { main } from '../../wailsjs/go/models';
@@ -41,6 +42,7 @@ type Attendance = main.Attendance;
 type StudentDashboardData = main.StudentDashboard;
 type Feedback = main.Feedback;
 type CourseClass = main.CourseClass;
+type ClasslistEntry = main.ClasslistEntry;
 
 // LoginLog interface matching the JSON structure from backend
 interface LoginLog {
@@ -115,6 +117,28 @@ function DashboardOverview() {
 
   return (
     <div className="space-y-6">
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <StatCard
+          title="Attendance Rate"
+          value={`${dashboardData.attendance_rate?.toFixed(1) || 0}%`}
+          icon={<CheckCircle className="h-6 w-6" />}
+          color="green"
+        />
+        <StatCard
+          title="Current PC Used"
+          value={dashboardData.currently_logged_in ? (dashboardData.current_pc_number || 'Logged In') : 'Not Logged In'}
+          icon={<LogIn className="h-6 w-6" />}
+          color={dashboardData.currently_logged_in ? 'blue' : 'indigo'}
+        />
+        <StatCard
+          title="Enrolled Classes"
+          value={dashboardData.enrolled_classes || 0}
+          icon={<Library className="h-6 w-6" />}
+          color="purple"
+        />
+      </div>
+
       {/* Last Login Information */}
       {lastLogin && (
         <Card>
@@ -149,7 +173,7 @@ function DashboardOverview() {
       <Card>
         <CardHeader title="Attendance Summary" />
         <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <StatCard
               title="Present"
               value={presentCount}
@@ -162,12 +186,6 @@ function DashboardOverview() {
               icon={<XCircle className="h-6 w-6" />}
               color="red"
             />
-            <StatCard
-              title="Seat-in"
-              value={seatInCount}
-              icon={<AlertCircle className="h-6 w-6" />}
-              color="yellow"
-            />
           </div>
 
           {/* Total Records */}
@@ -176,43 +194,6 @@ function DashboardOverview() {
               <span className="text-sm font-medium text-gray-600">Total Records</span>
               <span className="text-lg font-semibold text-gray-900">{totalAttendance}</span>
             </div>
-          </div>
-        </CardBody>
-      </Card>
-
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader title="Quick Actions" />
-        <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Link
-              to="attendance"
-              className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-primary-500 hover:shadow-md transition-all duration-200"
-            >
-              <div className="flex-shrink-0 w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center group-hover:bg-primary-500 transition-colors duration-200">
-                <Clock className="h-6 w-6 text-primary-600 group-hover:text-white transition-colors duration-200" />
-              </div>
-              <div className="ml-4 flex-1">
-                <h3 className="text-base font-semibold text-gray-900 group-hover:text-primary-600 transition-colors duration-200">
-                  View Login History
-                </h3>
-                <p className="text-sm text-gray-500 mt-0.5">View your complete login and logout records</p>
-              </div>
-            </Link>
-            <Link
-              to="feedback"
-              className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-info-500 hover:shadow-md transition-all duration-200"
-            >
-              <div className="flex-shrink-0 w-12 h-12 bg-info-100 rounded-lg flex items-center justify-center group-hover:bg-info-500 transition-colors duration-200">
-                <MessageSquare className="h-6 w-6 text-info-600 group-hover:text-white transition-colors duration-200" />
-              </div>
-              <div className="ml-4 flex-1">
-                <h3 className="text-base font-semibold text-gray-900 group-hover:text-info-600 transition-colors duration-200">
-                  View Feedback History
-                </h3>
-                <p className="text-sm text-gray-500 mt-0.5">Review your equipment feedback submissions</p>
-              </div>
-            </Link>
           </div>
         </CardBody>
       </Card>
@@ -818,6 +799,9 @@ function MyClasses() {
   const [joinError, setJoinError] = useState<string>('');
   const [joinSuccess, setJoinSuccess] = useState<string>('');
   const [showJoinForm, setShowJoinForm] = useState(false);
+  const [viewingClasslist, setViewingClasslist] = useState<CourseClass | null>(null);
+  const [classlistStudents, setClasslistStudents] = useState<ClasslistEntry[]>([]);
+  const [loadingClasslist, setLoadingClasslist] = useState(false);
 
   useEffect(() => {
     loadClasses();
@@ -839,10 +823,48 @@ function MyClasses() {
     }
   };
 
+  const loadClasslist = async (classInfo: CourseClass) => {
+    setLoadingClasslist(true);
+    try {
+      const students = await GetClassStudents(classInfo.class_id);
+      setClasslistStudents(students);
+    } catch (error) {
+      console.error('Failed to load classlist:', error);
+      alert('Failed to load classlist. Please try again.');
+    } finally {
+      setLoadingClasslist(false);
+    }
+  };
+
+  const handleViewClasslist = async (classInfo: CourseClass) => {
+    setViewingClasslist(classInfo);
+    await loadClasslist(classInfo);
+  };
+
+  const handleRefreshClasslist = async () => {
+    if (viewingClasslist) {
+      await loadClasslist(viewingClasslist);
+    }
+  };
+
   const handleJoinClass = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !edpCode.trim()) {
       setJoinError('Please enter an EDP code.');
+      return;
+    }
+
+    // Validate EDP code format
+    const cleanedCode = edpCode.trim().toUpperCase();
+    if (cleanedCode.length > 50) {
+      setJoinError('EDP code is too long. Maximum 50 characters allowed.');
+      return;
+    }
+
+    // Check for invalid characters
+    const validPattern = /^[A-Z0-9_-]+$/;
+    if (!validPattern.test(cleanedCode)) {
+      setJoinError('Invalid EDP code format. Only letters, numbers, dashes (-), and underscores (_) are allowed.');
       return;
     }
 
@@ -852,7 +874,7 @@ function MyClasses() {
 
     try {
       // First check if classes exist for this EDP code
-      const availableClasses = await GetClassesByEDPCode(edpCode.trim().toUpperCase());
+      const availableClasses = await GetClassesByEDPCode(cleanedCode);
 
       if (availableClasses.length === 0) {
         setJoinError('No classes found for this EDP code.');
@@ -861,7 +883,7 @@ function MyClasses() {
       }
 
       // Join the class
-      await JoinClassByEDPCode(user.id, edpCode.trim().toUpperCase());
+      await JoinClassByEDPCode(user.id, cleanedCode);
 
       // Reload classes to show the new enrollment
       await loadClasses();
@@ -874,10 +896,17 @@ function MyClasses() {
     } catch (error: any) {
       console.error('Failed to join class:', error);
       const errorMessage = error.message || 'Failed to join class. Please try again.';
+      
       if (errorMessage.includes('already enrolled')) {
         setJoinError('You are already enrolled in this class.');
       } else if (errorMessage.includes('no classes found')) {
-        setJoinError('No classes found.');
+        setJoinError('No classes found for this EDP code.');
+      } else if (errorMessage.includes('invalid EDP code format')) {
+        setJoinError('Invalid EDP code. Only letters, numbers, dashes, and underscores are allowed.');
+      } else if (errorMessage.includes('too long')) {
+        setJoinError('EDP code is too long. Maximum 50 characters allowed.');
+      } else if (errorMessage.includes('cannot be empty')) {
+        setJoinError('Please enter an EDP code.');
       } else {
         setJoinError(errorMessage);
       }
@@ -1019,50 +1048,146 @@ function MyClasses() {
           <p className="text-gray-500 font-medium">No classes enrolled</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {classes.map((cls) => (
-            <div
-              key={cls.class_id}
-              className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow"
-            >
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3">
-                <h3 className="text-white font-semibold text-lg">{cls.descriptive_title || cls.subject_name || cls.subject_code}</h3>
-                <p className="text-white text-sm opacity-90">Subject Code: {cls.subject_code}</p>
-                {cls.edp_code && (
-                  <p className="text-white text-xs opacity-75">EDP Code: {cls.edp_code}</p>
-                )}
-              </div>
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">EDP Code</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descriptive Title</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Schedule</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Room</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Students</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {classes.map((cls) => (
+                <tr key={cls.class_id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap font-mono text-sm text-gray-900">{cls.edp_code || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap font-medium text-sm text-gray-900">{cls.subject_code}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cls.descriptive_title || cls.subject_name || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cls.teacher_name || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cls.schedule || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cls.room || '-'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {cls.enrolled_count || 0}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <Button
+                      onClick={() => handleViewClasslist(cls)}
+                      variant="outline"
+                      size="sm"
+                      icon={<Users className="h-4 w-4" />}
+                    >
+                      View Classlist
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-              <div className="px-4 py-4 bg-white">
-                <div className="space-y-2 text-sm">
-                  {cls.teacher_name && (
-                    <div className="flex items-center text-gray-600">
-                      <Users className="h-4 w-4 mr-2 text-gray-400" />
-                      <span className="font-medium">Teacher:</span>
-                      <span className="ml-2">{cls.teacher_name}</span>
-                    </div>
-                  )}
-                  {cls.schedule && (
-                    <div className="flex items-center text-gray-600">
-                      <Clock className="h-4 w-4 mr-2 text-gray-400" />
-                      <span>{cls.schedule}</span>
-                    </div>
-                  )}
-                  {cls.room && (
-                    <div className="flex items-center text-gray-600">
-                      <MapPin className="h-4 w-4 mr-2 text-gray-400" />
-                      <span>{cls.room}</span>
-                    </div>
-                  )}
-                  {cls.section && (
-                    <div className="text-gray-600">
-                      <span className="font-medium">Section:</span> {cls.section}
-                    </div>
-                  )}
-                </div>
+      {/* Classlist Modal */}
+      {viewingClasslist && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setViewingClasslist(null);
+              setClasslistStudents([]);
+            }
+          }}
+        >
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl mx-4 relative max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-2xl font-bold text-gray-900">
+                  {viewingClasslist.descriptive_title || viewingClasslist.subject_name}
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {viewingClasslist.subject_code} {viewingClasslist.edp_code ? `• ${viewingClasslist.edp_code}` : ''}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={handleRefreshClasslist}
+                  variant="outline"
+                  size="sm"
+                  disabled={loadingClasslist}
+                  icon={loadingClasslist ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                >
+                  Refresh
+                </Button>
+                <Button
+                  onClick={() => {
+                    setViewingClasslist(null);
+                    setClasslistStudents([]);
+                  }}
+                  variant="secondary"
+                  size="sm"
+                >
+                  ×
+                </Button>
               </div>
             </div>
-          ))}
+
+            <div className="p-6 overflow-y-auto flex-1">
+              {loadingClasslist && classlistStudents.length === 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+                </div>
+              ) : classlistStudents.length === 0 ? (
+                <div className="text-center py-12">
+                  <Users className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                  <p className="text-gray-500">No students enrolled yet</p>
+                </div>
+              ) : (
+                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student Number</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Enrollment Date</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {classlistStudents.map((student, index) => (
+                        <tr key={student.student_user_id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
+                          <td className="px-6 py-4 whitespace-nowrap font-mono text-sm text-gray-900">{student.student_code}</td>
+                          <td className="px-6 py-4 whitespace-nowrap font-medium text-sm text-gray-900">
+                            {student.last_name}, {student.first_name}
+                            {student.middle_name ? ` ${student.middle_name}` : ''}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{student.email || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{student.enrollment_date}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <StatusBadge status={student.status === 'active' ? 'active' : 'inactive'} label={student.status} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-200 bg-gray-50">
+              <p className="text-sm text-gray-600">
+                Total Students: <span className="font-semibold">{classlistStudents.length}</span>
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -9,7 +9,9 @@ import {
   LogOut,
   ChevronDown,
   Lock,
-  UserCircle
+  UserCircle,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import LogoutFeedbackModal from './LogoutFeedbackModal';
 
@@ -35,6 +37,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
   const [activeTab, setActiveTab] = useState<'profile' | 'password'>('profile');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>(user?.photo_url || '');
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
   
   // Password change states
   const [oldPassword, setOldPassword] = useState('');
@@ -59,6 +62,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
   const navigate = useNavigate();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
 
   // Utility function to compress and resize image
   const compressImage = (file: File, maxWidth: number = 800, maxHeight: number = 800, quality: number = 0.8): Promise<string> => {
@@ -450,67 +454,129 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
 
   return (
     <div className="h-screen overflow-hidden bg-gray-50">
-      {/* Static sidebar - always visible - Icon-only design */}
-      <div className="fixed left-0 top-0 bottom-0 flex flex-col w-16 bg-gray-200 shadow-lg border-r border-gray-300 z-10">
-        {/* Navigation Section - Icon only */}
-        <div className="flex-1 pt-2 pb-4 overflow-y-auto overflow-x-hidden">
-              <nav className="flex flex-col items-center space-y-3 px-2">
-                {navigationItems.map((item) => (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    title={item.name}
-                    className={`${
-                      item.current
-                        ? 'bg-purple-100 rounded-lg'
-                        : 'hover:bg-gray-300 rounded-lg'
-                    } group flex items-center justify-center w-12 h-12 transition-all duration-200 ease-in-out`}
-                  >
-                    <div className={`${item.current ? 'text-purple-700' : 'text-gray-600 group-hover:text-gray-800'} transition-colors duration-200 [&>svg]:w-6 [&>svg]:h-6`}>
-                      {item.icon}
-                    </div>
-                  </Link>
-                ))}
-              </nav>
+      {/* Modern Expandable Sidebar */}
+      <div 
+        ref={sidebarRef}
+        className={`fixed left-0 top-0 bottom-0 flex flex-col bg-white shadow-xl border-r border-gray-200 z-10 transition-all duration-300 ease-in-out ${
+          sidebarExpanded ? 'w-64' : 'w-20'
+        }`}
+        onMouseEnter={() => setSidebarExpanded(true)}
+        onMouseLeave={() => setSidebarExpanded(false)}
+      >
+        {/* Navigation Section */}
+        <div className="flex-1 pt-20 pb-6 overflow-y-auto overflow-x-hidden sidebar-scroll">
+          <nav className="px-3 space-y-2">
+            {navigationItems.map((item) => (
+              <Link
+                key={item.name}
+                to={item.href}
+                className={`relative flex items-center px-3 py-3 rounded-xl transition-all duration-200 group ${
+                  item.current
+                    ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/30'
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                {/* Active indicator bar */}
+                {item.current && (
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-white rounded-r-full" />
+                )}
+                
+                <div className={`flex-shrink-0 transition-colors duration-200 ${
+                  item.current ? 'text-white' : 'text-gray-500 group-hover:text-primary-600'
+                } [&>svg]:w-6 [&>svg]:h-6`}>
+                  {item.icon}
+                </div>
+                
+                <span className={`ml-4 font-medium text-sm whitespace-nowrap transition-all duration-300 ${
+                  sidebarExpanded ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'
+                }`}>
+                  {item.name}
+                </span>
+                
+                {/* Tooltip for collapsed state */}
+                {!sidebarExpanded && (
+                  <div className="absolute left-full ml-6 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50">
+                    {item.name}
+                    <div className="absolute right-full top-1/2 -translate-y-1/2 border-8 border-transparent border-r-gray-900" />
+                  </div>
+                )}
+              </Link>
+            ))}
+          </nav>
         </div>
         
-        {/* Footer Section - User Profile */}
-        <div className="flex-shrink-0 pb-4 flex items-center justify-center">
-          {user?.photo_url || photoPreview ? (
-            <img 
-              src={photoPreview || user?.photo_url} 
-              alt="Profile" 
-              className="h-10 w-10 rounded-full object-cover cursor-pointer hover:ring-2 hover:ring-gray-400 transition-all"
-              data-profile-icon
-              onClick={(e) => {
-                e.stopPropagation();
-                setProfileDropdownOpen(!profileDropdownOpen);
-              }}
-            />
-          ) : (
-            <div 
-              className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-gray-400 transition-all"
-              data-profile-icon
-              onClick={(e) => {
-                e.stopPropagation();
-                setProfileDropdownOpen(!profileDropdownOpen);
-              }}
-            >
-              <User className="h-6 w-6 text-gray-600" />
+        {/* Divider */}
+        <div className="border-t border-gray-200 mx-3" />
+        
+        {/* Profile Section */}
+        <div className="flex-shrink-0 p-4">
+          <div 
+            className={`flex items-center space-x-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 cursor-pointer transition-all duration-200 ${
+              sidebarExpanded ? '' : 'justify-center'
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setProfileDropdownOpen(!profileDropdownOpen);
+            }}
+          >
+            <div className="flex-shrink-0 relative">
+              {user?.photo_url || photoPreview ? (
+                <img 
+                  src={photoPreview || user?.photo_url} 
+                  alt="Profile" 
+                  className="h-10 w-10 rounded-full object-cover ring-2 ring-primary-200 shadow-sm"
+                />
+              ) : (
+                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center ring-2 ring-primary-200 shadow-sm">
+                  <User className="h-5 w-5 text-white" />
+                </div>
+              )}
+              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white" />
             </div>
-          )}
+            
+            <div className={`flex-1 min-w-0 transition-all duration-300 ${
+              sidebarExpanded ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'
+            }`}>
+              <div className="text-sm font-semibold text-gray-900 truncate">
+                {user?.first_name || user?.name || 'User'}
+              </div>
+              <div className="text-xs text-gray-500 capitalize truncate">
+                {user?.role?.replace('_', ' ') || 'Role'}
+              </div>
+            </div>
+            
+            <ChevronDown className={`flex-shrink-0 w-4 h-4 text-gray-400 transition-all duration-300 ${
+              sidebarExpanded ? 'opacity-100 w-4' : 'opacity-0 w-0'
+            }`} />
+          </div>
+        </div>
+        
+        {/* Expand/Collapse Toggle */}
+        <div className="absolute -right-3 top-1/2 -translate-y-1/2">
+          <button
+            onClick={() => setSidebarExpanded(!sidebarExpanded)}
+            className="w-6 h-6 bg-white hover:bg-gray-50 text-gray-600 hover:text-primary-600 rounded-full shadow-lg border border-gray-300 flex items-center justify-center transition-all duration-200"
+          >
+            {sidebarExpanded ? (
+              <ChevronLeft className="w-4 h-4" />
+            ) : (
+              <ChevronRight className="w-4 h-4" />
+            )}
+          </button>
         </div>
       </div>
       
-      {/* Profile dropdown - positioned outside sidebar to avoid clipping */}
+      {/* Profile dropdown - positioned outside sidebar */}
       {profileDropdownOpen && (
         <div 
-          className="fixed left-20 bottom-6 w-64 rounded-lg shadow-2xl bg-white ring-1 ring-gray-200 z-[9999] overflow-hidden"
+          className={`fixed bottom-6 w-64 rounded-xl shadow-2xl bg-white ring-1 ring-gray-200 z-[9999] overflow-hidden transition-all duration-300 ${
+            sidebarExpanded ? 'left-72' : 'left-24'
+          }`}
           ref={dropdownRef}
           onClick={(e) => e.stopPropagation()}
         >
           {/* User Info Header */}
-          <div className="px-4 py-3 bg-gradient-to-r from-gray-700 to-gray-800">
+          <div className="px-4 py-4 bg-gradient-to-r from-primary-500 to-primary-600">
             <div className="flex items-center space-x-3">
               {user?.photo_url || photoPreview ? (
                 <img 
@@ -525,23 +591,25 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
               )}
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-white truncate">{user?.first_name || user?.name || 'User'}</div>
-                <div className="text-xs text-gray-300 capitalize">{user?.role?.replace('_', ' ') || 'Role'}</div>
+                <div className="text-xs text-primary-100 capitalize truncate">{user?.role?.replace('_', ' ') || 'Role'}</div>
               </div>
             </div>
           </div>
           
           {/* Menu Items */}
-          <div className="py-1">
+          <div className="py-2">
             <button
               type="button"
-              className="flex items-center w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 text-left transition-colors"
+              className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 hover:text-gray-900 text-left transition-all group"
               onClick={(e) => {
                 e.stopPropagation();
                 setShowAccountModal(true);
                 setProfileDropdownOpen(false);
               }}
             >
-              <Settings className="h-4 w-4 mr-3" />
+              <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 group-hover:bg-primary-100 transition-colors mr-3">
+                <Settings className="h-4 w-4 text-gray-600 group-hover:text-primary-600 transition-colors" />
+              </div>
               <span className="font-medium">Account Settings</span>
             </button>
             <div className="border-t border-gray-100 my-1"></div>
@@ -551,9 +619,11 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                 e.stopPropagation();
                 handleLogout();
               }}
-              className="flex items-center w-full px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 text-left transition-colors"
+              className="flex items-center w-full px-4 py-3 text-sm text-red-600 hover:bg-red-50 text-left transition-all group"
             >
-              <LogOut className="h-4 w-4 mr-3" />
+              <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-red-50 group-hover:bg-red-100 transition-colors mr-3">
+                <LogOut className="h-4 w-4 text-red-600" />
+              </div>
               <span className="font-medium">Sign out</span>
             </button>
           </div>
@@ -561,20 +631,17 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
       )}
 
       {/* Main content */}
-      <div className="flex flex-col h-screen bg-gray-50 ml-16 overflow-hidden">
+      <div className={`flex flex-col h-screen bg-gray-50 transition-all duration-300 overflow-hidden ${
+        sidebarExpanded ? 'ml-64' : 'ml-20'
+      }`}>
         {/* Top navigation */}
-        <div className="flex-shrink-0 flex h-16 bg-white shadow-md border-b border-gray-300 z-10">
-          <div className="flex-1 px-4 flex justify-between">
-            <div className="flex-1 flex">
-              <div className="w-full flex md:ml-0">
-                <div className="relative w-full text-gray-400 focus-within:text-gray-600">
-                  <div className="absolute inset-y-0 left-0 flex items-center pointer-events-none">
-                    <span className="text-xl lg:text-2xl font-semibold text-gray-900">{title}</span>
-                  </div>
-                </div>
-              </div>
+        <div className="flex-shrink-0 flex h-16 bg-white shadow-sm border-b border-gray-200 z-10">
+          <div className="flex-1 px-6 flex justify-between items-center">
+            <div className="flex items-center space-x-4">
+              <h1 className="text-2xl font-bold text-gray-900">{title}</h1>
             </div>
-            <div className="ml-4 flex items-center md:ml-6">
+            <div className="flex items-center space-x-3">
+              {/* Additional header items can go here */}
             </div>
           </div>
         </div>
@@ -583,7 +650,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
         <main className="flex-1 bg-gray-50 overflow-y-auto overflow-x-hidden">
           <div className="py-6">
             <div className="max-w-full mx-auto px-4 sm:px-6 md:px-8">
-              <div className="bg-white rounded-lg shadow-sm border border-gray-300 p-6">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 {children}
               </div>
             </div>
@@ -600,17 +667,17 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
         >
           <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[calc(100vh-2rem)] flex flex-col z-[10001] my-4">
             {/* Modal Header - Fixed */}
-            <div className="bg-gradient-to-r from-gray-700 to-gray-800 px-8 py-5 flex justify-between items-center flex-shrink-0 rounded-t-xl">
+            <div className="bg-gray-50 border-b border-gray-200 px-8 py-5 flex justify-between items-center flex-shrink-0 rounded-t-xl">
               <div className="flex items-center space-x-3">
-                <div className="bg-white/20 p-2 rounded-lg">
-                  <Settings className="h-6 w-6 text-white" />
+                <div className="bg-gray-100 p-2 rounded-lg">
+                  <Settings className="h-6 w-6 text-gray-700" />
                 </div>
-                <h3 className="text-2xl font-bold text-white">Account Settings</h3>
+                <h3 className="text-2xl font-bold text-gray-900">Account Settings</h3>
               </div>
               <button
                 type="button"
                 onClick={handleCloseAccountModal}
-                className="text-white/80 hover:text-white hover:bg-white/10 rounded-lg p-2 focus:outline-none transition-all"
+                className="text-gray-400 hover:text-gray-600 rounded-lg p-2 focus:outline-none transition-all"
               >
                 <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1169,7 +1236,7 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                       <div className="pt-2">
                         <button
                           type="submit"
-                          className="w-full px-6 py-3 bg-gradient-to-r from-gray-700 to-gray-800 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all font-semibold shadow-md hover:shadow-lg flex items-center justify-center space-x-2"
+                          className="w-full px-6 py-3 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-all font-semibold shadow-sm flex items-center justify-center space-x-2"
                         >
                           <Lock className="h-5 w-5" />
                           <span>Update Password</span>
@@ -1196,36 +1263,32 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
           }}
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
         >
-          <div className="relative bg-white rounded-lg shadow-xl w-full max-w-md">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md">
             {/* Modal Content */}
-            <div className="p-6">
-              {/* Icon */}
-              <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 bg-yellow-100 rounded-full">
-                <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              
+            <div className="p-8">              
               {/* Title */}
-              <h3 className="text-xl font-bold text-gray-900 text-center mb-6">
-                Are you sure you want to logout?
+              <h3 className="text-2xl font-bold text-gray-900 text-center mb-2">
+                Confirm Logout
               </h3>
+              <p className="text-gray-500 text-center mb-8">
+                Are you sure you want to logout?
+              </p>
               
               {/* Buttons */}
               <div className="flex space-x-3">
                 <button
                   type="button"
                   onClick={handleLogoutCancel}
-                  className="flex-1 px-4 py-2.5 border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium text-sm"
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium"
                 >
-                  No
+                  Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleLogoutConfirm}
-                  className="flex-1 px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors font-medium text-sm shadow-sm"
+                  className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm"
                 >
-                  Yes
+                  Logout
                 </button>
               </div>
             </div>

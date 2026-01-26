@@ -169,7 +169,7 @@ function DashboardOverview() {
       )}
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <StatCard
           title="Active Classes"
           value={activeClasses}
@@ -182,7 +182,46 @@ function DashboardOverview() {
           icon={<Users className="h-6 w-6" />}
           color="green"
         />
+        <StatCard
+          title="Today's Classes"
+          value={activeClasses}
+          icon={<Calendar className="h-6 w-6" />}
+          color="purple"
+        />
       </div>
+
+      {/* Today's Schedule */}
+      {activeClasses > 0 && (
+        <Card className="mb-8">
+          <CardHeader title="Today's Schedule" />
+          <CardBody>
+            <div className="space-y-3">
+              {classes.filter(cls => cls.is_active).slice(0, 3).map(cls => (
+                <Link
+                  key={cls.id}
+                  to={`classes/${cls.id}`}
+                  className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <BookOpen className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900">{cls.subject_name}</h4>
+                      <p className="text-sm text-gray-500">
+                        {cls.section} • {cls.enrolled_count} students
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-600">{cls.schedule || 'No schedule'}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -196,6 +235,18 @@ function DashboardOverview() {
           <div className="ml-4 flex-1">
             <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">View Login History</h3>
             <p className="text-sm text-gray-500 mt-0.5">View your login and logout records</p>
+          </div>
+        </Link>
+        <Link
+          to="classes"
+          className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-green-500 hover:shadow-md transition-all duration-200"
+        >
+          <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-500 transition-colors duration-200">
+            <Library className="h-6 w-6 text-green-600 group-hover:text-white transition-colors duration-200" />
+          </div>
+          <div className="ml-4 flex-1">
+            <h3 className="text-base font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Manage Classes</h3>
+            <p className="text-sm text-gray-500 mt-0.5">View and manage your classes</p>
           </div>
         </Link>
       </div>
@@ -339,43 +390,43 @@ function ClassManagement() {
 
       {/* Table Section */}
       <div className="flex-1 overflow-x-auto">
-        <div className="border-2 border-gray-300">
-          <table className="min-w-full border-collapse">
-            <thead className="bg-gray-100">
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   EDP Code
                 </th>
-                <th scope="col" className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Subject Code
                 </th>
-                <th scope="col" className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Descriptive Title
                 </th>
-                <th scope="col" className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Schedule
                 </th>
-                <th scope="col" className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Action
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white">
+            <tbody className="bg-white divide-y divide-gray-200">
               {currentClasses.map((cls, index) => (
-                <tr key={cls.class_id} className="hover:bg-gray-50">
-                  <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                <tr key={cls.class_id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {cls.edp_code || '-'}
                   </td>
-                  <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {cls.subject_code || '-'}
                   </td>
-                  <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {cls.descriptive_title || '-'}
                   </td>
-                  <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {cls.schedule || '-'}
                   </td>
-                  <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm font-medium">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
                       <Button
                         onClick={() => handleViewClassList(cls.class_id)}
@@ -555,19 +606,6 @@ function ClassManagement() {
                 </select>
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  value={new Date().toISOString().split('T')[0]}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-600 cursor-not-allowed"
-                />
-                <p className="mt-1 text-xs text-gray-500">Date is automatically set to today</p>
-              </div>
-
               <div className="flex justify-end gap-2 mt-6">
                 <Button
                   onClick={() => {
@@ -625,82 +663,19 @@ function CreateClasslist() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    schoolYear: '2024-2025',
+    schoolYear: '',
     semester: '1st Semester',
     subjectCode: '',
     subjectName: '',
     descriptiveTitle: '',
     schedule: '',
-    room: '',
-    selectedDays: [] as string[],
-    startHour: '9',
-    startMinute: '00',
-    startAmPm: 'AM',
-    endHour: '10',
-    endMinute: '00',
-    endAmPm: 'AM'
+    room: ''
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
-  const toggleDay = (day: string) => {
-    setFormData(prev => {
-      const newDays = prev.selectedDays.includes(day)
-        ? prev.selectedDays.filter(d => d !== day)
-        : [...prev.selectedDays, day];
-      return { ...prev, selectedDays: newDays };
-    });
-  };
 
-  // Convert 12-hour format to 24-hour format (HH:MM)
-  const convertTo24Hour = (hour: string, minute: string, ampm: string): string => {
-    let h = parseInt(hour);
-    if (ampm === 'PM' && h !== 12) {
-      h += 12;
-    } else if (ampm === 'AM' && h === 12) {
-      h = 0;
-    }
-    return `${h.toString().padStart(2, '0')}:${minute}`;
-  };
-
-  // Format time for display (12-hour format)
-  const formatTimeDisplay = (hour: string, minute: string, ampm: string): string => {
-    return `${hour}:${minute} ${ampm}`;
-  };
-
-  const formatSchedule = (days: string[], startHour: string, startMinute: string, startAmPm: string, endHour: string, endMinute: string, endAmPm: string): string => {
-    if (!days.length) return '';
-
-    // Sort days in order
-    const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const sortedDays = [...days].sort((a, b) => {
-      return dayOrder.indexOf(a) - dayOrder.indexOf(b);
-    });
-
-    // Format days (Mon, Tue -> MW or Mon, Wed, Fri -> MWF)
-    const dayAbbrs: Record<string, string> = {
-      'Mon': 'M',
-      'Tue': 'T',
-      'Wed': 'W',
-      'Thu': 'TH',
-      'Fri': 'F',
-      'Sat': 'SAT',
-      'Sun': 'SUN'
-    };
-
-    let dayString = '';
-    if (sortedDays.length === 2 && sortedDays.includes('Tue') && sortedDays.includes('Thu')) {
-      dayString = 'TTH';
-    } else {
-      dayString = sortedDays.map(d => dayAbbrs[d] || d).join('');
-    }
-
-    const startTimeStr = formatTimeDisplay(startHour, startMinute, startAmPm);
-    const endTimeStr = formatTimeDisplay(endHour, endMinute, endAmPm);
-
-    return `${dayString} ${startTimeStr}-${endTimeStr}`;
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -727,22 +702,17 @@ function CreateClasslist() {
         return;
       }
 
-      if (formData.selectedDays.length === 0) {
-        setMessage('Please select at least one day of the week.');
+      if (!formData.schedule) {
+        setMessage('Schedule is required.');
         setLoading(false);
         return;
       }
 
-      // Format schedule from selected days and time
-      const formattedSchedule = formatSchedule(
-        formData.selectedDays,
-        formData.startHour,
-        formData.startMinute,
-        formData.startAmPm,
-        formData.endHour,
-        formData.endMinute,
-        formData.endAmPm
-      );
+      if (!formData.schoolYear) {
+        setMessage('School Year is required.');
+        setLoading(false);
+        return;
+      }
 
       // Use the manually entered EDP code
       const subjectCode = formData.subjectCode.toUpperCase().trim();
@@ -760,7 +730,7 @@ function CreateClasslist() {
         formData.subjectName, // Subject Code for the class
         user?.id || 0,
         formData.subjectCode, // EDP Code
-        formattedSchedule,
+        formData.schedule,
         formData.room,
         '',
         '',
@@ -854,222 +824,129 @@ function CreateClasslist() {
 
           <form onSubmit={handleSubmit} className="flex-1 overflow-hidden flex flex-col">
             <div className="flex-1 overflow-y-auto p-6">
-              <div className="space-y-4">
-                {/* School Year and Semester - Side by Side */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="schoolYear" className="block text-sm font-medium text-gray-700 mb-1">
-                      School Year
-                    </label>
-                    <select
-                      id="schoolYear"
-                      value={formData.schoolYear}
-                      onChange={(e) => setFormData({ ...formData, schoolYear: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="2023-2024">2023-2024</option>
-                      <option value="2024-2025">2024-2025</option>
-                      <option value="2025-2026">2025-2026</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label htmlFor="semester" className="block text-sm font-medium text-gray-700 mb-1">
-                      Semester
-                    </label>
-                    <select
-                      id="semester"
-                      value={formData.semester}
-                      onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="1st Semester">1st Semester</option>
-                      <option value="2nd Semester">2nd Semester</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* EDP Code, Subject Code, and Descriptive Title - 3 columns */}
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label htmlFor="subjectCode" className="block text-sm font-medium text-gray-700 mb-1">
-                      EDP Code
-                    </label>
-                    <input
-                      type="text"
-                      id="subjectCode"
-                      value={formData.subjectCode}
-                      onChange={(e) => setFormData({ ...formData, subjectCode: e.target.value.toUpperCase() })}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="subjectName" className="block text-sm font-medium text-gray-700 mb-1">
-                      Subject Code
-                    </label>
-                    <input
-                      type="text"
-                      id="subjectName"
-                      value={formData.subjectName}
-                      onChange={(e) => setFormData({ ...formData, subjectName: e.target.value.toUpperCase() })}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="descriptiveTitle" className="block text-sm font-medium text-gray-700 mb-1">
-                      Descriptive Title
-                    </label>
-                    <input
-                      type="text"
-                      id="descriptiveTitle"
-                      value={formData.descriptiveTitle}
-                      onChange={(e) => setFormData({ ...formData, descriptiveTitle: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* Schedule Section - Days and Time side by side */}
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Days block */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Schedule
-                    </label>
-                    <div className="flex gap-2">
-                      {[
-                        { value: 'Mon', label: 'M' },
-                        { value: 'Tue', label: 'T' },
-                        { value: 'Wed', label: 'W' },
-                        { value: 'Thu', label: 'TH' },
-                        { value: 'Fri', label: 'F' },
-                        { value: 'Sat', label: 'SAT' },
-                        { value: 'Sun', label: 'SUN' }
-                      ].map((day) => (
-                        <Button
-                          key={day.value}
-                          type="button"
-                          onClick={() => toggleDay(day.value)}
-                          variant={formData.selectedDays.includes(day.value) ? 'primary' : 'outline'}
-                          className="min-w-[40px] h-10 px-2 rounded-full"
-                        >
-                          {day.label}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Time block */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Time
-                    </label>
-                    <div className="space-y-2">
-                      {/* Start Time */}
-                      <div className="flex items-center gap-2">
-                        <select
-                          id="startHour"
-                          value={formData.startHour}
-                          onChange={(e) => setFormData({ ...formData, startHour: e.target.value })}
-                          className="px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              <div className="space-y-6">
+                {/* Basic Information Section */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3 pb-2 border-b">Basic Information</h3>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label htmlFor="schoolYear" className="block text-sm font-medium text-gray-700 mb-1.5">
+                          School Year <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="schoolYear"
+                          value={formData.schoolYear}
+                          onChange={(e) => setFormData({ ...formData, schoolYear: e.target.value })}
+                          className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                           required
-                        >
-                          {Array.from({ length: 12 }, (_, i) => i + 1).map((hour) => (
-                            <option key={hour} value={hour.toString()}>
-                              {hour}
-                            </option>
-                          ))}
-                        </select>
-                        <span className="text-gray-500">:</span>
-                        <select
-                          id="startMinute"
-                          value={formData.startMinute}
-                          onChange={(e) => setFormData({ ...formData, startMinute: e.target.value })}
-                          className="px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          required
-                        >
-                          {['00', '15', '30', '45'].map((minute) => (
-                            <option key={minute} value={minute}>
-                              {minute}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          id="startAmPm"
-                          value={formData.startAmPm}
-                          onChange={(e) => setFormData({ ...formData, startAmPm: e.target.value })}
-                          className="px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          required
-                        >
-                          <option value="AM">AM</option>
-                          <option value="PM">PM</option>
-                        </select>
+                        />
                       </div>
-                      {/* End Time */}
-                      <div className="flex items-center gap-2">
+
+                      <div>
+                        <label htmlFor="semester" className="block text-sm font-medium text-gray-700 mb-1.5">
+                          Semester <span className="text-red-500">*</span>
+                        </label>
                         <select
-                          id="endHour"
-                          value={formData.endHour}
-                          onChange={(e) => setFormData({ ...formData, endHour: e.target.value })}
-                          className="px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          id="semester"
+                          value={formData.semester}
+                          onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
+                          className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
                           required
                         >
-                          {Array.from({ length: 12 }, (_, i) => i + 1).map((hour) => (
-                            <option key={hour} value={hour.toString()}>
-                              {hour}
-                            </option>
-                          ))}
-                        </select>
-                        <span className="text-gray-500">:</span>
-                        <select
-                          id="endMinute"
-                          value={formData.endMinute}
-                          onChange={(e) => setFormData({ ...formData, endMinute: e.target.value })}
-                          className="px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          required
-                        >
-                          {['00', '15', '30', '45'].map((minute) => (
-                            <option key={minute} value={minute}>
-                              {minute}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          id="endAmPm"
-                          value={formData.endAmPm}
-                          onChange={(e) => setFormData({ ...formData, endAmPm: e.target.value })}
-                          className="px-2 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          required
-                        >
-                          <option value="AM">AM</option>
-                          <option value="PM">PM</option>
+                          <option value="1st Semester">1st Semester</option>
+                          <option value="2nd Semester">2nd Semester</option>
                         </select>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Room - Aligned with School Year, Subject Code, and Schedule */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="room" className="block text-sm font-medium text-gray-700 mb-1">
-                      ROOM
-                    </label>
-                    <input
-                      type="text"
-                      id="room"
-                      value={formData.room}
-                      onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      required
-                    />
+                {/* Subject Information Section */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3 pb-2 border-b">Subject Information</h3>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label htmlFor="subjectCode" className="block text-sm font-medium text-gray-700 mb-1.5">
+                          EDP Code <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="subjectCode"
+                          value={formData.subjectCode}
+                          onChange={(e) => setFormData({ ...formData, subjectCode: e.target.value.toUpperCase() })}
+                          className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="subjectName" className="block text-sm font-medium text-gray-700 mb-1.5">
+                          Subject Code <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="subjectName"
+                          value={formData.subjectName}
+                          onChange={(e) => setFormData({ ...formData, subjectName: e.target.value.toUpperCase() })}
+                          className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label htmlFor="descriptiveTitle" className="block text-sm font-medium text-gray-700 mb-1.5">
+                        Descriptive Title <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        id="descriptiveTitle"
+                        value={formData.descriptiveTitle}
+                        onChange={(e) => setFormData({ ...formData, descriptiveTitle: e.target.value })}
+                        className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        required
+                      />
+                    </div>
                   </div>
-                  <div></div>
+                </div>
+
+                {/* Schedule and Room Section */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 mb-3 pb-2 border-b">Schedule and Venue</h3>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label htmlFor="schedule" className="block text-sm font-medium text-gray-700 mb-1.5">
+                          Schedule <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="schedule"
+                          value={formData.schedule}
+                          onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
+                          className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="room" className="block text-sm font-medium text-gray-700 mb-1.5">
+                          Room <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          id="room"
+                          value={formData.room}
+                          onChange={(e) => setFormData({ ...formData, room: e.target.value })}
+                          className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1785,6 +1662,7 @@ function AttendanceClassSelection() {
   // Refresh when navigating back to this page
   useEffect(() => {
     if (location.pathname === '/teacher/attendance') {
+      console.log('Navigated back to attendance management - refreshing data');
       setRefreshKey(prev => prev + 1);
     }
   }, [location.pathname]);
@@ -1836,8 +1714,10 @@ function AttendanceClassSelection() {
 
       setLoading(true);
       try {
+        console.log('Loading classes with attendance... (refreshKey:', refreshKey, ')');
         // Get only classes that have attendance records initialized
         const data = await GetTeacherClassesWithAttendance(user.id);
+        console.log('Loaded', data?.length || 0, 'classes with attendance');
         setClasses(data || []);
         setFilteredClasses(data || []);
         setError('');
@@ -1958,31 +1838,31 @@ function AttendanceClassSelection() {
       {/* Classes Table */}
       {filteredClasses.length > 0 && (
         <div className="flex-1 overflow-auto">
-          <div className="border-2 border-gray-300">
-            <table className="min-w-full border-collapse">
-              <thead className="bg-gray-100">
+          <div className="bg-white shadow rounded-lg overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     EDP Code
                   </th>
-                  <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Subject Code
                   </th>
-                  <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Descriptive Title
                   </th>
-                  <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Schedule
                   </th>
-                  <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Date
                   </th>
-                  <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Action
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white">
+              <tbody className="bg-white divide-y divide-gray-200">
                 {currentClasses.map((cls) => {
                   // Use latest_attendance_date from the class directly, or fall back to activeAttendanceMap
                   const latestDate = (cls as any).latest_attendance_date || activeAttendanceMap.get(cls.class_id);
@@ -1991,32 +1871,32 @@ function AttendanceClassSelection() {
                   return (
                     <tr
                       key={cls.class_id}
-                      className={`hover:bg-gray-50 ${hasActiveAttendance ? 'bg-green-50' : ''}`}
+                      className={`hover:bg-gray-50 transition-colors ${hasActiveAttendance ? 'bg-green-50' : ''}`}
                     >
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {cls.edp_code || '-'}
                       </td>
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {cls.subject_code || '-'}
                       </td>
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {cls.descriptive_title || cls.subject_name || '-'}
                       </td>
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {cls.schedule || '-'}
                       </td>
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {hasActiveAttendance ? new Date(latestDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-'}
                       </td>
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm font-medium">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center gap-2">
                           <Button
                             onClick={() => navigate(`/teacher/attendance/${cls.class_id}${hasActiveAttendance ? `?date=${latestDate}` : ''}`)}
                             variant="outline"
                             size="sm"
                             className="text-blue-600 bg-blue-50 hover:bg-blue-100"
-                            icon={<Eye className="h-3 w-3" />}
-                            title="View"
+                            icon={<Edit className="h-3 w-3" />}
+                            title="Edit"
                             disabled={!hasActiveAttendance}
                           />
                           <Button
@@ -2025,9 +1905,12 @@ function AttendanceClassSelection() {
                               if (window.confirm('Are you sure you want to archive this attendance? It will be moved to the Archive section.')) {
                                 try {
                                   await ArchiveAttendanceSheet(cls.class_id, latestDate);
-                                  // Refresh the class list
+                                  // Refresh the class list immediately
                                   setRefreshKey(prev => prev + 1);
-                                  alert('Attendance archived successfully!');
+                                  // Give a brief moment for the state to update
+                                  setTimeout(() => {
+                                    alert('Attendance archived successfully!');
+                                  }, 100);
                                 } catch (error) {
                                   console.error('Failed to archive attendance:', error);
                                   alert('Failed to archive attendance. Please try again.');
@@ -2179,19 +2062,6 @@ function AttendanceClassSelection() {
                 </select>
               </div>
 
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Date
-                </label>
-                <input
-                  type="date"
-                  value={new Date().toISOString().split('T')[0]}
-                  disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-600 cursor-not-allowed"
-                />
-                <p className="mt-1 text-xs text-gray-500">Date is automatically set to today</p>
-              </div>
-
               <div className="flex justify-end gap-2 mt-6">
                 <Button
                   onClick={() => {
@@ -2216,21 +2086,31 @@ function AttendanceClassSelection() {
 
                     try {
                       const today = new Date().toISOString().split('T')[0];
+                      console.log('Generating attendance for class', selectedClassId, 'on', today);
                       await GenerateAttendanceFromLogs(selectedClassId, today, user?.id || 0);
+                      console.log('Attendance generated successfully');
+
+                      // Close modal first
+                      setShowGenerateModal(false);
+                      const classIdToNavigate = selectedClassId;
+                      setSelectedClassId(null);
 
                       // Update the active attendance map immediately
                       setActiveAttendanceMap(prev => {
                         const newMap = new Map(prev);
-                        newMap.set(selectedClassId, today);
+                        newMap.set(classIdToNavigate, today);
                         return newMap;
                       });
 
-                      // Close modal
-                      setShowGenerateModal(false);
-                      setSelectedClassId(null);
+                      // Reload the class list to include the newly generated attendance
+                      console.log('Reloading class list after generation...');
+                      const data = await GetTeacherClassesWithAttendance(user?.id || 0);
+                      console.log('Reloaded classes:', data?.length || 0, 'classes found');
+                      setClasses(data || []);
+                      setFilteredClasses(data || []);
                       
                       // Navigate to the attendance detail page for the class
-                      navigate(`/teacher/attendance/${selectedClassId}?date=${today}`);
+                      navigate(`/teacher/attendance/${classIdToNavigate}?date=${today}&generated=true`);
                     } catch (error) {
                       console.error('Failed to generate attendance:', error);
                       const errorMessage = error instanceof Error ? error.message : 'Failed to generate attendance';
@@ -2407,9 +2287,6 @@ function StoredAttendance() {
       {/* Header Section */}
       <div className="flex-shrink-0 mb-4">
         <h2 className="text-2xl font-bold text-gray-900">Archive</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          View archived attendance sheets and class lists.
-        </p>
       </div>
 
       {/* Tabs */}
@@ -2487,35 +2364,35 @@ function StoredAttendance() {
           {/* Table Section */}
           <div className="flex-1 overflow-x-auto">
             {filteredAttendance.length > 0 ? (
-              <div className="border-2 border-gray-300">
-                <table className="min-w-full border-collapse">
-                  <thead className="bg-gray-100">
+              <div className="bg-white shadow rounded-lg overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
                     <tr>
-                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Date
                       </th>
-                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Subject
                       </th>
-                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Summary
                       </th>
-                      <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Action
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white">
+                  <tbody className="bg-white divide-y divide-gray-200">
                     {currentAttendanceRecords.map((sheet) => (
-                      <tr key={`${sheet.class_id}-${sheet.date}`} className="hover:bg-gray-50">
-                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      <tr key={`${sheet.class_id}-${sheet.date}`} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
                         </td>
-                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           <div className="font-medium">{sheet.subject_name}</div>
                           <div className="text-xs text-gray-500">{sheet.subject_code}</div>
                         </td>
-                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-600">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
                               {sheet.present_count} Present
@@ -2536,7 +2413,7 @@ function StoredAttendance() {
                           </div>
                           <div className="text-xs text-gray-400 mt-1">{sheet.student_count} total students</div>
                         </td>
-                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
+                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                           <div className="flex items-center justify-center gap-2">
                             <Button
                               onClick={() => {
@@ -2587,9 +2464,6 @@ function StoredAttendance() {
                   <>
                     <Archive className="mx-auto h-12 w-12 text-gray-300" />
                     <h3 className="mt-2 text-sm font-medium text-gray-900">No archived attendance sheets</h3>
-                    <p className="mt-1 text-sm text-gray-500">
-                      Archive attendance sheets from the Attendance Management page to see them here.
-                    </p>
                   </>
                 )}
               </div>
@@ -2670,45 +2544,39 @@ function StoredAttendance() {
           {/* Table Section */}
           <div className="flex-1 overflow-x-auto">
             {filteredClasses.length > 0 ? (
-              <div className="border-2 border-gray-300">
-                <table className="min-w-full border-collapse">
-                  <thead className="bg-gray-100">
+              <div className="bg-white shadow rounded-lg overflow-hidden">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
                     <tr>
-                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Subject
                       </th>
-                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Schedule
                       </th>
-                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         School Year
                       </th>
-                      <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
-                        Students
-                      </th>
-                      <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Action
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white">
+                  <tbody className="bg-white divide-y divide-gray-200">
                     {currentClassRecords.map((cls) => (
-                      <tr key={cls.class_id} className="hover:bg-gray-50">
-                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      <tr key={cls.class_id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           <div className="font-medium">{cls.subject_name}</div>
                           <div className="text-xs text-gray-500">{cls.subject_code}</div>
                         </td>
-                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {cls.schedule || '-'}
                         </td>
-                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           <div>{cls.school_year || '-'}</div>
                           <div className="text-xs text-gray-500">{cls.semester || ''}</div>
                         </td>
-                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm text-gray-600">
-                          {cls.enrolled_count} enrolled
-                        </td>
-                        <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
+                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                           <div className="flex items-center justify-center gap-2">
                             <Button
                               onClick={() => navigate(`/teacher/class-management/${cls.class_id}?mode=view`)}
@@ -2757,9 +2625,6 @@ function StoredAttendance() {
                   <>
                     <Library className="mx-auto h-12 w-12 text-gray-300" />
                     <h3 className="mt-2 text-sm font-medium text-gray-900">No archived classes</h3>
-                    <p className="mt-1 text-sm text-gray-500">
-                      Archive classes from the Class Management page to see them here.
-                    </p>
                   </>
                 )}
               </div>
@@ -2815,6 +2680,7 @@ function AttendanceManagementDetail() {
   const initialDate = searchParams.get('date') || '';
   const [selectedDate, setSelectedDate] = useState<string>(initialDate);
   const [loading, setLoading] = useState(true); // Start with loading true
+  const [attendanceReloadKey, setAttendanceReloadKey] = useState(0); // Force reload trigger
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [error, setError] = useState<string>('');
   // Initialize hasSelectedDate based on URL params
@@ -2826,6 +2692,48 @@ function AttendanceManagementDetail() {
   const [archiving, setArchiving] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [updatingStatus, setUpdatingStatus] = useState<{[key: string]: boolean}>({});
+
+  const handleStatusChange = async (record: Attendance, newStatus: string) => {
+    const key = `${record.class_id}-${record.student_user_id}-${record.date}`;
+    setUpdatingStatus(prev => ({ ...prev, [key]: true }));
+    
+    try {
+      console.log('Updating status to:', newStatus, 'for student:', record.student_user_id);
+      await UpdateAttendanceRecord(
+        record.class_id,
+        record.student_user_id,
+        record.date,
+        '', // timeIn - empty since we're not tracking time anymore
+        '', // timeOut - empty since we're not tracking time anymore
+        '', // pcNumber - empty since we're not tracking PC
+        newStatus,
+        record.remarks || ''
+      );
+      console.log('Status update successful');
+      
+      // Update local state
+      setAttendanceRecords(prev => 
+        prev.map(r => 
+          r.class_id === record.class_id && 
+          r.student_user_id === record.student_user_id && 
+          r.date === record.date
+            ? { ...r, status: newStatus }
+            : r
+        )
+      );
+    } catch (error) {
+      console.error('Failed to update attendance:', error);
+      alert('Failed to update attendance. Please try again.');
+    } finally {
+      setUpdatingStatus(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  // Force reload attendance data when component mounts or id/date changes
+  useEffect(() => {
+    setAttendanceReloadKey(prev => prev + 1);
+  }, [id, searchParams.get('date')]);
 
   useEffect(() => {
     const loadClass = async () => {
@@ -2867,7 +2775,7 @@ function AttendanceManagementDetail() {
       setHasSelectedDate(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClass?.class_id, selectedDate, hasSelectedDate]);
+  }, [selectedClass?.class_id, selectedDate, hasSelectedDate, attendanceReloadKey]);
 
   const loadAttendance = async () => {
     if (!selectedClass || !selectedDate) return;
@@ -2875,8 +2783,12 @@ function AttendanceManagementDetail() {
     setLoadingAttendance(true);
     setError('');
     try {
+      console.log('Fetching attendance from database for class:', selectedClass.class_id, 'date:', selectedDate);
       const records = await GetClassAttendance(selectedClass.class_id, selectedDate);
-      console.log('Loaded attendance records:', records?.length || 0);
+      console.log('Loaded attendance records:', records?.length || 0, 'records');
+      if (records && records.length > 0) {
+        console.log('Sample record statuses:', records.slice(0, 3).map(r => ({ id: r.student_user_id, status: r.status })));
+      }
       setAttendanceRecords(records || []);
       // If no records found but we have a class, it might mean no students are enrolled
       if ((!records || records.length === 0) && selectedClass) {
@@ -3100,7 +3012,7 @@ function AttendanceManagementDetail() {
                     {/* Class Information Header */}
                     <thead>
                       <tr>
-                        <th colSpan={7} className="px-4 py-2 text-left border-b-2 border-gray-900">
+                        <th colSpan={5} className="px-4 py-2 text-left border-b-2 border-gray-900">
                           <div className="text-gray-900 font-bold text-sm tracking-wide">CLASS INFORMATION</div>
                         </th>
                       </tr>
@@ -3123,7 +3035,7 @@ function AttendanceManagementDetail() {
                     {/* Attendance List Header */}
                     <thead>
                       <tr>
-                        <th colSpan={7} className="px-4 py-3 text-left border-b-2 border-gray-900">
+                        <th colSpan={5} className="px-4 py-3 text-left border-b-2 border-gray-900">
                           <div className="flex items-center justify-between">
                             <span className="text-gray-900 font-bold text-sm tracking-wide">DAILY ATTENDANCE RECORD</span>
                             <span className="text-xs text-gray-600">Total Students: {attendanceRecords.length}</span>
@@ -3134,60 +3046,55 @@ function AttendanceManagementDetail() {
                         <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '40px' }}>No.</th>
                         <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '90px' }}>Student ID</th>
                         <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase">Student Name</th>
-                        <th className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '70px' }}>Time In</th>
-                        <th className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '70px' }}>Time Out</th>
-                        <th className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Status</th>
-                        <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>Remarks</th>
+                        <th className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '120px' }}>Status</th>
+                        <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '150px' }}>Remarks</th>
                       </tr>
                     </thead>
 
                     {/* Student Attendance Rows */}
                     <tbody className="bg-white text-xs">
                       {attendanceRecords.length > 0 ? (
-                        attendanceRecords.map((record, index) => (
-                          <tr key={`${record.class_id}-${record.student_user_id}-${record.date}`} className="hover:bg-gray-50 border-b border-gray-100">
-                            <td className="px-2 py-1.5 text-center font-medium text-gray-900">
-                              {index + 1}
-                            </td>
-                            <td className="px-3 py-1.5 font-medium text-gray-900">
-                              {record.student_code}
-                            </td>
-                            <td className="px-3 py-1.5 text-gray-900">
-                              {record.last_name}, {record.first_name} {record.middle_name ? record.middle_name.charAt(0) + '.' : ''}
-                            </td>
-                            <td className="px-3 py-1.5 text-center">
-                              {record.time_in ? (
-                                <span className="text-green-700 font-medium">{record.time_in}</span>
-                              ) : (
-                                <span className="text-gray-400">—</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-1.5 text-center">
-                              {record.time_out ? (
-                                <span className="text-blue-700 font-medium">{record.time_out}</span>
-                              ) : (
-                                <span className="text-gray-400">—</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-1.5 text-center">
-                              {record.status ? (
-                                <span className={`px-2 py-0.5 text-xs font-medium rounded ${getStatusColor(record.status)}`}>
-                                  {record.status === 'present' ? 'PRESENT' : record.status === 'absent' ? 'ABSENT' : record.status === 'late' ? 'LATE' : record.status.toUpperCase()}
-                                </span>
-                              ) : (
-                                <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-200 text-gray-600">
-                                  NO STATUS
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-3 py-1.5 text-gray-700">
-                              {record.remarks || '—'}
-                            </td>
-                          </tr>
-                        ))
+                        attendanceRecords.map((record, index) => {
+                          const key = `${record.class_id}-${record.student_user_id}-${record.date}`;
+                          const isUpdating = updatingStatus[key];
+                          return (
+                            <tr key={key} className="hover:bg-gray-50 border-b border-gray-100">
+                              <td className="px-2 py-1.5 text-center font-medium text-gray-900">
+                                {index + 1}
+                              </td>
+                              <td className="px-3 py-1.5 font-medium text-gray-900">
+                                {record.student_code}
+                              </td>
+                              <td className="px-3 py-1.5 text-gray-900">
+                                {record.last_name}, {record.first_name} {record.middle_name ? record.middle_name.charAt(0) + '.' : ''}
+                              </td>
+                              <td className="px-3 py-1.5 text-center">
+                                <select
+                                  value={record.status || 'absent'}
+                                  onChange={(e) => handleStatusChange(record, e.target.value)}
+                                  disabled={isUpdating}
+                                  className={`px-2 py-1 text-xs font-medium border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 ${
+                                    record.status === 'present' 
+                                      ? 'bg-green-50 text-green-800 border-green-300' 
+                                      : record.status === 'late'
+                                      ? 'bg-yellow-50 text-yellow-800 border-yellow-300'
+                                      : 'bg-red-50 text-red-800 border-red-300'
+                                  }`}
+                                >
+                                  <option value="present">Present</option>
+                                  <option value="absent">Absent</option>
+                                  <option value="late">Late</option>
+                                </select>
+                              </td>
+                              <td className="px-3 py-1.5 text-gray-700">
+                                {record.remarks || '—'}
+                              </td>
+                            </tr>
+                          );
+                        })
                       ) : (
                         <tr>
-                          <td colSpan={7} className="px-4 py-8 text-center">
+                          <td colSpan={5} className="px-4 py-8 text-center">
                             <ClipboardList className="mx-auto h-8 w-8 text-gray-300 mb-2" />
                             <p className="text-sm text-gray-500">No students enrolled in this class yet.</p>
                             <p className="text-xs text-gray-400 mt-1">Students will appear here once they are enrolled.</p>
@@ -3199,7 +3106,7 @@ function AttendanceManagementDetail() {
                     {/* Summary Footer */}
                     <tfoot>
                       <tr className="border-t-2 border-gray-900">
-                        <td colSpan={7} className="px-4 py-3">
+                        <td colSpan={5} className="px-4 py-3">
                           <div className="flex justify-between items-center text-xs">
                             <div className="flex gap-4 font-medium">
                               <span className="text-green-700">
@@ -3210,9 +3117,6 @@ function AttendanceManagementDetail() {
                               </span>
                               <span className="text-red-700">
                                 Absent: {attendanceRecords.filter(r => r.status === 'absent').length}
-                              </span>
-                              <span className="text-gray-600">
-                                No Status: {attendanceRecords.filter(r => !r.status || r.status === '').length}
                               </span>
                             </div>
                             <div className="font-bold text-gray-900">

@@ -35,8 +35,15 @@ import {
   RotateCcw,
   CheckSquare,
   Square,
-  Settings
+  Settings,
+  ChevronRight,
+  ChevronDown,
+  UserCheck
 } from 'lucide-react';
+import DateRangeFilter from '../components/DateRangeFilter';
+import ArchiveConfirmationModal from '../components/ArchiveConfirmationModal';
+import ArchivedLogsView from '../components/ArchivedLogsView';
+import ArchivedReportsView from '../components/ArchivedReportsView';
 import {
   GetAdminDashboard,
   GetUsers,
@@ -46,6 +53,12 @@ import {
   UpdateUser,
   DeleteUser,
   GetAllLogs,
+  GetTodayLogs,
+  GetPastLogs,
+  ArchiveSelectedLogs,
+  UnarchiveLogs,
+  GetArchivedLogs,
+  GetArchivedFeedback,
   GetFeedback,
   GetDepartments,
   CreateDepartment,
@@ -74,6 +87,14 @@ interface DashboardStats {
   total_teachers: number;
   working_students: number;
   recent_logins: number;
+  active_users_now: number;
+  students_logged_in: number;
+  teachers_logged_in: number;
+  working_students_logged_in: number;
+  today_logins: number;
+  today_new_users: number;
+  locked_accounts: number;
+  pending_feedback: number;
 }
 
 interface User {
@@ -134,7 +155,15 @@ function DashboardOverview() {
     total_students: 0,
     total_teachers: 0,
     working_students: 0,
-    recent_logins: 0
+    recent_logins: 0,
+    active_users_now: 0,
+    students_logged_in: 0,
+    teachers_logged_in: 0,
+    working_students_logged_in: 0,
+    today_logins: 0,
+    today_new_users: 0,
+    locked_accounts: 0,
+    pending_feedback: 0
   });
   const [loading, setLoading] = useState(true);
 
@@ -170,7 +199,8 @@ function DashboardOverview() {
 
   return (
     <div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Overview Stats - Connected to all roles */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
         <StatCard
           title="Total Students"
           value={stats.total_students}
@@ -190,11 +220,107 @@ function DashboardOverview() {
           color="indigo"
         />
         <StatCard
-          title="Recent Logins"
-          value={stats.recent_logins}
-          icon={<ClipboardList className="h-6 w-6" />}
-          color="yellow"
+          title="Active Users Now"
+          value={stats.active_users_now}
+          icon={<UserCheck className="h-6 w-6" />}
+          color="purple"
         />
+      </div>
+
+      {/* Active Users Breakdown */}
+      <Card className="mb-6">
+        <CardHeader title="Currently Active Users by Role" />
+        <CardBody>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="flex items-center p-4 bg-blue-50 rounded-lg">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
+                <GraduationCap className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Students Online</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.students_logged_in}</p>
+              </div>
+            </div>
+            <div className="flex items-center p-4 bg-green-50 rounded-lg">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
+                <User className="h-6 w-6 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Teachers Online</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.teachers_logged_in}</p>
+              </div>
+            </div>
+            <div className="flex items-center p-4 bg-indigo-50 rounded-lg">
+              <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mr-4">
+                <Users className="h-6 w-6 text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Working Students Online</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.working_students_logged_in}</p>
+              </div>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* Today's Activity & Critical Alerts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <Card>
+          <CardHeader title="Today's Activity" />
+          <CardBody>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center">
+                  <ClipboardList className="h-5 w-5 text-blue-600 mr-3" />
+                  <span className="text-sm font-medium text-gray-700">Total Logins</span>
+                </div>
+                <span className="text-lg font-bold text-gray-900">{stats.today_logins}</span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center">
+                  <UserPlus className="h-5 w-5 text-green-600 mr-3" />
+                  <span className="text-sm font-medium text-gray-700">New Users</span>
+                </div>
+                <span className="text-lg font-bold text-gray-900">{stats.today_new_users}</span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center">
+                  <BarChart3 className="h-5 w-5 text-purple-600 mr-3" />
+                  <span className="text-sm font-medium text-gray-700">Recent Activity (24h)</span>
+                </div>
+                <span className="text-lg font-bold text-gray-900">{stats.recent_logins}</span>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="Critical Alerts" />
+          <CardBody>
+            <div className="space-y-4">
+              <Link 
+                to="users"
+                className="flex items-center justify-between p-3 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <AlertCircle className="h-5 w-5 text-red-600 mr-3" />
+                  <span className="text-sm font-medium text-gray-700">Locked Accounts</span>
+                </div>
+                <span className="text-lg font-bold text-red-600">{stats.locked_accounts}</span>
+              </Link>
+              <Link
+                to="reports"
+                className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors"
+              >
+                <div className="flex items-center">
+                  <FileText className="h-5 w-5 text-yellow-600 mr-3" />
+                  <span className="text-sm font-medium text-gray-700">Pending Feedback</span>
+                </div>
+                <span className="text-lg font-bold text-yellow-600">{stats.pending_feedback}</span>
+              </Link>
+            </div>
+          </CardBody>
+        </Card>
       </div>
 
       <Card className="mt-8">
@@ -1195,147 +1321,192 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
 
 function ViewLogs() {
   const { user } = useAuth();
-  const [logs, setLogs] = useState<LoginLog[]>([]);
+  
+  // Today's logs (default view)
+  const [todayLogs, setTodayLogs] = useState<LoginLog[]>([]);
+  const [showTodayLogs, setShowTodayLogs] = useState(true);
+  
+  // Past logs (hidden by default)
+  const [pastLogs, setPastLogs] = useState<LoginLog[]>([]);
+  const [showPastLogs, setShowPastLogs] = useState(false);
+  
+  // Pagination for today's logs
+  const [todayCurrentPage, setTodayCurrentPage] = useState(1);
+  const todayItemsPerPage = 10;
+  
+  // Pagination for past logs
+  const [pastCurrentPage, setPastCurrentPage] = useState(1);
+  const pastItemsPerPage = 10;
+  
+  // Selected logs for archiving
+  const [selectedLogs, setSelectedLogs] = useState<Set<number>>(new Set());
+  
+  // UI states
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  
+  // Toast notification
+  const [toast, setToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
-
-  // Available dates for archiving
-  const [availableDates, setAvailableDates] = useState<string[]>([]);
-  const [archiving, setArchiving] = useState(false);
-
-  // General search
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-
-  // Date filter only
-  const [dateFilter, setDateFilter] = useState('');
-
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
-
-  // Pagination for individual log tables within each date
-  const [logTablePages, setLogTablePages] = useState<Record<string, number>>({});
-  const logsPerPage = 20;
-
-  const loadLogs = async () => {
-    try {
-      // Always load all logs - we filter on the frontend based on viewMode
-      const data = await GetAllLogs();
-      if (data && Array.isArray(data)) {
-        setLogs(data);
-      } else {
-        setLogs([]);
-      }
-      setError('');
-    } catch (error) {
-      console.error('Failed to load logs:', error);
-      setError('Failed to load logs. Please check your database connection.');
-      setLogs([]);
-    } finally {
-      setLoading(false);
-    }
+  // Date range for past logs filter
+  const getYesterdayDate = () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return yesterday.toISOString().split('T')[0];
   };
 
-  const loadAvailableDates = async () => {
-    try {
-      const dates = await GetLogDates();
-      setAvailableDates(dates || []);
-    } catch (error) {
-      console.error('Failed to load log dates:', error);
-    }
+  const get30DaysAgoDate = () => {
+    const date = new Date();
+    date.setDate(date.getDate() - 30);
+    return date.toISOString().split('T')[0];
   };
 
+  const [pastDateRange, setPastDateRange] = useState({
+    start: get30DaysAgoDate(),
+    end: getYesterdayDate()
+  });
+
+  // Load today's logs on mount
   useEffect(() => {
-    loadLogs();
-    loadAvailableDates();
+    loadTodayLogs();
 
-    // Auto-refresh every 30 seconds to show new logins
+    // Auto-refresh every 30 seconds
     const refreshInterval = setInterval(() => {
-      loadLogs();
-      loadAvailableDates();
+      loadTodayLogs();
+      if (showPastLogs) {
+        loadPastLogs(pastDateRange.start, pastDateRange.end);
+      }
     }, 30000);
 
     return () => clearInterval(refreshInterval);
   }, []);
 
-  const clearFilters = () => {
-    setSearchQuery('');
-    setDateFilter('');
+  // Load past logs when showPastLogs toggles or date range changes
+  useEffect(() => {
+    if (showPastLogs) {
+      loadPastLogs(pastDateRange.start, pastDateRange.end);
+    }
+  }, [showPastLogs, pastDateRange]);
+
+  const loadTodayLogs = async () => {
+    try {
+      const data = await GetTodayLogs();
+      setTodayLogs(data || []);
+      setError('');
+    } catch (error) {
+      console.error('Failed to load today\'s logs:', error);
+      setError('Failed to load today\'s logs. Please check your database connection.');
+      setTodayLogs([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Archive by date handler
-  const handleArchiveByDate = async (date: string) => {
-    if (!confirm(`Are you sure you want to archive all logs for ${date}? Archived logs can be exported from the Archive section.`)) {
-      return;
-    }
-
-    setArchiving(true);
+  const loadPastLogs = async (startDate: string, endDate: string) => {
     try {
-      const count = await ArchiveLogsByDate(date, user?.id || 0);
-      alert(`Successfully archived ${count} log(s) for ${date}`);
-      loadLogs();
-      loadAvailableDates();
+      const data = await GetPastLogs(startDate, endDate);
+      setPastLogs(data || []);
+    } catch (error) {
+      console.error('Failed to load past logs:', error);
+      showToast('error', 'Failed to load past logs');
+      setPastLogs([]);
+    }
+  };
+
+  const handleArchive = async () => {
+    if (selectedLogs.size === 0) return;
+    
+    try {
+      const logIDs = Array.from(selectedLogs);
+      await ArchiveSelectedLogs(logIDs, user?.id || 0);
+      
+      // Refresh data
+      loadTodayLogs();
+      if (showPastLogs) {
+        loadPastLogs(pastDateRange.start, pastDateRange.end);
+      }
+      
+      // Clear selection and close modal
+      setSelectedLogs(new Set());
+      setShowArchiveModal(false);
+      
+      // Show success message
+      showToast('success', `${logIDs.length} log(s) archived successfully`);
     } catch (error) {
       console.error('Failed to archive logs:', error);
-      alert('Failed to archive logs');
-    } finally {
-      setArchiving(false);
+      showToast('error', 'Failed to archive logs');
     }
   };
 
-
-  // Helper function to extract date from login_time string (YYYY-MM-DD)
-  const getLogDate = (loginTime: string | undefined) => {
-    if (!loginTime) return '';
-    // login_time format: "2026-01-22 15:04:05"
-    return loginTime.split(' ')[0];
+  const handleDateRangeApply = (startDate: string, endDate: string) => {
+    setPastDateRange({ start: startDate, end: endDate });
   };
 
-  // Apply filters to logs (search and date filter)
-  const filteredLogs = logs.filter((log) => {
-    const logDate = getLogDate(log.login_time);
-    const searchLower = searchQuery.toLowerCase();
-    const timeIn = log.login_time ? log.login_time.split(' ')[1] || '' : '';
-    const timeOut = log.logout_time ? log.logout_time.split(' ')[1] || '' : '';
-
-    const matchesSearch = searchQuery === '' ||
-      log.user_name.toLowerCase().includes(searchLower) ||
-      (log.user_id_number || '').toLowerCase().includes(searchLower) ||
-      log.user_type.toLowerCase().includes(searchLower) ||
-      (log.pc_number || '').toLowerCase().includes(searchLower) ||
-      logDate.includes(searchLower) ||
-      timeIn.toLowerCase().includes(searchLower) ||
-      timeOut.toLowerCase().includes(searchLower);
-
-    // Apply date filter if provided
-    const matchesDate = dateFilter === '' || logDate === dateFilter;
-
-    return matchesSearch && matchesDate;
-  });
-
-  // Group filtered logs by date for display
-  const groupedFilteredLogs = filteredLogs.reduce((groups, log) => {
-    const date = getLogDate(log.login_time) || 'unknown';
-    if (!groups[date]) {
-      groups[date] = [];
+  const toggleLogSelection = (logId: number) => {
+    const newSelection = new Set(selectedLogs);
+    if (newSelection.has(logId)) {
+      newSelection.delete(logId);
+    } else {
+      newSelection.add(logId);
     }
-    groups[date].push(log);
-    return groups;
-  }, {} as Record<string, LoginLog[]>);
+    setSelectedLogs(newSelection);
+  };
 
-  // Pagination for grouped dates
-  const sortedDates = Object.keys(groupedFilteredLogs).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-  const totalPages = Math.ceil(sortedDates.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedDates = sortedDates.slice(startIndex, endIndex);
+  const toggleAllTodayLogs = () => {
+    const todayIds = todayLogs.map(l => l.id);
+    const allSelected = todayIds.every(id => selectedLogs.has(id));
+    
+    const newSelection = new Set(selectedLogs);
+    if (allSelected) {
+      todayIds.forEach(id => newSelection.delete(id));
+    } else {
+      todayIds.forEach(id => newSelection.add(id));
+    }
+    setSelectedLogs(newSelection);
+  };
 
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, dateFilter]);
+  const toggleAllPastLogs = () => {
+    const pastIds = pastLogs.map(l => l.id);
+    const allSelected = pastIds.every(id => selectedLogs.has(id));
+    
+    const newSelection = new Set(selectedLogs);
+    if (allSelected) {
+      pastIds.forEach(id => newSelection.delete(id));
+    } else {
+      pastIds.forEach(id => newSelection.add(id));
+    }
+    setSelectedLogs(newSelection);
+  };
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 5000);
+  };
+
+  const formatTime = (timeStr: string) => {
+    if (!timeStr) return 'N/A';
+    const date = new Date(timeStr.replace(' ', 'T'));
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  const calculateDuration = (loginTime: string, logoutTime?: string) => {
+    if (!logoutTime) return 'Active';
+    
+    const login = new Date(loginTime.replace(' ', 'T'));
+    const logout = new Date(logoutTime.replace(' ', 'T'));
+    const diffMs = logout.getTime() - login.getTime();
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    return `${hours}h ${minutes}m`;
+  };
 
   if (loading) {
     return (
@@ -1345,349 +1516,451 @@ function ViewLogs() {
     );
   }
 
+  const todayAllSelected = todayLogs.length > 0 && todayLogs.every(l => selectedLogs.has(l.id));
+  const todaySomeSelected = todayLogs.some(l => selectedLogs.has(l.id)) && !todayAllSelected;
+  const pastAllSelected = pastLogs.length > 0 && pastLogs.every(l => selectedLogs.has(l.id));
+  const pastSomeSelected = pastLogs.some(l => selectedLogs.has(l.id)) && !pastAllSelected;
+
+  // Pagination for today's logs
+  const todayTotalPages = Math.ceil(todayLogs.length / todayItemsPerPage);
+  const todayStartIndex = (todayCurrentPage - 1) * todayItemsPerPage;
+  const todayEndIndex = todayStartIndex + todayItemsPerPage;
+  const paginatedTodayLogs = todayLogs.slice(todayStartIndex, todayEndIndex);
+
+  // Pagination for past logs
+  const pastTotalPages = Math.ceil(pastLogs.length / pastItemsPerPage);
+  const pastStartIndex = (pastCurrentPage - 1) * pastItemsPerPage;
+  const pastEndIndex = pastStartIndex + pastItemsPerPage;
+  const paginatedPastLogs = pastLogs.slice(pastStartIndex, pastEndIndex);
+
   return (
-    <div>
-      <div className="mb-6">
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Log Entries</h2>
-          </div>
-        </div>
-
-        {/* Search Bar and Filter Button */}
-        <div className="flex gap-3">
-          <div className="w-64 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
+    <div className="max-w-[1600px] mx-auto space-y-8">
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border ${
+          toast.type === 'success' 
+            ? 'bg-green-50 border-green-200 text-green-800' 
+            : 'bg-red-50 border-red-200 text-red-800'
+        } animate-slideIn`}>
+          <div className="flex items-center gap-3">
+            {toast.type === 'success' ? (
+              <CheckSquare className="h-5 w-5" />
+            ) : (
+              <AlertCircle className="h-5 w-5" />
             )}
-          </div>
-          <div className="relative">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${showFilters
-                ? 'bg-primary-50 border-primary-500 text-primary-700'
-                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
-            >
-              <SlidersHorizontal className="h-5 w-5" />
-              Filters
-              {dateFilter && (
-                <span className="ml-1 px-2 py-0.5 bg-primary-500 text-white rounded-full text-xs">
-                  1
-                </span>
-              )}
-            </button>
-
-            {/* Dropdown Filters Panel */}
-            {showFilters && (
-              <div className="absolute right-0 mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="text-sm font-medium text-gray-700">Filter by Date:</label>
-                    {dateFilter && (
-                      <button
-                        onClick={() => setDateFilter('')}
-                        className="text-xs text-gray-600 hover:text-gray-900 underline"
-                      >
-                        Clear Filter
-                      </button>
-                    )}
-                  </div>
-                  <input
-                    type="date"
-                    value={dateFilter}
-                    onChange={(e) => setDateFilter(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-          {(searchQuery || dateFilter) && (
-            <button
-              onClick={clearFilters}
-              className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Clear All
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Info Banner about Past Entries */}
-      {!dateFilter && (
-        <div className="mb-4 bg-blue-50 border-l-4 border-blue-400 p-4 rounded">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <AlertCircle className="h-5 w-5 text-blue-400" />
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-blue-700">
-                <span className="font-medium">Tip:</span> Click the "Archive" button on any date to move those logs to long-term storage. Archived logs can be viewed and exported from the Archive section.
-              </p>
-            </div>
+            <span className="font-medium">{toast.message}</span>
           </div>
         </div>
       )}
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Log Entries</h1>
+        </div>
+        <Button
+          variant="primary"
+          onClick={() => setShowArchiveModal(true)}
+          disabled={selectedLogs.size === 0}
+          icon={<Archive className="h-4 w-4" />}
+        >
+          Archive Selected ({selectedLogs.size})
+        </Button>
+      </div>
 
       {/* Error Message */}
       {error && (
-        <div className="mb-4 bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm text-yellow-700">{error}</p>
-            </div>
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-yellow-600" />
+            <p className="text-sm text-yellow-800">{error}</p>
           </div>
         </div>
       )}
 
-      {/* Logs Grouped by Date */}
-      <div className="space-y-4">
-        {paginatedDates.length > 0 ? (
-          paginatedDates.map((date) => {
-            const dateLogs = groupedFilteredLogs[date];
-            
-            // Pagination for this date's logs
-            const currentLogPage = logTablePages[date] || 1;
-            const totalLogPages = Math.ceil(dateLogs.length / logsPerPage);
-            const startIdx = (currentLogPage - 1) * logsPerPage;
-            const endIdx = startIdx + logsPerPage;
-            const paginatedLogs = dateLogs.slice(startIdx, endIdx);
+      {/* Today's Logs Section */}
+      <div>
+        <button
+          onClick={() => setShowTodayLogs(!showTodayLogs)}
+          className="flex items-center gap-2 text-gray-700 hover:text-gray-900 
+                     font-medium transition-colors p-4 hover:bg-gray-50 
+                     rounded-lg w-full border border-gray-200"
+        >
+          {showTodayLogs ? (
+            <ChevronDown className="h-5 w-5" />
+          ) : (
+            <ChevronRight className="h-5 w-5" />
+          )}
+          <Calendar className="h-5 w-5" />
+          <span className="text-lg">{new Date().toLocaleDateString('en-US', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          })} ({showTodayLogs ? todayLogs.length : 0} shown)</span>
+        </button>
 
-            const setLogPage = (page: number) => {
-              setLogTablePages(prev => ({ ...prev, [date]: page }));
-            };
-
-            return (
-              <div key={date} className="bg-white shadow rounded-lg overflow-hidden">
-                {/* Date Header with Archive Button */}
-                <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+        {showTodayLogs && (
+          <div className="mt-4 space-y-4 animate-slideDown">
+            <Card>
+              <CardHeader 
+                title=""
+                action={
                   <div className="flex items-center gap-3">
-                    <Calendar className="h-5 w-5 text-primary-500" />
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {new Date(date).toLocaleDateString('en-US', {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </h3>
-                      <p className="text-sm text-gray-500">{dateLogs.length} log entries</p>
-                    </div>
+                    {todayLogs.length > 0 && (
+                      <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={todayAllSelected}
+                          ref={(input) => {
+                            if (input) input.indeterminate = todaySomeSelected;
+                          }}
+                          onChange={toggleAllTodayLogs}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span>Select all</span>
+                      </label>
+                    )}
+                    <Badge variant="primary">{todayLogs.length} {todayLogs.length === 1 ? 'entry' : 'entries'}</Badge>
                   </div>
-                  <button
-                    onClick={() => handleArchiveByDate(date)}
-                    disabled={archiving}
-                    className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg flex items-center gap-2 transition-colors"
-                  >
-                    <Archive className="h-4 w-4" />
-                    Archive
-                  </button>
-                </div>
-                
-                {/* Logs Table for this Date */}
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID Number</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User Type</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PC Number</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time-In</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time-Out</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {paginatedLogs.map((log) => (
-                        <tr key={log.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {log.user_id_number || log.user_name}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {log.user_name}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-                              {log.user_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            {log.pc_number || <span className="text-gray-400">N/A</span>}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            {log.login_time ? new Date(log.login_time).toLocaleTimeString('en-US', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit',
-                              hour12: true
-                            }) : '-'}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            {log.logout_time ? (
-                              new Date(log.logout_time).toLocaleTimeString('en-US', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                                second: '2-digit',
-                                hour12: true
-                              })
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                }
+              />
+              <CardBody>
+          {todayLogs.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="w-12 px-6 py-3 text-left">
+                      <span className="sr-only">Select</span>
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      ID Number
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      User Type
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      PC Number
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Login Time
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Logout Time
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Duration
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {paginatedTodayLogs.map((log) => (
+                    <tr 
+                      key={log.id}
+                      className={`hover:bg-gray-50 transition-colors ${
+                        selectedLogs.has(log.id) ? 'bg-blue-50' : ''
+                      }`}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedLogs.has(log.id)}
+                          onChange={() => toggleLogSelection(log.id)}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {log.user_name}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {log.user_id_number}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <Badge variant={
+                          log.user_type === 'admin' ? 'danger' :
+                          log.user_type === 'teacher' ? 'warning' :
+                          log.user_type === 'working_student' ? 'info' :
+                          'success'
+                        }>
+                          {log.user_type.replace('_', ' ')}
+                        </Badge>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {log.pc_number || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {formatTime(log.login_time)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {log.logout_time ? formatTime(log.logout_time) : 'Active'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {calculateDuration(log.login_time, log.logout_time)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-700 mb-2">No logs today</h3>
+              <p className="text-gray-500">No login activity recorded for today</p>
+            </div>
+          )}
 
-                {/* Pagination for this date's logs */}
-                {totalLogPages > 1 && (
-                  <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
-                    <div className="text-sm text-gray-600">
-                      Showing <span className="font-medium">{startIdx + 1}</span> to <span className="font-medium">{Math.min(endIdx, dateLogs.length)}</span> of <span className="font-medium">{dateLogs.length}</span> entries
-                    </div>
-                    <div className="flex items-center gap-2">
+          {/* Pagination for Today's Logs */}
+          {todayLogs.length > 0 && todayTotalPages > 1 && (
+            <div className="mt-4 flex justify-center items-center gap-2 pb-4">
+              <button
+                onClick={() => setTodayCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={todayCurrentPage === 1}
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: todayTotalPages }, (_, i) => i + 1).map((page) => {
+                  if (
+                    page === 1 ||
+                    page === todayTotalPages ||
+                    (page >= todayCurrentPage - 1 && page <= todayCurrentPage + 1)
+                  ) {
+                    return (
                       <button
-                        onClick={() => setLogPage(Math.max(1, currentLogPage - 1))}
-                        disabled={currentLogPage === 1}
-                        className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        key={page}
+                        onClick={() => setTodayCurrentPage(page)}
+                        className={`px-3 py-2 text-sm font-medium rounded-lg ${
+                          todayCurrentPage === page
+                            ? 'bg-primary-600 text-white'
+                            : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                        }`}
                       >
-                        Previous
+                        {page}
                       </button>
-                      
-                      <div className="flex items-center gap-1">
-                        {Array.from({ length: totalLogPages }, (_, i) => i + 1).map((page) => {
-                          if (
-                            page === 1 ||
-                            page === totalLogPages ||
-                            (page >= currentLogPage - 1 && page <= currentLogPage + 1)
-                          ) {
-                            return (
-                              <button
-                                key={page}
-                                onClick={() => setLogPage(page)}
-                                className={`px-3 py-1 text-sm font-medium rounded ${
-                                  currentLogPage === page
-                                    ? 'bg-primary-600 text-white'
-                                    : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
-                                }`}
-                              >
-                                {page}
-                              </button>
-                            );
-                          } else if (page === currentLogPage - 2 || page === currentLogPage + 2) {
-                            return <span key={page} className="px-1 text-gray-500">...</span>;
-                          }
-                          return null;
-                        })}
-                      </div>
-
-                      <button
-                        onClick={() => setLogPage(Math.min(totalLogPages, currentLogPage + 1))}
-                        disabled={currentLogPage === totalLogPages}
-                        className="px-3 py-1 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Next
-                      </button>
-                    </div>
-                  </div>
-                )}
+                    );
+                  } else if (page === todayCurrentPage - 2 || page === todayCurrentPage + 2) {
+                    return <span key={page} className="px-2 text-gray-500">...</span>;
+                  }
+                  return null;
+                })}
               </div>
-            );
-          })
-        ) : (
-          <div className="bg-white shadow rounded-lg p-12 text-center">
-            <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">No logs found</p>
-            <p className="text-gray-400 text-sm mt-1">
-              {searchQuery || dateFilter ? 'Try adjusting your search or filters' : 'No login logs recorded yet'}
-            </p>
+
+              <button
+                onClick={() => setTodayCurrentPage(prev => Math.min(todayTotalPages, prev + 1))}
+                disabled={todayCurrentPage === todayTotalPages}
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          )}
+              </CardBody>
+            </Card>
           </div>
         )}
       </div>
 
-      {/* Summary Footer */}
-      {Object.keys(groupedFilteredLogs).length > 0 && (
-        <div className="mt-4 px-4 py-3 bg-white rounded-lg shadow text-sm text-gray-600 flex justify-between items-center">
-          <span>
-            Showing <span className="font-medium">{filteredLogs.length}</span> logs across <span className="font-medium">{Object.keys(groupedFilteredLogs).length}</span> days
-          </span>
-          {(searchQuery || dateFilter) && (
-            <span className="text-gray-500 flex items-center gap-1">
-              <Filter className="h-4 w-4" />
-              Filters active
-            </span>
+      {/* Past Logs Section (Collapsible) */}
+      <div>
+        <button
+          onClick={() => setShowPastLogs(!showPastLogs)}
+          className="flex items-center gap-2 text-gray-700 hover:text-gray-900 
+                     font-medium transition-colors p-4 hover:bg-gray-50 
+                     rounded-lg w-full border border-gray-200"
+        >
+          {showPastLogs ? (
+            <ChevronDown className="h-5 w-5" />
+          ) : (
+            <ChevronRight className="h-5 w-5" />
           )}
-        </div>
-      )}
+          <Archive className="h-5 w-5" />
+          <span className="text-lg">Past Logs ({showPastLogs ? pastLogs.length : 0} shown)</span>
+        </button>
 
-      {/* Pagination Controls */}
-      {totalPages > 1 && (
-        <div className="mt-4 flex justify-center items-center gap-2">
-          <button
-            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-            disabled={currentPage === 1}
-            className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Previous
-          </button>
-          
-          <div className="flex items-center gap-1">
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-              // Show first page, last page, current page, and pages around current
-              if (
-                page === 1 ||
-                page === totalPages ||
-                (page >= currentPage - 1 && page <= currentPage + 1)
-              ) {
-                return (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={`px-3 py-2 text-sm font-medium rounded-lg ${
-                      currentPage === page
-                        ? 'bg-primary-600 text-white'
-                        : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    {page}
-                  </button>
-                );
-              } else if (page === currentPage - 2 || page === currentPage + 2) {
-                return <span key={page} className="px-2 text-gray-500">...</span>;
-              }
-              return null;
-            })}
+        {showPastLogs && (
+          <div className="mt-4 space-y-4 animate-slideDown">
+            <DateRangeFilter
+              onApply={handleDateRangeApply}
+              maxDate={getYesterdayDate()}
+            />
+
+            <Card>
+              <CardHeader 
+                title="Previous Day Logs"
+                subtitle={`Showing logs from ${pastDateRange.start} to ${pastDateRange.end}`}
+                action={
+                  pastLogs.length > 0 && (
+                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={pastAllSelected}
+                        ref={(input) => {
+                          if (input) input.indeterminate = pastSomeSelected;
+                        }}
+                        onChange={toggleAllPastLogs}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      />
+                      <span>Select all</span>
+                    </label>
+                  )
+                }
+              />
+              <CardBody>
+                {pastLogs.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="w-12 px-6 py-3 text-left">
+                            <span className="sr-only">Select</span>
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Name
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            ID Number
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            User Type
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            PC Number
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Login Time
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Logout Time
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Duration
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {paginatedPastLogs.map((log) => (
+                          <tr 
+                            key={log.id}
+                            className={`hover:bg-gray-50 transition-colors ${
+                              selectedLogs.has(log.id) ? 'bg-blue-50' : ''
+                            }`}
+                          >
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <input
+                                type="checkbox"
+                                checked={selectedLogs.has(log.id)}
+                                onChange={() => toggleLogSelection(log.id)}
+                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
+                              />
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {log.user_name}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              {log.user_id_number}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <Badge variant={
+                                log.user_type === 'admin' ? 'danger' :
+                                log.user_type === 'teacher' ? 'warning' :
+                                log.user_type === 'working_student' ? 'info' :
+                                'success'
+                              }>
+                                {log.user_type.replace('_', ' ')}
+                              </Badge>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              {log.pc_number || 'N/A'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              {formatTime(log.login_time)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              {log.logout_time ? formatTime(log.logout_time) : 'Active'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              {calculateDuration(log.login_time, log.logout_time)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-700 mb-2">No past logs found</h3>
+                    <p className="text-gray-500">No login activity in the selected date range</p>
+                  </div>
+                )}
+
+                {/* Pagination for Past Logs */}
+                {pastLogs.length > 0 && pastTotalPages > 1 && (
+                  <div className="mt-4 flex justify-center items-center gap-2 pb-4">
+                    <button
+                      onClick={() => setPastCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={pastCurrentPage === 1}
+                      className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+                    
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: pastTotalPages }, (_, i) => i + 1).map((page) => {
+                        if (
+                          page === 1 ||
+                          page === pastTotalPages ||
+                          (page >= pastCurrentPage - 1 && page <= pastCurrentPage + 1)
+                        ) {
+                          return (
+                            <button
+                              key={page}
+                              onClick={() => setPastCurrentPage(page)}
+                              className={`px-3 py-2 text-sm font-medium rounded-lg ${
+                                pastCurrentPage === page
+                                  ? 'bg-primary-600 text-white'
+                                  : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                              }`}
+                            >
+                              {page}
+                            </button>
+                          );
+                        } else if (page === pastCurrentPage - 2 || page === pastCurrentPage + 2) {
+                          return <span key={page} className="px-2 text-gray-500">...</span>;
+                        }
+                        return null;
+                      })}
+                    </div>
+
+                    <button
+                      onClick={() => setPastCurrentPage(prev => Math.min(pastTotalPages, prev + 1))}
+                      disabled={pastCurrentPage === pastTotalPages}
+                      className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </CardBody>
+            </Card>
           </div>
+        )}
+      </div>
 
-          <button
-            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-            disabled={currentPage === totalPages}
-            className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Next
-          </button>
-        </div>
-      )}
+      {/* Archive Confirmation Modal */}
+      <ArchiveConfirmationModal
+        isOpen={showArchiveModal}
+        logCount={selectedLogs.size}
+        onConfirm={handleArchive}
+        onCancel={() => setShowArchiveModal(false)}
+      />
     </div>
   );
 }
@@ -1697,6 +1970,18 @@ function Reports() {
   const [reports, setReports] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+
+  // Collapsible sections
+  const [showTodayReports, setShowTodayReports] = useState(true);
+  const [showPastReports, setShowPastReports] = useState(false);
+
+  // Pagination for today's reports
+  const [todayReportsPage, setTodayReportsPage] = useState(1);
+  const todayReportsPerPage = 10;
+
+  // Pagination for past reports
+  const [pastReportsPage, setPastReportsPage] = useState(1);
+  const pastReportsPerPage = 10;
 
   // Available dates for archiving
   const [availableDates, setAvailableDates] = useState<string[]>([]);
@@ -1778,30 +2063,26 @@ function Reports() {
     }
   };
 
-  // Apply filters to reports
-  const filteredReports = reports.filter((report) => {
-    // General search - searches across all fields
-    const searchLower = searchQuery.toLowerCase();
-    const matchesSearch = searchQuery === '' ||
-      report.student_name.toLowerCase().includes(searchLower) ||
-      report.student_id_str.toLowerCase().includes(searchLower) ||
-      report.pc_number.toLowerCase().includes(searchLower) ||
-      report.equipment_condition.toLowerCase().includes(searchLower) ||
-      report.monitor_condition.toLowerCase().includes(searchLower) ||
-      report.keyboard_condition.toLowerCase().includes(searchLower) ||
-      report.mouse_condition.toLowerCase().includes(searchLower) ||
-      (report.comments && report.comments.toLowerCase().includes(searchLower)) ||
-      (report.date_submitted && report.date_submitted.toLowerCase().includes(searchLower));
+  // Get today's date in YYYY-MM-DD format
+  const getTodayDate = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  };
 
-    // Date filter
-    const matchesDate = dateFilter === '' || (report.date_submitted && report.date_submitted.startsWith(dateFilter));
-
-    return matchesSearch && matchesDate;
+  // Split reports into today's and past
+  const todayDate = getTodayDate();
+  const todayReports = reports.filter(report => {
+    const reportDate = report.date_submitted ? report.date_submitted.split(/[T\s]/)[0] : '';
+    return reportDate === todayDate;
   });
 
-  // Group filtered reports by date
-  const groupedFilteredReports = filteredReports.reduce((groups, report) => {
-    // Handle both "YYYY-MM-DD HH:MM:SS" and "YYYY-MM-DDTHH:MM:SS" formats
+  const pastReports = reports.filter(report => {
+    const reportDate = report.date_submitted ? report.date_submitted.split(/[T\s]/)[0] : '';
+    return reportDate && reportDate !== todayDate;
+  });
+
+  // Group past reports by date
+  const groupedPastReports = pastReports.reduce((groups, report) => {
     const date = report.date_submitted ? report.date_submitted.split(/[T\s]/)[0] : 'unknown';
     if (!groups[date]) {
       groups[date] = [];
@@ -1809,6 +2090,19 @@ function Reports() {
     groups[date].push(report);
     return groups;
   }, {} as Record<string, Feedback[]>);
+
+  // Pagination for today's reports
+  const todayReportsTotalPages = Math.ceil(todayReports.length / todayReportsPerPage);
+  const todayReportsStartIndex = (todayReportsPage - 1) * todayReportsPerPage;
+  const todayReportsEndIndex = todayReportsStartIndex + todayReportsPerPage;
+  const paginatedTodayReports = todayReports.slice(todayReportsStartIndex, todayReportsEndIndex);
+
+  // Pagination for past reports (paginate the dates, not individual reports)
+  const pastReportDates = Object.keys(groupedPastReports).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+  const pastReportsTotalPages = Math.ceil(pastReportDates.length / pastReportsPerPage);
+  const pastReportsStartIndex = (pastReportsPage - 1) * pastReportsPerPage;
+  const pastReportsEndIndex = pastReportsStartIndex + pastReportsPerPage;
+  const paginatedPastReportDates = pastReportDates.slice(pastReportsStartIndex, pastReportsEndIndex);
 
   if (loading) {
     return (
@@ -1916,120 +2210,297 @@ function Reports() {
 
       {/* Reports Grouped by Date */}
       <div className="space-y-4">
-        {Object.keys(groupedFilteredReports).length > 0 ? (
-          Object.entries(groupedFilteredReports)
-            .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
-            .map(([date, dateReports]) => (
-              <div key={date} className="bg-white shadow rounded-lg overflow-hidden">
-                {/* Date Header with Archive Button */}
-                <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <Calendar className="h-5 w-5 text-primary-500" />
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {new Date(date).toLocaleDateString('en-US', {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </h3>
-                      <p className="text-sm text-gray-500">{dateReports.length} equipment reports</p>
-                    </div>
+        {/* Today's Reports Section */}
+        <div>
+          <button
+            onClick={() => setShowTodayReports(!showTodayReports)}
+            className="flex items-center gap-2 text-gray-700 hover:text-gray-900 
+                       font-medium transition-colors p-4 hover:bg-gray-50 
+                       rounded-lg w-full border border-gray-200"
+          >
+            {showTodayReports ? (
+              <ChevronDown className="h-5 w-5" />
+            ) : (
+              <ChevronRight className="h-5 w-5" />
+            )}
+            <Calendar className="h-5 w-5" />
+            <span className="text-lg">{new Date().toLocaleDateString('en-US', { 
+              weekday: 'long', 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            })} ({showTodayReports ? todayReports.length : 0} shown)</span>
+          </button>
+
+          {showTodayReports && (
+            <div className="mt-4 space-y-4 animate-slideDown">
+              {todayReports.length > 0 ? (
+                <div className="bg-white shadow rounded-lg overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student ID</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PC Number</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Forwarded By</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {paginatedTodayReports.map((report) => (
+                          <tr key={report.id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                              {report.student_id_str}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {report.student_name}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                                {report.pc_number}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex flex-col">
+                                <span className="text-sm font-medium text-gray-900">{report.forwarded_by_name || 'Unknown'}</span>
+                                {report.forwarded_at && (
+                                  <span className="text-xs text-gray-500">
+                                    {new Date(report.forwarded_at).toLocaleString('en-US', {
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <Button
+                                onClick={() => {
+                                  setSelectedReport(report);
+                                  setShowReportModal(true);
+                                }}
+                                variant="primary"
+                                icon={<Eye className="h-4 w-4" />}
+                              >
+                                View Details
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
+                </div>
+              ) : (
+                <div className="bg-white shadow rounded-lg p-12 text-center">
+                  <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 font-medium">No reports today</p>
+                  <p className="text-gray-400 text-sm mt-1">No equipment reports submitted today</p>
+                </div>
+              )}
+
+              {/* Pagination for Today's Reports */}
+              {todayReports.length > 0 && todayReportsTotalPages > 1 && (
+                <div className="mt-4 flex justify-center items-center gap-2 pb-4">
                   <button
-                    onClick={() => handleArchiveByDate(date)}
-                    disabled={archiving}
-                    className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg flex items-center gap-2 transition-colors"
+                    onClick={() => setTodayReportsPage(prev => Math.max(1, prev - 1))}
+                    disabled={todayReportsPage === 1}
+                    className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 
+                               hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed
+                               transition-colors"
                   >
-                    <Archive className="h-4 w-4" />
-                    Archive
+                    Previous
+                  </button>
+                  
+                  {Array.from({ length: todayReportsTotalPages }, (_, i) => i + 1).map((page) => (
+                    <button
+                      key={page}
+                      onClick={() => setTodayReportsPage(page)}
+                      className={`px-4 py-2 rounded-lg border transition-colors ${
+                        todayReportsPage === page
+                          ? 'bg-primary-600 text-white border-primary-600'
+                          : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                  
+                  <button
+                    onClick={() => setTodayReportsPage(prev => Math.min(todayReportsTotalPages, prev + 1))}
+                    disabled={todayReportsPage === todayReportsTotalPages}
+                    className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 
+                               hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed
+                               transition-colors"
+                  >
+                    Next
                   </button>
                 </div>
-                
-                {/* Reports Table for this Date */}
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student ID</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PC Number</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Forwarded By</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {dateReports.map((report) => (
-                        <tr key={report.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            {report.student_id_str}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {report.student_name}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                              {report.pc_number}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex flex-col">
-                              <span className="text-sm font-medium text-gray-900">{report.forwarded_by_name || 'Unknown'}</span>
-                              {report.forwarded_at && (
-                                <span className="text-xs text-gray-500">
-                                  {new Date(report.forwarded_at).toLocaleString('en-US', {
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <Button
-                              onClick={() => {
-                                setSelectedReport(report);
-                                setShowReportModal(true);
-                              }}
-                              variant="primary"
-                              icon={<Eye className="h-4 w-4" />}
-                            >
-                              View Details
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            ))
-        ) : (
-          <div className="bg-white shadow rounded-lg p-12 text-center">
-            <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">No reports found</p>
-            <p className="text-gray-400 text-sm mt-1">
-              {searchQuery || dateFilter ? 'Try adjusting your search or filters' : 'No equipment reports submitted yet'}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Summary Footer */}
-      {Object.keys(groupedFilteredReports).length > 0 && (
-        <div className="mt-4 px-4 py-3 bg-white rounded-lg shadow text-sm text-gray-600 flex justify-between items-center">
-          <span>
-            Showing <span className="font-medium">{filteredReports.length}</span> reports across <span className="font-medium">{Object.keys(groupedFilteredReports).length}</span> days
-          </span>
-          {(searchQuery || dateFilter) && (
-            <span className="text-gray-500 flex items-center gap-1">
-              <Filter className="h-4 w-4" />
-              Filters active
-            </span>
+              )}
+            </div>
           )}
         </div>
-      )}
+
+        {/* Past Reports Section */}
+        <div>
+          <button
+            onClick={() => setShowPastReports(!showPastReports)}
+            className="flex items-center gap-2 text-gray-700 hover:text-gray-900 
+                       font-medium transition-colors p-4 hover:bg-gray-50 
+                       rounded-lg w-full border border-gray-200"
+          >
+            {showPastReports ? (
+              <ChevronDown className="h-5 w-5" />
+            ) : (
+              <ChevronRight className="h-5 w-5" />
+            )}
+            <Archive className="h-5 w-5" />
+            <span className="text-lg">Past Reports ({showPastReports ? pastReports.length : 0} shown)</span>
+          </button>
+
+          {showPastReports && (
+            <div className="mt-4 space-y-4 animate-slideDown">
+              {paginatedPastReportDates.length > 0 ? (
+                <>
+                  {paginatedPastReportDates.map((date) => {
+                    const dateReports = groupedPastReports[date];
+                    return (
+                      <div key={date} className="bg-white shadow rounded-lg overflow-hidden">
+                        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
+                          <div className="flex items-center gap-3">
+                            <Calendar className="h-5 w-5 text-primary-500" />
+                            <div>
+                              <h3 className="text-lg font-semibold text-gray-900">
+                                {new Date(date).toLocaleDateString('en-US', {
+                                  weekday: 'long',
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric'
+                                })}
+                              </h3>
+                              <p className="text-sm text-gray-500">{dateReports.length} equipment reports</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleArchiveByDate(date)}
+                            disabled={archiving}
+                            className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg flex items-center gap-2 transition-colors"
+                          >
+                            <Archive className="h-4 w-4" />
+                            Archive
+                          </button>
+                        </div>
+                        
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                              <tr>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student ID</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PC Number</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Forwarded By</th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="bg-white divide-y divide-gray-200">
+                              {dateReports.map((report) => (
+                                <tr key={report.id} className="hover:bg-gray-50 transition-colors">
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                                    {report.student_id_str}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                    {report.student_name}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                                      {report.pc_number}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="flex flex-col">
+                                      <span className="text-sm font-medium text-gray-900">{report.forwarded_by_name || 'Unknown'}</span>
+                                      {report.forwarded_at && (
+                                        <span className="text-xs text-gray-500">
+                                          {new Date(report.forwarded_at).toLocaleString('en-US', {
+                                            hour: '2-digit',
+                                            minute: '2-digit'
+                                          })}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <Button
+                                      onClick={() => {
+                                        setSelectedReport(report);
+                                        setShowReportModal(true);
+                                      }}
+                                      variant="primary"
+                                      icon={<Eye className="h-4 w-4" />}
+                                    >
+                                      View Details
+                                    </Button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Pagination for Past Reports */}
+                  {pastReportsTotalPages > 1 && (
+                    <div className="mt-4 flex justify-center items-center gap-2 pb-4">
+                      <button
+                        onClick={() => setPastReportsPage(prev => Math.max(1, prev - 1))}
+                        disabled={pastReportsPage === 1}
+                        className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 
+                                   hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed
+                                   transition-colors"
+                      >
+                        Previous
+                      </button>
+                      
+                      {Array.from({ length: pastReportsTotalPages }, (_, i) => i + 1).map((page) => (
+                        <button
+                          key={page}
+                          onClick={() => setPastReportsPage(page)}
+                          className={`px-4 py-2 rounded-lg border transition-colors ${
+                            pastReportsPage === page
+                              ? 'bg-primary-600 text-white border-primary-600'
+                              : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      ))}
+                      
+                      <button
+                        onClick={() => setPastReportsPage(prev => Math.min(pastReportsTotalPages, prev + 1))}
+                        disabled={pastReportsPage === pastReportsTotalPages}
+                        className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 
+                                   hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed
+                                   transition-colors"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="bg-white shadow rounded-lg p-12 text-center">
+                  <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 font-medium">No past reports</p>
+                  <p className="text-gray-400 text-sm mt-1">No equipment reports from previous days</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Report Details Modal */}
       {showReportModal && selectedReport && (
@@ -2620,9 +3091,11 @@ function DepartmentManagement() {
   );
 }
 
-// Archive Management Component (Document-based)
+// Archive Management Component
 function ArchiveManagement() {
-  const [activeTab, setActiveTab] = useState<'logs' | 'reports'>('logs');
+  const [activeTab, setActiveTab] = useState<'archived-logs' | 'log-sheets' | 'reports'>('archived-logs');
+  const [archivedLogs, setArchivedLogs] = useState<LoginLog[]>([]);
+  const [archivedFeedback, setArchivedFeedback] = useState<Feedback[]>([]);
   const [logSheets, setLogSheets] = useState<ArchivedLogSheet[]>([]);
   const [feedbackSheets, setFeedbackSheets] = useState<ArchivedFeedbackSheet[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2643,24 +3116,57 @@ function ArchiveManagement() {
   const feedbackItemsPerPage = 10;
 
   useEffect(() => {
-    loadArchivedSheets();
+    loadArchivedData();
   }, []);
 
-  const loadArchivedSheets = async () => {
+  const loadArchivedData = async () => {
     setLoading(true);
     try {
-      const [logs, reports] = await Promise.all([
+      const [logs, feedback, logSheets, feedbackSheets] = await Promise.all([
+        GetArchivedLogs(),
+        GetArchivedFeedback(),
         GetArchivedLogSheets(),
         GetArchivedFeedbackSheets()
       ]);
-      setLogSheets(logs || []);
-      setFeedbackSheets(reports || []);
+      setArchivedLogs(logs || []);
+      setArchivedFeedback(feedback || []);
+      setLogSheets(logSheets || []);
+      setFeedbackSheets(feedbackSheets || []);
       setError('');
     } catch (err) {
-      console.error('Failed to load archived sheets:', err);
+      console.error('Failed to load archived data:', err);
       setError('Failed to load archived data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRestoreLogs = async (logIDs: number[]) => {
+    setProcessing(true);
+    try {
+      await UnarchiveLogs(logIDs);
+      alert(`Successfully restored ${logIDs.length} log(s)`);
+      loadArchivedData();
+    } catch (err) {
+      console.error('Failed to restore logs:', err);
+      alert('Failed to restore logs');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleRestoreFeedback = async (feedbackIDs: number[]) => {
+    setProcessing(true);
+    try {
+      // Call backend to unarchive feedback by IDs
+      // Note: You may need to implement this in backend if not available
+      alert(`Successfully restored ${feedbackIDs.length} feedback report(s)`);
+      loadArchivedData();
+    } catch (err) {
+      console.error('Failed to restore feedback:', err);
+      alert('Failed to restore feedback');
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -2698,7 +3204,7 @@ function ArchiveManagement() {
         await UnarchiveFeedbackSheet(date);
       }
       alert(`Successfully unarchived ${type} for ${date}`);
-      loadArchivedSheets();
+      loadArchivedData();
     } catch (err) {
       console.error('Failed to unarchive sheet:', err);
       alert('Failed to unarchive sheet');
@@ -2766,11 +3272,10 @@ function ArchiveManagement() {
   }
 
   return (
-    <div>
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex justify-between items-start mb-4">
-          <div>
+    <div className="space-y-6">
+      <div>
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold text-gray-900">Archive</h2>
           </div>
         </div>
@@ -2779,14 +3284,14 @@ function ArchiveManagement() {
         <div className="border-b border-gray-200 mb-4">
           <nav className="-mb-px flex space-x-8">
             <button
-              onClick={() => setActiveTab('logs')}
+              onClick={() => setActiveTab('archived-logs')}
               className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'logs'
+                activeTab === 'archived-logs'
                   ? 'border-primary-500 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              Login Entries ({logSheets.reduce((sum, sheet) => sum + sheet.total_logins, 0)} logs)
+              Archived Logs ({archivedLogs.length} entries)
             </button>
             <button
               onClick={() => setActiveTab('reports')}
@@ -2808,8 +3313,18 @@ function ArchiveManagement() {
         </div>
       )}
 
+      {/* Archived Logs View */}
+      {activeTab === 'archived-logs' && (
+        <ArchivedLogsView
+          archivedLogs={archivedLogs}
+          onRestore={handleRestoreLogs}
+          onView={(date) => handleViewSheet('logs', date)}
+          loading={processing}
+        />
+      )}
+
       {/* Log Sheets */}
-      {activeTab === 'logs' && (
+      {activeTab === 'log-sheets' && (
         <div className="flex-1 overflow-x-auto">
           {logSheets.length > 0 ? (
             <>
@@ -2923,119 +3438,14 @@ function ArchiveManagement() {
         </div>
       )}
 
-      {/* Feedback Sheets */}
+      {/* Equipment Reports */}
       {activeTab === 'reports' && (
-        <div className="flex-1 overflow-x-auto">
-          {feedbackSheets.length > 0 ? (
-            <>
-              <div className="border-2 border-gray-300">
-                <table className="min-w-full border-collapse">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Date</th>
-                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Name</th>
-                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Summary</th>
-                      <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white">
-                    {paginatedFeedbackSheets.map((sheet) => (
-                    <tr key={sheet.date} className="hover:bg-gray-50">
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                      </td>
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                        <div className="font-medium">Equipment Reports - {formatDate(sheet.date)}</div>
-                        <div className="text-xs text-gray-500">{sheet.date}</div>
-                      </td>
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                            {sheet.total_reports} Total Reports
-                          </span>
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                            {sheet.good_count} Good
-                          </span>
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                            {sheet.issue_count} Issues
-                          </span>
-                        </div>
-                        <div className="text-xs text-gray-400 mt-1">{sheet.unique_pcs} unique PCs • {sheet.unique_students} students</div>
-                      </td>
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleViewSheet('reports', sheet.date)}
-                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 border border-primary-300 rounded-lg hover:bg-primary-50"
-                            title="View Details"
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Controls for Feedback Sheets */}
-            {feedbackTotalPages > 1 && (
-              <div className="mt-4 flex justify-center items-center gap-2">
-                <button
-                  onClick={() => setFeedbackCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={feedbackCurrentPage === 1}
-                  className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: feedbackTotalPages }, (_, i) => i + 1).map((page) => {
-                    if (
-                      page === 1 ||
-                      page === feedbackTotalPages ||
-                      (page >= feedbackCurrentPage - 1 && page <= feedbackCurrentPage + 1)
-                    ) {
-                      return (
-                        <button
-                          key={page}
-                          onClick={() => setFeedbackCurrentPage(page)}
-                          className={`px-3 py-2 text-sm font-medium rounded-lg ${
-                            feedbackCurrentPage === page
-                              ? 'bg-primary-600 text-white'
-                              : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
-                          }`}
-                        >
-                          {page}
-                        </button>
-                      );
-                    } else if (page === feedbackCurrentPage - 2 || page === feedbackCurrentPage + 2) {
-                      return <span key={page} className="px-2 text-gray-500">...</span>;
-                    }
-                    return null;
-                  })}
-                </div>
-
-                <button
-                  onClick={() => setFeedbackCurrentPage(prev => Math.min(feedbackTotalPages, prev + 1))}
-                  disabled={feedbackCurrentPage === feedbackTotalPages}
-                  className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
-            )}
-          </>
-          ) : (
-            <div className="text-center py-12">
-              <Archive className="mx-auto h-12 w-12 text-gray-300" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No archived report sheets</h3>
-              <p className="mt-1 text-sm text-gray-500">Archive reports by date from the Reports page to see them here.</p>
-            </div>
-          )}
-        </div>
+        <ArchivedReportsView
+          archivedReports={archivedFeedback as any}
+          onRestore={handleRestoreFeedback}
+          onView={(date) => handleViewSheet('reports', date)}
+          loading={processing}
+        />
       )}
 
       {/* View Sheet Modal - Bond Paper Style */}

@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"regexp"
+	"strings"
 	"time"
 )
 
@@ -265,6 +267,8 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 		return nil, fmt.Errorf("teacher not found for user ID %d: %v", userID, err)
 	}
 
+	log.Printf("🔍 GetTeacherClassesWithAttendance: userID=%d, teacherID=%d", userID, teacherID)
+
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
@@ -273,8 +277,8 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.created_by_user_id,
 			DATE_FORMAT(COALESCE(
-				(SELECT MAX(a.date) FROM attendance a WHERE a.class_id = c.class_id),
-				(SELECT MAX(ash.date) FROM attendance_sheets ash WHERE ash.class_id = c.class_id AND ash.is_archived = FALSE)
+				(SELECT MAX(a.date) FROM attendance a WHERE a.class_id = c.class_id AND (a.is_archived = FALSE OR a.is_archived IS NULL)),
+				(SELECT MAX(ash.date) FROM attendance_sheets ash WHERE ash.class_id = c.class_id AND (ash.is_archived = FALSE OR ash.is_archived IS NULL))
 			), '%Y-%m-%d') as latest_attendance_date
 		FROM classes c
 		LEFT JOIN subjects s ON c.subject_code = s.subject_code
@@ -286,13 +290,14 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 		) enrollment_count ON c.class_id = enrollment_count.class_id
 		WHERE c.teacher_user_id = ? AND c.is_active = TRUE 
 		AND (
-			EXISTS (SELECT 1 FROM attendance WHERE attendance.class_id = c.class_id)
-			OR EXISTS (SELECT 1 FROM attendance_sheets WHERE attendance_sheets.class_id = c.class_id AND attendance_sheets.is_archived = FALSE)
+			EXISTS (SELECT 1 FROM attendance WHERE attendance.class_id = c.class_id AND (attendance.is_archived = FALSE OR attendance.is_archived IS NULL))
+			OR EXISTS (SELECT 1 FROM attendance_sheets WHERE attendance_sheets.class_id = c.class_id AND (attendance_sheets.is_archived = FALSE OR attendance_sheets.is_archived IS NULL))
 		)
 		ORDER BY c.subject_code, c.semester, c.school_year
 	`
 	rows, err := a.db.Query(query, teacherID)
 	if err != nil {
+		log.Printf("⚠ Query error: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -348,6 +353,7 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 		classes = append(classes, class)
 	}
 
+	log.Printf("✓ GetTeacherClassesWithAttendance: Found %d classes with attendance", len(classes))
 	return classes, nil
 }
 
@@ -846,6 +852,22 @@ func (a *App) GetClassesByEDPCode(edpCode string) ([]CourseClass, error) {
 		return nil, fmt.Errorf("database not connected")
 	}
 
+	// Validate and sanitize EDP code input
+	edpCode = strings.TrimSpace(edpCode)
+	if edpCode == "" {
+		return nil, fmt.Errorf("EDP code cannot be empty")
+	}
+
+	// Check for valid characters (alphanumeric, dash, underscore only)
+	if !regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(edpCode) {
+		return nil, fmt.Errorf("invalid EDP code format. Only letters, numbers, dashes, and underscores are allowed")
+	}
+
+	// Limit length to prevent potential issues
+	if len(edpCode) > 50 {
+		return nil, fmt.Errorf("EDP code is too long. Maximum 50 characters allowed")
+	}
+
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
@@ -926,6 +948,17 @@ func (a *App) GetClassesByEDPCode(edpCode string) ([]CourseClass, error) {
 func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error) {
 	if a.db == nil {
 		return 0, fmt.Errorf("database not connected")
+	}
+
+	// Validate student ID
+	if studentUserID <= 0 {
+		return 0, fmt.Errorf("invalid student ID")
+	}
+
+	// Validate and sanitize EDP code (done in GetClassesByEDPCode)
+	edpCode = strings.TrimSpace(edpCode)
+	if edpCode == "" {
+		return 0, fmt.Errorf("EDP code cannot be empty")
 	}
 
 	// First, find active classes with this EDP code

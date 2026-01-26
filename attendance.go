@@ -403,35 +403,15 @@ func (a *App) ExportAttendanceCSV(classID int) (string, error) {
 	return filename, nil
 }
 
-// GenerateAttendanceFromLogs generates attendance records for a class based on login logs
-// It determines status: present (login before 10 min to scheduled time), late (login 10 min after scheduled time), absent (no login)
+// GenerateAttendanceFromLogs generates attendance records for a class
+// It initializes all enrolled students as absent - teachers will manually mark present
 func (a *App) GenerateAttendanceFromLogs(classID int, date string, recordedBy int) error {
 	if a.db == nil {
 		return fmt.Errorf("database not connected")
 	}
 
-	// Get class information including schedule
-	var schedule sql.NullString
-	err := a.db.QueryRow("SELECT schedule FROM classes WHERE class_id = ?", classID).Scan(&schedule)
-	if err != nil {
-		log.Printf("⚠ Failed to get class schedule: %v", err)
-		return fmt.Errorf("failed to get class schedule: %w", err)
-	}
-
-	if !schedule.Valid || schedule.String == "" {
-		return fmt.Errorf("class schedule not set")
-	}
-
-	// Parse schedule to get start time
-	scheduleStr := schedule.String
-	startTime, err := parseScheduleStartTime(scheduleStr)
-	if err != nil {
-		log.Printf("⚠ Failed to parse schedule: %v", err)
-		return fmt.Errorf("failed to parse schedule: %w", err)
-	}
-
 	// Validate the date format
-	_, err = time.Parse("2006-01-02", date)
+	_, err := time.Parse("2006-01-02", date)
 	if err != nil {
 		return fmt.Errorf("invalid date format: %w", err)
 	}
@@ -448,6 +428,8 @@ func (a *App) GenerateAttendanceFromLogs(classID int, date string, recordedBy in
 	if err != nil {
 		log.Printf("⚠ Failed to create attendance sheet: %v", err)
 		// Continue anyway - this is not critical
+	} else {
+		log.Printf("✓ Attendance sheet created/updated: class_id=%d, date=%s", classID, date)
 	}
 
 	// Get all enrolled students
@@ -462,85 +444,17 @@ func (a *App) GenerateAttendanceFromLogs(classID int, date string, recordedBy in
 		return nil
 	}
 
-	// For each student, check login logs and create attendance record
+	// For each student, initialize attendance record as absent (teacher will manually mark present)
 	for _, student := range students {
-		// Get login logs for this student on the attendance date
-		query := `
-			SELECT login_time, logout_time, pc_number
-			FROM login_logs
-			WHERE user_id = ? 
-			AND DATE(login_time) = ?
-			AND login_status = 'success'
-			ORDER BY login_time ASC
-			LIMIT 1
-		`
-		var loginTime sql.NullTime
-		var logoutTime sql.NullTime
-		var pcNumber sql.NullString
-
-		err := a.db.QueryRow(query, student.StudentUserID, date).Scan(&loginTime, &logoutTime, &pcNumber)
-
-		var status string
-		var timeInStr, timeOutStr string
-		var pcNumberStr string
-
-		if err == nil && loginTime.Valid {
-			// Student logged in - determine if present or late
-			loginDateTime := loginTime.Time
-			loginTimeOnly := time.Date(0, 1, 1, loginDateTime.Hour(), loginDateTime.Minute(), loginDateTime.Second(), 0, time.UTC)
-
-			// Calculate 10 minutes after scheduled time (cutoff for late)
-			tenMinutesAfter := startTime.Add(10 * time.Minute)
-
-			timeInStr = loginDateTime.Format("15:04:05")
-			if logoutTime.Valid {
-				timeOutStr = logoutTime.Time.Format("15:04:05")
-			}
-			if pcNumber.Valid {
-				pcNumberStr = pcNumber.String
-			}
-
-			// Determine status based on login time
-			// Present: login within 10 minutes after scheduled time (allows 10 min before and 10 min after)
-			// Late: login more than 10 minutes after scheduled time
-			if loginTimeOnly.Before(tenMinutesAfter) || loginTimeOnly.Equal(tenMinutesAfter) {
-				// Login before or within 10 minutes after scheduled time = Present
-				status = "present"
-			} else {
-				// Login more than 10 minutes after scheduled time = Late
-				status = "late"
-			}
-		} else {
-			// No login found = Absent
-			status = "absent"
-		}
-
-		// Set remarks for students who haven't logged in yet
-		var remarksStr string
-		if status == "absent" {
-			remarksStr = "Not yet logged in"
-		}
-
-		// Insert or update attendance record
-		// If student has logged in (time_in exists), clear the "Not yet logged in" remark
+		// Insert or update attendance record - all students start as absent
 		insertQuery := `
-			INSERT INTO attendance (class_id, student_user_id, date, time_in, time_out, pc_number, status, remarks, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+			INSERT INTO attendance (class_id, student_user_id, date, status, created_at)
+			VALUES (?, ?, ?, 'absent', CURRENT_TIMESTAMP)
 			ON DUPLICATE KEY UPDATE
-				time_in = COALESCE(VALUES(time_in), time_in),
-				time_out = COALESCE(VALUES(time_out), time_out),
-				pc_number = COALESCE(VALUES(pc_number), pc_number),
-				status = VALUES(status),
-				remarks = CASE 
-					WHEN VALUES(time_in) IS NOT NULL AND (remarks = 'Not yet logged in' OR remarks IS NULL OR remarks = '') THEN NULL
-					WHEN VALUES(time_in) IS NOT NULL THEN remarks
-					WHEN VALUES(remarks) IS NOT NULL AND VALUES(remarks) != '' THEN VALUES(remarks)
-					ELSE remarks
-				END,
 				updated_at = CURRENT_TIMESTAMP
 		`
 
-		_, err = a.db.Exec(insertQuery, classID, student.StudentUserID, date, nullString(timeInStr), nullString(timeOutStr), nullString(pcNumberStr), status, nullString(remarksStr))
+		_, err = a.db.Exec(insertQuery, classID, student.StudentUserID, date)
 		if err != nil {
 			log.Printf("⚠ Failed to insert attendance for student %d: %v", student.StudentUserID, err)
 			continue
@@ -765,17 +679,17 @@ func (a *App) UnarchiveAttendanceSheet(classID int, date string) error {
 
 // ArchivedAttendanceSheet represents a summary of an archived attendance sheet
 type ArchivedAttendanceSheet struct {
-	ClassID       int    `json:"class_id"`
-	Date          string `json:"date"`
-	SubjectCode   string `json:"subject_code"`
-	SubjectName   string `json:"subject_name"`
-	EdpCode       string `json:"edp_code"`
-	Schedule      string `json:"schedule"`
-	StudentCount  int    `json:"student_count"`
-	PresentCount  int    `json:"present_count"`
-	AbsentCount   int    `json:"absent_count"`
-	LateCount     int    `json:"late_count"`
-	ExcusedCount  int    `json:"excused_count"`
+	ClassID      int    `json:"class_id"`
+	Date         string `json:"date"`
+	SubjectCode  string `json:"subject_code"`
+	SubjectName  string `json:"subject_name"`
+	EdpCode      string `json:"edp_code"`
+	Schedule     string `json:"schedule"`
+	StudentCount int    `json:"student_count"`
+	PresentCount int    `json:"present_count"`
+	AbsentCount  int    `json:"absent_count"`
+	LateCount    int    `json:"late_count"`
+	ExcusedCount int    `json:"excused_count"`
 }
 
 // GetArchivedAttendanceSheets gets all archived attendance sheets for a teacher

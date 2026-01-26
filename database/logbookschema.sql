@@ -6,8 +6,9 @@ CREATE DATABASE IF NOT EXISTS logbookdb
 
 USE logbookdb;
 
--- Drop existing tables (in reverse dependency order)
+-- Drop existing views and tables (in reverse dependency order)
 DROP TABLE IF EXISTS attendance;
+DROP TABLE IF EXISTS attendance_sheets;
 DROP TABLE IF EXISTS classlist;
 DROP TABLE IF EXISTS classes;
 DROP TABLE IF EXISTS subjects;

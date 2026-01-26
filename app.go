@@ -46,24 +46,24 @@ func (a *App) startup(ctx context.Context) {
 
 // User represents a user in the system
 type User struct {
-	ID            int     `json:"id"`
-	Password      string  `json:"password"`
-	Name          string  `json:"name"`
-	FirstName     *string `json:"first_name"`
-	MiddleName    *string `json:"middle_name"`
-	LastName      *string `json:"last_name"`
-	Gender        *string `json:"gender"`
-	Role          string  `json:"role"`
-	EmployeeID    *string `json:"employee_id"`
-	StudentID     *string `json:"student_id"`
-	Year          *string `json:"year"`
-	Section       *string `json:"section"`
-	Email         *string `json:"email"`
-	ContactNumber *string `json:"contact_number"`
-	PhotoURL      *string `json:"photo_url"`
+	ID             int     `json:"id"`
+	Password       string  `json:"password"`
+	Name           string  `json:"name"`
+	FirstName      *string `json:"first_name"`
+	MiddleName     *string `json:"middle_name"`
+	LastName       *string `json:"last_name"`
+	Gender         *string `json:"gender"`
+	Role           string  `json:"role"`
+	EmployeeID     *string `json:"employee_id"`
+	StudentID      *string `json:"student_id"`
+	Year           *string `json:"year"`
+	Section        *string `json:"section"`
+	Email          *string `json:"email"`
+	ContactNumber  *string `json:"contact_number"`
+	PhotoURL       *string `json:"photo_url"`
 	DepartmentCode *string `json:"department_code"`
-	Created       string  `json:"created"`
-	LoginLogID    int     `json:"login_log_id"` // Track the login session
+	Created        string  `json:"created"`
+	LoginLogID     int     `json:"login_log_id"` // Track the login session
 }
 
 // LoginLog represents a user login/logout session
@@ -137,10 +137,18 @@ type ClassStudent struct {
 
 // AdminDashboard represents admin dashboard data
 type AdminDashboard struct {
-	TotalStudents   int `json:"total_students"`
-	TotalTeachers   int `json:"total_teachers"`
-	WorkingStudents int `json:"working_students"`
-	RecentLogins    int `json:"recent_logins"`
+	TotalStudents           int `json:"total_students"`
+	TotalTeachers           int `json:"total_teachers"`
+	WorkingStudents         int `json:"working_students"`
+	RecentLogins            int `json:"recent_logins"`
+	ActiveUsersNow          int `json:"active_users_now"`
+	StudentsLoggedIn        int `json:"students_logged_in"`
+	TeachersLoggedIn        int `json:"teachers_logged_in"`
+	WorkingStudentsLoggedIn int `json:"working_students_logged_in"`
+	TodayLogins             int `json:"today_logins"`
+	TodayNewUsers           int `json:"today_new_users"`
+	LockedAccounts          int `json:"locked_accounts"`
+	PendingFeedback         int `json:"pending_feedback"`
 }
 
 // GetAdminDashboard returns admin dashboard statistics
@@ -163,6 +171,51 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	// Count recent logins (last 24 hours)
 	a.db.QueryRow(`SELECT COUNT(*) FROM login_logs WHERE login_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`).Scan(&dashboard.RecentLogins)
 
+	// Count active users now (logged in without logout)
+	a.db.QueryRow(`SELECT COUNT(*) FROM login_logs WHERE logout_time IS NULL`).Scan(&dashboard.ActiveUsersNow)
+
+	// Count students currently logged in
+	a.db.QueryRow(`
+		SELECT COUNT(*) FROM login_logs 
+		WHERE logout_time IS NULL AND user_type = 'student'
+	`).Scan(&dashboard.StudentsLoggedIn)
+
+	// Count teachers currently logged in
+	a.db.QueryRow(`
+		SELECT COUNT(*) FROM login_logs 
+		WHERE logout_time IS NULL AND user_type = 'teacher'
+	`).Scan(&dashboard.TeachersLoggedIn)
+
+	// Count working students currently logged in
+	a.db.QueryRow(`
+		SELECT COUNT(*) FROM login_logs 
+		WHERE logout_time IS NULL AND user_type = 'working_student'
+	`).Scan(&dashboard.WorkingStudentsLoggedIn)
+
+	// Count today's logins
+	a.db.QueryRow(`
+		SELECT COUNT(*) FROM login_logs 
+		WHERE DATE(login_time) = CURDATE()
+	`).Scan(&dashboard.TodayLogins)
+
+	// Count users created today
+	a.db.QueryRow(`
+		SELECT COUNT(*) FROM users 
+		WHERE DATE(created_at) = CURDATE()
+	`).Scan(&dashboard.TodayNewUsers)
+
+	// Count locked accounts
+	a.db.QueryRow(`
+		SELECT COUNT(*) FROM users 
+		WHERE account_lock = TRUE
+	`).Scan(&dashboard.LockedAccounts)
+
+	// Count pending feedback
+	a.db.QueryRow(`
+		SELECT COUNT(*) FROM feedback 
+		WHERE status = 'pending'
+	`).Scan(&dashboard.PendingFeedback)
+
 	return dashboard, nil
 }
 
@@ -172,8 +225,11 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 
 // TeacherDashboard represents teacher dashboard data
 type TeacherDashboard struct {
-	Classes    []CourseClass `json:"classes"`
-	Attendance []Attendance  `json:"attendance"`
+	Classes              []CourseClass `json:"classes"`
+	Attendance           []Attendance  `json:"attendance"`
+	TotalAttendanceWeek  int           `json:"total_attendance_week"`
+	TotalAttendanceMonth int           `json:"total_attendance_month"`
+	TodayClasses         []CourseClass `json:"today_classes"`
 }
 
 // Subject represents a course/subject
@@ -188,52 +244,52 @@ type Subject struct {
 
 // CourseClass represents a class/section
 type CourseClass struct {
-	ID             int     `json:"id"`
-	ClassID        int     `json:"class_id"`
-	SubjectCode    string  `json:"subject_code"`
-	SubjectName    string  `json:"subject_name"`
-	DescriptiveTitle *string `json:"descriptive_title,omitempty"`
-	EdpCode        *string `json:"edp_code,omitempty"`
-	Section        *string `json:"section,omitempty"`
-	Schedule       *string `json:"schedule,omitempty"`
-	Room           *string `json:"room,omitempty"`
-	YearLevel      *string `json:"year_level,omitempty"`
-	SchoolYear     *string `json:"school_year,omitempty"`
-	Semester       *string `json:"semester,omitempty"`
-	TeacherUserID  int     `json:"teacher_user_id"`
-	TeacherName    *string `json:"teacher_name,omitempty"`
-	StudentCount   int     `json:"student_count"`
-	EnrolledCount  int     `json:"enrolled_count"`
-	IsActive       bool    `json:"is_active"`
-	CreatedByUserID *int   `json:"created_by_user_id,omitempty"`
-	CreatedAt      string  `json:"created_at"`
+	ID                   int     `json:"id"`
+	ClassID              int     `json:"class_id"`
+	SubjectCode          string  `json:"subject_code"`
+	SubjectName          string  `json:"subject_name"`
+	DescriptiveTitle     *string `json:"descriptive_title,omitempty"`
+	EdpCode              *string `json:"edp_code,omitempty"`
+	Section              *string `json:"section,omitempty"`
+	Schedule             *string `json:"schedule,omitempty"`
+	Room                 *string `json:"room,omitempty"`
+	YearLevel            *string `json:"year_level,omitempty"`
+	SchoolYear           *string `json:"school_year,omitempty"`
+	Semester             *string `json:"semester,omitempty"`
+	TeacherUserID        int     `json:"teacher_user_id"`
+	TeacherName          *string `json:"teacher_name,omitempty"`
+	StudentCount         int     `json:"student_count"`
+	EnrolledCount        int     `json:"enrolled_count"`
+	IsActive             bool    `json:"is_active"`
+	CreatedByUserID      *int    `json:"created_by_user_id,omitempty"`
+	CreatedAt            string  `json:"created_at"`
 	LatestAttendanceDate *string `json:"latest_attendance_date,omitempty"`
 }
 
 // Attendance represents an attendance record
 type Attendance struct {
-	ID               int     `json:"id"`
-	ClassID          int     `json:"class_id"`
-	SubjectCode      string  `json:"subject_code"`
-	SubjectName      string  `json:"subject_name"`
-	Section          string  `json:"section"`
-	Schedule         string  `json:"schedule"`
-	StudentUserID    int     `json:"student_user_id"`
-	StudentID        string  `json:"student_id"`
-	StudentCode      string  `json:"student_code"`
-	StudentName      string  `json:"student_name"`
-	FirstName        string  `json:"first_name"`
-	MiddleName       *string `json:"middle_name,omitempty"`
-	LastName         string  `json:"last_name"`
-	Date             string  `json:"date"`
-	AttendanceDate   string  `json:"attendance_date"`
-	TimeIn           *string `json:"time_in"`
-	TimeOut          *string `json:"time_out"`
-	PCNumber         *string `json:"pc_number"`
-	Status           string  `json:"status"`
-	Remarks          *string `json:"remarks"`
-	RecordedBy       int     `json:"recorded_by"`
-	RecordedByName   string  `json:"recorded_by_name"`
+	ID             int     `json:"id"`
+	ClassID        int     `json:"class_id"`
+	SubjectCode    string  `json:"subject_code"`
+	SubjectName    string  `json:"subject_name"`
+	Section        string  `json:"section"`
+	Schedule       string  `json:"schedule"`
+	StudentUserID  int     `json:"student_user_id"`
+	StudentID      string  `json:"student_id"`
+	StudentCode    string  `json:"student_code"`
+	StudentName    string  `json:"student_name"`
+	FirstName      string  `json:"first_name"`
+	MiddleName     *string `json:"middle_name,omitempty"`
+	LastName       string  `json:"last_name"`
+	Date           string  `json:"date"`
+	AttendanceDate string  `json:"attendance_date"`
+	TimeIn         *string `json:"time_in"`
+	TimeOut        *string `json:"time_out"`
+	PCNumber       *string `json:"pc_number"`
+	Status         string  `json:"status"`
+	Remarks        *string `json:"remarks"`
+	RecordedBy     int     `json:"recorded_by"`
+	RecordedByName string  `json:"recorded_by_name"`
 }
 
 // GetTeacherDashboard returns teacher dashboard data
@@ -265,9 +321,35 @@ func (a *App) GetTeacherDashboard(teacherUserID int) (TeacherDashboard, error) {
 		} else {
 			dashboard.Attendance = attendance
 		}
+
+		// Count attendance records this week
+		a.db.QueryRow(`
+			SELECT COUNT(*) FROM attendance 
+			WHERE class_id IN (`+strings.Repeat("?,", len(classIDs)-1)+`?) 
+			AND attendance_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+		`, convertToInterfaceSlice(classIDs)...).Scan(&dashboard.TotalAttendanceWeek)
+
+		// Count attendance records this month
+		a.db.QueryRow(`
+			SELECT COUNT(*) FROM attendance 
+			WHERE class_id IN (`+strings.Repeat("?,", len(classIDs)-1)+`?) 
+			AND attendance_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+		`, convertToInterfaceSlice(classIDs)...).Scan(&dashboard.TotalAttendanceMonth)
 	}
 
+	// Filter today's classes (simplified - returns all active classes)
+	dashboard.TodayClasses = classes
+
 	return dashboard, nil
+}
+
+// Helper function to convert int slice to interface slice for variadic SQL args
+func convertToInterfaceSlice(nums []int) []interface{} {
+	result := make([]interface{}, len(nums))
+	for i, v := range nums {
+		result[i] = v
+	}
+	return result
 }
 
 // GetRecentAttendance gets attendance records for given class IDs within the last N days
@@ -339,8 +421,12 @@ func (a *App) GetRecentAttendance(classIDs []int, days int) ([]Attendance, error
 
 // StudentDashboard represents student dashboard data
 type StudentDashboard struct {
-	Attendance []Attendance `json:"attendance"`
-	TodayLog   *Attendance  `json:"today_log"`
+	Attendance        []Attendance `json:"attendance"`
+	TodayLog          *Attendance  `json:"today_log"`
+	AttendanceRate    float64      `json:"attendance_rate"`
+	CurrentlyLoggedIn bool         `json:"currently_logged_in"`
+	CurrentPCNumber   *string      `json:"current_pc_number"`
+	EnrolledClasses   int          `json:"enrolled_classes"`
 }
 
 // GetStudentDashboard returns student dashboard data
@@ -374,6 +460,7 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	defer rows.Close()
 
 	var attendance []Attendance
+	presentCount := 0
 	for rows.Next() {
 		var att Attendance
 		var middleName, timeIn, timeOut, pcNumber, remarks sql.NullString
@@ -404,6 +491,11 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 		}
 		attendance = append(attendance, att)
 
+		// Count present records
+		if att.Status == "Present" {
+			presentCount++
+		}
+
 		// Check if this is today's record
 		if att.Date == time.Now().Format("2006-01-02") && dashboard.TodayLog == nil {
 			dashboard.TodayLog = &att
@@ -411,6 +503,36 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	}
 
 	dashboard.Attendance = attendance
+
+	// Calculate attendance rate
+	totalRecords := len(attendance)
+	if totalRecords > 0 {
+		dashboard.AttendanceRate = (float64(presentCount) / float64(totalRecords)) * 100
+	}
+
+	// Check if currently logged in
+	var loggedIn int
+	var pcNumber sql.NullString
+	err = a.db.QueryRow(`
+		SELECT COUNT(*), pc_number 
+		FROM login_logs 
+		WHERE user_id = ? AND logout_time IS NULL
+		GROUP BY pc_number
+	`, userID).Scan(&loggedIn, &pcNumber)
+	if err == nil && loggedIn > 0 {
+		dashboard.CurrentlyLoggedIn = true
+		if pcNumber.Valid {
+			dashboard.CurrentPCNumber = &pcNumber.String
+		}
+	}
+
+	// Count enrolled classes
+	a.db.QueryRow(`
+		SELECT COUNT(DISTINCT class_id) 
+		FROM classlist 
+		WHERE student_user_id = ? AND status = 'active'
+	`, userID).Scan(&dashboard.EnrolledClasses)
+
 	return dashboard, nil
 }
 
@@ -422,6 +544,9 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 type WorkingStudentDashboard struct {
 	StudentsRegistered int `json:"students_registered"`
 	ClasslistsCreated  int `json:"classlists_created"`
+	PendingFeedback    int `json:"pending_feedback"`
+	TodayRegistrations int `json:"today_registrations"`
+	ActiveStudentsNow  int `json:"active_students_now"`
 }
 
 // GetWorkingStudentDashboard returns working student dashboard data
@@ -437,6 +562,25 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 
 	// Count classlists
 	a.db.QueryRow(`SELECT COUNT(*) FROM classlist`).Scan(&dashboard.ClasslistsCreated)
+
+	// Count pending feedback
+	a.db.QueryRow(`
+		SELECT COUNT(*) FROM feedback 
+		WHERE status = 'pending'
+	`).Scan(&dashboard.PendingFeedback)
+
+	// Count students registered today
+	a.db.QueryRow(`
+		SELECT COUNT(*) FROM users u
+		JOIN students s ON u.id = s.user_id
+		WHERE DATE(u.created_at) = CURDATE()
+	`).Scan(&dashboard.TodayRegistrations)
+
+	// Count students currently logged in
+	a.db.QueryRow(`
+		SELECT COUNT(*) FROM login_logs 
+		WHERE logout_time IS NULL AND user_type = 'student'
+	`).Scan(&dashboard.ActiveStudentsNow)
 
 	return dashboard, nil
 }
