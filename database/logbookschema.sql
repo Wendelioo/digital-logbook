@@ -37,6 +37,7 @@ CREATE TABLE users (
     username VARCHAR(50) NOT NULL UNIQUE COMMENT 'Unique login username',
     password VARCHAR(255) NOT NULL COMMENT 'Hashed password for authentication',
     user_type ENUM('admin', 'teacher', 'student', 'working_student') NOT NULL COMMENT 'User role classification',
+    account_status ENUM('pending', 'active', 'suspended', 'rejected') DEFAULT 'active' COMMENT 'Account approval status for registration workflow',
     is_active BOOLEAN DEFAULT TRUE COMMENT 'Account status flag',
     password_changed_at DATETIME NULL COMMENT 'Timestamp when password was last changed',
     last_login_at DATETIME NULL COMMENT 'Timestamp of last successful login',
@@ -47,6 +48,7 @@ CREATE TABLE users (
     
     INDEX idx_username (username),
     INDEX idx_user_type (user_type),
+    INDEX idx_account_status (account_status),
     INDEX idx_is_active (is_active),
     INDEX idx_account_locked (account_locked_until)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -318,6 +320,29 @@ CREATE TABLE feedback (
     INDEX idx_feedback_archived (is_archived, date_submitted DESC),
     INDEX idx_feedback_archived_at (archived_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================================
+-- STUDENT REGISTRATION SYSTEM
+-- ============================================================================
+-- Registration approvals table: Tracks student self-registration approval workflow
+CREATE TABLE registration_approvals (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL COMMENT 'Foreign key to users.id - the student being approved/rejected',
+    approved_by_user_id INT NULL COMMENT 'Foreign key to users.id - working student or admin who processed the request',
+    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending' COMMENT 'Approval status',
+    rejection_reason TEXT NULL COMMENT 'Reason for rejection (if applicable)',
+    processed_at TIMESTAMP NULL COMMENT 'When the approval/rejection occurred',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (approved_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    
+    INDEX idx_user_id (user_id),
+    INDEX idx_status (status),
+    INDEX idx_approved_by (approved_by_user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+COMMENT 'Tracks student registration approval workflow';
 
 
   

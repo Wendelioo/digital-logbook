@@ -20,10 +20,12 @@ func (a *App) Login(username, password string) (*User, error) {
 	}
 
 	var user User
-	query := `SELECT id, username, password, user_type, created_at FROM users WHERE username = ?`
+	var accountStatus string
+	var isActive bool
+	query := `SELECT id, username, password, user_type, account_status, is_active, created_at FROM users WHERE username = ?`
 
 	var createdAt time.Time
-	err := a.db.QueryRow(query, username).Scan(&user.ID, &user.Name, &user.Password, &user.Role, &createdAt)
+	err := a.db.QueryRow(query, username).Scan(&user.ID, &user.Name, &user.Password, &user.Role, &accountStatus, &isActive, &createdAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("invalid credentials")
@@ -34,6 +36,20 @@ func (a *App) Login(username, password string) (*User, error) {
 	// Simple password check (in production, use proper password hashing)
 	if user.Password != password {
 		return nil, fmt.Errorf("invalid credentials")
+	}
+
+	// Check account status
+	if accountStatus == "pending" {
+		return nil, fmt.Errorf("account pending approval - please wait for working student verification")
+	}
+	if accountStatus == "rejected" {
+		return nil, fmt.Errorf("account registration was rejected - please contact administrator")
+	}
+	if accountStatus == "suspended" {
+		return nil, fmt.Errorf("account suspended - please contact administrator")
+	}
+	if !isActive {
+		return nil, fmt.Errorf("account is inactive - please contact administrator")
 	}
 
 	user.Created = createdAt.Format("2006-01-02 15:04:05")

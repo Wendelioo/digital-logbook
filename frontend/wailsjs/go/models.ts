@@ -34,6 +34,24 @@ export namespace main {
 	        this.pending_feedback = source["pending_feedback"];
 	    }
 	}
+	export class ApprovalRequest {
+	    user_id: number;
+	    approved_by: number;
+	    action: string;
+	    rejection_reason?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ApprovalRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.user_id = source["user_id"];
+	        this.approved_by = source["approved_by"];
+	        this.action = source["action"];
+	        this.rejection_reason = source["rejection_reason"];
+	    }
+	}
 	export class ArchivedAttendanceSheet {
 	    class_id: number;
 	    date: string;
@@ -374,6 +392,77 @@ export namespace main {
 	        this.pc_number = source["pc_number"];
 	        this.login_time = source["login_time"];
 	        this.logout_time = source["logout_time"];
+	    }
+	}
+	export class PendingRegistration {
+	    user_id: number;
+	    student_id: string;
+	    last_name: string;
+	    first_name: string;
+	    middle_name?: string;
+	    contact_number: string;
+	    email: string;
+	    // Go type: time
+	    submitted_at: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new PendingRegistration(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.user_id = source["user_id"];
+	        this.student_id = source["student_id"];
+	        this.last_name = source["last_name"];
+	        this.first_name = source["first_name"];
+	        this.middle_name = source["middle_name"];
+	        this.contact_number = source["contact_number"];
+	        this.email = source["email"];
+	        this.submitted_at = this.convertValues(source["submitted_at"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RegistrationRequest {
+	    student_id: string;
+	    last_name: string;
+	    first_name: string;
+	    middle_name: string;
+	    contact_number: string;
+	    email: string;
+	    password: string;
+	    confirm_password: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RegistrationRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.student_id = source["student_id"];
+	        this.last_name = source["last_name"];
+	        this.first_name = source["first_name"];
+	        this.middle_name = source["middle_name"];
+	        this.contact_number = source["contact_number"];
+	        this.email = source["email"];
+	        this.password = source["password"];
+	        this.confirm_password = source["confirm_password"];
 	    }
 	}
 	export class StudentDashboard {

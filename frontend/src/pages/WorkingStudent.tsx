@@ -5,6 +5,7 @@ import Button from '../components/Button';
 import { Card, CardHeader, CardBody, StatCard } from '../components/Card';
 import Table from '../components/Table';
 import { Badge, StatusBadge } from '../components/Badge';
+import PendingRegistrations from '../components/PendingRegistrations';
 import { 
   LayoutDashboard, 
   UserPlus, 
@@ -28,7 +29,8 @@ import {
   X,
   BarChart3,
   Upload,
-  Download
+  Download,
+  ClipboardList
 } from 'lucide-react';
 import { 
   GetWorkingStudentDashboard,
@@ -1848,9 +1850,11 @@ function EquipmentReports() {
 
 function WorkingStudentDashboard() {
   const location = useLocation();
+  const { user } = useAuth();
   
   const navigationItems = [
     { name: 'Dashboard', href: '/working-student', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/working-student' },
+    { name: 'Pending Registrations', href: '/working-student/pending-registrations', icon: <ClipboardList className="h-5 w-5" />, current: location.pathname === '/working-student/pending-registrations' },
     { name: 'Student Management', href: '/working-student/manage-users', icon: <Users className="h-5 w-5" />, current: location.pathname === '/working-student/manage-users' },
     { name: 'Login History', href: '/working-student/login-history', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/working-student/login-history' },
     { name: 'Equipment Reports', href: '/working-student/equipment-reports', icon: <BarChart3 className="h-5 w-5" />, current: location.pathname === '/working-student/equipment-reports' },
@@ -1860,6 +1864,7 @@ function WorkingStudentDashboard() {
     <Layout navigationItems={navigationItems}>
       <Routes>
         <Route index element={<DashboardOverview />} />
+        <Route path="pending-registrations" element={<PendingRegistrations workingStudentUserId={user?.id || 0} />} />
         <Route path="manage-users" element={<ManageUsers />} />
         <Route path="login-history" element={<WorkingStudentLoginHistory />} />
         <Route path="equipment-reports" element={<EquipmentReports />} />

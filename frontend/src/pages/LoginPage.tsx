@@ -7,6 +7,7 @@ import { main } from '../../wailsjs/go/models';
 import Button from '../components/Button';
 import { InputField } from '../components/Form';
 import backgroundImage from '../assets/background/background.jpg';
+import RegistrationModal from './RegistrationPage';
 
 type Department = main.Department;
 
@@ -26,6 +27,7 @@ function LoginPage() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [showRegistrationModal, setShowRegistrationModal] = useState(false);
   
   const [registrationData, setRegistrationData] = useState({
     studentCode: '',
@@ -216,8 +218,7 @@ function LoginPage() {
             </div>
           )}
 
-          {!isRegistering ? (
-            <form onSubmit={handleLogin} className="space-y-5">
+          <form onSubmit={handleLogin} className="space-y-5">
             {/* Username/ID Field */}
             <div>
               <label htmlFor="username" className="block text-sm font-semibold text-gray-800 mb-2.5">
@@ -308,11 +309,7 @@ function LoginPage() {
                 Don't have an account?{' '}
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsRegistering(true);
-                    setError('');
-                    setSuccessMessage('');
-                  }}
+                  onClick={() => setShowRegistrationModal(true)}
                   className="text-teal-600 hover:text-teal-700 font-semibold transition-colors"
                 >
                   Register here
@@ -320,119 +317,14 @@ function LoginPage() {
               </p>
             </div>
           </form>
-          ) : (
-            <form onSubmit={handleRegister} className="space-y-5">
-              {/* Student Code Field */}
-              <div>
-                <label htmlFor="studentCode" className="block text-sm font-semibold text-gray-800 mb-2.5">
-                  Student Code <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    id="studentCode"
-                    value={registrationData.studentCode}
-                    onChange={(e) => setRegistrationData({ ...registrationData, studentCode: e.target.value })}
-                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                    required
-                  />
-                  <User className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                </div>
-              </div>
-
-              {/* First Name Field */}
-              <div>
-                <label htmlFor="firstName" className="block text-sm font-semibold text-gray-800 mb-2.5">
-                  First Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  id="firstName"
-                  value={registrationData.firstName}
-                  onChange={(e) => setRegistrationData({ ...registrationData, firstName: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                  required
-                />
-              </div>
-
-              {/* Middle Name Field */}
-              <div>
-                <label htmlFor="middleName" className="block text-sm font-semibold text-gray-800 mb-2.5">
-                  Middle Name
-                </label>
-                <input
-                  type="text"
-                  id="middleName"
-                  value={registrationData.middleName}
-                  onChange={(e) => setRegistrationData({ ...registrationData, middleName: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                />
-              </div>
-
-              {/* Last Name Field */}
-              <div>
-                <label htmlFor="lastName" className="block text-sm font-semibold text-gray-800 mb-2.5">
-                  Last Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  id="lastName"
-                  value={registrationData.lastName}
-                  onChange={(e) => setRegistrationData({ ...registrationData, lastName: e.target.value })}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
-                  required
-                />
-              </div>
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-teal-600 text-white py-3.5 px-4 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-semibold text-base shadow-md hover:shadow-lg"
-              >
-                {loading ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Registering...
-                  </span>
-                ) : (
-                  <span className="flex items-center justify-center">
-                    <UserPlus className="w-5 h-5 mr-2" />
-                    Create Account
-                  </span>
-                )}
-              </button>
-
-              {/* Back to Login Link */}
-              <div className="mt-4 text-center">
-                <p className="text-sm text-gray-600">
-                  Already have an account?{' '}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsRegistering(false);
-                      setError('');
-                      setSuccessMessage('');
-                      setRegistrationData({
-                        studentCode: '',
-                        firstName: '',
-                        middleName: '',
-                        lastName: ''
-                      });
-                    }}
-                    className="text-teal-600 hover:text-teal-700 font-semibold transition-colors"
-                  >
-                    Sign in here
-                  </button>
-                </p>
-              </div>
-            </form>
-          )}
         </div>
       </div>
+      
+      {/* Registration Modal */}
+      <RegistrationModal 
+        isOpen={showRegistrationModal} 
+        onClose={() => setShowRegistrationModal(false)} 
+      />
     </div>
   );
 }
