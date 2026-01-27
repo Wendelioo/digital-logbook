@@ -254,6 +254,10 @@ export function GetPendingFeedback() {
   return window['go']['main']['App']['GetPendingFeedback']();
 }
 
+export function GetPendingRegistrations() {
+  return window['go']['main']['App']['GetPendingRegistrations']();
+}
+
 export function GetRecentAttendance(arg1, arg2) {
   return window['go']['main']['App']['GetRecentAttendance'](arg1, arg2);
 }
@@ -338,6 +342,10 @@ export function Logout(arg1) {
   return window['go']['main']['App']['Logout'](arg1);
 }
 
+export function ProcessRegistration(arg1) {
+  return window['go']['main']['App']['ProcessRegistration'](arg1);
+}
+
 export function RecordAttendance(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
   return window['go']['main']['App']['RecordAttendance'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
@@ -356,6 +364,10 @@ export function SaveEquipmentFeedback(arg1, arg2, arg3, arg4, arg5, arg6, arg7, 
 
 export function SearchUsers(arg1, arg2) {
   return window['go']['main']['App']['SearchUsers'](arg1, arg2);
+}
+
+export function SubmitRegistration(arg1) {
+  return window['go']['main']['App']['SubmitRegistration'](arg1);
 }
 
 export function UnarchiveAttendanceSheet(arg1, arg2) {

@@ -128,6 +128,8 @@ export function GetPastLogs(arg1:string,arg2:string):Promise<Array<main.LoginLog
 
 export function GetPendingFeedback():Promise<Array<main.Feedback>>;
 
+export function GetPendingRegistrations():Promise<Array<main.PendingRegistration>>;
+
 export function GetRecentAttendance(arg1:Array<number>,arg2:number):Promise<Array<main.Attendance>>;
 
 export function GetStudentClasses(arg1:number):Promise<Array<main.CourseClass>>;
@@ -170,6 +172,8 @@ export function Login(arg1:string,arg2:string):Promise<main.User>;
 
 export function Logout(arg1:number):Promise<void>;
 
+export function ProcessRegistration(arg1:main.ApprovalRequest):Promise<void>;
+
 export function RecordAttendance(arg1:number,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:number):Promise<void>;
 
 export function RecordStudentLogin(arg1:number,arg2:number,arg3:string):Promise<void>;
@@ -179,6 +183,8 @@ export function RecordTimeoutLogout(arg1:number):Promise<void>;
 export function SaveEquipmentFeedback(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string):Promise<void>;
 
 export function SearchUsers(arg1:string,arg2:string):Promise<Array<main.User>>;
+
+export function SubmitRegistration(arg1:main.RegistrationRequest):Promise<void>;
 
 export function UnarchiveAttendanceSheet(arg1:number,arg2:string):Promise<void>;
 
