@@ -35,7 +35,7 @@ INSERT INTO users (id, username, password, user_type, is_active, created_at) VAL
 (1, '2211172', 'admin123', 'admin', TRUE, CURRENT_TIMESTAMP);
 
 INSERT INTO admins (user_id, employee_number, first_name, middle_name, last_name, email, created_at) VALUES 
-(1, 'ADM-2211172', 'System', NULL, 'Administrator', 'admin@logbook.edu', CURRENT_TIMESTAMP);
+(1, '2211172', 'System', NULL, 'Administrator', 'admin@logbook.edu', CURRENT_TIMESTAMP);
 
 -- ----------------------------------------------------------------------------
 -- Admin Account #2: Secondary Administrator (Optional)

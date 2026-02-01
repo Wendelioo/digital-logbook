@@ -30,6 +30,10 @@ export function ArchiveSelectedLogs(arg1, arg2) {
   return window['go']['main']['App']['ArchiveSelectedLogs'](arg1, arg2);
 }
 
+export function ArchiveStudent(arg1) {
+  return window['go']['main']['App']['ArchiveStudent'](arg1);
+}
+
 export function ChangePassword(arg1, arg2, arg3) {
   return window['go']['main']['App']['ChangePassword'](arg1, arg2, arg3);
 }
@@ -46,8 +50,8 @@ export function CreateSubject(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['CreateSubject'](arg1, arg2, arg3, arg4);
 }
 
-export function CreateUser(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14) {
-  return window['go']['main']['App']['CreateUser'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14);
+export function CreateUser(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
+  return window['go']['main']['App']['CreateUser'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }
 
 export function CreateUsersBulk(arg1) {
@@ -68,6 +72,14 @@ export function DeleteClass(arg1) {
 
 export function DeleteDepartment(arg1) {
   return window['go']['main']['App']['DeleteDepartment'](arg1);
+}
+
+export function DeleteExpiredStudents() {
+  return window['go']['main']['App']['DeleteExpiredStudents']();
+}
+
+export function DeleteProfilePhoto(arg1) {
+  return window['go']['main']['App']['DeleteProfilePhoto'](arg1);
 }
 
 export function DeleteUser(arg1) {
@@ -150,6 +162,10 @@ export function GenerateAttendanceFromLogs(arg1, arg2, arg3) {
   return window['go']['main']['App']['GenerateAttendanceFromLogs'](arg1, arg2, arg3);
 }
 
+export function GetActiveStudentsForArchiving() {
+  return window['go']['main']['App']['GetActiveStudentsForArchiving']();
+}
+
 export function GetAdminDashboard() {
   return window['go']['main']['App']['GetAdminDashboard']();
 }
@@ -206,6 +222,10 @@ export function GetArchivedLogsByDate(arg1) {
   return window['go']['main']['App']['GetArchivedLogsByDate'](arg1);
 }
 
+export function GetArchivedStudents() {
+  return window['go']['main']['App']['GetArchivedStudents']();
+}
+
 export function GetAvailableSections() {
   return window['go']['main']['App']['GetAvailableSections']();
 }
@@ -256,6 +276,10 @@ export function GetPendingFeedback() {
 
 export function GetPendingRegistrations() {
   return window['go']['main']['App']['GetPendingRegistrations']();
+}
+
+export function GetProfilePhoto(arg1) {
+  return window['go']['main']['App']['GetProfilePhoto'](arg1);
 }
 
 export function GetRecentAttendance(arg1, arg2) {
@@ -342,16 +366,20 @@ export function Logout(arg1) {
   return window['go']['main']['App']['Logout'](arg1);
 }
 
+export function MigrateProfilePhotosFromBlob() {
+  return window['go']['main']['App']['MigrateProfilePhotosFromBlob']();
+}
+
 export function ProcessRegistration(arg1) {
   return window['go']['main']['App']['ProcessRegistration'](arg1);
 }
 
-export function RecordAttendance(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
-  return window['go']['main']['App']['RecordAttendance'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+export function RecordAttendance(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['RecordAttendance'](arg1, arg2, arg3, arg4, arg5);
 }
 
-export function RecordStudentLogin(arg1, arg2, arg3) {
-  return window['go']['main']['App']['RecordStudentLogin'](arg1, arg2, arg3);
+export function RecordStudentLogin(arg1, arg2) {
+  return window['go']['main']['App']['RecordStudentLogin'](arg1, arg2);
 }
 
 export function RecordTimeoutLogout(arg1) {
@@ -394,6 +422,10 @@ export function UnarchiveLogs(arg1) {
   return window['go']['main']['App']['UnarchiveLogs'](arg1);
 }
 
+export function UnarchiveStudent(arg1) {
+  return window['go']['main']['App']['UnarchiveStudent'](arg1);
+}
+
 export function UnenrollStudentFromClass(arg1) {
   return window['go']['main']['App']['UnenrollStudentFromClass'](arg1);
 }
@@ -402,12 +434,8 @@ export function UnenrollStudentFromClassByIDs(arg1, arg2) {
   return window['go']['main']['App']['UnenrollStudentFromClassByIDs'](arg1, arg2);
 }
 
-export function UpdateAttendanceRecord(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
-  return window['go']['main']['App']['UpdateAttendanceRecord'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
-}
-
-export function UpdateAttendanceTime(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['UpdateAttendanceTime'](arg1, arg2, arg3, arg4, arg5);
+export function UpdateAttendanceRecord(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['UpdateAttendanceRecord'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function UpdateClass(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
@@ -418,8 +446,8 @@ export function UpdateDepartment(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['UpdateDepartment'](arg1, arg2, arg3, arg4, arg5);
 }
 
-export function UpdateUser(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14) {
-  return window['go']['main']['App']['UpdateUser'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14);
+export function UpdateUser(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
+  return window['go']['main']['App']['UpdateUser'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }
 
 export function UpdateUserPhoto(arg1, arg2, arg3) {
@@ -428,4 +456,8 @@ export function UpdateUserPhoto(arg1, arg2, arg3) {
 
 export function UpdateUserProfilePhoto(arg1, arg2) {
   return window['go']['main']['App']['UpdateUserProfilePhoto'](arg1, arg2);
+}
+
+export function UploadProfilePhoto(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UploadProfilePhoto'](arg1, arg2, arg3, arg4);
 }

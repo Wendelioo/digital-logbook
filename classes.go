@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"regexp"
@@ -276,10 +275,9 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.created_by_user_id,
-			DATE_FORMAT(COALESCE(
+			DATE_FORMAT(
 				(SELECT MAX(a.date) FROM attendance a WHERE a.class_id = c.class_id AND (a.is_archived = FALSE OR a.is_archived IS NULL)),
-				(SELECT MAX(ash.date) FROM attendance_sheets ash WHERE ash.class_id = c.class_id AND (ash.is_archived = FALSE OR ash.is_archived IS NULL))
-			), '%Y-%m-%d') as latest_attendance_date
+			'%Y-%m-%d') as latest_attendance_date
 		FROM classes c
 		LEFT JOIN subjects s ON c.subject_code = s.subject_code
 		LEFT JOIN teachers t ON c.teacher_user_id = t.user_id
@@ -289,10 +287,7 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
 		WHERE c.teacher_user_id = ? AND c.is_active = TRUE 
-		AND (
-			EXISTS (SELECT 1 FROM attendance WHERE attendance.class_id = c.class_id AND (attendance.is_archived = FALSE OR attendance.is_archived IS NULL))
-			OR EXISTS (SELECT 1 FROM attendance_sheets WHERE attendance_sheets.class_id = c.class_id AND (attendance_sheets.is_archived = FALSE OR attendance_sheets.is_archived IS NULL))
-		)
+		AND EXISTS (SELECT 1 FROM attendance WHERE attendance.class_id = c.class_id AND (attendance.is_archived = FALSE OR attendance.is_archived IS NULL))
 		ORDER BY c.subject_code, c.semester, c.school_year
 	`
 	rows, err := a.db.Query(query, teacherID)
@@ -756,8 +751,8 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 	}
 
 	query := `
-		INSERT INTO classlist (class_id, student_user_id, status)
-		VALUES (?, ?, 'active')
+		INSERT INTO classlist (class_id, student_user_id, enrollment_date, status)
+		VALUES (?, ?, CURDATE(), 'active')
 		ON DUPLICATE KEY UPDATE status = 'active', updated_at = CURRENT_TIMESTAMP
 	`
 	_, err := a.db.Exec(query, classID, studentID)
@@ -783,8 +778,8 @@ func (a *App) EnrollMultipleStudents(studentIDs []int, classID int, enrolledBy i
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO classlist (class_id, student_user_id, status)
-		VALUES (?, ?, 'active')
+		INSERT INTO classlist (class_id, student_user_id, enrollment_date, status)
+		VALUES (?, ?, CURDATE(), 'active')
 		ON DUPLICATE KEY UPDATE status = 'active', updated_at = CURRENT_TIMESTAMP
 	`)
 	if err != nil {
@@ -1076,12 +1071,13 @@ func (a *App) GetAllRegisteredStudents(yearLevelFilter, sectionFilter string) ([
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	// Base query that gets all students
+	// Base query that gets all students with photo paths from profile_photos table
 	query := `
 		SELECT 
 			s.user_id as id, s.student_number, s.first_name, s.middle_name, s.last_name, 
-			s.email, s.contact_number, s.profile_photo
+			s.email, s.contact_number, pp.photo_path
 		FROM students s
+		LEFT JOIN profile_photos pp ON s.user_id = pp.user_id
 		ORDER BY s.last_name, s.first_name
 	`
 
@@ -1094,10 +1090,9 @@ func (a *App) GetAllRegisteredStudents(yearLevelFilter, sectionFilter string) ([
 	var students []ClassStudent
 	for rows.Next() {
 		var student ClassStudent
-		var middleName, email, contactNumber sql.NullString
-		var photoBytes []byte // Changed to handle BLOB
+		var middleName, email, contactNumber, photoPath sql.NullString
 		err := rows.Scan(&student.ID, &student.StudentID, &student.FirstName, &middleName,
-			&student.LastName, &email, &contactNumber, &photoBytes)
+			&student.LastName, &email, &contactNumber, &photoPath)
 		if err != nil {
 			continue
 		}
@@ -1110,12 +1105,8 @@ func (a *App) GetAllRegisteredStudents(yearLevelFilter, sectionFilter string) ([
 		if contactNumber.Valid {
 			student.ContactNumber = &contactNumber.String
 		}
-		// Convert binary BLOB to Base64 data URL for frontend
-		if len(photoBytes) > 0 {
-			mimeType := detectImageMimeType(photoBytes)
-			base64Data := base64.StdEncoding.EncodeToString(photoBytes)
-			dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
-			student.ProfilePhoto = &dataURL
+		if photoPath.Valid {
+			student.PhotoPath = &photoPath.String
 		}
 		students = append(students, student)
 	}

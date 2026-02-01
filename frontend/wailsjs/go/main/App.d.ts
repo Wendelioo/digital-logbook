@@ -16,6 +16,8 @@ export function ArchiveLogsByDate(arg1:string,arg2:number):Promise<number>;
 
 export function ArchiveSelectedLogs(arg1:Array<number>,arg2:number):Promise<void>;
 
+export function ArchiveStudent(arg1:number):Promise<void>;
+
 export function ChangePassword(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function CreateClass(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:number):Promise<number>;
@@ -24,7 +26,7 @@ export function CreateDepartment(arg1:string,arg2:string,arg3:string):Promise<vo
 
 export function CreateSubject(arg1:string,arg2:string,arg3:number,arg4:string):Promise<void>;
 
-export function CreateUser(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string,arg12:string,arg13:string,arg14:string):Promise<void>;
+export function CreateUser(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string):Promise<void>;
 
 export function CreateUsersBulk(arg1:string):Promise<Record<string, any>>;
 
@@ -35,6 +37,10 @@ export function DeleteAttendanceSheet(arg1:number,arg2:string):Promise<void>;
 export function DeleteClass(arg1:number):Promise<void>;
 
 export function DeleteDepartment(arg1:string):Promise<void>;
+
+export function DeleteExpiredStudents():Promise<number>;
+
+export function DeleteProfilePhoto(arg1:number):Promise<void>;
 
 export function DeleteUser(arg1:number):Promise<void>;
 
@@ -76,6 +82,8 @@ export function ForwardMultipleFeedbackToAdmin(arg1:Array<number>,arg2:number,ar
 
 export function GenerateAttendanceFromLogs(arg1:number,arg2:string,arg3:number):Promise<void>;
 
+export function GetActiveStudentsForArchiving():Promise<Array<main.User>>;
+
 export function GetAdminDashboard():Promise<main.AdminDashboard>;
 
 export function GetAllClasses():Promise<Array<main.CourseClass>>;
@@ -104,6 +112,8 @@ export function GetArchivedLogs():Promise<Array<main.LoginLog>>;
 
 export function GetArchivedLogsByDate(arg1:string):Promise<Array<main.LoginLog>>;
 
+export function GetArchivedStudents():Promise<Array<main.ArchivedStudent>>;
+
 export function GetAvailableSections():Promise<Array<string>>;
 
 export function GetAvailableStudents(arg1:number):Promise<Array<main.ClassStudent>>;
@@ -129,6 +139,8 @@ export function GetPastLogs(arg1:string,arg2:string):Promise<Array<main.LoginLog
 export function GetPendingFeedback():Promise<Array<main.Feedback>>;
 
 export function GetPendingRegistrations():Promise<Array<main.PendingRegistration>>;
+
+export function GetProfilePhoto(arg1:number):Promise<main.ProfilePhoto>;
 
 export function GetRecentAttendance(arg1:Array<number>,arg2:number):Promise<Array<main.Attendance>>;
 
@@ -172,11 +184,13 @@ export function Login(arg1:string,arg2:string):Promise<main.User>;
 
 export function Logout(arg1:number):Promise<void>;
 
+export function MigrateProfilePhotosFromBlob():Promise<void>;
+
 export function ProcessRegistration(arg1:main.ApprovalRequest):Promise<void>;
 
-export function RecordAttendance(arg1:number,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:number):Promise<void>;
+export function RecordAttendance(arg1:number,arg2:number,arg3:string,arg4:string,arg5:number):Promise<void>;
 
-export function RecordStudentLogin(arg1:number,arg2:number,arg3:string):Promise<void>;
+export function RecordStudentLogin(arg1:number,arg2:number):Promise<void>;
 
 export function RecordTimeoutLogout(arg1:number):Promise<void>;
 
@@ -198,20 +212,22 @@ export function UnarchiveLogSheet(arg1:string):Promise<number>;
 
 export function UnarchiveLogs(arg1:Array<number>):Promise<void>;
 
+export function UnarchiveStudent(arg1:number):Promise<void>;
+
 export function UnenrollStudentFromClass(arg1:number):Promise<void>;
 
 export function UnenrollStudentFromClassByIDs(arg1:number,arg2:number):Promise<void>;
 
-export function UpdateAttendanceRecord(arg1:number,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string):Promise<void>;
-
-export function UpdateAttendanceTime(arg1:number,arg2:number,arg3:string,arg4:string,arg5:string):Promise<void>;
+export function UpdateAttendanceRecord(arg1:number,arg2:number,arg3:string,arg4:string,arg5:string):Promise<void>;
 
 export function UpdateClass(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:boolean):Promise<void>;
 
 export function UpdateDepartment(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<void>;
 
-export function UpdateUser(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string,arg12:string,arg13:string,arg14:string):Promise<void>;
+export function UpdateUser(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string):Promise<void>;
 
 export function UpdateUserPhoto(arg1:number,arg2:string,arg3:string):Promise<void>;
 
 export function UpdateUserProfilePhoto(arg1:number,arg2:string):Promise<void>;
+
+export function UploadProfilePhoto(arg1:number,arg2:Array<number>,arg3:string,arg4:string):Promise<void>;

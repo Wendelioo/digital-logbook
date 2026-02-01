@@ -52,15 +52,12 @@ type User struct {
 	FirstName      *string `json:"first_name"`
 	MiddleName     *string `json:"middle_name"`
 	LastName       *string `json:"last_name"`
-	Gender         *string `json:"gender"`
 	Role           string  `json:"role"`
 	EmployeeID     *string `json:"employee_id"`
 	StudentID      *string `json:"student_id"`
-	Year           *string `json:"year"`
-	Section        *string `json:"section"`
 	Email          *string `json:"email"`
 	ContactNumber  *string `json:"contact_number"`
-	PhotoURL       *string `json:"photo_url"`
+	PhotoPath      *string `json:"photo_path"` // File path to profile photo (improved from BLOB)
 	DepartmentCode *string `json:"department_code"`
 	Created        string  `json:"created"`
 	LoginLogID     int     `json:"login_log_id"` // Track the login session
@@ -68,14 +65,17 @@ type User struct {
 
 // LoginLog represents a user login/logout session
 type LoginLog struct {
-	ID           int     `json:"id"`
-	UserID       int     `json:"user_id"`
-	UserName     string  `json:"user_name"`
-	UserIDNumber string  `json:"user_id_number"`
-	UserType     string  `json:"user_type"`
-	PCNumber     *string `json:"pc_number,omitempty"`
-	LoginTime    string  `json:"login_time"`
-	LogoutTime   *string `json:"logout_time,omitempty"`
+	ID                     int     `json:"id"`
+	UserID                 int     `json:"user_id"`
+	UserName               string  `json:"user_name"`
+	UserIDNumber           string  `json:"user_id_number"`
+	UserType               string  `json:"user_type"`
+	PCNumber               *string `json:"pc_number,omitempty"`
+	IPAddress              *string `json:"ip_address,omitempty"` // New: IP address tracking
+	LoginTime              string  `json:"login_time"`
+	LogoutTime             *string `json:"logout_time,omitempty"`
+	SessionDurationMinutes *int    `json:"session_duration_minutes,omitempty"` // New: Auto-calculated by trigger
+	FailureReason          *string `json:"failure_reason,omitempty"`           // New: Reason for failed login
 }
 
 // Feedback represents equipment condition feedback from students
@@ -95,6 +95,7 @@ type Feedback struct {
 	Comments            *string `json:"comments,omitempty"`
 	DateSubmitted       string  `json:"date_submitted"`
 	Status              string  `json:"status"`
+	Priority            string  `json:"priority"` // New: Issue priority (low/medium/high/critical)
 	ForwardedByUserID   *int    `json:"forwarded_by_user_id,omitempty"`
 	ForwardedByName     *string `json:"forwarded_by_name,omitempty"`
 	ForwardedAt         *string `json:"forwarded_at,omitempty"`
@@ -126,7 +127,7 @@ type ClassStudent struct {
 	Gender        *string `json:"gender,omitempty"`
 	Email         *string `json:"email,omitempty"`
 	ContactNumber *string `json:"contact_number,omitempty"`
-	ProfilePhoto  *string `json:"profile_photo,omitempty"`
+	PhotoPath     *string `json:"photo_path,omitempty"` // File path to profile photo
 	ClassID       *int    `json:"class_id,omitempty"`
 	IsEnrolled    bool    `json:"is_enrolled"`
 }
@@ -283,9 +284,6 @@ type Attendance struct {
 	LastName       string  `json:"last_name"`
 	Date           string  `json:"date"`
 	AttendanceDate string  `json:"attendance_date"`
-	TimeIn         *string `json:"time_in"`
-	TimeOut        *string `json:"time_out"`
-	PCNumber       *string `json:"pc_number"`
 	Status         string  `json:"status"`
 	Remarks        *string `json:"remarks"`
 	RecordedBy     int     `json:"recorded_by"`
@@ -376,7 +374,7 @@ func (a *App) GetRecentAttendance(classIDs []int, days int) ([]Attendance, error
 			a.id, a.class_id, c.subject_code, s.name, c.section, c.schedule,
 			a.student_user_id, st.student_id, 
 			CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.middle_name, ''), ' ', COALESCE(u.last_name, '')) as student_name,
-			a.attendance_date, a.time_in, a.time_out, a.pc_number, a.status, a.remarks,
+			a.attendance_date, a.status, a.remarks,
 			a.recorded_by,
 			CONCAT(COALESCE(rec.first_name, ''), ' ', COALESCE(rec.middle_name, ''), ' ', COALESCE(rec.last_name, '')) as recorded_by_name
 		FROM attendance a
@@ -402,7 +400,7 @@ func (a *App) GetRecentAttendance(classIDs []int, days int) ([]Attendance, error
 		err := rows.Scan(
 			&att.ID, &att.ClassID, &att.SubjectCode, &att.SubjectName, &att.Section, &att.Schedule,
 			&att.StudentUserID, &att.StudentID, &att.StudentName,
-			&att.AttendanceDate, &att.TimeIn, &att.TimeOut, &att.PCNumber, &att.Status, &att.Remarks,
+			&att.AttendanceDate, &att.Status, &att.Remarks,
 			&att.RecordedBy, &att.RecordedByName,
 		)
 		if err != nil {
@@ -444,7 +442,7 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 			stu.student_number,
 			stu.first_name, stu.middle_name, stu.last_name,
 			c.subject_code, s.description as subject_name,
-			a.time_in, a.time_out, a.pc_number, a.status, a.remarks
+			a.status, a.remarks
 		FROM attendance a
 		JOIN students stu ON a.student_user_id = stu.user_id
 		JOIN classes c ON a.class_id = c.class_id
@@ -463,12 +461,12 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	presentCount := 0
 	for rows.Next() {
 		var att Attendance
-		var middleName, timeIn, timeOut, pcNumber, remarks sql.NullString
+		var middleName, remarks sql.NullString
 		err := rows.Scan(
 			&att.ClassID, &att.StudentUserID, &att.Date,
 			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
 			&att.SubjectCode, &att.SubjectName,
-			&timeIn, &timeOut, &pcNumber, &att.Status, &remarks,
+			&att.Status, &remarks,
 		)
 		if err != nil {
 			log.Printf("Failed to scan attendance: %v", err)
@@ -476,15 +474,6 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 		}
 		if middleName.Valid {
 			att.MiddleName = &middleName.String
-		}
-		if timeIn.Valid {
-			att.TimeIn = &timeIn.String
-		}
-		if timeOut.Valid {
-			att.TimeOut = &timeOut.String
-		}
-		if pcNumber.Valid {
-			att.PCNumber = &pcNumber.String
 		}
 		if remarks.Valid {
 			att.Remarks = &remarks.String

@@ -3,7 +3,6 @@ import {
   GetClassAttendance,
   GetStudentLoginLogs,
   RecordAttendance,
-  UpdateAttendanceTime,
   UpdateAttendanceRecord,
   InitializeAttendanceForClass,
   ExportAttendanceCSV,
@@ -74,8 +73,6 @@ export const useAttendance = () => {
   const recordAttendance = useCallback(async (
     classID: number,
     studentID: number,
-    timeIn: string,
-    timeOut: string,
     status: string,
     remarks: string,
     recordedBy: number
@@ -83,7 +80,7 @@ export const useAttendance = () => {
     setLoading(true);
     setError(null);
     try {
-      await RecordAttendance(classID, studentID, timeIn, timeOut, status, remarks, recordedBy);
+      await RecordAttendance(classID, studentID, status, remarks, recordedBy);
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record attendance');
@@ -104,7 +101,7 @@ export const useAttendance = () => {
     setLoading(true);
     setError(null);
     try {
-      await UpdateAttendanceTime(classID, studentUserID, date, timeIn, timeOut);
+      await UpdateAttendanceRecord(classID, studentUserID, date, 'present', '');
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update attendance time');
@@ -119,16 +116,13 @@ export const useAttendance = () => {
     classID: number,
     studentUserID: number,
     date: string,
-    timeIn: string,
-    timeOut: string,
-    pcNumber: string,
     status: string,
     remarks: string
   ) => {
     setLoading(true);
     setError(null);
     try {
-      await UpdateAttendanceRecord(classID, studentUserID, date, timeIn, timeOut, pcNumber, status, remarks);
+      await UpdateAttendanceRecord(classID, studentUserID, date, status, remarks);
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update attendance record');
@@ -181,7 +175,6 @@ export const useAttendance = () => {
     fetchAttendance,
     fetchStudentLogs,
     recordAttendance,
-    updateAttendanceTime,
     updateAttendanceRecord,
     initializeAttendance,
     exportAttendanceCSV,

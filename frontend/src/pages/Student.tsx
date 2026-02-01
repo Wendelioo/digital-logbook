@@ -22,7 +22,8 @@ import {
   Users,
   LogIn,
   MapPin,
-  Library
+  Library,
+  Eye
 } from 'lucide-react';
 import {
   GetStudentDashboard,
@@ -210,6 +211,7 @@ function LoginHistory() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [autoDeleteDays, setAutoDeleteDays] = useState<number>(30);
 
   useEffect(() => {
     const loadLoginLogs = async () => {
@@ -299,8 +301,21 @@ function LoginHistory() {
 
   return (
     <div>
-      <div className="mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Login History</h2>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-700">Auto-delete logs after:</span>
+          <select
+            value={autoDeleteDays}
+            onChange={(e) => setAutoDeleteDays(Number(e.target.value))}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+          >
+            <option value={30}>30 days</option>
+            <option value={60}>60 days</option>
+            <option value={90}>90 days</option>
+            <option value={180}>180 days</option>
+          </select>
+        </div>
       </div>
 
       {/* Search and Filter Controls */}
@@ -792,6 +807,7 @@ function FeedbackHistory() {
 function MyClasses() {
   const { user } = useAuth();
   const [classes, setClasses] = useState<CourseClass[]>([]);
+  const [filteredClasses, setFilteredClasses] = useState<CourseClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [edpCode, setEdpCode] = useState('');
@@ -802,10 +818,31 @@ function MyClasses() {
   const [viewingClasslist, setViewingClasslist] = useState<CourseClass | null>(null);
   const [classlistStudents, setClasslistStudents] = useState<ClasslistEntry[]>([]);
   const [loadingClasslist, setLoadingClasslist] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   useEffect(() => {
     loadClasses();
   }, [user]);
+
+  useEffect(() => {
+    let filtered = classes;
+
+    // Filter by search term
+    if (searchTerm) {
+      filtered = filtered.filter(cls =>
+        cls.subject_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (cls.subject_name && cls.subject_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (cls.descriptive_title && cls.descriptive_title.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (cls.edp_code && cls.edp_code.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (cls.teacher_name && cls.teacher_name.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+    }
+
+    setFilteredClasses(filtered);
+    setCurrentPage(1); // Reset to first page when filters change
+  }, [searchTerm, classes]);
 
   const loadClasses = async () => {
     if (!user) return;
@@ -923,9 +960,18 @@ function MyClasses() {
     );
   }
 
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredClasses.length / entriesPerPage);
+  const startIndex = (currentPage - 1) * entriesPerPage;
+  const endIndex = startIndex + entriesPerPage;
+  const currentClasses = filteredClasses.slice(startIndex, endIndex);
+  const startEntry = filteredClasses.length > 0 ? startIndex + 1 : 0;
+  const endEntry = Math.min(endIndex, filteredClasses.length);
+
   return (
-    <div>
-      <div className="mb-6">
+    <div className="flex flex-col">
+      {/* Header Section */}
+      <div className="flex-shrink-0 mb-4">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-gray-900">My Classes</h2>
           <Button
@@ -940,6 +986,45 @@ function MyClasses() {
           >
             Join Class
           </Button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="flex-shrink-0 mb-4 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md">
+          {error}
+        </div>
+      )}
+
+      {/* Controls Section */}
+      <div className="flex-shrink-0 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700">Show</span>
+            <select
+              value={entriesPerPage}
+              onChange={(e) => {
+                setEntriesPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            <span className="text-sm text-gray-700">entries</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700">Search</span>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              placeholder=""
+            />
+          </div>
         </div>
       </div>
 
@@ -1036,156 +1121,272 @@ function MyClasses() {
         </div>
       )}
 
-      {error && (
-        <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md">
-          {error}
+      {/* Table Section */}
+      {currentClasses.length > 0 ? (
+        <div className="flex-1 overflow-x-auto">
+          <div className="bg-white shadow rounded-lg overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    EDP Code
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Subject Code
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Descriptive Title
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Teacher
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Schedule
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Room
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Students
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Action
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {currentClasses.map((cls) => (
+                  <tr key={cls.class_id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {cls.edp_code || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {cls.subject_code || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {cls.descriptive_title || cls.subject_name || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {cls.teacher_name || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {cls.schedule || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {cls.room || '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {cls.enrolled_count || 0}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                      <button
+                        onClick={() => handleViewClasslist(cls)}
+                        className="text-blue-600 hover:text-blue-800 transition-colors p-1"
+                        title="View Class List"
+                      >
+                        <Eye className="h-5 w-5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Pagination Section */}
+      {filteredClasses.length > 0 && (
+        <div className="flex-shrink-0 mt-4 flex items-center justify-between">
+          <div className="text-sm text-gray-700">
+            Showing {startEntry} to {endEntry} of {filteredClasses.length} entries
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              variant="outline"
+            >
+              Previous
+            </Button>
+            <Button
+              variant="primary"
+            >
+              {currentPage}
+            </Button>
+            <Button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              variant="outline"
+            >
+              Next
+            </Button>
+          </div>
         </div>
       )}
 
-      {classes.length === 0 ? (
-        <div className="bg-white shadow rounded-lg p-12 text-center">
-          <Library className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-          <p className="text-gray-500 font-medium">No classes enrolled</p>
-        </div>
-      ) : (
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">EDP Code</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subject</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descriptive Title</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Teacher</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Schedule</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Room</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Students</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {classes.map((cls) => (
-                <tr key={cls.class_id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap font-mono text-sm text-gray-900">{cls.edp_code || '-'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap font-medium text-sm text-gray-900">{cls.subject_code}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cls.descriptive_title || cls.subject_name || '-'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cls.teacher_name || '-'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cls.schedule || '-'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cls.room || '-'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {cls.enrolled_count || 0}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <Button
-                      onClick={() => handleViewClasslist(cls)}
-                      variant="outline"
-                      size="sm"
-                      icon={<Users className="h-4 w-4" />}
-                    >
-                      View Classlist
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {filteredClasses.length === 0 && !error && (
+        <div className="text-center py-12">
+          {searchTerm ? (
+            <>
+              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No matching classes found</h3>
+              <div className="mt-6">
+                <Button
+                  onClick={() => setSearchTerm('')}
+                  variant="outline"
+                >
+                  Clear Search
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div className="bg-white shadow rounded-lg p-12 text-center">
+              <Library className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+              <p className="text-gray-500 font-medium">No classes enrolled</p>
+            </div>
+          )}
         </div>
       )}
 
       {/* Classlist Modal */}
       {viewingClasslist && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setViewingClasslist(null);
-              setClasslistStudents([]);
-            }
-          }}
-        >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl mx-4 relative max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h3 className="text-2xl font-bold text-gray-900">
-                  {viewingClasslist.descriptive_title || viewingClasslist.subject_name}
-                </h3>
-                <p className="text-sm text-gray-600 mt-1">
-                  {viewingClasslist.subject_code} {viewingClasslist.edp_code ? `• ${viewingClasslist.edp_code}` : ''}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={handleRefreshClasslist}
-                  variant="outline"
-                  size="sm"
-                  disabled={loadingClasslist}
-                  icon={loadingClasslist ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-                >
-                  Refresh
-                </Button>
-                <Button
-                  onClick={() => {
-                    setViewingClasslist(null);
-                    setClasslistStudents([]);
-                  }}
-                  variant="secondary"
-                  size="sm"
-                >
-                  ×
-                </Button>
-              </div>
-            </div>
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
+          <div className="min-h-screen p-4 md:p-8">
+            {/* Bond Paper Style Class List Sheet */}
+            <div className="bg-white max-w-4xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
+              {/* Close Button */}
+              <button
+                onClick={() => {
+                  setViewingClasslist(null);
+                  setClasslistStudents([]);
+                }}
+                className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
+                title="Close"
+              >
+                <X className="h-6 w-6" />
+              </button>
 
-            <div className="p-6 overflow-y-auto flex-1">
-              {loadingClasslist && classlistStudents.length === 0 ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-                </div>
-              ) : classlistStudents.length === 0 ? (
-                <div className="text-center py-12">
-                  <Users className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                  <p className="text-gray-500">No students enrolled yet</p>
-                </div>
-              ) : (
-                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+              {/* Header */}
+              <div className="text-center mb-6 pb-4 border-b-2 border-gray-300">
+                <h1 className="text-2xl font-bold text-gray-900 uppercase tracking-wide">Class List</h1>
+                <p className="text-sm text-gray-600 mt-1">Academic Year 2024-2025</p>
+              </div>
+
+              {/* Combined Class Info and Student List Table */}
+              <div className="overflow-hidden">
+                <table className="min-w-full" style={{ tableLayout: 'fixed' }}>
+                  {/* Class Information Header */}
+                  <thead>
+                    <tr>
+                      <th colSpan={5} className="px-4 py-2 text-left border-b-2 border-gray-900">
+                        <div className="text-gray-900 font-bold text-sm tracking-wide">CLASS INFORMATION</div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white text-sm">
+                    <tr>
+                      <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '120px' }}>Subject Code:</td>
+                      <td className="px-4 py-2 text-gray-900">{viewingClasslist.subject_code || 'N/A'}</td>
+                      <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '100px' }}>EDP Code:</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={2}>{viewingClasslist.edp_code || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 font-semibold text-gray-700">Descriptive Title:</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={4}>{viewingClasslist.descriptive_title || viewingClasslist.subject_name || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 font-semibold text-gray-700">Schedule:</td>
+                      <td className="px-4 py-2 text-gray-900">{viewingClasslist.schedule || 'N/A'}</td>
+                      <td className="px-4 py-2 font-semibold text-gray-700">Room:</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={2}>{viewingClasslist.room || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 font-semibold text-gray-700">Teacher:</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={4}>{viewingClasslist.teacher_name || 'N/A'}</td>
+                    </tr>
+                  </tbody>
+
+                  {/* Student List Header */}
+                  <thead>
+                    <tr>
+                      <th colSpan={5} className="px-4 py-3 text-left border-b-2 border-t-2 border-gray-900">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-900 font-bold text-sm tracking-wide">STUDENTS LIST</span>
+                          <div className="flex items-center gap-4">
+                            <span className="text-xs text-gray-600">Total: {classlistStudents.length}</span>
+                            {loadingClasslist && (
+                              <Loader2 className="h-4 w-4 animate-spin text-primary-600" />
+                            )}
+                          </div>
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+
+                  {/* Student List Column Headers */}
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-1 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '25px' }}>No.</th>
+                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>Student ID</th>
+                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase">Name</th>
+                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '200px' }}>Email</th>
+                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Status</th>
+                    </tr>
+                  </thead>
+
+                  {/* Student Rows */}
+                  <tbody className="bg-white text-xs">
+                    {loadingClasslist && classlistStudents.length === 0 ? (
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student Number</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Enrollment Date</th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <td colSpan={5} className="px-6 py-12 text-center">
+                          <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary-600 mb-2" />
+                          <p className="text-gray-500 text-sm">Loading students...</p>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {classlistStudents.map((student, index) => (
-                        <tr key={student.student_user_id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{index + 1}</td>
-                          <td className="px-6 py-4 whitespace-nowrap font-mono text-sm text-gray-900">{student.student_code}</td>
-                          <td className="px-6 py-4 whitespace-nowrap font-medium text-sm text-gray-900">
-                            {student.last_name}, {student.first_name}
-                            {student.middle_name ? ` ${student.middle_name}` : ''}
+                    ) : classlistStudents.length > 0 ? (
+                      classlistStudents.map((student, index) => (
+                        <tr key={student.student_user_id} className="hover:bg-gray-50 border-b border-gray-100">
+                          <td className="px-1 py-1.5 text-center font-medium text-gray-900">
+                            {index + 1}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{student.email || '-'}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{student.enrollment_date}</td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <StatusBadge status={student.status === 'active' ? 'active' : 'inactive'} label={student.status} />
+                          <td className="px-1 py-1.5 font-medium text-gray-900 text-xs">
+                            {student.student_code}
+                          </td>
+                          <td className="px-1 py-1.5 text-gray-900">
+                            {student.last_name}, {student.first_name} {student.middle_name ? student.middle_name.charAt(0) + '.' : ''}
+                          </td>
+                          <td className="px-1 py-1.5 text-gray-700">
+                            {student.email || '—'}
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${student.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                              {student.status || 'active'}
+                            </span>
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-8 text-center">
+                          <Users className="mx-auto h-10 w-10 text-gray-400 mb-2" />
+                          <p className="text-gray-500 text-sm">No students enrolled</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
 
-            <div className="p-4 border-t border-gray-200 bg-gray-50">
-              <p className="text-sm text-gray-600">
-                Total Students: <span className="font-semibold">{classlistStudents.length}</span>
-              </p>
+              {/* Footer */}
+              <div className="mt-8 pt-4 border-t border-gray-300 text-xs text-gray-600 flex justify-between">
+                <span>Printed: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                <span>Digital Logbook System</span>
+              </div>
             </div>
           </div>
         </div>

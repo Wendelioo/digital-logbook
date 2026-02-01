@@ -186,12 +186,12 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 }
 
 // CreateUser creates a new user
-func (a *App) CreateUser(password, name, firstName, middleName, lastName, gender, role, employeeID, studentID, year, section, email, contactNumber string, departmentCode string) error {
+func (a *App) CreateUser(password, name, firstName, middleName, lastName, role, employeeID, studentID, email, contactNumber string, departmentCode string) error {
 	if a.db == nil {
 		return fmt.Errorf("database not connected")
 	}
 
-	log.Printf("CreateUser called - Role: %s, StudentID: %s, Year: %s, Section: %s, Gender: %s, Email: %s", role, studentID, year, section, gender, email)
+	log.Printf("CreateUser called - Role: %s, StudentID: %s, Email: %s", role, studentID, email)
 
 	// Determine username based on role
 	username := employeeID
@@ -229,7 +229,7 @@ func (a *App) CreateUser(password, name, firstName, middleName, lastName, gender
 	log.Printf("Created user account with ID: %d", userID)
 
 	// Insert into role-specific table
-	if err := a.insertRoleSpecificProfile(userID, role, firstName, middleName, lastName, gender, employeeID, studentID, email, contactNumber, departmentCode); err != nil {
+	if err := a.insertRoleSpecificProfile(userID, role, firstName, middleName, lastName, employeeID, studentID, email, contactNumber, departmentCode); err != nil {
 		return err
 	}
 
@@ -238,18 +238,18 @@ func (a *App) CreateUser(password, name, firstName, middleName, lastName, gender
 }
 
 // UpdateUser updates an existing user
-func (a *App) UpdateUser(id int, name, firstName, middleName, lastName, gender, role, employeeID, studentID, year, section, email, contactNumber string, departmentCode string) error {
+func (a *App) UpdateUser(id int, name, firstName, middleName, lastName, role, employeeID, studentID, email, contactNumber string, departmentCode string) error {
 	if a.db == nil {
 		return fmt.Errorf("database not connected")
 	}
 
 	var query string
 	var err error
-	
+
 	switch role {
 	case "admin":
-		query = `UPDATE admins SET first_name = ?, middle_name = ?, last_name = ?, gender = ?, employee_number = ?, email = ? WHERE user_id = ?`
-		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(gender), nullString(employeeID), nullString(email), id)
+		query = `UPDATE admins SET first_name = ?, middle_name = ?, last_name = ?, employee_number = ?, email = ? WHERE user_id = ?`
+		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(employeeID), nullString(email), id)
 	case "teacher":
 		query = `UPDATE teachers SET first_name = ?, middle_name = ?, last_name = ?, employee_number = ?, email = ?, contact_number = ?, department_code = ? WHERE user_id = ?`
 		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(employeeID), nullString(email), nullString(contactNumber), nullString(departmentCode), id)
@@ -388,7 +388,7 @@ func (a *App) checkDuplicateUser(username, role string) error {
 	var existingRole string
 	checkQuery := `SELECT id, user_type FROM users WHERE username = ?`
 	err := a.db.QueryRow(checkQuery, username).Scan(&existingUserID, &existingRole)
-	
+
 	if err == nil {
 		if role == "student" || role == "working_student" {
 			return fmt.Errorf("⚠️ This Student ID is already registered. If you already have an account, please use the login form instead")
@@ -398,19 +398,19 @@ func (a *App) checkDuplicateUser(username, role string) error {
 		log.Printf("Error checking for duplicate user: %v", err)
 		return fmt.Errorf("failed to check existing registration: %w", err)
 	}
-	
+
 	return nil
 }
 
 // insertRoleSpecificProfile inserts user profile into role-specific table
-func (a *App) insertRoleSpecificProfile(userID int64, role, firstName, middleName, lastName, gender, employeeID, studentID, email, contactNumber, departmentCode string) error {
+func (a *App) insertRoleSpecificProfile(userID int64, role, firstName, middleName, lastName, employeeID, studentID, email, contactNumber, departmentCode string) error {
 	var query string
 	var err error
 
 	switch role {
 	case "admin":
-		query = `INSERT INTO admins (user_id, employee_number, first_name, middle_name, last_name, gender, email) VALUES (?, ?, ?, ?, ?, ?, ?)`
-		_, err = a.db.Exec(query, userID, nullString(employeeID), firstName, nullString(middleName), lastName, nullString(gender), nullString(email))
+		query = `INSERT INTO admins (user_id, employee_number, first_name, middle_name, last_name, email) VALUES (?, ?, ?, ?, ?, ?)`
+		_, err = a.db.Exec(query, userID, nullString(employeeID), firstName, nullString(middleName), lastName, nullString(email))
 	case "teacher":
 		query = `INSERT INTO teachers (user_id, employee_number, first_name, middle_name, last_name, email, contact_number, department_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 		_, err = a.db.Exec(query, userID, nullString(employeeID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), nullString(departmentCode))
@@ -509,7 +509,7 @@ func (a *App) processBulkRecords(records [][]string) (map[string]interface{}, er
 			fullName = fmt.Sprintf("%s, %s %s", lastName, firstName, middleName)
 		}
 
-		err := a.CreateUser(studentCode, fullName, firstName, middleName, lastName, "", "student", "", studentCode, "", "", email, contactNumber, "")
+		err := a.CreateUser(studentCode, fullName, firstName, middleName, lastName, "student", "", studentCode, email, contactNumber, "")
 		if err != nil {
 			errorCount++
 			errors = append(errors, fmt.Sprintf("Row %d (%s): %v", rowNum, studentCode, err))
@@ -574,7 +574,7 @@ func (a *App) processBulkRecordsSimple(records [][]string) (map[string]interface
 			fullName = fmt.Sprintf("%s, %s %s", lastName, firstName, middleName)
 		}
 
-		err := a.CreateUser(studentCode, fullName, firstName, middleName, lastName, "", "student", "", studentCode, "", "", "", contactNumber, "")
+		err := a.CreateUser(studentCode, fullName, firstName, middleName, lastName, "student", "", studentCode, "", contactNumber, "")
 		if err != nil {
 			errorCount++
 			errors = append(errors, fmt.Sprintf("Row %d (%s): %v", rowNum, studentCode, err))
@@ -808,7 +808,7 @@ func getColumnValue(record []string, colIdx int, found bool) string {
 
 // UpdateUserProfilePhoto updates the profile photo for a user
 // Accepts Base64-encoded image data (with or without data URL prefix)
-// Stores as binary BLOB in the database
+// Stores as file in uploads/profiles/ directory (improved from BLOB storage)
 func (a *App) UpdateUserProfilePhoto(userID int, imageBase64 string) error {
 	if a.db == nil {
 		return fmt.Errorf("database not connected")
@@ -816,9 +816,17 @@ func (a *App) UpdateUserProfilePhoto(userID int, imageBase64 string) error {
 
 	// Remove data URL prefix if present (e.g., "data:image/jpeg;base64,")
 	base64Data := imageBase64
+	mimeType := "image/jpeg" // Default MIME type
+
 	if strings.HasPrefix(imageBase64, "data:") {
 		parts := strings.Split(imageBase64, ",")
 		if len(parts) == 2 {
+			// Extract MIME type from data URL (e.g., "data:image/png;base64,")
+			mimeTypePart := strings.TrimPrefix(parts[0], "data:")
+			mimeTypePart = strings.TrimSuffix(mimeTypePart, ";base64")
+			if mimeTypePart != "" {
+				mimeType = mimeTypePart
+			}
 			base64Data = parts[1]
 		}
 	}
@@ -829,55 +837,29 @@ func (a *App) UpdateUserProfilePhoto(userID int, imageBase64 string) error {
 		return fmt.Errorf("failed to decode base64 image: %w", err)
 	}
 
-	// Validate image size (max 5MB)
-	maxSize := 5 * 1024 * 1024 // 5MB
-	if len(imageBytes) > maxSize {
-		return fmt.Errorf("image too large: %d bytes (max %d bytes)", len(imageBytes), maxSize)
-	}
-
 	// Validate minimum size
 	if len(imageBytes) < 100 {
 		return fmt.Errorf("image too small: %d bytes (minimum 100 bytes)", len(imageBytes))
 	}
 
-	// Determine which table to update based on user role
-	var query string
-	var role string
-	err = a.db.QueryRow("SELECT user_type FROM users WHERE id = ?", userID).Scan(&role)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("user not found")
-		}
-		return err
-	}
-
-	switch role {
-	case "admin":
-		query = "UPDATE admins SET profile_photo = ? WHERE user_id = ?"
-	case "teacher":
-		query = "UPDATE teachers SET profile_photo = ? WHERE user_id = ?"
-	case "student", "working_student":
-		query = "UPDATE students SET profile_photo = ? WHERE user_id = ?"
+	// Generate file name based on MIME type
+	fileName := fmt.Sprintf("user_%d_photo", userID)
+	switch mimeType {
+	case "image/png":
+		fileName += ".png"
+	case "image/gif":
+		fileName += ".gif"
 	default:
-		return fmt.Errorf("invalid user role: %s", role)
+		fileName += ".jpg"
 	}
 
-	// Store binary data in database
-	result, err := a.db.Exec(query, imageBytes, userID)
+	// Use the new file-based upload system
+	err = a.UploadProfilePhoto(userID, imageBytes, fileName, mimeType)
 	if err != nil {
-		return fmt.Errorf("failed to update profile photo: %w", err)
+		return fmt.Errorf("failed to upload profile photo: %w", err)
 	}
 
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if rowsAffected == 0 {
-		return fmt.Errorf("no rows updated - user profile not found")
-	}
-
-	log.Printf("Profile photo updated for user ID %d (%s) - %d bytes", userID, role, len(imageBytes))
+	log.Printf("Profile photo updated for user ID %d - %d bytes", userID, len(imageBytes))
 	return nil
 }
 
@@ -887,33 +869,284 @@ func (a *App) DeleteUserProfilePhoto(userID int) error {
 		return fmt.Errorf("database not connected")
 	}
 
-	// Determine which table to update based on user role
-	var query string
-	var role string
-	err := a.db.QueryRow("SELECT user_type FROM users WHERE id = ?", userID).Scan(&role)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("user not found")
-		}
-		return err
-	}
-
-	switch role {
-	case "admin":
-		query = "UPDATE admins SET profile_photo = NULL WHERE user_id = ?"
-	case "teacher":
-		query = "UPDATE teachers SET profile_photo = NULL WHERE user_id = ?"
-	case "student", "working_student":
-		query = "UPDATE students SET profile_photo = NULL WHERE user_id = ?"
-	default:
-		return fmt.Errorf("invalid user role: %s", role)
-	}
-
-	_, err = a.db.Exec(query, userID)
+	// Use the new file-based delete system
+	err := a.DeleteProfilePhoto(userID)
 	if err != nil {
 		return fmt.Errorf("failed to delete profile photo: %w", err)
 	}
 
-	log.Printf("Profile photo deleted for user ID %d (%s)", userID, role)
+	log.Printf("Profile photo deleted for user ID %d", userID)
 	return nil
+}
+
+// ==============================================================================
+// STUDENT ARCHIVE MANAGEMENT (For Working Students)
+// ==============================================================================
+
+// ArchivedStudent represents a student that has been archived (graduated)
+type ArchivedStudent struct {
+	UserID              int       `json:"user_id"`
+	StudentNumber       string    `json:"student_number"`
+	FirstName           string    `json:"first_name"`
+	MiddleName          *string   `json:"middle_name"`
+	LastName            string    `json:"last_name"`
+	Email               *string   `json:"email"`
+	ContactNumber       *string   `json:"contact_number"`
+	ArchivedAt          time.Time `json:"archived_at"`
+	DeletionScheduledAt time.Time `json:"deletion_scheduled_at"`
+	DaysUntilDeletion   int       `json:"days_until_deletion"`
+}
+
+// ArchiveStudent archives a graduated student account
+// The account will be scheduled for deletion after 360 days
+func (a *App) ArchiveStudent(studentUserID int) error {
+	if a.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	now := time.Now()
+	deletionDate := now.AddDate(0, 0, 360) // 360 days from now
+
+	query := `
+		UPDATE students 
+		SET archived_at = ?,
+			deletion_scheduled_at = ?
+		WHERE user_id = ? AND archived_at IS NULL
+	`
+
+	result, err := a.db.Exec(query, now, deletionDate, studentUserID)
+	if err != nil {
+		return fmt.Errorf("failed to archive student: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("student not found or already archived")
+	}
+
+	// Also deactivate the user account
+	_, err = a.db.Exec("UPDATE users SET is_active = FALSE WHERE id = ?", studentUserID)
+	if err != nil {
+		return fmt.Errorf("failed to deactivate user account: %w", err)
+	}
+
+	log.Printf("Student archived: user_id=%d, deletion_scheduled=%s",
+		studentUserID, deletionDate.Format("2006-01-02"))
+
+	return nil
+}
+
+// UnarchiveStudent restores an archived student account
+func (a *App) UnarchiveStudent(studentUserID int) error {
+	if a.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	query := `
+		UPDATE students 
+		SET archived_at = NULL, 
+		    deletion_scheduled_at = NULL
+		WHERE user_id = ? AND archived_at IS NOT NULL
+	`
+
+	result, err := a.db.Exec(query, studentUserID)
+	if err != nil {
+		return fmt.Errorf("failed to unarchive student: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("student not found or not archived")
+	}
+
+	// Reactivate the user account
+	_, err = a.db.Exec("UPDATE users SET is_active = TRUE WHERE id = ?", studentUserID)
+	if err != nil {
+		return fmt.Errorf("failed to reactivate user account: %w", err)
+	}
+
+	log.Printf("Student unarchived: user_id=%d", studentUserID)
+	return nil
+}
+
+// GetArchivedStudents returns all archived students with deletion schedule info
+func (a *App) GetArchivedStudents() ([]ArchivedStudent, error) {
+	if a.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	query := `
+		SELECT 
+			s.user_id,
+			s.student_number,
+			s.first_name,
+			s.middle_name,
+			s.last_name,
+			s.email,
+			s.contact_number,
+			s.archived_at,
+			s.deletion_scheduled_at,
+			DATEDIFF(s.deletion_scheduled_at, NOW()) as days_until_deletion
+		FROM students s
+		WHERE s.archived_at IS NOT NULL
+		ORDER BY s.deletion_scheduled_at ASC
+	`
+
+	rows, err := a.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get archived students: %w", err)
+	}
+	defer rows.Close()
+
+	var students []ArchivedStudent
+	for rows.Next() {
+		var student ArchivedStudent
+		err := rows.Scan(
+			&student.UserID,
+			&student.StudentNumber,
+			&student.FirstName,
+			&student.MiddleName,
+			&student.LastName,
+			&student.Email,
+			&student.ContactNumber,
+			&student.ArchivedAt,
+			&student.DeletionScheduledAt,
+			&student.DaysUntilDeletion,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan archived student: %w", err)
+		}
+		students = append(students, student)
+	}
+
+	return students, nil
+}
+
+// DeleteExpiredStudents permanently deletes student accounts that have passed their deletion date
+// This should be called periodically (e.g., daily cron job)
+func (a *App) DeleteExpiredStudents() (int, error) {
+	if a.db == nil {
+		return 0, fmt.Errorf("database not connected")
+	}
+
+	// Get students to delete for logging
+	query := `
+		SELECT user_id, student_number 
+		FROM students 
+		WHERE archived_at IS NOT NULL 
+		AND deletion_scheduled_at <= NOW()
+	`
+	rows, err := a.db.Query(query)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query expired students: %w", err)
+	}
+
+	var userIDs []int
+	studentInfo := make(map[int]string)
+	for rows.Next() {
+		var userID int
+		var studentNumber string
+		if err := rows.Scan(&userID, &studentNumber); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("failed to scan expired student: %w", err)
+		}
+		userIDs = append(userIDs, userID)
+		studentInfo[userID] = studentNumber
+	}
+	rows.Close()
+
+	if len(userIDs) == 0 {
+		return 0, nil
+	}
+
+	// Delete the user accounts (CASCADE will delete students records)
+	deleteQuery := `DELETE FROM users WHERE id IN (?` + strings.Repeat(",?", len(userIDs)-1) + `)`
+	args := make([]interface{}, len(userIDs))
+	for i, id := range userIDs {
+		args[i] = id
+	}
+
+	result, err := a.db.Exec(deleteQuery, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete expired students: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	for userID, studentNumber := range studentInfo {
+		log.Printf("Deleted expired student: user_id=%d, student_number=%s", userID, studentNumber)
+	}
+
+	return int(rowsAffected), nil
+}
+
+// GetActiveStudentsForArchiving returns active students that can be archived
+func (a *App) GetActiveStudentsForArchiving() ([]User, error) {
+	if a.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	query := `
+		SELECT 
+			u.id,
+			u.username,
+			u.user_type,
+			s.first_name,
+			s.middle_name,
+			s.last_name,
+			s.student_number,
+			s.email,
+			s.contact_number,
+			u.created_at
+		FROM users u
+		JOIN students s ON u.id = s.user_id
+		WHERE u.user_type = 'student' 
+		AND u.is_active = TRUE
+		AND s.archived_at IS NULL
+		ORDER BY s.last_name, s.first_name
+	`
+
+	rows, err := a.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get active students: %w", err)
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var user User
+		var username, userType string
+		var createdAt string
+		err := rows.Scan(
+			&user.ID,
+			&username,
+			&userType,
+			&user.FirstName,
+			&user.MiddleName,
+			&user.LastName,
+			&user.StudentID,
+			&user.Email,
+			&user.ContactNumber,
+			&createdAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan student: %w", err)
+		}
+		user.Role = userType
+		user.Created = createdAt
+		users = append(users, user)
+	}
+
+	return users, nil
 }

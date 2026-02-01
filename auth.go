@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"os"
@@ -77,7 +76,7 @@ func (a *App) Login(username, password string) (*User, error) {
 
 	// Auto-record attendance for students if they log in during class time
 	if user.Role == "student" || user.Role == "working_student" {
-		go a.autoRecordAttendanceOnLogin(user.ID, hostname)
+		go a.autoRecordAttendanceOnLogin(user.ID)
 	}
 
 	log.Printf("User login successful: %s (role: %s, pc: %s)", username, user.Role, hostname)
@@ -174,36 +173,32 @@ func (a *App) loadUserProfile(user *User) error {
 	var detailQuery string
 	switch user.Role {
 	case "admin":
-		detailQuery = `SELECT first_name, middle_name, last_name, gender, employee_number, email, profile_photo FROM admins WHERE user_id = ?`
+		detailQuery = `SELECT first_name, middle_name, last_name, employee_number, email FROM admins WHERE user_id = ?`
 	case "teacher":
-		detailQuery = `SELECT first_name, middle_name, last_name, employee_number, email, contact_number, profile_photo FROM teachers WHERE user_id = ?`
+		detailQuery = `SELECT first_name, middle_name, last_name, employee_number, email, contact_number FROM teachers WHERE user_id = ?`
 	case "student":
-		detailQuery = `SELECT first_name, middle_name, last_name, student_number, email, contact_number, profile_photo FROM students WHERE user_id = ? AND is_working_student = FALSE`
+		detailQuery = `SELECT first_name, middle_name, last_name, student_number, email, contact_number FROM students WHERE user_id = ? AND is_working_student = FALSE`
 	case "working_student":
-		detailQuery = `SELECT first_name, middle_name, last_name, student_number, email, contact_number, profile_photo FROM students WHERE user_id = ? AND is_working_student = TRUE`
+		detailQuery = `SELECT first_name, middle_name, last_name, student_number, email, contact_number FROM students WHERE user_id = ? AND is_working_student = TRUE`
 	default:
 		return fmt.Errorf("unknown user role: %s", user.Role)
 	}
 
-	var firstName, middleName, lastName, gender sql.NullString
+	var firstName, middleName, lastName sql.NullString
 	var employeeID, studentID sql.NullString
 	var email, contactNumber sql.NullString
-	var photoBytes []byte // Changed from sql.NullString to handle BLOB
 
 	switch user.Role {
 	case "admin":
-		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &gender, &employeeID, &email, &photoBytes)
+		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &employeeID, &email)
 		if err != nil {
 			return err
-		}
-		if gender.Valid {
-			user.Gender = &gender.String
 		}
 		if employeeID.Valid {
 			user.EmployeeID = &employeeID.String
 		}
 	case "teacher":
-		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &employeeID, &email, &contactNumber, &photoBytes)
+		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &employeeID, &email, &contactNumber)
 		if err != nil {
 			return err
 		}
@@ -214,7 +209,7 @@ func (a *App) loadUserProfile(user *User) error {
 			user.ContactNumber = &contactNumber.String
 		}
 	case "student", "working_student":
-		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &studentID, &email, &contactNumber, &photoBytes)
+		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &studentID, &email, &contactNumber)
 		if err != nil {
 			return err
 		}
@@ -239,48 +234,27 @@ func (a *App) loadUserProfile(user *User) error {
 	if email.Valid {
 		user.Email = &email.String
 	}
-	// Convert binary BLOB to Base64 data URL for frontend
-	if len(photoBytes) > 0 {
-		mimeType := detectImageMimeType(photoBytes)
-		base64Data := base64.StdEncoding.EncodeToString(photoBytes)
-		dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
-		user.PhotoURL = &dataURL
+
+	// Get profile photo path from profile_photos table (improved from BLOB)
+	var photoPath sql.NullString
+	photoQuery := `SELECT photo_path FROM profile_photos WHERE user_id = ?`
+	err := a.db.QueryRow(photoQuery, user.ID).Scan(&photoPath)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("Warning: Failed to load profile photo for user %d: %v", user.ID, err)
+	}
+	if photoPath.Valid {
+		user.PhotoPath = &photoPath.String
 	}
 
 	return nil
 }
 
-// detectImageMimeType detects the MIME type from image binary data
-func detectImageMimeType(data []byte) string {
-	if len(data) < 4 {
-		return "application/octet-stream"
-	}
-
-	// JPEG magic number: FF D8 FF
-	if data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
-		return "image/jpeg"
-	}
-	// PNG magic number: 89 50 4E 47
-	if data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 {
-		return "image/png"
-	}
-	// GIF magic number: 47 49 46
-	if data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46 {
-		return "image/gif"
-	}
-	// WebP magic number: 52 49 46 46 ... 57 45 42 50
-	if len(data) >= 12 && data[0] == 0x52 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x46 &&
-		data[8] == 0x57 && data[9] == 0x45 && data[10] == 0x42 && data[11] == 0x50 {
-		return "image/webp"
-	}
-
-	return "image/jpeg" // Default fallback
-}
-
-// createLoginLog creates a login log entry and returns the log ID
+// createLoginLog creates a login log entry with IP tracking and returns the log ID
 func (a *App) createLoginLog(userID int, pcNumber string) (int, error) {
-	insertLog := `INSERT INTO login_logs (user_id, pc_number, login_time, login_status) 
-				  VALUES (?, ?, NOW(), 'success')`
+	// Get IP address (for now, set to NULL - can be enhanced with actual IP detection)
+	// In a real implementation, you would detect the actual IP address
+	insertLog := `INSERT INTO login_logs (user_id, pc_number, ip_address, login_time, login_status) 
+				  VALUES (?, ?, NULL, NOW(), 'success')`
 	result, err := a.db.Exec(insertLog, userID, pcNumber)
 	if err != nil {
 		return 0, err

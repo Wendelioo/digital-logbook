@@ -22,6 +22,7 @@ export default function WorkingStudentLoginHistory() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [error, setError] = useState('');
+  const [autoDeleteDays, setAutoDeleteDays] = useState<number>(30);
 
   useEffect(() => {
     const load = async () => {
@@ -68,7 +69,22 @@ export default function WorkingStudentLoginHistory() {
 
   return (
     <div>
-      <div className="mb-6"><h2 className="text-2xl font-bold text-gray-900">Login History</h2></div>
+      <div className="mb-6 flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-gray-900">Login History</h2>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-700">Auto-delete logs after:</span>
+          <select
+            value={autoDeleteDays}
+            onChange={(e) => setAutoDeleteDays(Number(e.target.value))}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+          >
+            <option value={30}>30 days</option>
+            <option value={60}>60 days</option>
+            <option value={90}>90 days</option>
+            <option value={180}>180 days</option>
+          </select>
+        </div>
+      </div>
 
       <div className="mb-6 bg-white shadow rounded-lg p-4">
         <div className="flex items-center gap-3">
