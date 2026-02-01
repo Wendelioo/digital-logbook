@@ -251,14 +251,24 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 		}
 	}
 
-	// Insert feedback into database
+	// Insert feedback into database with priority auto-detection
+	// Priority: critical if Not Working, high if Minor Issue, medium otherwise
+	priority := "medium"
+	if equipmentCondition == "Not Working" || monitorCondition == "Not Working" ||
+		keyboardCondition == "Not Working" || mouseCondition == "Not Working" {
+		priority = "critical"
+	} else if equipmentCondition == "Minor Issue" || monitorCondition == "Minor Issue" ||
+		keyboardCondition == "Minor Issue" || mouseCondition == "Minor Issue" {
+		priority = "high"
+	}
+
 	query := `INSERT INTO feedback (student_user_id, pc_number, 
 			  equipment_condition, monitor_condition, keyboard_condition, mouse_condition, 
-			  comments, date_submitted) 
-			  VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`
+			  comments, priority, date_submitted) 
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`
 
 	_, err = a.db.Exec(query, userID, pcNumber,
-		equipmentCondition, monitorCondition, keyboardCondition, mouseCondition, nullString(combinedComments))
+		equipmentCondition, monitorCondition, keyboardCondition, mouseCondition, nullString(combinedComments), priority)
 
 	if err != nil {
 		log.Printf("Failed to save equipment feedback: %v", err)
@@ -522,12 +532,12 @@ func (a *App) ExportFeedbackPDF() (string, error) {
 
 // ArchivedFeedbackSheet represents a summary of archived feedback for a specific date
 type ArchivedFeedbackSheet struct {
-	Date          string `json:"date"`
-	TotalReports  int    `json:"total_reports"`
-	GoodCount     int    `json:"good_count"`
-	IssueCount    int    `json:"issue_count"`
-	UniquePCs     int    `json:"unique_pcs"`
-	UniqueStudents int   `json:"unique_students"`
+	Date           string `json:"date"`
+	TotalReports   int    `json:"total_reports"`
+	GoodCount      int    `json:"good_count"`
+	IssueCount     int    `json:"issue_count"`
+	UniquePCs      int    `json:"unique_pcs"`
+	UniqueStudents int    `json:"unique_students"`
 }
 
 // GetArchivedFeedbackSheets returns all archived feedback sheets grouped by date

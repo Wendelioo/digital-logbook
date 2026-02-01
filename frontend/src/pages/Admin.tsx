@@ -38,7 +38,8 @@ import {
   Settings,
   ChevronRight,
   ChevronDown,
-  UserCheck
+  UserCheck,
+  MoreVertical
 } from 'lucide-react';
 import DateRangeFilter from '../components/DateRangeFilter';
 import ArchiveConfirmationModal from '../components/ArchiveConfirmationModal';
@@ -103,12 +104,9 @@ interface User {
   first_name?: string;
   middle_name?: string;
   last_name?: string;
-  gender?: string;
   role: string;
   employee_id?: string;
   student_id?: string;
-  year?: string;
-  section?: string;
   photo_url?: string;
   email?: string;
   contact_number?: string;
@@ -376,8 +374,6 @@ function UserManagement() {
     role: 'teacher',
     employeeId: '',
     studentId: '',
-    year: '',
-    section: '',
     email: '',
     contactNumber: '',
     departmentCode: ''
@@ -388,13 +384,12 @@ function UserManagement() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   // Excel-like table state: sorting, filtering, selection, pagination
-  type SortKey = 'name' | 'role' | 'year' | 'created';
+  type SortKey = 'name' | 'role' | 'created';
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [filters, setFilters] = useState<Record<SortKey, string>>({
     name: '',
     role: '',
-    year: '',
     created: ''
   });
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -419,7 +414,7 @@ function UserManagement() {
   };
 
   const clearFilters = () => {
-    setFilters({ name: '', role: '', year: '', created: '' });
+    setFilters({ name: '', role: '', created: '' });
     setCurrentPage(1);
   };
 
@@ -570,18 +565,16 @@ function UserManagement() {
         lastName: formData.lastName,
         middleName: formData.middleName,
         employeeId: formData.employeeId,
-        studentId: formData.studentId,
-        year: formData.year,
-        section: formData.section
+        studentId: formData.studentId
       });
 
       const departmentCode = formData.role === 'teacher' ? formData.departmentCode : '';
 
       if (editingUser) {
-        await UpdateUser(editingUser.id, fullName, formData.firstName, formData.middleName, formData.lastName, '', formData.role, formData.employeeId, formData.studentId, '', '', formData.email, formData.contactNumber, departmentCode);
+        await UpdateUser(editingUser.id, fullName, formData.firstName, formData.middleName, formData.lastName, formData.role, formData.employeeId, formData.studentId, formData.email, formData.contactNumber, departmentCode);
         showNotification('success', 'User updated successfully!');
       } else {
-        await CreateUser(password_to_pass, fullName, formData.firstName, formData.middleName, formData.lastName, '', formData.role, formData.employeeId, formData.studentId, '', '', formData.email, formData.contactNumber, departmentCode);
+        await CreateUser(password_to_pass, fullName, formData.firstName, formData.middleName, formData.lastName, formData.role, formData.employeeId, formData.studentId, formData.email, formData.contactNumber, departmentCode);
 
         // Show specific notification based on user role
         const roleMessages = {
@@ -596,7 +589,7 @@ function UserManagement() {
 
       setShowForm(false);
       setEditingUser(null);
-      setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', year: '', section: '', email: '', contactNumber: '', departmentCode: '' });
+      setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', email: '', contactNumber: '', departmentCode: '' });
       setAvatarFile(null);
       setAvatarPreview(null);
       loadUsers();
@@ -619,8 +612,6 @@ function UserManagement() {
       role: user.role,
       employeeId: user.employee_id || '',
       studentId: user.student_id || '',
-      year: user.year || '',
-      section: user.section || '',
       email: user.email || '',
       contactNumber: user.contact_number || '',
       departmentCode: user.department_code || ''
@@ -671,9 +662,8 @@ function UserManagement() {
     // Column-specific filters
     const inName = u.name.toLowerCase().includes(filters.name.toLowerCase());
     const inRole = u.role.toLowerCase().includes(filters.role.toLowerCase());
-    const inYear = (u.year || '').toLowerCase().includes(filters.year.toLowerCase());
     const inCreated = (u.created || '').toLowerCase().includes(filters.created.toLowerCase());
-    return inName && inRole && inYear && inCreated;
+    return inName && inRole && inCreated;
   });
 
   const sortedUsers = [...filteredUsers].sort((a, b) => {
@@ -687,10 +677,6 @@ function UserManagement() {
       case 'role':
         va = a.role.toLowerCase();
         vb = b.role.toLowerCase();
-        break;
-      case 'year':
-        va = (a.year || '').toLowerCase();
-        vb = (b.year || '').toLowerCase();
         break;
       case 'created':
         va = a.created.toLowerCase();
@@ -774,7 +760,7 @@ function UserManagement() {
         onClose={() => {
           setShowForm(false);
           setEditingUser(null);
-          setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', year: '', section: '', email: '', contactNumber: '', departmentCode: '' });
+          setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', email: '', contactNumber: '', departmentCode: '' });
           setAvatarFile(null);
           setAvatarPreview(null);
         }}
@@ -1021,7 +1007,7 @@ function UserManagement() {
               onClick={() => {
                 setShowForm(false);
                 setEditingUser(null);
-                setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', year: '', section: '', email: '', contactNumber: '', departmentCode: '' });
+                setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', email: '', contactNumber: '', departmentCode: '' });
                 setAvatarFile(null);
                 setAvatarPreview(null);
               }}
@@ -1182,12 +1168,16 @@ function UserManagement() {
               >
                 Previous
               </Button>
-              <Button
-                variant="primary"
-                size="sm"
-              >
-                {currentPage}
-              </Button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                <Button
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  variant={currentPage === pageNum ? "primary" : "outline"}
+                  size="sm"
+                >
+                  {pageNum}
+                </Button>
+              ))}
               <Button
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
@@ -1233,9 +1223,6 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
   const getDepartment = () => {
     if (user.role === 'teacher' && departmentName) {
       return departmentName;
-    }
-    if (user.role === 'student' || user.role === 'working_student') {
-      return user.year && user.section ? `${user.year} - ${user.section}` : user.year || user.section || 'N/A';
     }
     return 'N/A';
   };
@@ -1322,161 +1309,85 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
 function ViewLogs() {
   const { user } = useAuth();
   
-  // Today's logs (default view)
-  const [todayLogs, setTodayLogs] = useState<LoginLog[]>([]);
-  const [showTodayLogs, setShowTodayLogs] = useState(true);
+  // All logs
+  const [logs, setLogs] = useState<LoginLog[]>([]);
   
-  // Past logs (hidden by default)
-  const [pastLogs, setPastLogs] = useState<LoginLog[]>([]);
-  const [showPastLogs, setShowPastLogs] = useState(false);
-  
-  // Pagination for today's logs
-  const [todayCurrentPage, setTodayCurrentPage] = useState(1);
-  const todayItemsPerPage = 10;
-  
-  // Pagination for past logs
-  const [pastCurrentPage, setPastCurrentPage] = useState(1);
-  const pastItemsPerPage = 10;
-  
-  // Selected logs for archiving
-  const [selectedLogs, setSelectedLogs] = useState<Set<number>>(new Set());
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   
   // UI states
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  const [showArchiveModal, setShowArchiveModal] = useState(false);
   
   // Toast notification
   const [toast, setToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
-  // Date range for past logs filter
-  const getYesterdayDate = () => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    return yesterday.toISOString().split('T')[0];
-  };
+  // Archive confirmation modal
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [logToArchive, setLogToArchive] = useState<LoginLog | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
-  const get30DaysAgoDate = () => {
-    const date = new Date();
-    date.setDate(date.getDate() - 30);
-    return date.toISOString().split('T')[0];
-  };
+  // Dropdown menu state
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
 
-  const [pastDateRange, setPastDateRange] = useState({
-    start: get30DaysAgoDate(),
-    end: getYesterdayDate()
-  });
-
-  // Load today's logs on mount
+  // Close dropdown when clicking outside
   useEffect(() => {
-    loadTodayLogs();
+    const handleClickOutside = () => setOpenMenuId(null);
+    if (openMenuId !== null) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [openMenuId]);
+
+  // Load all logs on mount
+  useEffect(() => {
+    loadLogs();
 
     // Auto-refresh every 30 seconds
     const refreshInterval = setInterval(() => {
-      loadTodayLogs();
-      if (showPastLogs) {
-        loadPastLogs(pastDateRange.start, pastDateRange.end);
-      }
+      loadLogs();
     }, 30000);
 
     return () => clearInterval(refreshInterval);
   }, []);
 
-  // Load past logs when showPastLogs toggles or date range changes
-  useEffect(() => {
-    if (showPastLogs) {
-      loadPastLogs(pastDateRange.start, pastDateRange.end);
-    }
-  }, [showPastLogs, pastDateRange]);
-
-  const loadTodayLogs = async () => {
+  const loadLogs = async () => {
     try {
-      const data = await GetTodayLogs();
-      setTodayLogs(data || []);
+      const data = await GetAllLogs();
+      setLogs(data || []);
       setError('');
     } catch (error) {
-      console.error('Failed to load today\'s logs:', error);
-      setError('Failed to load today\'s logs. Please check your database connection.');
-      setTodayLogs([]);
+      console.error('Failed to load logs:', error);
+      setError('Failed to load logs. Please check your database connection.');
+      setLogs([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadPastLogs = async (startDate: string, endDate: string) => {
+  const handleArchiveClick = (log: LoginLog) => {
+    setLogToArchive(log);
+    setShowArchiveConfirm(true);
+    setOpenMenuId(null);
+  };
+
+  const confirmArchive = async () => {
+    if (!logToArchive || !user) return;
+    
+    setArchiving(true);
     try {
-      const data = await GetPastLogs(startDate, endDate);
-      setPastLogs(data || []);
+      await ArchiveSelectedLogs([logToArchive.id], user.id);
+      showToast('success', `Log entry for ${logToArchive.user_name} archived successfully!`);
+      setShowArchiveConfirm(false);
+      setLogToArchive(null);
+      loadLogs();
     } catch (error) {
-      console.error('Failed to load past logs:', error);
-      showToast('error', 'Failed to load past logs');
-      setPastLogs([]);
+      console.error('Failed to archive log:', error);
+      showToast('error', 'Failed to archive log entry');
+    } finally {
+      setArchiving(false);
     }
-  };
-
-  const handleArchive = async () => {
-    if (selectedLogs.size === 0) return;
-    
-    try {
-      const logIDs = Array.from(selectedLogs);
-      await ArchiveSelectedLogs(logIDs, user?.id || 0);
-      
-      // Refresh data
-      loadTodayLogs();
-      if (showPastLogs) {
-        loadPastLogs(pastDateRange.start, pastDateRange.end);
-      }
-      
-      // Clear selection and close modal
-      setSelectedLogs(new Set());
-      setShowArchiveModal(false);
-      
-      // Show success message
-      showToast('success', `${logIDs.length} log(s) archived successfully`);
-    } catch (error) {
-      console.error('Failed to archive logs:', error);
-      showToast('error', 'Failed to archive logs');
-    }
-  };
-
-  const handleDateRangeApply = (startDate: string, endDate: string) => {
-    setPastDateRange({ start: startDate, end: endDate });
-  };
-
-  const toggleLogSelection = (logId: number) => {
-    const newSelection = new Set(selectedLogs);
-    if (newSelection.has(logId)) {
-      newSelection.delete(logId);
-    } else {
-      newSelection.add(logId);
-    }
-    setSelectedLogs(newSelection);
-  };
-
-  const toggleAllTodayLogs = () => {
-    const todayIds = todayLogs.map(l => l.id);
-    const allSelected = todayIds.every(id => selectedLogs.has(id));
-    
-    const newSelection = new Set(selectedLogs);
-    if (allSelected) {
-      todayIds.forEach(id => newSelection.delete(id));
-    } else {
-      todayIds.forEach(id => newSelection.add(id));
-    }
-    setSelectedLogs(newSelection);
-  };
-
-  const toggleAllPastLogs = () => {
-    const pastIds = pastLogs.map(l => l.id);
-    const allSelected = pastIds.every(id => selectedLogs.has(id));
-    
-    const newSelection = new Set(selectedLogs);
-    if (allSelected) {
-      pastIds.forEach(id => newSelection.delete(id));
-    } else {
-      pastIds.forEach(id => newSelection.add(id));
-    }
-    setSelectedLogs(newSelection);
   };
 
   const showToast = (type: 'success' | 'error', message: string) => {
@@ -1516,22 +1427,11 @@ function ViewLogs() {
     );
   }
 
-  const todayAllSelected = todayLogs.length > 0 && todayLogs.every(l => selectedLogs.has(l.id));
-  const todaySomeSelected = todayLogs.some(l => selectedLogs.has(l.id)) && !todayAllSelected;
-  const pastAllSelected = pastLogs.length > 0 && pastLogs.every(l => selectedLogs.has(l.id));
-  const pastSomeSelected = pastLogs.some(l => selectedLogs.has(l.id)) && !pastAllSelected;
-
-  // Pagination for today's logs
-  const todayTotalPages = Math.ceil(todayLogs.length / todayItemsPerPage);
-  const todayStartIndex = (todayCurrentPage - 1) * todayItemsPerPage;
-  const todayEndIndex = todayStartIndex + todayItemsPerPage;
-  const paginatedTodayLogs = todayLogs.slice(todayStartIndex, todayEndIndex);
-
-  // Pagination for past logs
-  const pastTotalPages = Math.ceil(pastLogs.length / pastItemsPerPage);
-  const pastStartIndex = (pastCurrentPage - 1) * pastItemsPerPage;
-  const pastEndIndex = pastStartIndex + pastItemsPerPage;
-  const paginatedPastLogs = pastLogs.slice(pastStartIndex, pastEndIndex);
+  // Pagination
+  const totalPages = Math.ceil(logs.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedLogs = logs.slice(startIndex, endIndex);
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-8">
@@ -1554,18 +1454,8 @@ function ViewLogs() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Log Entries</h1>
-        </div>
-        <Button
-          variant="primary"
-          onClick={() => setShowArchiveModal(true)}
-          disabled={selectedLogs.size === 0}
-          icon={<Archive className="h-4 w-4" />}
-        >
-          Archive Selected ({selectedLogs.size})
-        </Button>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Log Entries</h1>
       </div>
 
       {/* Error Message */}
@@ -1578,389 +1468,139 @@ function ViewLogs() {
         </div>
       )}
 
-      {/* Today's Logs Section */}
+      {/* Single Unified Table */}
       <div>
-        <button
-          onClick={() => setShowTodayLogs(!showTodayLogs)}
-          className="flex items-center gap-2 text-gray-700 hover:text-gray-900 
-                     font-medium transition-colors p-4 hover:bg-gray-50 
-                     rounded-lg w-full border border-gray-200"
-        >
-          {showTodayLogs ? (
-            <ChevronDown className="h-5 w-5" />
-          ) : (
-            <ChevronRight className="h-5 w-5" />
-          )}
-          <Calendar className="h-5 w-5" />
-          <span className="text-lg">{new Date().toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-          })} ({showTodayLogs ? todayLogs.length : 0} shown)</span>
-        </button>
-
-        {showTodayLogs && (
-          <div className="mt-4 space-y-4 animate-slideDown">
-            <Card>
-              <CardHeader 
-                title=""
-                action={
-                  <div className="flex items-center gap-3">
-                    {todayLogs.length > 0 && (
-                      <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={todayAllSelected}
-                          ref={(input) => {
-                            if (input) input.indeterminate = todaySomeSelected;
-                          }}
-                          onChange={toggleAllTodayLogs}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <span>Select all</span>
-                      </label>
-                    )}
-                    <Badge variant="primary">{todayLogs.length} {todayLogs.length === 1 ? 'entry' : 'entries'}</Badge>
-                  </div>
-                }
-              />
-              <CardBody>
-          {todayLogs.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="w-12 px-6 py-3 text-left">
-                      <span className="sr-only">Select</span>
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Name
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      ID Number
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User Type
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      PC Number
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Login Time
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Logout Time
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Duration
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {paginatedTodayLogs.map((log) => (
-                    <tr 
-                      key={log.id}
-                      className={`hover:bg-gray-50 transition-colors ${
-                        selectedLogs.has(log.id) ? 'bg-blue-50' : ''
-                      }`}
-                    >
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={selectedLogs.has(log.id)}
-                          onChange={() => toggleLogSelection(log.id)}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
-                        />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {log.user_name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {log.user_id_number}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <Badge variant={
-                          log.user_type === 'admin' ? 'danger' :
-                          log.user_type === 'teacher' ? 'warning' :
-                          log.user_type === 'working_student' ? 'info' :
-                          'success'
-                        }>
-                          {log.user_type.replace('_', ' ')}
-                        </Badge>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {log.pc_number || 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {formatTime(log.login_time)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {log.logout_time ? formatTime(log.logout_time) : 'Active'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {calculateDuration(log.login_time, log.logout_time)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <Table
+          columns={[
+            {
+              key: 'user_name',
+              label: 'Name',
+              render: (log: LoginLog) => (
+                <span className="font-medium text-gray-900">{log.user_name}</span>
+              )
+            },
+            {
+              key: 'user_id_number',
+              label: 'ID Number',
+              render: (log: LoginLog) => (
+                <span className="text-gray-600">{log.user_id_number}</span>
+              )
+            },
+            {
+              key: 'user_type',
+              label: 'User Type',
+              render: (log: LoginLog) => (
+                <Badge variant={
+                  log.user_type === 'admin' ? 'danger' :
+                  log.user_type === 'teacher' ? 'warning' :
+                  log.user_type === 'working_student' ? 'info' :
+                  'success'
+                }>
+                  {log.user_type.replace('_', ' ')}
+                </Badge>
+              )
+            },
+            {
+              key: 'pc_number',
+              label: 'PC Number',
+              render: (log: LoginLog) => (
+                <span className="text-gray-600">{log.pc_number || 'N/A'}</span>
+              )
+            },
+            {
+              key: 'login_time',
+              label: 'Login Time',
+              render: (log: LoginLog) => (
+                <span className="text-gray-600">{formatTime(log.login_time)}</span>
+              )
+            },
+            {
+              key: 'logout_time',
+              label: 'Logout Time',
+              render: (log: LoginLog) => (
+                <span className="text-gray-600">
+                  {log.logout_time ? formatTime(log.logout_time) : 'Active'}
+                </span>
+              )
+            },
+            {
+              key: 'duration',
+              label: 'Duration',
+              render: (log: LoginLog) => (
+                <span className="text-gray-600">
+                  {calculateDuration(log.login_time, log.logout_time)}
+                </span>
+              )
+            },
+            {
+              key: 'actions',
+              label: 'Actions',
+              render: (log: LoginLog) => (
+                <button
+                  onClick={() => handleArchiveClick(log)}
+                  className="p-1 hover:bg-gray-100 rounded transition-colors"
+                  title="Archive Entry"
+                >
+                  <Archive className="h-5 w-5 text-gray-600" />
+                </button>
+              )
+            }
+          ]}
+          data={paginatedLogs}
+          loading={loading}
+          emptyMessage="No login activity recorded"
+        />
+        {logs.length > 0 && totalPages > 1 && (
+          <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
+            <div className="text-sm text-gray-600">
+              Showing {startIndex + 1} to {Math.min(endIndex, logs.length)} of {logs.length} entries
             </div>
-          ) : (
-            <div className="text-center py-12">
-              <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">No logs today</h3>
-              <p className="text-gray-500">No login activity recorded for today</p>
-            </div>
-          )}
-
-          {/* Pagination for Today's Logs */}
-          {todayLogs.length > 0 && todayTotalPages > 1 && (
-            <div className="mt-4 flex justify-center items-center gap-2 pb-4">
-              <button
-                onClick={() => setTodayCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={todayCurrentPage === 1}
-                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                variant="outline"
+                size="sm"
               >
                 Previous
-              </button>
-              
-              <div className="flex items-center gap-1">
-                {Array.from({ length: todayTotalPages }, (_, i) => i + 1).map((page) => {
-                  if (
-                    page === 1 ||
-                    page === todayTotalPages ||
-                    (page >= todayCurrentPage - 1 && page <= todayCurrentPage + 1)
-                  ) {
-                    return (
-                      <button
-                        key={page}
-                        onClick={() => setTodayCurrentPage(page)}
-                        className={`px-3 py-2 text-sm font-medium rounded-lg ${
-                          todayCurrentPage === page
-                            ? 'bg-primary-600 text-white'
-                            : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    );
-                  } else if (page === todayCurrentPage - 2 || page === todayCurrentPage + 2) {
-                    return <span key={page} className="px-2 text-gray-500">...</span>;
-                  }
-                  return null;
-                })}
-              </div>
-
-              <button
-                onClick={() => setTodayCurrentPage(prev => Math.min(todayTotalPages, prev + 1))}
-                disabled={todayCurrentPage === todayTotalPages}
-                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              </Button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                <Button
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  variant={currentPage === pageNum ? "primary" : "outline"}
+                  size="sm"
+                >
+                  {pageNum}
+                </Button>
+              ))}
+              <Button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage >= totalPages}
+                variant="outline"
+                size="sm"
               >
                 Next
-              </button>
+              </Button>
             </div>
-          )}
-              </CardBody>
-            </Card>
-          </div>
-        )}
-      </div>
-
-      {/* Past Logs Section (Collapsible) */}
-      <div>
-        <button
-          onClick={() => setShowPastLogs(!showPastLogs)}
-          className="flex items-center gap-2 text-gray-700 hover:text-gray-900 
-                     font-medium transition-colors p-4 hover:bg-gray-50 
-                     rounded-lg w-full border border-gray-200"
-        >
-          {showPastLogs ? (
-            <ChevronDown className="h-5 w-5" />
-          ) : (
-            <ChevronRight className="h-5 w-5" />
-          )}
-          <Archive className="h-5 w-5" />
-          <span className="text-lg">Past Logs ({showPastLogs ? pastLogs.length : 0} shown)</span>
-        </button>
-
-        {showPastLogs && (
-          <div className="mt-4 space-y-4 animate-slideDown">
-            <DateRangeFilter
-              onApply={handleDateRangeApply}
-              maxDate={getYesterdayDate()}
-            />
-
-            <Card>
-              <CardHeader 
-                title="Previous Day Logs"
-                subtitle={`Showing logs from ${pastDateRange.start} to ${pastDateRange.end}`}
-                action={
-                  pastLogs.length > 0 && (
-                    <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={pastAllSelected}
-                        ref={(input) => {
-                          if (input) input.indeterminate = pastSomeSelected;
-                        }}
-                        onChange={toggleAllPastLogs}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <span>Select all</span>
-                    </label>
-                  )
-                }
-              />
-              <CardBody>
-                {pastLogs.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="w-12 px-6 py-3 text-left">
-                            <span className="sr-only">Select</span>
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Name
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            ID Number
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            User Type
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            PC Number
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Login Time
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Logout Time
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Duration
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {paginatedPastLogs.map((log) => (
-                          <tr 
-                            key={log.id}
-                            className={`hover:bg-gray-50 transition-colors ${
-                              selectedLogs.has(log.id) ? 'bg-blue-50' : ''
-                            }`}
-                          >
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <input
-                                type="checkbox"
-                                checked={selectedLogs.has(log.id)}
-                                onChange={() => toggleLogSelection(log.id)}
-                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
-                              />
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                              {log.user_name}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                              {log.user_id_number}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <Badge variant={
-                                log.user_type === 'admin' ? 'danger' :
-                                log.user_type === 'teacher' ? 'warning' :
-                                log.user_type === 'working_student' ? 'info' :
-                                'success'
-                              }>
-                                {log.user_type.replace('_', ' ')}
-                              </Badge>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                              {log.pc_number || 'N/A'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                              {formatTime(log.login_time)}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                              {log.logout_time ? formatTime(log.logout_time) : 'Active'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                              {calculateDuration(log.login_time, log.logout_time)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <Calendar className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-gray-700 mb-2">No past logs found</h3>
-                    <p className="text-gray-500">No login activity in the selected date range</p>
-                  </div>
-                )}
-
-                {/* Pagination for Past Logs */}
-                {pastLogs.length > 0 && pastTotalPages > 1 && (
-                  <div className="mt-4 flex justify-center items-center gap-2 pb-4">
-                    <button
-                      onClick={() => setPastCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={pastCurrentPage === 1}
-                      className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Previous
-                    </button>
-                    
-                    <div className="flex items-center gap-1">
-                      {Array.from({ length: pastTotalPages }, (_, i) => i + 1).map((page) => {
-                        if (
-                          page === 1 ||
-                          page === pastTotalPages ||
-                          (page >= pastCurrentPage - 1 && page <= pastCurrentPage + 1)
-                        ) {
-                          return (
-                            <button
-                              key={page}
-                              onClick={() => setPastCurrentPage(page)}
-                              className={`px-3 py-2 text-sm font-medium rounded-lg ${
-                                pastCurrentPage === page
-                                  ? 'bg-primary-600 text-white'
-                                  : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
-                              }`}
-                            >
-                              {page}
-                            </button>
-                          );
-                        } else if (page === pastCurrentPage - 2 || page === pastCurrentPage + 2) {
-                          return <span key={page} className="px-2 text-gray-500">...</span>;
-                        }
-                        return null;
-                      })}
-                    </div>
-
-                    <button
-                      onClick={() => setPastCurrentPage(prev => Math.min(pastTotalPages, prev + 1))}
-                      disabled={pastCurrentPage === pastTotalPages}
-                      className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Next
-                    </button>
-                  </div>
-                )}
-              </CardBody>
-            </Card>
           </div>
         )}
       </div>
 
       {/* Archive Confirmation Modal */}
-      <ArchiveConfirmationModal
-        isOpen={showArchiveModal}
-        logCount={selectedLogs.size}
-        onConfirm={handleArchive}
-        onCancel={() => setShowArchiveModal(false)}
-      />
+      {showArchiveConfirm && logToArchive && (
+        <ArchiveConfirmationModal
+          isOpen={showArchiveConfirm}
+          onClose={() => {
+            setShowArchiveConfirm(false);
+            setLogToArchive(null);
+          }}
+          onConfirm={confirmArchive}
+          loading={archiving}
+          itemType="log entry"
+          itemDescription={`${logToArchive.user_name} (${logToArchive.user_id_number}) - ${formatTime(logToArchive.login_time)}`}
+        />
+      )}
     </div>
   );
 }
@@ -1971,21 +1611,9 @@ function Reports() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
 
-  // Collapsible sections
-  const [showTodayReports, setShowTodayReports] = useState(true);
-  const [showPastReports, setShowPastReports] = useState(false);
-
-  // Pagination for today's reports
-  const [todayReportsPage, setTodayReportsPage] = useState(1);
-  const todayReportsPerPage = 10;
-
-  // Pagination for past reports
-  const [pastReportsPage, setPastReportsPage] = useState(1);
-  const pastReportsPerPage = 10;
-
-  // Available dates for archiving
-  const [availableDates, setAvailableDates] = useState<string[]>([]);
-  const [archiving, setArchiving] = useState(false);
+  // Pagination
+  const [reportsPage, setReportsPage] = useState(1);
+  const reportsPerPage = 10;
 
   // General search
   const [searchQuery, setSearchQuery] = useState('');
@@ -1998,14 +1626,30 @@ function Reports() {
   const [selectedReport, setSelectedReport] = useState<Feedback | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
 
+  // Archive functionality
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [reportToArchive, setReportToArchive] = useState<Feedback | null>(null);
+  const [archiving, setArchiving] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+
+  // Toast
+  const [toast, setToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => setOpenMenuId(null);
+    if (openMenuId !== null) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [openMenuId]);
+
   useEffect(() => {
     loadReports();
-    loadAvailableDates();
 
     // Auto-refresh every 30 seconds to show new feedback reports
     const refreshInterval = setInterval(() => {
       loadReports();
-      loadAvailableDates();
     }, 30000);
 
     return () => clearInterval(refreshInterval);
@@ -2029,80 +1673,62 @@ function Reports() {
     }
   };
 
-  const loadAvailableDates = async () => {
-    try {
-      const dates = await GetFeedbackDates();
-      setAvailableDates(dates || []);
-    } catch (error) {
-      console.error('Failed to load feedback dates:', error);
-    }
-  };
-
   const clearFilters = () => {
     setSearchQuery('');
     setDateFilter('');
   };
 
-  // Archive by date handler
-  const handleArchiveByDate = async (date: string) => {
-    if (!confirm(`Are you sure you want to archive all reports for ${date}? Archived reports can be exported from the Archive section.`)) {
-      return;
-    }
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 5000);
+  };
 
+  const handleArchiveClick = (report: Feedback) => {
+    setReportToArchive(report);
+    setShowArchiveConfirm(true);
+    setOpenMenuId(null);
+  };
+
+  const confirmArchive = async () => {
+    if (!reportToArchive || !user) return;
+    
     setArchiving(true);
     try {
-      const count = await ArchiveFeedbackByDate(date, user?.id || 0);
-      alert(`Successfully archived ${count} report(s) for ${date}`);
+      await ArchiveFeedbackByDate(reportToArchive.date_submitted.split('T')[0], user.id);
+      showToast('success', `Equipment report for ${reportToArchive.student_name} archived successfully!`);
+      setShowArchiveConfirm(false);
+      setReportToArchive(null);
       loadReports();
-      loadAvailableDates();
     } catch (error) {
-      console.error('Failed to archive reports:', error);
-      alert('Failed to archive reports');
+      console.error('Failed to archive report:', error);
+      showToast('error', 'Failed to archive equipment report');
     } finally {
       setArchiving(false);
     }
   };
 
-  // Get today's date in YYYY-MM-DD format
-  const getTodayDate = () => {
-    const today = new Date();
-    return today.toISOString().split('T')[0];
-  };
+  // Filter reports
+  const filteredReports = reports.filter(report => {
+    const searchLower = searchQuery.toLowerCase();
+    const matchesSearch = !searchQuery || (
+      report.student_name?.toLowerCase().includes(searchLower) ||
+      report.student_id_str?.toLowerCase().includes(searchLower) ||
+      report.pc_number?.toString().toLowerCase().includes(searchLower) ||
+      report.forwarded_by_name?.toLowerCase().includes(searchLower)
+    );
 
-  // Split reports into today's and past
-  const todayDate = getTodayDate();
-  const todayReports = reports.filter(report => {
-    const reportDate = report.date_submitted ? report.date_submitted.split(/[T\s]/)[0] : '';
-    return reportDate === todayDate;
+    const matchesDate = !dateFilter || (
+      report.date_submitted && report.date_submitted.split(/[T\s]/)[0] === dateFilter
+    );
+
+    return matchesSearch && matchesDate;
   });
 
-  const pastReports = reports.filter(report => {
-    const reportDate = report.date_submitted ? report.date_submitted.split(/[T\s]/)[0] : '';
-    return reportDate && reportDate !== todayDate;
-  });
-
-  // Group past reports by date
-  const groupedPastReports = pastReports.reduce((groups, report) => {
-    const date = report.date_submitted ? report.date_submitted.split(/[T\s]/)[0] : 'unknown';
-    if (!groups[date]) {
-      groups[date] = [];
-    }
-    groups[date].push(report);
-    return groups;
-  }, {} as Record<string, Feedback[]>);
-
-  // Pagination for today's reports
-  const todayReportsTotalPages = Math.ceil(todayReports.length / todayReportsPerPage);
-  const todayReportsStartIndex = (todayReportsPage - 1) * todayReportsPerPage;
-  const todayReportsEndIndex = todayReportsStartIndex + todayReportsPerPage;
-  const paginatedTodayReports = todayReports.slice(todayReportsStartIndex, todayReportsEndIndex);
-
-  // Pagination for past reports (paginate the dates, not individual reports)
-  const pastReportDates = Object.keys(groupedPastReports).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-  const pastReportsTotalPages = Math.ceil(pastReportDates.length / pastReportsPerPage);
-  const pastReportsStartIndex = (pastReportsPage - 1) * pastReportsPerPage;
-  const pastReportsEndIndex = pastReportsStartIndex + pastReportsPerPage;
-  const paginatedPastReportDates = pastReportDates.slice(pastReportsStartIndex, pastReportsEndIndex);
+  // Pagination
+  const totalReportPages = Math.ceil(filteredReports.length / reportsPerPage);
+  const reportsStartIndex = (reportsPage - 1) * reportsPerPage;
+  const reportsEndIndex = reportsStartIndex + reportsPerPage;
+  const paginatedReports = filteredReports.slice(reportsStartIndex, reportsEndIndex);
 
   if (loading) {
     return (
@@ -2208,299 +1834,179 @@ function Reports() {
         </div>
       )}
 
-      {/* Reports Grouped by Date */}
-      <div className="space-y-4">
-        {/* Today's Reports Section */}
-        <div>
-          <button
-            onClick={() => setShowTodayReports(!showTodayReports)}
-            className="flex items-center gap-2 text-gray-700 hover:text-gray-900 
-                       font-medium transition-colors p-4 hover:bg-gray-50 
-                       rounded-lg w-full border border-gray-200"
-          >
-            {showTodayReports ? (
-              <ChevronDown className="h-5 w-5" />
-            ) : (
-              <ChevronRight className="h-5 w-5" />
-            )}
-            <Calendar className="h-5 w-5" />
-            <span className="text-lg">{new Date().toLocaleDateString('en-US', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })} ({showTodayReports ? todayReports.length : 0} shown)</span>
-          </button>
-
-          {showTodayReports && (
-            <div className="mt-4 space-y-4 animate-slideDown">
-              {todayReports.length > 0 ? (
-                <div className="bg-white shadow rounded-lg overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student ID</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PC Number</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Forwarded By</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {paginatedTodayReports.map((report) => (
-                          <tr key={report.id} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                              {report.student_id_str}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                              {report.student_name}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                                {report.pc_number}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex flex-col">
-                                <span className="text-sm font-medium text-gray-900">{report.forwarded_by_name || 'Unknown'}</span>
-                                {report.forwarded_at && (
-                                  <span className="text-xs text-gray-500">
-                                    {new Date(report.forwarded_at).toLocaleString('en-US', {
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <Button
-                                onClick={() => {
-                                  setSelectedReport(report);
-                                  setShowReportModal(true);
-                                }}
-                                variant="primary"
-                                icon={<Eye className="h-4 w-4" />}
-                              >
-                                View Details
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+      {/* Single Unified Table */}
+      <div>
+        <Table
+          columns={[
+            {
+              key: 'student_id_str',
+              label: 'Student ID',
+              render: (report: Feedback) => (
+                <span className="text-gray-700">{report.student_id_str}</span>
+              )
+            },
+            {
+              key: 'student_name',
+              label: 'Full Name',
+              render: (report: Feedback) => (
+                <span className="font-medium text-gray-900">{report.student_name}</span>
+              )
+            },
+            {
+              key: 'pc_number',
+              label: 'PC Number',
+              render: (report: Feedback) => (
+                <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                  {report.pc_number}
+                </span>
+              )
+            },
+            {
+              key: 'date_submitted',
+              label: 'Date',
+              render: (report: Feedback) => (
+                <span className="text-gray-600">
+                  {report.date_submitted ? new Date(report.date_submitted).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                  }) : 'N/A'}
+                </span>
+              )
+            },
+            {
+              key: 'forwarded_by_name',
+              label: 'Forwarded By',
+              render: (report: Feedback) => (
+                <div className="flex flex-col">
+                  <span className="text-sm font-medium text-gray-900">{report.forwarded_by_name || 'Unknown'}</span>
+                  {report.forwarded_at && (
+                    <span className="text-xs text-gray-500">
+                      {new Date(report.forwarded_at).toLocaleString('en-US', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                  )}
+                </div>
+              )
+            },
+            {
+              key: 'actions',
+              label: 'Actions',
+              render: (report: Feedback) => (
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => {
+                      setSelectedReport(report);
+                      setShowReportModal(true);
+                    }}
+                    variant="outline"
+                    size="sm"
+                    icon={<Eye className="h-4 w-4" />}
+                  />
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenMenuId(openMenuId === report.id ? null : report.id);
+                      }}
+                      className="p-1 hover:bg-gray-100 rounded transition-colors"
+                      title="More options"
+                    >
+                      <MoreVertical className="h-5 w-5 text-gray-600" />
+                    </button>
+                    
+                    {/* Dropdown Menu */}
+                    {openMenuId === report.id && (
+                      <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                        <button
+                          onClick={() => handleArchiveClick(report)}
+                          className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-2 text-gray-700 hover:text-gray-900 border-b border-gray-100 last:border-b-0"
+                        >
+                          <Archive className="h-4 w-4" />
+                          Archive Report
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
-              ) : (
-                <div className="bg-white shadow rounded-lg p-12 text-center">
-                  <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500 font-medium">No reports today</p>
-                  <p className="text-gray-400 text-sm mt-1">No equipment reports submitted today</p>
-                </div>
-              )}
-
-              {/* Pagination for Today's Reports */}
-              {todayReports.length > 0 && todayReportsTotalPages > 1 && (
-                <div className="mt-4 flex justify-center items-center gap-2 pb-4">
-                  <button
-                    onClick={() => setTodayReportsPage(prev => Math.max(1, prev - 1))}
-                    disabled={todayReportsPage === 1}
-                    className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 
-                               hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed
-                               transition-colors"
-                  >
-                    Previous
-                  </button>
-                  
-                  {Array.from({ length: todayReportsTotalPages }, (_, i) => i + 1).map((page) => (
-                    <button
-                      key={page}
-                      onClick={() => setTodayReportsPage(page)}
-                      className={`px-4 py-2 rounded-lg border transition-colors ${
-                        todayReportsPage === page
-                          ? 'bg-primary-600 text-white border-primary-600'
-                          : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
-                  
-                  <button
-                    onClick={() => setTodayReportsPage(prev => Math.min(todayReportsTotalPages, prev + 1))}
-                    disabled={todayReportsPage === todayReportsTotalPages}
-                    className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 
-                               hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed
-                               transition-colors"
-                  >
-                    Next
-                  </button>
-                </div>
-              )}
+              )
+            }
+          ]}
+          data={paginatedReports}
+          loading={loading}
+          emptyMessage="No equipment reports submitted"
+        />
+        {filteredReports.length > 0 && totalReportPages > 1 && (
+          <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
+            <div className="text-sm text-gray-600">
+              Showing {reportsStartIndex + 1} to {Math.min(reportsEndIndex, filteredReports.length)} of {filteredReports.length} entries
             </div>
-          )}
-        </div>
-
-        {/* Past Reports Section */}
-        <div>
-          <button
-            onClick={() => setShowPastReports(!showPastReports)}
-            className="flex items-center gap-2 text-gray-700 hover:text-gray-900 
-                       font-medium transition-colors p-4 hover:bg-gray-50 
-                       rounded-lg w-full border border-gray-200"
-          >
-            {showPastReports ? (
-              <ChevronDown className="h-5 w-5" />
-            ) : (
-              <ChevronRight className="h-5 w-5" />
-            )}
-            <Archive className="h-5 w-5" />
-            <span className="text-lg">Past Reports ({showPastReports ? pastReports.length : 0} shown)</span>
-          </button>
-
-          {showPastReports && (
-            <div className="mt-4 space-y-4 animate-slideDown">
-              {paginatedPastReportDates.length > 0 ? (
-                <>
-                  {paginatedPastReportDates.map((date) => {
-                    const dateReports = groupedPastReports[date];
-                    return (
-                      <div key={date} className="bg-white shadow rounded-lg overflow-hidden">
-                        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-                          <div className="flex items-center gap-3">
-                            <Calendar className="h-5 w-5 text-primary-500" />
-                            <div>
-                              <h3 className="text-lg font-semibold text-gray-900">
-                                {new Date(date).toLocaleDateString('en-US', {
-                                  weekday: 'long',
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric'
-                                })}
-                              </h3>
-                              <p className="text-sm text-gray-500">{dateReports.length} equipment reports</p>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => handleArchiveByDate(date)}
-                            disabled={archiving}
-                            className="px-4 py-2 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg flex items-center gap-2 transition-colors"
-                          >
-                            <Archive className="h-4 w-4" />
-                            Archive
-                          </button>
-                        </div>
-                        
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student ID</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">PC Number</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Forwarded By</th>
-                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                              </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                              {dateReports.map((report) => (
-                                <tr key={report.id} className="hover:bg-gray-50 transition-colors">
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                                    {report.student_id_str}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                    {report.student_name}
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                                      {report.pc_number}
-                                    </span>
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="flex flex-col">
-                                      <span className="text-sm font-medium text-gray-900">{report.forwarded_by_name || 'Unknown'}</span>
-                                      {report.forwarded_at && (
-                                        <span className="text-xs text-gray-500">
-                                          {new Date(report.forwarded_at).toLocaleString('en-US', {
-                                            hour: '2-digit',
-                                            minute: '2-digit'
-                                          })}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className="px-6 py-4 whitespace-nowrap">
-                                    <Button
-                                      onClick={() => {
-                                        setSelectedReport(report);
-                                        setShowReportModal(true);
-                                      }}
-                                      variant="primary"
-                                      icon={<Eye className="h-4 w-4" />}
-                                    >
-                                      View Details
-                                    </Button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {/* Pagination for Past Reports */}
-                  {pastReportsTotalPages > 1 && (
-                    <div className="mt-4 flex justify-center items-center gap-2 pb-4">
-                      <button
-                        onClick={() => setPastReportsPage(prev => Math.max(1, prev - 1))}
-                        disabled={pastReportsPage === 1}
-                        className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 
-                                   hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed
-                                   transition-colors"
-                      >
-                        Previous
-                      </button>
-                      
-                      {Array.from({ length: pastReportsTotalPages }, (_, i) => i + 1).map((page) => (
-                        <button
-                          key={page}
-                          onClick={() => setPastReportsPage(page)}
-                          className={`px-4 py-2 rounded-lg border transition-colors ${
-                            pastReportsPage === page
-                              ? 'bg-primary-600 text-white border-primary-600'
-                              : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                          }`}
-                        >
-                          {page}
-                        </button>
-                      ))}
-                      
-                      <button
-                        onClick={() => setPastReportsPage(prev => Math.min(pastReportsTotalPages, prev + 1))}
-                        disabled={pastReportsPage === pastReportsTotalPages}
-                        className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 
-                                   hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed
-                                   transition-colors"
-                      >
-                        Next
-                      </button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="bg-white shadow rounded-lg p-12 text-center">
-                  <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500 font-medium">No past reports</p>
-                  <p className="text-gray-400 text-sm mt-1">No equipment reports from previous days</p>
-                </div>
-              )}
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setReportsPage(prev => Math.max(1, prev - 1))}
+                disabled={reportsPage === 1}
+                variant="outline"
+                size="sm"
+              >
+                Previous
+              </Button>
+              {Array.from({ length: totalReportPages }, (_, i) => i + 1).map((pageNum) => (
+                <Button
+                  key={pageNum}
+                  onClick={() => setReportsPage(pageNum)}
+                  variant={reportsPage === pageNum ? "primary" : "outline"}
+                  size="sm"
+                >
+                  {pageNum}
+                </Button>
+              ))}
+              <Button
+                onClick={() => setReportsPage(prev => Math.min(totalReportPages, prev + 1))}
+                disabled={reportsPage >= totalReportPages}
+                variant="outline"
+                size="sm"
+              >
+                Next
+              </Button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
+
+      {/* Archive Toast */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border ${
+          toast.type === 'success' 
+            ? 'bg-green-50 border-green-200 text-green-800' 
+            : 'bg-red-50 border-red-200 text-red-800'
+        } animate-slideIn`}>
+          <div className="flex items-center gap-3">
+            {toast.type === 'success' ? (
+              <CheckSquare className="h-5 w-5" />
+            ) : (
+              <AlertCircle className="h-5 w-5" />
+            )}
+            <span className="font-medium">{toast.message}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Archive Confirmation Modal */}
+      {showArchiveConfirm && reportToArchive && (
+        <ArchiveConfirmationModal
+          isOpen={showArchiveConfirm}
+          onClose={() => {
+            setShowArchiveConfirm(false);
+            setReportToArchive(null);
+          }}
+          onConfirm={confirmArchive}
+          loading={archiving}
+          itemType="equipment report"
+          itemDescription={`${reportToArchive.student_name} (${reportToArchive.student_id_str}) - ${reportToArchive.pc_number}`}
+        />
+      )}
 
       {/* Report Details Modal */}
       {showReportModal && selectedReport && (

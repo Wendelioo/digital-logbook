@@ -11,7 +11,6 @@ import {
   UserPlus, 
   Users, 
   Save,
-  Plus,
   UserCheck,
   ArrowLeft,
   Trash2,
@@ -28,20 +27,22 @@ import {
   XCircle,
   X,
   BarChart3,
-  Upload,
-  Download,
-  ClipboardList
+  ClipboardList,
+  Archive,
+  ArchiveRestore,
+  UserX
 } from 'lucide-react';
 import { 
   GetWorkingStudentDashboard,
-  CreateUser,
   GetAllRegisteredStudents,
   GetPendingFeedback,
   ForwardFeedbackToAdmin,
   ForwardMultipleFeedbackToAdmin,
-  GetDepartments,
-  CreateUsersBulk,
-  CreateUsersBulkFromFile
+  GetActiveStudentsForArchiving,
+  ArchiveStudent,
+  GetArchivedStudents,
+  UnarchiveStudent,
+  DeleteExpiredStudents
 } from '../../wailsjs/go/main/App';
 import WorkingStudentLoginHistory from './WorkingStudentLoginHistory';
 import { useAuth } from '../contexts/AuthContext';
@@ -53,7 +54,19 @@ type Department = main.Department;
 type User = main.User;
 type Feedback = main.Feedback;
 
-// Department type is now imported from main models above
+// ArchivedStudent represents a graduated student scheduled for deletion
+interface ArchivedStudent {
+  user_id: number;
+  student_number: string;
+  first_name: string;
+  middle_name?: string;
+  last_name: string;
+  email?: string;
+  contact_number?: string;
+  archived_at: string;
+  deletion_scheduled_at: string;
+  days_until_deletion: number;
+}
 
 interface DashboardStats {
   students_registered: number;
@@ -204,636 +217,6 @@ function DashboardOverview() {
   );
 }
 
-interface RegisterStudentModalProps {
-  onClose: () => void;
-  onSuccess: () => void;
-}
-
-function RegisterStudentModal({ onClose, onSuccess }: RegisterStudentModalProps) {
-  const [formData, setFormData] = useState({
-    studentCode: '',
-    firstName: '',
-    middleName: '',
-    lastName: '',
-    contactNumber: '',
-    department: ''
-  });
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
-
-  useEffect(() => {
-    const loadDepartments = async () => {
-      try {
-        const data = await GetDepartments();
-        // Filter only active departments
-        const activeDepartments = (data || []).filter((dept: Department) => dept.is_active);
-        setDepartments(activeDepartments);
-      } catch (error) {
-        console.error('Failed to load departments:', error);
-      }
-    };
-    loadDepartments();
-  }, []);
-
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage('');
-
-    try {
-      const fullName = `${formData.lastName}, ${formData.firstName}${formData.middleName ? ' ' + formData.middleName : ''}`;
-      
-      // Use student code as password (default password)
-      await CreateUser(
-        formData.studentCode, 
-        fullName, 
-        formData.firstName, 
-        formData.middleName, 
-        formData.lastName, 
-        '',
-        'student', 
-        '',
-        formData.studentCode,
-        '', // year level - not in simplified form
-        '', // section - not in simplified form
-        '', // email - not in simplified form
-        formData.contactNumber,
-        '' // departmentCode - not applicable for students
-      );
-      setNotification({ type: 'success', message: 'Student added successfully! ' });
-      setMessage('Student added successfully! Default password is their Student Code.');
-      
-      // Wait a bit to show the success message, then call onSuccess
-      setTimeout(() => {
-        setNotification(null);
-        onSuccess();
-      }, 2000);
-    } catch (error) {
-      setNotification({ type: 'error', message: 'Failed to add student. Please try again.' });
-      setMessage('Failed to add student. Please try again.');
-      console.error('Registration error:', error);
-      setTimeout(() => setNotification(null), 5000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <>
-      {/* Notification */}
-      {notification && (
-        <div className={`fixed top-4 right-4 z-50 max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out ${
-          notification.type === 'success' ? 'border-l-4 border-green-400' : 'border-l-4 border-red-400'
-        }`}>
-          <div className="p-4">
-            <div className="flex items-start">
-              <div className="flex-shrink-0">
-                {notification.type === 'success' ? (
-                  <svg className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                ) : (
-                  <svg className="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                )}
-              </div>
-              <div className="ml-3 w-0 flex-1 pt-0.5">
-                <p className={`text-sm font-medium ${
-                  notification.type === 'success' ? 'text-green-800' : 'text-red-800'
-                }`}>
-                  {notification.message}
-                </p>
-              </div>
-              <div className="ml-4 flex-shrink-0 flex">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setNotification(null)}
-                  className="bg-white text-gray-400 hover:text-gray-500"
-                >
-                  <span className="sr-only">Close</span>
-                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                  </svg>
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div 
-        className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            onClose();
-          }
-        }}
-      >
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 relative max-h-[90vh] flex flex-col">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onClose}
-            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold"
-          >
-            ×
-          </Button>
-          
-          <div className="p-4 pb-3 flex-shrink-0 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-              <Plus className="h-5 w-5" />
-              Add Student
-            </h2>
-          </div>
-
-          <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
-            <div className="p-4">
-              {/* Two Column Layout */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Left Column */}
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Student Code</label>
-                    <input
-                      type="text"
-                      value={formData.studentCode}
-                      onChange={(e) => setFormData({ ...formData, studentCode: e.target.value })}
-                      className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">First Name</label>
-                    <input
-                      type="text"
-                      value={formData.firstName}
-                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                      className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Middle Name</label>
-                    <input
-                      type="text"
-                      value={formData.middleName}
-                      onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
-                      className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Last Name</label>
-                    <input
-                      type="text"
-                      value={formData.lastName}
-                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                      className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                    />
-                  </div>
-
-                </div>
-
-                {/* Right Column */}
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Contact</label>
-                    <input
-                      type="tel"
-                      value={formData.contactNumber}
-                      onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
-                      className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="09987564123"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
-                    <select
-                      value={formData.department}
-                      onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                      className="w-full px-2.5 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="">Please Select Here</option>
-                      {departments.map((dept) => (
-                        <option key={dept.department_code} value={dept.department_code}>
-                          {dept.department_code}-{dept.department_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="border-t border-gray-200 p-4 flex justify-end gap-3">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={onClose}
-              >
-                CANCEL
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                type="submit"
-                loading={loading}
-              >
-                SAVE
-              </Button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </>
-  );
-}
-
-interface BulkRegisterStudentModalProps {
-  onClose: () => void;
-  onSuccess: () => void;
-}
-
-function BulkRegisterStudentModal({ onClose, onSuccess }: BulkRegisterStudentModalProps) {
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [fileBase64, setFileBase64] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string, details?: any} | null>(null);
-  const [previewData, setPreviewData] = useState<string[][]>([]);
-
-  const processFile = (file: File) => {
-    // Accept PDF, DOCX, CSV, TXT files
-    const validExtensions = ['.pdf', '.docx', '.doc', '.csv', '.txt'];
-    const fileExt = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
-    
-    if (!validExtensions.includes(fileExt)) {
-      setNotification({ 
-        type: 'error', 
-        message: 'Please upload a PDF, DOCX, CSV, or TXT file' 
-      });
-      setTimeout(() => setNotification(null), 5000);
-      return;
-    }
-    
-    setUploadedFile(file);
-    
-    // Read file as base64 for backend processing
-    const reader = new FileReader();
-    
-    if (fileExt === '.pdf' || fileExt === '.docx' || fileExt === '.doc') {
-      // Read binary files as ArrayBuffer, then convert to base64
-      reader.onload = (event) => {
-        const arrayBuffer = event.target?.result as ArrayBuffer;
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        const base64 = btoa(binary);
-        setFileBase64(base64);
-      };
-      reader.readAsArrayBuffer(file);
-    } else {
-      // Read text files and convert to base64
-      reader.onload = (event) => {
-        const text = event.target?.result as string;
-        // Convert text to base64
-        const base64 = btoa(unescape(encodeURIComponent(text)));
-        setFileBase64(base64);
-        
-        // Show preview for text-based files
-        const lines = text.split('\n').filter(line => line.trim());
-        const preview = lines.slice(0, 6).map(line => {
-          // Simple CSV parsing (handles quoted fields)
-          const values: string[] = [];
-          let current = '';
-          let inQuotes = false;
-          
-          for (let i = 0; i < line.length; i++) {
-            const char = line[i];
-            if (char === '"') {
-              inQuotes = !inQuotes;
-            } else if (char === ',' && !inQuotes) {
-              values.push(current.trim());
-              current = '';
-            } else {
-              current += char;
-            }
-          }
-          values.push(current.trim());
-          return values;
-        });
-        setPreviewData(preview);
-      };
-      reader.readAsText(file);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      processFile(file);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!uploadedFile || !fileBase64) {
-      setNotification({ type: 'error', message: 'Please upload a file' });
-      setTimeout(() => setNotification(null), 5000);
-      return;
-    }
-
-    setLoading(true);
-    setNotification(null);
-
-    try {
-      const result = await CreateUsersBulkFromFile(fileBase64, uploadedFile.name);
-      
-      const successCount = result.success_count as number || 0;
-      const errorCount = result.error_count as number || 0;
-      const errors = result.errors as string[] || [];
-
-      if (successCount > 0) {
-        setNotification({
-          type: 'success',
-          message: `Successfully registered ${successCount} student(s)!${errorCount > 0 ? ` ${errorCount} failed.` : ''}`,
-          details: errorCount > 0 ? errors : undefined
-        });
-        
-        setTimeout(() => {
-          setNotification(null);
-          onSuccess();
-        }, 3000);
-      } else {
-        setNotification({
-          type: 'error',
-          message: `Failed to register students. ${errorCount} error(s) occurred.`,
-          details: errors
-        });
-        setTimeout(() => setNotification(null), 10000);
-      }
-    } catch (error: any) {
-      setNotification({
-        type: 'error',
-        message: error.message || 'Failed to register students. Please check your file format and ensure it contains student codes and names.',
-      });
-      setTimeout(() => setNotification(null), 10000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const downloadTemplate = () => {
-    const template = `Student Code,First Name,Last Name,Middle Name,Contact Number
-2024-001,John,Doe,Smith,09123456789
-2024-002,Jane,Smith,,09123456790
-2024-003,Mike,Johnson,David,`;
-    
-    const blob = new Blob([template], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'student_bulk_upload_template.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-  };
-
-  return (
-    <>
-      {/* Notification */}
-      {notification && (
-        <div className={`fixed top-4 right-4 z-50 max-w-lg w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out ${
-          notification.type === 'success' ? 'border-l-4 border-green-400' : 'border-l-4 border-red-400'
-        }`}>
-          <div className="p-4">
-            <div className="flex items-start">
-              <div className="flex-shrink-0">
-                {notification.type === 'success' ? (
-                  <CheckCircle className="h-6 w-6 text-green-400" />
-                ) : (
-                  <XCircle className="h-6 w-6 text-red-400" />
-                )}
-              </div>
-              <div className="ml-3 w-0 flex-1 pt-0.5">
-                <p className={`text-sm font-medium ${
-                  notification.type === 'success' ? 'text-green-800' : 'text-red-800'
-                }`}>
-                  {notification.message}
-                </p>
-                {notification.details && notification.details.length > 0 && (
-                  <div className="mt-2 max-h-40 overflow-y-auto">
-                    <ul className="list-disc list-inside text-xs text-red-700 space-y-1">
-                      {notification.details.slice(0, 5).map((error: string, idx: number) => (
-                        <li key={idx}>{error}</li>
-                      ))}
-                      {notification.details.length > 5 && (
-                        <li className="text-gray-600">... and {notification.details.length - 5} more errors</li>
-                      )}
-                    </ul>
-                  </div>
-                )}
-              </div>
-              <div className="ml-4 flex-shrink-0 flex">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setNotification(null)}
-                  className="bg-white text-gray-400 hover:text-gray-500"
-                  icon={<X className="h-5 w-5" />}
-                >
-                  <span className="sr-only">Close</span>
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div 
-        className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            onClose();
-          }
-        }}
-      >
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 relative max-h-[90vh] flex flex-col">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onClose}
-            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold"
-          >
-            ×
-          </Button>
-          
-          <div className="p-4 pb-3 flex-shrink-0 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-              <Upload className="h-5 w-5" />
-              Bulk Register Students
-            </h2>
-            <p className="text-sm text-gray-600 mt-1">
-              Upload a file (PDF, DOCX, CSV, or TXT) with student information. Students can complete their profiles later.
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
-            <div className="p-4 space-y-4">
-              {/* File Format Info */}
-              <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="text-sm font-medium text-blue-900 mb-1">Supported File Formats</h3>
-                    <p className="text-xs text-blue-700 mb-2">
-                      <strong>PDF, DOCX, CSV, TXT</strong> files are supported
-                    </p>
-                    <p className="text-xs text-blue-700 mb-2">
-                      Required information: <strong>Student Code, First Name, Last Name</strong>
-                    </p>
-                    <p className="text-xs text-blue-700">
-                      Optional: <strong>Middle Name, Gender, Contact Number</strong>
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={downloadTemplate}
-                    icon={<Download className="h-3 w-3" />}
-                    className="ml-4 text-blue-700 bg-blue-100 hover:bg-blue-200"
-                  >
-                    CSV Template
-                  </Button>
-                </div>
-              </div>
-
-              {/* File Upload */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Upload File
-                </label>
-                <label 
-                  htmlFor="file-upload" 
-                  className="mt-1 flex flex-col justify-center items-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-blue-400 transition-colors cursor-pointer"
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const file = e.dataTransfer.files?.[0];
-                    if (file) {
-                      processFile(file);
-                    }
-                  }}
-                >
-                  <div className="space-y-1 text-center">
-                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                    <div className="flex text-sm text-gray-600 justify-center items-center">
-                      <span className="font-medium text-blue-600 hover:text-blue-500">Click to upload</span>
-                      <span className="pl-1">or drag and drop</span>
-                    </div>
-                    <p className="text-xs text-gray-500">PDF, DOCX, CSV, or TXT files</p>
-                    {uploadedFile && (
-                      <p className="text-sm text-gray-700 mt-2">
-                        Selected: <span className="font-medium">{uploadedFile.name}</span>
-                      </p>
-                    )}
-                  </div>
-                  <input
-                    id="file-upload"
-                    name="file-upload"
-                    type="file"
-                    accept=".pdf,.docx,.doc,.csv,.txt"
-                    className="sr-only"
-                    onChange={handleFileChange}
-                  />
-                </label>
-              </div>
-
-              {/* Preview */}
-              {previewData.length > 0 && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Preview (first {previewData.length} rows)
-                  </label>
-                  <div className="border border-gray-300 rounded-md overflow-hidden">
-                    <div className="overflow-x-auto max-h-48">
-                      <table className="min-w-full divide-y divide-gray-200 text-xs">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-3 py-2 text-left font-medium text-gray-700">Student Code</th>
-                            <th className="px-3 py-2 text-left font-medium text-gray-700">First Name</th>
-                            <th className="px-3 py-2 text-left font-medium text-gray-700">Last Name</th>
-                            <th className="px-3 py-2 text-left font-medium text-gray-700">Middle Name</th>
-                            <th className="px-3 py-2 text-left font-medium text-gray-700">Gender</th>
-                            <th className="px-3 py-2 text-left font-medium text-gray-700">Contact</th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {previewData.map((row, idx) => (
-                            <tr key={idx} className={idx === 0 ? 'bg-yellow-50' : ''}>
-                              {[0, 1, 2, 3, 4, 5].map((colIdx) => (
-                                <td key={colIdx} className="px-3 py-2 text-gray-900">
-                                  {row[colIdx] || '-'}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    {previewData.length > 0 && (
-                      <div className="px-3 py-2 bg-gray-50 text-xs text-gray-600 border-t border-gray-200">
-                        {previewData[0].some(cell => cell.toLowerCase().includes('student') || cell.toLowerCase().includes('code')) 
-                          ? '⚠️ First row appears to be a header and will be skipped' 
-                          : 'First row will be processed'}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Action Buttons */}
-            <div className="border-t border-gray-200 p-4 flex justify-end gap-3">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={onClose}
-              >
-                CANCEL
-              </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                type="submit"
-                loading={loading}
-                disabled={!uploadedFile}
-              >
-                UPLOAD & REGISTER
-              </Button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </>
-  );
-}
-
 interface StudentRow {
   id: string;
   ctrlNo: number;
@@ -848,8 +231,6 @@ function ManageUsers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showBulkModal, setShowBulkModal] = useState(false);
   const [viewingStudent, setViewingStudent] = useState<ClassStudent | null>(null);
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -905,24 +286,8 @@ function ManageUsers() {
 
   return (
     <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Student Management</h2>
-        <div className="flex gap-2">
-          <Button
-            variant="success"
-            onClick={() => setShowBulkModal(true)}
-            icon={<Upload className="h-4 w-4" />}
-          >
-            BULK ADD
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => setShowAddModal(true)}
-            icon={<Plus className="h-4 w-4" />}
-          >
-            ADD NEW
-          </Button>
-        </div>
       </div>
 
       {error && (
@@ -964,36 +329,48 @@ function ManageUsers() {
         <div className="overflow-x-auto">
           {currentStudents.length > 0 ? (
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-blue-600">
+              <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Student ID
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Full Name
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Email
                   </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Contact Number
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {currentStudents.map((student) => (
-                  <tr key={student.id} className="hover:bg-gray-50">
+                  <tr key={student.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {student.student_id}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {student.last_name}, {student.first_name} {student.middle_name || ''}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {(student as any).email || 'N/A'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {(student as any).contact_number || 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <Button
+                        onClick={() => setViewingStudent(student)}
+                        variant="outline"
+                        size="sm"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -1001,7 +378,22 @@ function ManageUsers() {
             </table>
           ) : (
             <div className="px-6 py-12 text-center">
-              <p className="text-gray-500">No data available.</p>
+              <div className="flex flex-col items-center gap-2">
+                <svg
+                  className="h-12 w-12 text-gray-300"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                  />
+                </svg>
+                <p className="text-sm text-gray-500 font-medium">No data available.</p>
+              </div>
             </div>
           )}
         </div>
@@ -1037,28 +429,6 @@ function ManageUsers() {
           </div>
         )}
       </div>
-
-      {/* Add Student Modal */}
-      {showAddModal && (
-        <RegisterStudentModal 
-          onClose={() => setShowAddModal(false)}
-          onSuccess={() => {
-            setShowAddModal(false);
-            loadStudents();
-          }}
-        />
-      )}
-
-      {/* Bulk Register Students Modal */}
-      {showBulkModal && (
-        <BulkRegisterStudentModal 
-          onClose={() => setShowBulkModal(false)}
-          onSuccess={() => {
-            setShowBulkModal(false);
-            loadStudents();
-          }}
-        />
-      )}
 
       {/* View Student Details Modal */}
       <ViewStudentDetailsModal
@@ -1848,6 +1218,437 @@ function EquipmentReports() {
   );
 }
 
+// ==============================================================================
+// ARCHIVED STUDENTS MANAGEMENT
+// ==============================================================================
+
+function ArchivedStudentsManagement() {
+  const { user } = useAuth();
+  const [activeStudents, setActiveStudents] = useState<User[]>([]);
+  const [archivedStudents, setArchivedStudents] = useState<ArchivedStudent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedTab, setSelectedTab] = useState<'active' | 'archived'>('active');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [studentToArchive, setStudentToArchive] = useState<User | null>(null);
+  const [showUnarchiveModal, setShowUnarchiveModal] = useState(false);
+  const [studentToUnarchive, setStudentToUnarchive] = useState<ArchivedStudent | null>(null);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      if (selectedTab === 'active') {
+        const data = await GetActiveStudentsForArchiving();
+        setActiveStudents(data || []);
+      } else {
+        const data = await GetArchivedStudents();
+        setArchivedStudents(data || []);
+      }
+    } catch (error) {
+      console.error('Failed to load students:', error);
+      showNotification('error', 'Failed to load student data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [selectedTab]);
+
+  const showNotification = (type: 'success' | 'error', message: string) => {
+    setNotification({ type, message });
+    setTimeout(() => setNotification(null), 5000);
+  };
+
+  const handleArchiveStudent = async () => {
+    if (!studentToArchive || !user) return;
+
+    try {
+      await ArchiveStudent(studentToArchive.id);
+      showNotification('success', 'Student archived successfully. Account will be deleted after 360 days.');
+      setShowArchiveModal(false);
+      setStudentToArchive(null);
+      loadData();
+    } catch (error: any) {
+      showNotification('error', error.message || 'Failed to archive student');
+    }
+  };
+
+  const handleUnarchiveStudent = async () => {
+    if (!studentToUnarchive) return;
+
+    try {
+      await UnarchiveStudent(studentToUnarchive.user_id);
+      showNotification('success', 'Student account restored successfully');
+      setShowUnarchiveModal(false);
+      setStudentToUnarchive(null);
+      loadData();
+    } catch (error: any) {
+      showNotification('error', error.message || 'Failed to restore student');
+    }
+  };
+
+  const handleDeleteExpired = async () => {
+    if (!window.confirm('This will permanently delete all students whose accounts have passed the 360-day retention period. This action cannot be undone. Continue?')) {
+      return;
+    }
+
+    try {
+      const count = await DeleteExpiredStudents();
+      if (count > 0) {
+        showNotification('success', `Successfully deleted ${count} expired student account(s)`);
+        loadData();
+      } else {
+        showNotification('success', 'No expired accounts to delete');
+      }
+    } catch (error: any) {
+      showNotification('error', error.message || 'Failed to delete expired accounts');
+    }
+  };
+
+  const filteredActiveStudents = activeStudents.filter(student =>
+    student.student_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    student.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    student.last_name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredArchivedStudents = archivedStudents.filter(student =>
+    student.student_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    student.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    student.last_name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  return (
+    <div className="p-6">
+      {/* Notification */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 max-w-md w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out ${
+          notification.type === 'success' ? 'border-l-4 border-green-400' : 'border-l-4 border-red-400'
+        }`}>
+          <div className="p-4">
+            <div className="flex items-start">
+              <div className="flex-shrink-0">
+                {notification.type === 'success' ? (
+                  <CheckCircle className="h-6 w-6 text-green-400" />
+                ) : (
+                  <XCircle className="h-6 w-6 text-red-400" />
+                )}
+              </div>
+              <div className="ml-3 w-0 flex-1 pt-0.5">
+                <p className={`text-sm font-medium ${
+                  notification.type === 'success' ? 'text-green-800' : 'text-red-800'
+                }`}>
+                  {notification.message}
+                </p>
+              </div>
+              <div className="ml-4 flex-shrink-0 flex">
+                <button
+                  onClick={() => setNotification(null)}
+                  className="bg-white rounded-md inline-flex text-gray-400 hover:text-gray-500"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Student Archive Management</h2>
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setSelectedTab('active')}
+            className={`${
+              selectedTab === 'active'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+          >
+            <Users className="h-4 w-4" />
+            Active Students
+          </button>
+          <button
+            onClick={() => setSelectedTab('archived')}
+            className={`${
+              selectedTab === 'archived'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+          >
+            <Archive className="h-4 w-4" />
+            Archived Students ({archivedStudents.length})
+          </button>
+        </nav>
+      </div>
+
+      {/* Actions Bar */}
+      <div className="mb-6 flex items-center justify-between">
+        <div className="relative flex-1 max-w-md">
+          <input
+            type="text"
+            placeholder="Search students..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
+        {selectedTab === 'archived' && (
+          <Button
+            variant="danger"
+            onClick={handleDeleteExpired}
+            icon={<Trash2 className="h-4 w-4" />}
+          >
+            Delete Expired Accounts
+          </Button>
+        )}
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-500"></div>
+        </div>
+      ) : (
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          {selectedTab === 'active' ? (
+            // Active Students Table
+            filteredActiveStudents.length > 0 ? (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-blue-600">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                      Student Number
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                      Full Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                      Email
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                      Contact
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-white uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredActiveStudents.map((student) => (
+                    <tr key={student.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {student.student_id}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {student.last_name}, {student.first_name} {student.middle_name || ''}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {student.email || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {student.contact_number || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <Button
+                          variant="warning"
+                          size="sm"
+                          onClick={() => {
+                            setStudentToArchive(student);
+                            setShowArchiveModal(true);
+                          }}
+                          icon={<Archive className="h-4 w-4" />}
+                        >
+                          Archive
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="px-6 py-12 text-center">
+                <Users className="mx-auto h-12 w-12 text-gray-400" />
+                <p className="mt-2 text-gray-500">No active students found</p>
+              </div>
+            )
+          ) : (
+            // Archived Students Table
+            filteredArchivedStudents.length > 0 ? (
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-600">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                      Student Number
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                      Full Name
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                      Archived Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                      Deletion Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                      Days Left
+                    </th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-white uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredArchivedStudents.map((student) => (
+                    <tr key={student.user_id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {student.student_number}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {student.last_name}, {student.first_name} {student.middle_name || ''}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(student.archived_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(student.deletion_scheduled_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          student.days_until_deletion <= 30 
+                            ? 'bg-red-100 text-red-800' 
+                            : student.days_until_deletion <= 90
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-green-100 text-green-800'
+                        }`}>
+                          {student.days_until_deletion} days
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <Button
+                          variant="success"
+                          size="sm"
+                          onClick={() => {
+                            setStudentToUnarchive(student);
+                            setShowUnarchiveModal(true);
+                          }}
+                          icon={<ArchiveRestore className="h-4 w-4" />}
+                        >
+                          Restore
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="px-6 py-12 text-center">
+                <Archive className="mx-auto h-12 w-12 text-gray-400" />
+                <p className="mt-2 text-gray-500">No archived students found</p>
+              </div>
+            )
+          )}
+        </div>
+      )}
+
+      {/* Archive Confirmation Modal */}
+      {showArchiveModal && studentToArchive && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
+                <Archive className="h-6 w-6 text-yellow-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Archive Student Account</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              You are about to archive <strong>{studentToArchive.first_name} {studentToArchive.last_name}</strong> ({studentToArchive.student_id}).
+            </p>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-4">
+              <p className="text-sm text-yellow-800">
+                <strong>Important:</strong> The student's account will be deactivated and scheduled for permanent deletion after 360 days. 
+                You can restore the account before the deletion date if needed.
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowArchiveModal(false);
+                  setStudentToArchive(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="warning"
+                onClick={handleArchiveStudent}
+                icon={<Archive className="h-4 w-4" />}
+              >
+                Archive Student
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unarchive Confirmation Modal */}
+      {showUnarchiveModal && studentToUnarchive && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                <ArchiveRestore className="h-6 w-6 text-green-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Restore Student Account</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              You are about to restore <strong>{studentToUnarchive.first_name} {studentToUnarchive.last_name}</strong> ({studentToUnarchive.student_number}).
+            </p>
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
+              <p className="text-sm text-blue-800">
+                The student's account will be reactivated and removed from the deletion schedule. 
+                They will be able to log in again immediately.
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowUnarchiveModal(false);
+                  setStudentToUnarchive(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="success"
+                onClick={handleUnarchiveStudent}
+                icon={<ArchiveRestore className="h-4 w-4" />}
+              >
+                Restore Account
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WorkingStudentDashboard() {
   const location = useLocation();
   const { user } = useAuth();
@@ -1856,6 +1657,7 @@ function WorkingStudentDashboard() {
     { name: 'Dashboard', href: '/working-student', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/working-student' },
     { name: 'Pending Registrations', href: '/working-student/pending-registrations', icon: <ClipboardList className="h-5 w-5" />, current: location.pathname === '/working-student/pending-registrations' },
     { name: 'Student Management', href: '/working-student/manage-users', icon: <Users className="h-5 w-5" />, current: location.pathname === '/working-student/manage-users' },
+    { name: 'Archived Students', href: '/working-student/archived-students', icon: <Archive className="h-5 w-5" />, current: location.pathname === '/working-student/archived-students' },
     { name: 'Login History', href: '/working-student/login-history', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/working-student/login-history' },
     { name: 'Equipment Reports', href: '/working-student/equipment-reports', icon: <BarChart3 className="h-5 w-5" />, current: location.pathname === '/working-student/equipment-reports' },
   ];
@@ -1866,6 +1668,7 @@ function WorkingStudentDashboard() {
         <Route index element={<DashboardOverview />} />
         <Route path="pending-registrations" element={<PendingRegistrations workingStudentUserId={user?.id || 0} />} />
         <Route path="manage-users" element={<ManageUsers />} />
+        <Route path="archived-students" element={<ArchivedStudentsManagement />} />
         <Route path="login-history" element={<WorkingStudentLoginHistory />} />
         <Route path="equipment-reports" element={<EquipmentReports />} />
       </Routes>

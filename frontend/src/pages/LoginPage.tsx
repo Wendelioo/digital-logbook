@@ -103,12 +103,9 @@ function LoginPage() {
         registrationData.firstName,
         registrationData.middleName,
         registrationData.lastName,
-        '',
         'student',
         '',
         registrationData.studentCode, // student_id
-        '', // year level
-        '', // section
         '', // email - can be updated in profile settings
         '', // contact number - can be updated in profile settings
         '' // departmentCode

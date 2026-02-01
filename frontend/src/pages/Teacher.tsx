@@ -2704,9 +2704,6 @@ function AttendanceManagementDetail() {
         record.class_id,
         record.student_user_id,
         record.date,
-        '', // timeIn - empty since we're not tracking time anymore
-        '', // timeOut - empty since we're not tracking time anymore
-        '', // pcNumber - empty since we're not tracking PC
         newStatus,
         record.remarks || ''
       );

@@ -328,12 +328,9 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
         profileFormData.firstName,
         profileFormData.middleName,
         profileFormData.lastName,
-        '', // gender
         user.role || '',
         '', // employeeID
         user.student_id || user.name || '', // studentID
-        '', // year - not editable
-        '', // section - not editable
         profileFormData.email,
         profileFormData.contactNumber,
         '' // departmentCode
@@ -538,7 +535,10 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
               sidebarExpanded ? 'opacity-100 w-auto' : 'opacity-0 w-0 overflow-hidden'
             }`}>
               <div className="text-sm font-semibold text-gray-900 truncate">
-                {user?.first_name || user?.name || 'User'}
+                {user?.first_name && user?.last_name 
+                  ? `${user.first_name} ${user.last_name}`
+                  : user?.first_name || user?.name || 'User'
+                }
               </div>
               <div className="text-xs text-gray-500 capitalize truncate">
                 {user?.role?.replace('_', ' ') || 'Role'}
@@ -590,7 +590,12 @@ function Layout({ children, navigationItems, title }: LayoutProps) {
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-white truncate">{user?.first_name || user?.name || 'User'}</div>
+                <div className="text-sm font-semibold text-white truncate">
+                  {user?.first_name && user?.last_name 
+                    ? `${user.first_name} ${user.last_name}`
+                    : user?.first_name || user?.name || 'User'
+                  }
+                </div>
                 <div className="text-xs text-primary-100 capitalize truncate">{user?.role?.replace('_', ' ') || 'Role'}</div>
               </div>
             </div>

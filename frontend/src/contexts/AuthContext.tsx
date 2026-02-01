@@ -19,11 +19,8 @@ interface User {
   first_name?: string;
   middle_name?: string;
   last_name?: string;
-  gender?: string;
   employee_id?: string;
   student_id?: string;
-  year?: string;
-  section?: string;
   email?: string;
   contact_number?: string;
   photo_url?: string;

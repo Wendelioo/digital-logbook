@@ -130,6 +130,56 @@ export namespace main {
 	        this.unique_pcs = source["unique_pcs"];
 	    }
 	}
+	export class ArchivedStudent {
+	    user_id: number;
+	    student_number: string;
+	    first_name: string;
+	    middle_name?: string;
+	    last_name: string;
+	    email?: string;
+	    contact_number?: string;
+	    // Go type: time
+	    archived_at: any;
+	    // Go type: time
+	    deletion_scheduled_at: any;
+	    days_until_deletion: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ArchivedStudent(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.user_id = source["user_id"];
+	        this.student_number = source["student_number"];
+	        this.first_name = source["first_name"];
+	        this.middle_name = source["middle_name"];
+	        this.last_name = source["last_name"];
+	        this.email = source["email"];
+	        this.contact_number = source["contact_number"];
+	        this.archived_at = this.convertValues(source["archived_at"], null);
+	        this.deletion_scheduled_at = this.convertValues(source["deletion_scheduled_at"], null);
+	        this.days_until_deletion = source["days_until_deletion"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class Attendance {
 	    id: number;
 	    class_id: number;
@@ -146,9 +196,6 @@ export namespace main {
 	    last_name: string;
 	    date: string;
 	    attendance_date: string;
-	    time_in?: string;
-	    time_out?: string;
-	    pc_number?: string;
 	    status: string;
 	    remarks?: string;
 	    recorded_by: number;
@@ -175,9 +222,6 @@ export namespace main {
 	        this.last_name = source["last_name"];
 	        this.date = source["date"];
 	        this.attendance_date = source["attendance_date"];
-	        this.time_in = source["time_in"];
-	        this.time_out = source["time_out"];
-	        this.pc_number = source["pc_number"];
 	        this.status = source["status"];
 	        this.remarks = source["remarks"];
 	        this.recorded_by = source["recorded_by"];
@@ -193,7 +237,7 @@ export namespace main {
 	    gender?: string;
 	    email?: string;
 	    contact_number?: string;
-	    profile_photo?: string;
+	    photo_path?: string;
 	    class_id?: number;
 	    is_enrolled: boolean;
 	
@@ -211,7 +255,7 @@ export namespace main {
 	        this.gender = source["gender"];
 	        this.email = source["email"];
 	        this.contact_number = source["contact_number"];
-	        this.profile_photo = source["profile_photo"];
+	        this.photo_path = source["photo_path"];
 	        this.class_id = source["class_id"];
 	        this.is_enrolled = source["is_enrolled"];
 	    }
@@ -336,6 +380,7 @@ export namespace main {
 	    comments?: string;
 	    date_submitted: string;
 	    status: string;
+	    priority: string;
 	    forwarded_by_user_id?: number;
 	    forwarded_by_name?: string;
 	    forwarded_at?: string;
@@ -362,6 +407,7 @@ export namespace main {
 	        this.comments = source["comments"];
 	        this.date_submitted = source["date_submitted"];
 	        this.status = source["status"];
+	        this.priority = source["priority"];
 	        this.forwarded_by_user_id = source["forwarded_by_user_id"];
 	        this.forwarded_by_name = source["forwarded_by_name"];
 	        this.forwarded_at = source["forwarded_at"];
@@ -375,8 +421,11 @@ export namespace main {
 	    user_id_number: string;
 	    user_type: string;
 	    pc_number?: string;
+	    ip_address?: string;
 	    login_time: string;
 	    logout_time?: string;
+	    session_duration_minutes?: number;
+	    failure_reason?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new LoginLog(source);
@@ -390,8 +439,11 @@ export namespace main {
 	        this.user_id_number = source["user_id_number"];
 	        this.user_type = source["user_type"];
 	        this.pc_number = source["pc_number"];
+	        this.ip_address = source["ip_address"];
 	        this.login_time = source["login_time"];
 	        this.logout_time = source["logout_time"];
+	        this.session_duration_minutes = source["session_duration_minutes"];
+	        this.failure_reason = source["failure_reason"];
 	    }
 	}
 	export class PendingRegistration {
@@ -438,6 +490,28 @@ export namespace main {
 		    }
 		    return a;
 		}
+	}
+	export class ProfilePhoto {
+	    user_id: number;
+	    photo_path: string;
+	    file_name: string;
+	    file_size: number;
+	    mime_type: string;
+	    uploaded_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProfilePhoto(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.user_id = source["user_id"];
+	        this.photo_path = source["photo_path"];
+	        this.file_name = source["file_name"];
+	        this.file_size = source["file_size"];
+	        this.mime_type = source["mime_type"];
+	        this.uploaded_at = source["uploaded_at"];
+	    }
 	}
 	export class RegistrationRequest {
 	    student_id: string;
@@ -572,15 +646,12 @@ export namespace main {
 	    first_name?: string;
 	    middle_name?: string;
 	    last_name?: string;
-	    gender?: string;
 	    role: string;
 	    employee_id?: string;
 	    student_id?: string;
-	    year?: string;
-	    section?: string;
 	    email?: string;
 	    contact_number?: string;
-	    photo_url?: string;
+	    photo_path?: string;
 	    department_code?: string;
 	    created: string;
 	    login_log_id: number;
@@ -597,15 +668,12 @@ export namespace main {
 	        this.first_name = source["first_name"];
 	        this.middle_name = source["middle_name"];
 	        this.last_name = source["last_name"];
-	        this.gender = source["gender"];
 	        this.role = source["role"];
 	        this.employee_id = source["employee_id"];
 	        this.student_id = source["student_id"];
-	        this.year = source["year"];
-	        this.section = source["section"];
 	        this.email = source["email"];
 	        this.contact_number = source["contact_number"];
-	        this.photo_url = source["photo_url"];
+	        this.photo_path = source["photo_path"];
 	        this.department_code = source["department_code"];
 	        this.created = source["created"];
 	        this.login_log_id = source["login_log_id"];

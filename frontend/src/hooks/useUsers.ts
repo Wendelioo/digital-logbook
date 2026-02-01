@@ -93,12 +93,9 @@ export const useUsers = () => {
     firstName: string,
     middleName: string,
     lastName: string,
-    gender: string,
     role: string,
     employeeID: string,
     studentID: string,
-    year: string,
-    section: string,
     email: string,
     contactNumber: string,
     departmentCode: string
@@ -107,8 +104,8 @@ export const useUsers = () => {
     setError(null);
     try {
       await CreateUser(
-        password, name, firstName, middleName, lastName, gender, role,
-        employeeID, studentID, year, section, email, contactNumber, departmentCode
+        password, name, firstName, middleName, lastName, role,
+        employeeID, studentID, email, contactNumber, departmentCode
       );
       await fetchUsers(); // Refresh the list
       return true;
@@ -127,12 +124,9 @@ export const useUsers = () => {
     firstName: string,
     middleName: string,
     lastName: string,
-    gender: string,
     role: string,
     employeeID: string,
     studentID: string,
-    year: string,
-    section: string,
     email: string,
     contactNumber: string,
     departmentCode: string
@@ -141,8 +135,8 @@ export const useUsers = () => {
     setError(null);
     try {
       await UpdateUser(
-        id, name, firstName, middleName, lastName, gender, role,
-        employeeID, studentID, year, section, email, contactNumber, departmentCode
+        id, name, firstName, middleName, lastName, role,
+        employeeID, studentID, email, contactNumber, departmentCode
       );
       await fetchUsers(); // Refresh the list
       return true;
