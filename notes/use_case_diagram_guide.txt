@@ -1,0 +1,288 @@
+================================================================================
+                         USE CASE DIAGRAM GUIDE
+                         Digital Logbook System
+================================================================================
+
+A Use Case Diagram shows the interactions between actors (users) and the
+system, identifying what functions each actor can perform.
+
+
+================================================================================
+                              ACTORS
+================================================================================
+
+1. Admin           - System administrator with full access
+2. Teacher         - Faculty member managing classes and attendance
+3. Student         - Regular student using PC lab
+4. Working Student - Student employee with monitoring duties
+
+
+================================================================================
+                         USE CASES BY ACTOR
+================================================================================
+
+
+ADMIN
+--------------------------------------------------------------------------------
+
+  Authentication:
+    - Login
+    - Logout
+    - Change Password
+
+  User Management:
+    - Create User
+    - Edit User
+    - Delete User
+    - Search Users
+    - View All Users
+    - Filter Users by Type
+    - Bulk Import Users from CSV
+    - Approve Pending Registrations
+    - Reject Pending Registrations
+
+  Profile:
+    - View Profile
+    - Edit Profile
+    - Upload Profile Photo
+    - Delete Profile Photo
+
+  Department Management:
+    - Create Department
+    - Edit Department
+    - Delete Department
+    - View Departments
+
+  Class Management:
+    - View All Classes
+    - Create Class
+    - Edit Class
+    - Delete Class
+    - Activate/Deactivate Class
+    - Archive/Unarchive Class
+
+  Login Logs:
+    - View All Logs
+    - View Today's Logs
+    - View Past Logs (by Date Range)
+    - Archive Logs by Selection
+    - Archive Logs by Date
+    - View Archived Logs
+    - Unarchive Logs
+
+  Feedback:
+    - View All Feedback
+    - View Archived Feedback
+    - Archive Feedback
+    - Unarchive Feedback
+
+  Reporting:
+    - Export Logs to CSV
+    - Export Logs to PDF
+    - Export Feedback to CSV
+    - Export Feedback to PDF
+    - Export Archived Logs to CSV/PDF
+    - Export Archived Feedback to CSV/PDF
+
+  Dashboard:
+    - View Dashboard Statistics
+
+
+TEACHER
+--------------------------------------------------------------------------------
+
+  Authentication:
+    - Login
+    - Logout
+    - Change Password
+
+  Profile:
+    - View Profile
+    - Edit Profile
+    - Upload Profile Photo
+    - Delete Profile Photo
+
+  Class Management:
+    - Create Class
+    - Edit Own Class
+    - Delete Own Class
+    - Activate/Deactivate Class
+    - Archive/Unarchive Class
+    - View Own Classes
+    - View Inactive Classes
+
+  Enrollment:
+    - View Enrolled Students
+    - Enroll Student in Class
+    - Enroll Multiple Students
+    - Unenroll Student
+    - Mark Enrollment Completed
+    - Mark Enrollment Dropped
+    - Reactivate Enrollment
+
+  Attendance:
+    - Initialize Attendance Sheet
+    - Record Attendance (Present/Absent/Late/Excused)
+    - Generate Attendance from Login Logs
+    - View Attendance Records
+    - Finalize Attendance Sheet
+    - Delete Attendance Sheet
+    - Archive Attendance Sheet
+    - Export Attendance to CSV
+
+  Login History:
+    - View Own Login History
+
+  Dashboard:
+    - View Dashboard Statistics
+
+
+STUDENT
+--------------------------------------------------------------------------------
+
+  Authentication:
+    - Register Account
+    - Login
+    - Logout
+    - Change Password
+
+  Profile:
+    - View Profile
+    - Edit Profile
+    - Upload Profile Photo
+    - Delete Profile Photo
+
+  Class:
+    - Join Class by EDP Code
+    - View Enrolled Classes
+    - View Archived Classes
+
+  Attendance:
+    - View Own Attendance
+
+  Login History:
+    - View Own Login History
+
+  Feedback:
+    - Submit Equipment Feedback on Logout
+    - View Own Feedback History
+
+  Dashboard:
+    - View Dashboard Statistics
+
+
+WORKING STUDENT
+--------------------------------------------------------------------------------
+
+  (Includes all Student use cases, plus:)
+
+  Authentication:
+    - Register Account
+    - Login
+    - Logout
+    - Change Password
+
+  Profile:
+    - View Profile
+    - Edit Profile
+    - Upload Profile Photo
+    - Delete Profile Photo
+
+  Class:
+    - Join Class by EDP Code
+    - View Enrolled Classes
+    - View Archived Classes
+
+  Login History:
+    - View Own Login History
+
+  Feedback:
+    - Submit Equipment Feedback on Logout
+    - View Own Feedback History
+    - View Pending Feedback (from other students)
+    - Forward Feedback to Admin
+    - Forward Multiple Feedback to Admin
+
+  User Monitoring:
+    - View Student Users
+    - Search Students
+    - View Student Details
+    - Archive Graduated Students
+    - View Archived Students
+    - Unarchive Student
+    - Delete Expired Students
+
+  Dashboard:
+    - View Dashboard Statistics
+
+
+================================================================================
+                         SHARED USE CASES
+================================================================================
+
+  All Actors:
+    - Login
+    - Logout
+    - Change Password
+    - View Profile
+    - Edit Profile
+    - Upload/Delete Profile Photo
+    - View Dashboard
+
+  Admin & Teacher:
+    - Manage Classes
+    - View Attendance
+
+  Student & Working Student:
+    - Register Account
+    - Join Class by EDP Code
+    - View Enrolled Classes
+    - Submit Equipment Feedback
+    - View Own Login History
+    - View Own Feedback History
+
+  Admin & Working Student:
+    - Manage/Monitor Student Users
+    - Archive Students
+
+
+================================================================================
+                         USE CASE DIAGRAM LAYOUT
+================================================================================
+
+                              ┌─────────────────┐
+                              │  DIGITAL LOGBOOK│
+                              │     SYSTEM      │
+                              └────────┬────────┘
+                                       │
+         ┌─────────────────────────────┼─────────────────────────────┐
+         │                             │                             │
+    ┌────┴────┐                   ┌────┴────┐                   ┌────┴────┐
+    │  AUTH   │                   │  MAIN   │                   │ REPORT  │
+    │ MODULE  │                   │FEATURES │                   │ MODULE  │
+    └────┬────┘                   └────┬────┘                   └────┬────┘
+         │                             │                             │
+    ┌────┴────┐              ┌─────────┼─────────┐              ┌────┴────┐
+    │ Login   │              │         │         │              │ Export  │
+    │ Logout  │              │         │         │              │ CSV/PDF │
+    │ Register│         ┌────┴───┐┌────┴───┐┌────┴───┐          └─────────┘
+    │ ChgPass │         │  USER  ││ CLASS  ││FEEDBACK│
+    └─────────┘         │  MGMT  ││  MGMT  ││  MGMT  │
+                        └────────┘└────────┘└────────┘
+
+
+  ACTOR CONNECTIONS:
+
+    [Admin] ─────────── All Use Cases
+
+    [Teacher] ────────── Auth + Profile + Class Mgmt + Attendance
+
+    [Student] ────────── Auth + Profile + Join Class + Feedback + History
+
+    [Working Student] ── Student Use Cases + Feedback Monitoring + User Mgmt
+
+
+================================================================================
+Document Version: 1.1
+Created: February 2026
+================================================================================

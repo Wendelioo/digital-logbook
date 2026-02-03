@@ -65,17 +65,14 @@ type User struct {
 
 // LoginLog represents a user login/logout session
 type LoginLog struct {
-	ID                     int     `json:"id"`
-	UserID                 int     `json:"user_id"`
-	UserName               string  `json:"user_name"`
-	UserIDNumber           string  `json:"user_id_number"`
-	UserType               string  `json:"user_type"`
-	PCNumber               *string `json:"pc_number,omitempty"`
-	IPAddress              *string `json:"ip_address,omitempty"` // New: IP address tracking
-	LoginTime              string  `json:"login_time"`
-	LogoutTime             *string `json:"logout_time,omitempty"`
-	SessionDurationMinutes *int    `json:"session_duration_minutes,omitempty"` // New: Auto-calculated by trigger
-	FailureReason          *string `json:"failure_reason,omitempty"`           // New: Reason for failed login
+	ID           int     `json:"id"`
+	UserID       int     `json:"user_id"`
+	UserName     string  `json:"user_name"`
+	UserIDNumber string  `json:"user_id_number"`
+	UserType     string  `json:"user_type"`
+	PCNumber     *string `json:"pc_number,omitempty"`
+	LoginTime    string  `json:"login_time"`
+	LogoutTime   *string `json:"logout_time,omitempty"`
 }
 
 // Feedback represents equipment condition feedback from students
@@ -170,32 +167,32 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	a.db.QueryRow(`SELECT COUNT(*) FROM users WHERE user_type = 'working_student'`).Scan(&dashboard.WorkingStudents)
 
 	// Count recent logins (last 24 hours)
-	a.db.QueryRow(`SELECT COUNT(*) FROM login_logs WHERE login_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`).Scan(&dashboard.RecentLogins)
+	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE login_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`).Scan(&dashboard.RecentLogins)
 
 	// Count active users now (logged in without logout)
-	a.db.QueryRow(`SELECT COUNT(*) FROM login_logs WHERE logout_time IS NULL`).Scan(&dashboard.ActiveUsersNow)
+	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE logout_time IS NULL`).Scan(&dashboard.ActiveUsersNow)
 
 	// Count students currently logged in
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM login_logs 
+		SELECT COUNT(*) FROM log_entries 
 		WHERE logout_time IS NULL AND user_type = 'student'
 	`).Scan(&dashboard.StudentsLoggedIn)
 
 	// Count teachers currently logged in
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM login_logs 
+		SELECT COUNT(*) FROM log_entries 
 		WHERE logout_time IS NULL AND user_type = 'teacher'
 	`).Scan(&dashboard.TeachersLoggedIn)
 
 	// Count working students currently logged in
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM login_logs 
+		SELECT COUNT(*) FROM log_entries 
 		WHERE logout_time IS NULL AND user_type = 'working_student'
 	`).Scan(&dashboard.WorkingStudentsLoggedIn)
 
 	// Count today's logins
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM login_logs 
+		SELECT COUNT(*) FROM log_entries 
 		WHERE DATE(login_time) = CURDATE()
 	`).Scan(&dashboard.TodayLogins)
 
@@ -245,26 +242,28 @@ type Subject struct {
 
 // CourseClass represents a class/section
 type CourseClass struct {
-	ID                   int     `json:"id"`
-	ClassID              int     `json:"class_id"`
-	SubjectCode          string  `json:"subject_code"`
-	SubjectName          string  `json:"subject_name"`
-	DescriptiveTitle     *string `json:"descriptive_title,omitempty"`
-	EdpCode              *string `json:"edp_code,omitempty"`
-	Section              *string `json:"section,omitempty"`
-	Schedule             *string `json:"schedule,omitempty"`
-	Room                 *string `json:"room,omitempty"`
-	YearLevel            *string `json:"year_level,omitempty"`
-	SchoolYear           *string `json:"school_year,omitempty"`
-	Semester             *string `json:"semester,omitempty"`
-	TeacherUserID        int     `json:"teacher_user_id"`
-	TeacherName          *string `json:"teacher_name,omitempty"`
-	StudentCount         int     `json:"student_count"`
-	EnrolledCount        int     `json:"enrolled_count"`
-	IsActive             bool    `json:"is_active"`
-	CreatedByUserID      *int    `json:"created_by_user_id,omitempty"`
-	CreatedAt            string  `json:"created_at"`
-	LatestAttendanceDate *string `json:"latest_attendance_date,omitempty"`
+	ID                    int     `json:"id"`
+	ClassID               int     `json:"class_id"`
+	SubjectCode           string  `json:"subject_code"`
+	SubjectName           string  `json:"subject_name"`
+	DescriptiveTitle      *string `json:"descriptive_title,omitempty"`
+	EdpCode               *string `json:"edp_code,omitempty"`
+	Section               *string `json:"section,omitempty"`
+	Schedule              *string `json:"schedule,omitempty"`
+	Room                  *string `json:"room,omitempty"`
+	YearLevel             *string `json:"year_level,omitempty"`
+	SchoolYear            *string `json:"school_year,omitempty"`
+	Semester              *string `json:"semester,omitempty"`
+	TeacherUserID         int     `json:"teacher_user_id"`
+	TeacherName           *string `json:"teacher_name,omitempty"`
+	StudentCount          int     `json:"student_count"`
+	EnrolledCount         int     `json:"enrolled_count"`
+	IsActive              bool    `json:"is_active"`
+	IsArchived            bool    `json:"is_archived"`
+	CreatedByUserID       *int    `json:"created_by_user_id,omitempty"`
+	CreatedAt             string  `json:"created_at"`
+	LatestAttendanceDate  *string `json:"latest_attendance_date,omitempty"`
+	IsAttendanceFinalized bool    `json:"is_attendance_finalized"`
 }
 
 // Attendance represents an attendance record
@@ -288,6 +287,8 @@ type Attendance struct {
 	Remarks        *string `json:"remarks"`
 	RecordedBy     int     `json:"recorded_by"`
 	RecordedByName string  `json:"recorded_by_name"`
+	IsArchived     bool    `json:"is_archived"`
+	IsFinalized    bool    `json:"is_finalized"`
 }
 
 // GetTeacherDashboard returns teacher dashboard data
@@ -372,7 +373,7 @@ func (a *App) GetRecentAttendance(classIDs []int, days int) ([]Attendance, error
 	query := fmt.Sprintf(`
 		SELECT 
 			a.id, a.class_id, c.subject_code, s.name, c.section, c.schedule,
-			a.student_user_id, st.student_id, 
+			a.student_id, st.student_id, 
 			CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.middle_name, ''), ' ', COALESCE(u.last_name, '')) as student_name,
 			a.attendance_date, a.status, a.remarks,
 			a.recorded_by,
@@ -380,12 +381,12 @@ func (a *App) GetRecentAttendance(classIDs []int, days int) ([]Attendance, error
 		FROM attendance a
 		JOIN classlist c ON a.class_id = c.id
 		JOIN subjects s ON c.subject_code = s.code
-		JOIN students st ON a.student_user_id = st.user_id
-		JOIN users u ON st.user_id = u.id
+		JOIN students st ON a.student_id = st.id
+		JOIN users u ON st.id = u.id
 		LEFT JOIN users rec ON a.recorded_by = rec.id
 		WHERE a.class_id IN (%s)
 		AND a.attendance_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-		ORDER BY a.attendance_date DESC, a.time_in DESC
+		ORDER BY a.attendance_date DESC
 	`, strings.Join(placeholders, ","))
 
 	rows, err := a.db.Query(query, args...)
@@ -438,17 +439,17 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	// Get all attendance records for this student
 	query := `
 		SELECT 
-			a.class_id, a.student_user_id, DATE_FORMAT(a.date, '%Y-%m-%d') as date,
-			stu.student_number,
+			a.class_id, a.student_id, DATE_FORMAT(a.date, '%Y-%m-%d') as date,
+			stu.student_id,
 			stu.first_name, stu.middle_name, stu.last_name,
 			c.subject_code, s.description as subject_name,
 			a.status, a.remarks
 		FROM attendance a
-		JOIN students stu ON a.student_user_id = stu.user_id
+		JOIN students stu ON a.student_id = stu.id
 		JOIN classes c ON a.class_id = c.class_id
 		JOIN subjects s ON c.subject_code = s.subject_code
-		WHERE a.student_user_id = ?
-		ORDER BY a.date DESC, a.time_in DESC
+		WHERE a.student_id = ?
+		ORDER BY a.date DESC
 	`
 
 	rows, err := a.db.Query(query, userID)
@@ -463,7 +464,7 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 		var att Attendance
 		var middleName, remarks sql.NullString
 		err := rows.Scan(
-			&att.ClassID, &att.StudentUserID, &att.Date,
+			&att.ClassID, &att.StudentID, &att.Date,
 			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
 			&att.SubjectCode, &att.SubjectName,
 			&att.Status, &remarks,
@@ -504,7 +505,7 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	var pcNumber sql.NullString
 	err = a.db.QueryRow(`
 		SELECT COUNT(*), pc_number 
-		FROM login_logs 
+		FROM log_entries 
 		WHERE user_id = ? AND logout_time IS NULL
 		GROUP BY pc_number
 	`, userID).Scan(&loggedIn, &pcNumber)
@@ -519,7 +520,7 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	a.db.QueryRow(`
 		SELECT COUNT(DISTINCT class_id) 
 		FROM classlist 
-		WHERE student_user_id = ? AND status = 'active'
+		WHERE student_id = ? AND status = 'active'
 	`, userID).Scan(&dashboard.EnrolledClasses)
 
 	return dashboard, nil
@@ -561,13 +562,13 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 	// Count students registered today
 	a.db.QueryRow(`
 		SELECT COUNT(*) FROM users u
-		JOIN students s ON u.id = s.user_id
+		JOIN students s ON u.id = s.id
 		WHERE DATE(u.created_at) = CURDATE()
 	`).Scan(&dashboard.TodayRegistrations)
 
 	// Count students currently logged in
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM login_logs 
+		SELECT COUNT(*) FROM log_entries 
 		WHERE logout_time IS NULL AND user_type = 'student'
 	`).Scan(&dashboard.ActiveStudentsNow)
 
@@ -606,15 +607,15 @@ func (a *App) UpdateUserPhoto(userID int, userRole, photoURL string) error {
 	var query string
 	switch userRole {
 	case "admin":
-		query = `UPDATE admins SET profile_photo = ? WHERE user_id = ?`
+		query = `UPDATE admins SET profile_photo = ? WHERE id = ?`
 	case "teacher":
-		query = `UPDATE teachers SET profile_photo = ? WHERE user_id = ?`
+		query = `UPDATE teachers SET profile_photo = ? WHERE id = ?`
 	case "student":
-		query = `UPDATE students SET profile_photo = ? WHERE user_id = ?`
+		query = `UPDATE students SET profile_photo = ? WHERE id = ?`
 	case "working_student":
 		// Working students might be stored in a different table
 		// For now, assuming they're in students table
-		query = `UPDATE students SET profile_photo = ? WHERE user_id = ?`
+		query = `UPDATE students SET profile_photo = ? WHERE id = ?`
 	default:
 		return fmt.Errorf("invalid user role: %s", userRole)
 	}

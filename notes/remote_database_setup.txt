@@ -1,0 +1,283 @@
+================================================================================
+            REMOTE DATABASE CONNECTION SETUP GUIDE
+            Digital Logbook Desktop Application
+================================================================================
+
+This guide explains how to configure the Digital Logbook application to connect
+to a centralized MySQL database from multiple machines (e.g., lab computers).
+
+================================================================================
+OVERVIEW
+================================================================================
+
+Architecture:
+  [Lab PC 1] ──┐
+  [Lab PC 2] ──┼──> [Central MySQL Server] <──> [Database: logbookdb]
+  [Lab PC 3] ──┘
+  
+Each lab computer runs the Digital Logbook desktop app and connects to the
+same MySQL database hosted on a central server.
+
+================================================================================
+STEP 1: PREPARE THE DATABASE SERVER
+================================================================================
+
+1.1 Choose a Server Machine
+    - Select a computer that will host the MySQL database
+    - This machine should be always on during lab hours
+    - Note down its IP address (e.g., 192.168.1.100)
+    
+    To find the IP address on Windows:
+    > ipconfig
+    Look for "IPv4 Address" under your active network adapter
+
+1.2 Install MySQL Server (if not already installed)
+    - Download MySQL Community Server from: https://dev.mysql.com/downloads/
+    - During installation, note the root password you set
+    - Ensure MySQL is configured to start automatically
+
+1.3 Import the Database Schema
+    Open MySQL command line or MySQL Workbench:
+    > mysql -u root -p
+    > CREATE DATABASE logbookdb;
+    > USE logbookdb;
+    > SOURCE C:/path/to/digital-logbook/database/logbookdb.sql;
+
+================================================================================
+STEP 2: CONFIGURE MYSQL FOR REMOTE ACCESS
+================================================================================
+
+2.1 Edit MySQL Configuration File
+    Location (Windows): C:\ProgramData\MySQL\MySQL Server 8.0\my.ini
+    Location (Linux): /etc/mysql/mysql.conf.d/mysqld.cnf
+
+    Find and modify the bind-address line:
+    
+    BEFORE: bind-address = 127.0.0.1
+    AFTER:  bind-address = 0.0.0.0
+    
+    This allows MySQL to accept connections from any IP address.
+
+2.2 Create a Remote Database User
+    Connect to MySQL as root and run:
+
+    -- Create a user that can connect from any host
+    CREATE USER 'logbook_user'@'%' IDENTIFIED BY 'your_secure_password';
+    
+    -- Grant all privileges on the logbookdb database
+    GRANT ALL PRIVILEGES ON logbookdb.* TO 'logbook_user'@'%';
+    
+    -- Apply the changes
+    FLUSH PRIVILEGES;
+
+    ALTERNATIVE: Restrict to specific subnet (more secure):
+    CREATE USER 'logbook_user'@'192.168.1.%' IDENTIFIED BY 'your_secure_password';
+    GRANT ALL PRIVILEGES ON logbookdb.* TO 'logbook_user'@'192.168.1.%';
+    FLUSH PRIVILEGES;
+
+2.3 Restart MySQL Service
+    Windows:
+    > net stop mysql
+    > net start mysql
+    
+    Or use Services app (services.msc) to restart "MySQL" or "MySQL80"
+
+================================================================================
+STEP 3: CONFIGURE WINDOWS FIREWALL ON SERVER
+================================================================================
+
+3.1 Open MySQL Port (3306) in Windows Firewall
+
+    Option A - Using Command Prompt (Run as Administrator):
+    > netsh advfirewall firewall add rule name="MySQL" dir=in action=allow protocol=tcp localport=3306
+
+    Option B - Using Windows Firewall GUI:
+    1. Open "Windows Defender Firewall with Advanced Security"
+    2. Click "Inbound Rules" → "New Rule"
+    3. Select "Port" → Next
+    4. Select "TCP" and enter port: 3306 → Next
+    5. Select "Allow the connection" → Next
+    6. Check all profiles (Domain, Private, Public) → Next
+    7. Name it "MySQL Remote Access" → Finish
+
+================================================================================
+STEP 4: CONFIGURE CLIENT MACHINES (LAB PCs)
+================================================================================
+
+4.1 Set Environment Variables on Each Client PC
+
+    Option A - Temporary (Command Prompt):
+    > set DB_HOST=192.168.1.100
+    > set DB_PORT=3306
+    > set DB_USERNAME=logbook_user
+    > set DB_PASSWORD=your_secure_password
+    > set DB_DATABASE=logbookdb
+
+    Option B - Permanent (System Environment Variables):
+    1. Right-click "This PC" → Properties → Advanced system settings
+    2. Click "Environment Variables"
+    3. Under "System variables", click "New" for each:
+       
+       Variable Name      | Variable Value
+       -------------------|---------------------------
+       DB_HOST            | 192.168.1.100 (server IP)
+       DB_PORT            | 3306
+       DB_USERNAME        | logbook_user
+       DB_PASSWORD        | your_secure_password
+       DB_DATABASE        | logbookdb
+
+    4. Click OK to save all changes
+    5. Restart the application for changes to take effect
+
+4.2 Alternative: Create a Batch File Launcher
+    Create a file called "StartLogbook.bat" on each client:
+
+    @echo off
+    set DB_HOST=192.168.1.100
+    set DB_PORT=3306
+    set DB_USERNAME=logbook_user
+    set DB_PASSWORD=your_secure_password
+    set DB_DATABASE=logbookdb
+    start "" "C:\Path\To\Digital Logbook.exe"
+
+    Double-click this batch file to launch the app with correct settings.
+
+================================================================================
+STEP 5: TEST THE CONNECTION
+================================================================================
+
+5.1 Test from Client Machine (before running app)
+    Open Command Prompt on a client PC:
+    > mysql -h 192.168.1.100 -u logbook_user -p logbookdb
+    
+    If this connects successfully, your remote setup is working.
+
+5.2 Run the Application
+    - Launch Digital Logbook on the client machine
+    - Try logging in with a valid user account
+    - Check that data syncs across all machines
+
+================================================================================
+STEP 6: DEPLOYMENT TO MULTIPLE MACHINES
+================================================================================
+
+6.1 Build the Application
+    On your development machine:
+    > wails build
+    
+    The executable will be in: build/bin/Digital Logbook.exe
+
+6.2 Distribute to Lab Computers
+    Copy the following to each lab PC:
+    - Digital Logbook.exe (the built application)
+    - StartLogbook.bat (with correct environment variables)
+    
+    Or configure system environment variables as described in Step 4.
+
+================================================================================
+SECURITY RECOMMENDATIONS
+================================================================================
+
+1. USE STRONG PASSWORDS
+   - Use a complex password for the database user
+   - Minimum 12 characters with mixed case, numbers, symbols
+
+2. RESTRICT IP RANGE
+   - Instead of '%' (any host), use your lab's subnet:
+     CREATE USER 'logbook_user'@'192.168.1.%' IDENTIFIED BY 'password';
+
+3. USE A DEDICATED DATABASE USER
+   - Never use 'root' for application connections
+   - Create a user with only necessary privileges (logbookdb only)
+
+4. KEEP THE SERVER UPDATED
+   - Regularly update MySQL and Windows
+   - Apply security patches promptly
+
+5. CONSIDER VPN FOR OFF-CAMPUS ACCESS
+   - If accessing from outside the local network, use VPN
+   - Never expose MySQL directly to the internet
+
+6. BACKUP REGULARLY
+   - Schedule daily database backups:
+     > mysqldump -u root -p logbookdb > backup_YYYYMMDD.sql
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+PROBLEM: "Can't connect to MySQL server"
+SOLUTIONS:
+  - Verify the server IP address is correct
+  - Check if MySQL service is running on the server
+  - Ensure firewall port 3306 is open
+  - Ping the server: > ping 192.168.1.100
+
+PROBLEM: "Access denied for user"
+SOLUTIONS:
+  - Verify username and password are correct
+  - Check that the user has remote access privileges:
+    > SELECT user, host FROM mysql.user WHERE user = 'logbook_user';
+  - Ensure FLUSH PRIVILEGES was run after creating user
+
+PROBLEM: "Host is not allowed to connect"
+SOLUTIONS:
+  - The MySQL user may only allow localhost connections
+  - Recreate user with '%' or specific IP:
+    > DROP USER 'logbook_user'@'localhost';
+    > CREATE USER 'logbook_user'@'%' IDENTIFIED BY 'password';
+    > GRANT ALL PRIVILEGES ON logbookdb.* TO 'logbook_user'@'%';
+    > FLUSH PRIVILEGES;
+
+PROBLEM: Application starts but shows database error
+SOLUTIONS:
+  - Verify environment variables are set correctly
+  - Check DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_DATABASE
+  - Restart the application after setting environment variables
+
+PROBLEM: Slow connection or timeouts
+SOLUTIONS:
+  - Check network connectivity between client and server
+  - Ensure no network congestion on the LAN
+  - Consider using wired connections instead of Wi-Fi
+
+================================================================================
+QUICK REFERENCE - ENVIRONMENT VARIABLES
+================================================================================
+
+Variable        | Description                | Example Value
+----------------|----------------------------|------------------
+DB_HOST         | MySQL server IP/hostname   | 192.168.1.100
+DB_PORT         | MySQL port number          | 3306
+DB_USERNAME     | Database username          | logbook_user
+DB_PASSWORD     | Database password          | SecurePass123!
+DB_DATABASE     | Database name              | logbookdb
+
+================================================================================
+NETWORK DIAGRAM
+================================================================================
+
+    ┌─────────────────────────────────────────────────────────────┐
+    │                    LOCAL AREA NETWORK                       │
+    │                                                             │
+    │   ┌──────────┐    ┌──────────┐    ┌──────────┐             │
+    │   │  Lab PC  │    │  Lab PC  │    │  Lab PC  │             │
+    │   │  (App)   │    │  (App)   │    │  (App)   │             │
+    │   └────┬─────┘    └────┬─────┘    └────┬─────┘             │
+    │        │               │               │                    │
+    │        └───────────────┼───────────────┘                    │
+    │                        │                                    │
+    │                        ▼                                    │
+    │              ┌─────────────────┐                            │
+    │              │  MySQL Server   │                            │
+    │              │  192.168.1.100  │                            │
+    │              │   Port: 3306    │                            │
+    │              │   [logbookdb]   │                            │
+    │              └─────────────────┘                            │
+    │                                                             │
+    └─────────────────────────────────────────────────────────────┘
+
+================================================================================
+                    Document Created: February 2026
+                    Digital Logbook - BSIT Capstone Project
+================================================================================

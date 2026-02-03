@@ -92,7 +92,7 @@ const Modal: React.FC<ModalProps> = ({
   };
 
   const variantHeaderColors = {
-    default: 'border-gray-200',
+    default: 'border-gray-200 bg-white',
     danger: 'border-danger-200 bg-danger-50',
     success: 'border-success-200 bg-success-50',
     warning: 'border-warning-200 bg-warning-50',
@@ -107,13 +107,13 @@ const Modal: React.FC<ModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4 animate-fade-in"
+      className="fixed inset-0 z-50 overflow-y-auto bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
-      <div className={`relative bg-white rounded-card shadow-lg-soft w-full ${sizeClasses[size]} max-h-[90vh] flex flex-col animate-slide-in`}>
+      <div className={`relative bg-white rounded-xl shadow-2xl w-full ${sizeClasses[size]} max-h-[90vh] flex flex-col animate-slideIn`}>
         {/* Header */}
         <div className={`flex items-center justify-between px-6 py-4 border-b ${variantHeaderColors[variant]}`}>
           <div className="flex items-center gap-3">
@@ -125,7 +125,7 @@ const Modal: React.FC<ModalProps> = ({
           {showCloseButton && (
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors p-1.5 rounded-lg hover:bg-white/50"
+              className="text-gray-400 hover:text-gray-700 transition-colors p-1.5 rounded-lg hover:bg-gray-100"
               aria-label="Close modal"
             >
               <X className="h-5 w-5" />
@@ -134,13 +134,13 @@ const Modal: React.FC<ModalProps> = ({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {children}
         </div>
 
         {/* Footer */}
         {footer && (
-          <div className="flex items-center justify-end gap-3 px-6 py-4 bg-gray-50 border-t border-gray-200">
+          <div className="flex items-center justify-end gap-3 px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-xl">
             {footer}
           </div>
         )}

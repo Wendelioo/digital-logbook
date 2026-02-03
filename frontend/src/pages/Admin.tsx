@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import Button from '../components/Button';
 import { Card, CardHeader, CardBody, StatCard } from '../components/Card';
@@ -772,11 +772,10 @@ function UserManagement() {
           {!editingUser && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <label className="block text-sm font-semibold text-gray-900 mb-3">Select User Type</label>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {[
-                  { value: 'teacher', label: 'Teacher', icon: '👨‍🏫' },
-                  { value: 'student', label: 'Student', icon: '🎓' },
-                  { value: 'working_student', label: 'Working Student', icon: '👨‍💼' }
+                  { value: 'teacher', label: 'Teacher' },
+                  { value: 'working_student', label: 'Working Student' }
                 ].map((option) => (
                   <button
                     key={option.value}
@@ -788,7 +787,6 @@ function UserManagement() {
                         : 'border-gray-300 bg-white hover:border-blue-300 hover:shadow-sm'
                     }`}
                   >
-                    <div className="text-3xl mb-2">{option.icon}</div>
                     <div className={`text-sm font-semibold ${
                       formData.role === option.value ? 'text-blue-900' : 'text-gray-700'
                     }`}>
@@ -2207,7 +2205,8 @@ function DepartmentManagement() {
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [formData, setFormData] = useState({
     departmentCode: '',
-    departmentName: ''
+    departmentName: '',
+    isActive: true
   });
 
   useEffect(() => {
@@ -2242,7 +2241,7 @@ function DepartmentManagement() {
       }
 
       if (editingDepartment) {
-        await UpdateDepartment(editingDepartment.department_code, formData.departmentCode, formData.departmentName, '', true);
+        await UpdateDepartment(editingDepartment.department_code, formData.departmentCode, formData.departmentName, '', formData.isActive);
         showNotification('success', 'Department updated successfully!');
       } else {
         await CreateDepartment(formData.departmentCode, formData.departmentName, '');
@@ -2251,7 +2250,7 @@ function DepartmentManagement() {
 
       setShowForm(false);
       setEditingDepartment(null);
-      setFormData({ departmentCode: '', departmentName: '' });
+      setFormData({ departmentCode: '', departmentName: '', isActive: true });
       loadDepartments();
     } catch (error) {
       console.error('Failed to save department:', error);
@@ -2264,7 +2263,8 @@ function DepartmentManagement() {
     setEditingDepartment(department);
     setFormData({
       departmentCode: department.department_code,
-      departmentName: department.department_name
+      departmentName: department.department_name,
+      isActive: department.is_active
     });
     setShowForm(true);
   };
@@ -2421,7 +2421,7 @@ function DepartmentManagement() {
             if (e.target === e.currentTarget) {
               setShowForm(false);
               setEditingDepartment(null);
-              setFormData({ departmentCode: '', departmentName: '' });
+              setFormData({ departmentCode: '', departmentName: '', isActive: true });
             }
           }}
         >
@@ -2432,7 +2432,7 @@ function DepartmentManagement() {
               onClick={() => {
                 setShowForm(false);
                 setEditingDepartment(null);
-                setFormData({ departmentCode: '', departmentName: '' });
+                setFormData({ departmentCode: '', departmentName: '', isActive: true });
               }}
               className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold transition-colors z-10"
             >
@@ -2471,6 +2471,29 @@ function DepartmentManagement() {
                   />
                 </div>
               </div>
+              
+              {/* Status Toggle - Only show when editing */}
+              {editingDepartment && (
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                      formData.isActive ? 'bg-blue-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        formData.isActive ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                  <span className={`text-sm font-medium ${formData.isActive ? 'text-blue-600' : 'text-gray-500'}`}>
+                    {formData.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+              )}
+
               {/* Submit Button */}
               <div className="text-center">
                 <Button
@@ -2599,7 +2622,12 @@ function DepartmentManagement() {
 
 // Archive Management Component
 function ArchiveManagement() {
-  const [activeTab, setActiveTab] = useState<'archived-logs' | 'log-sheets' | 'reports'>('archived-logs');
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState<'archived-logs' | 'log-sheets' | 'reports'>(
+    tabParam === 'reports' ? 'reports' : 'archived-logs'
+  );
   const [archivedLogs, setArchivedLogs] = useState<LoginLog[]>([]);
   const [archivedFeedback, setArchivedFeedback] = useState<Feedback[]>([]);
   const [logSheets, setLogSheets] = useState<ArchivedLogSheet[]>([]);
@@ -2607,6 +2635,16 @@ function ArchiveManagement() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [processing, setProcessing] = useState(false);
+
+  useEffect(() => {
+    // Sync activeTab with URL query parameter
+    const tab = searchParams.get('tab');
+    if (tab === 'reports') {
+      setActiveTab('reports');
+    } else {
+      setActiveTab('archived-logs');
+    }
+  }, [searchParams]);
 
   // View modal state
   const [viewingSheet, setViewingSheet] = useState<{ type: 'logs' | 'reports'; date: string } | null>(null);
@@ -2779,38 +2817,10 @@ function ArchiveManagement() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="mb-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold text-gray-900">Archive</h2>
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="border-b border-gray-200 mb-4">
-          <nav className="-mb-px flex space-x-8">
-            <button
-              onClick={() => setActiveTab('archived-logs')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'archived-logs'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Archived Logs ({archivedLogs.length} entries)
-            </button>
-            <button
-              onClick={() => setActiveTab('reports')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'reports'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Equipment Reports ({feedbackSheets.reduce((sum, sheet) => sum + sheet.total_reports, 0)} reports)
-            </button>
-          </nav>
-        </div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">
+          {activeTab === 'reports' ? 'Archived Feedback Reports' : 'Archived Log Entries'}
+        </h2>
       </div>
 
       {error && (
@@ -3147,7 +3157,26 @@ function AdminDashboard() {
     { name: 'Departments', href: '/admin/departments', icon: <GraduationCap className="h-5 w-5" />, current: location.pathname === '/admin/departments' },
     { name: 'Log Entries', href: '/admin/logs', icon: <FolderOpen className="h-5 w-5" />, current: location.pathname === '/admin/logs' },
     { name: 'Reports', href: '/admin/reports', icon: <BarChart3 className="h-5 w-5" />, current: location.pathname === '/admin/reports' },
-    { name: 'Archive', href: '/admin/archive', icon: <Archive className="h-5 w-5" />, current: location.pathname === '/admin/archive' },
+    {
+      name: 'Archive',
+      href: '/admin/archive',
+      icon: <Archive className="h-5 w-5" />,
+      current: location.pathname === '/admin/archive',
+      children: [
+        {
+          name: 'Log Entries',
+          href: '/admin/archive?tab=logs',
+          icon: <FolderOpen className="h-4 w-4" />,
+          current: location.pathname === '/admin/archive' && (!new URLSearchParams(location.search).get('tab') || new URLSearchParams(location.search).get('tab') === 'logs')
+        },
+        {
+          name: 'Feedback Reports',
+          href: '/admin/archive?tab=reports',
+          icon: <BarChart3 className="h-4 w-4" />,
+          current: location.pathname === '/admin/archive' && new URLSearchParams(location.search).get('tab') === 'reports'
+        },
+      ]
+    },
   ];
 
   return (

@@ -91,11 +91,11 @@ func (a *App) Logout(userID int) error {
 
 	// Update the most recent login log for this user to set logout time
 	// Use a subquery to ensure we get the most recent login log
-	query := `UPDATE login_logs 
+	query := `UPDATE log_entries 
 			  SET logout_time = NOW()
 			  WHERE id = (
 				  SELECT id FROM (
-					  SELECT id FROM login_logs 
+					  SELECT id FROM log_entries 
 					  WHERE user_id = ? AND logout_time IS NULL 
 					  ORDER BY login_time DESC 
 					  LIMIT 1
@@ -173,13 +173,13 @@ func (a *App) loadUserProfile(user *User) error {
 	var detailQuery string
 	switch user.Role {
 	case "admin":
-		detailQuery = `SELECT first_name, middle_name, last_name, employee_number, email FROM admins WHERE user_id = ?`
+		detailQuery = `SELECT first_name, middle_name, last_name, admin_id, email FROM admins WHERE id = ?`
 	case "teacher":
-		detailQuery = `SELECT first_name, middle_name, last_name, employee_number, email, contact_number FROM teachers WHERE user_id = ?`
+		detailQuery = `SELECT first_name, middle_name, last_name, teacher_id, email, contact_number FROM teachers WHERE id = ?`
 	case "student":
-		detailQuery = `SELECT first_name, middle_name, last_name, student_number, email, contact_number FROM students WHERE user_id = ? AND is_working_student = FALSE`
+		detailQuery = `SELECT first_name, middle_name, last_name, student_id, email, contact_number FROM students WHERE id = ? AND is_working_student = FALSE`
 	case "working_student":
-		detailQuery = `SELECT first_name, middle_name, last_name, student_number, email, contact_number FROM students WHERE user_id = ? AND is_working_student = TRUE`
+		detailQuery = `SELECT first_name, middle_name, last_name, student_id, email, contact_number FROM students WHERE id = ? AND is_working_student = TRUE`
 	default:
 		return fmt.Errorf("unknown user role: %s", user.Role)
 	}
@@ -249,12 +249,10 @@ func (a *App) loadUserProfile(user *User) error {
 	return nil
 }
 
-// createLoginLog creates a login log entry with IP tracking and returns the log ID
+// createLoginLog creates a login log entry and returns the log ID
 func (a *App) createLoginLog(userID int, pcNumber string) (int, error) {
-	// Get IP address (for now, set to NULL - can be enhanced with actual IP detection)
-	// In a real implementation, you would detect the actual IP address
-	insertLog := `INSERT INTO login_logs (user_id, pc_number, ip_address, login_time, login_status) 
-				  VALUES (?, ?, NULL, NOW(), 'success')`
+	insertLog := `INSERT INTO log_entries (user_id, pc_number, login_time) 
+				  VALUES (?, ?, NOW())`
 	result, err := a.db.Exec(insertLog, userID, pcNumber)
 	if err != nil {
 		return 0, err

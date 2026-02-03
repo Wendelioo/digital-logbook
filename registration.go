@@ -60,18 +60,45 @@ func (a *App) SubmitRegistration(req RegistrationRequest) error {
 
 	// Check if student ID already exists
 	var existingID int
-	err := a.db.QueryRow("SELECT id FROM users WHERE username = ?", req.StudentID).Scan(&existingID)
+	var existingStatus string
+	err := a.db.QueryRow("SELECT id, account_status FROM users WHERE username = ?", req.StudentID).Scan(&existingID, &existingStatus)
 	if err == nil {
-		return fmt.Errorf("student ID already registered")
+		// Provide helpful message based on account status
+		switch existingStatus {
+		case "pending":
+			return fmt.Errorf("this student ID has a pending registration - please wait for working student approval")
+		case "rejected":
+			return fmt.Errorf("this student ID was previously rejected - please contact an administrator for assistance")
+		case "active":
+			return fmt.Errorf("this student ID is already active - please try logging in instead")
+		default:
+			return fmt.Errorf("student ID already registered")
+		}
 	} else if err != sql.ErrNoRows {
 		return fmt.Errorf("database error: %v", err)
 	}
 
 	// Check if email already exists
-	var existingEmail int
-	err = a.db.QueryRow("SELECT user_id FROM students WHERE email = ?", req.Email).Scan(&existingEmail)
+	var existingEmailUserID int
+	var existingEmailStatus string
+	err = a.db.QueryRow(`
+		SELECT u.id, u.account_status 
+		FROM students s 
+		JOIN users u ON s.id = u.id 
+		WHERE s.email = ?
+	`, req.Email).Scan(&existingEmailUserID, &existingEmailStatus)
 	if err == nil {
-		return fmt.Errorf("email already registered")
+		// Provide helpful message based on account status
+		switch existingEmailStatus {
+		case "pending":
+			return fmt.Errorf("this email has a pending registration - please wait for working student approval")
+		case "rejected":
+			return fmt.Errorf("this email was previously rejected - please contact an administrator for assistance")
+		case "active":
+			return fmt.Errorf("this email is already registered to an active account")
+		default:
+			return fmt.Errorf("email already registered")
+		}
 	} else if err != sql.ErrNoRows {
 		return fmt.Errorf("database error: %v", err)
 	}
@@ -105,7 +132,7 @@ func (a *App) SubmitRegistration(req RegistrationRequest) error {
 
 	// Insert into students table
 	_, err = tx.Exec(`
-		INSERT INTO students (user_id, student_number, first_name, middle_name, last_name, email, contact_number, is_working_student)
+		INSERT INTO students (id, student_id, first_name, middle_name, last_name, email, contact_number, is_working_student)
 		VALUES (?, ?, ?, ?, ?, ?, ?, FALSE)
 	`, userID, req.StudentID, req.FirstName, nullString(req.MiddleName), req.LastName, req.Email, req.ContactNumber)
 	if err != nil {
@@ -139,7 +166,7 @@ func (a *App) GetPendingRegistrations() ([]PendingRegistration, error) {
 	query := `
 		SELECT 
 			u.id,
-			s.student_number,
+			s.student_id,
 			s.last_name,
 			s.first_name,
 			s.middle_name,
@@ -147,7 +174,7 @@ func (a *App) GetPendingRegistrations() ([]PendingRegistration, error) {
 			s.email,
 			u.created_at
 		FROM users u
-		JOIN students s ON u.id = s.user_id
+		JOIN students s ON u.id = s.id
 		WHERE u.account_status = 'pending'
 		AND u.user_type = 'student'
 		ORDER BY u.created_at ASC

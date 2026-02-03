@@ -48,16 +48,16 @@ func (a *App) GetTodayLogs() ([]LoginLog, error) {
 				u.username
 			) as full_name,
 			COALESCE(
-				s.student_number,
-				t.employee_number,
-				a.employee_number,
+				s.student_id,
+				t.teacher_id,
+				a.admin_id,
 				u.username
 			) as user_id_number
-		FROM login_logs ll
+		FROM log_entries ll
 		JOIN users u ON ll.user_id = u.id
-		LEFT JOIN students s ON u.id = s.user_id AND u.user_type IN ('student', 'working_student')
-		LEFT JOIN teachers t ON u.id = t.user_id AND u.user_type = 'teacher'
-		LEFT JOIN admins a ON u.id = a.user_id AND u.user_type = 'admin'
+		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
+		LEFT JOIN admins a ON u.id = a.id AND u.user_type = 'admin'
 		WHERE DATE(ll.login_time) = CURDATE()
 		AND (ll.is_archived = FALSE OR ll.is_archived IS NULL)
 		ORDER BY ll.login_time DESC
@@ -135,16 +135,16 @@ func (a *App) GetPastLogs(startDate, endDate string) ([]LoginLog, error) {
 				u.username
 			) as full_name,
 			COALESCE(
-				s.student_number,
-				t.employee_number,
-				a.employee_number,
+				s.student_id,
+				t.teacher_id,
+				a.admin_id,
 				u.username
 			) as user_id_number
-		FROM login_logs ll
+		FROM log_entries ll
 		JOIN users u ON ll.user_id = u.id
-		LEFT JOIN students s ON u.id = s.user_id AND u.user_type IN ('student', 'working_student')
-		LEFT JOIN teachers t ON u.id = t.user_id AND u.user_type = 'teacher'
-		LEFT JOIN admins a ON u.id = a.user_id AND u.user_type = 'admin'
+		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
+		LEFT JOIN admins a ON u.id = a.id AND u.user_type = 'admin'
 		WHERE DATE(ll.login_time) < CURDATE()
 		AND (ll.is_archived = FALSE OR ll.is_archived IS NULL)
 		AND DATE(ll.login_time) BETWEEN ? AND ?
@@ -215,7 +215,7 @@ func (a *App) ArchiveSelectedLogs(logIDs []int, archivedByUserID int) error {
 	}
 
 	query := fmt.Sprintf(`
-		UPDATE login_logs 
+		UPDATE log_entries 
 		SET is_archived = TRUE, 
 			archived_at = NOW(), 
 			archived_by_user_id = ?
@@ -252,7 +252,7 @@ func (a *App) UnarchiveLogs(logIDs []int) error {
 	}
 
 	query := fmt.Sprintf(`
-		UPDATE login_logs 
+		UPDATE log_entries 
 		SET is_archived = FALSE, 
 			archived_at = NULL, 
 			archived_by_user_id = NULL
@@ -300,16 +300,16 @@ func (a *App) GetArchivedLogs() ([]LoginLog, error) {
 				u.username
 			) as full_name,
 			COALESCE(
-				s.student_number,
-				t.employee_number,
-				a.employee_number,
+				s.student_id,
+				t.teacher_id,
+				a.admin_id,
 				u.username
 			) as user_id_number
-		FROM login_logs ll
+		FROM log_entries ll
 		JOIN users u ON ll.user_id = u.id
-		LEFT JOIN students s ON u.id = s.user_id AND u.user_type IN ('student', 'working_student')
-		LEFT JOIN teachers t ON u.id = t.user_id AND u.user_type = 'teacher'
-		LEFT JOIN admins a ON u.id = a.user_id AND u.user_type = 'admin'
+		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
+		LEFT JOIN admins a ON u.id = a.id AND u.user_type = 'admin'
 		WHERE ll.is_archived = TRUE
 		ORDER BY ll.archived_at DESC, ll.login_time DESC
 		LIMIT 2000
@@ -363,7 +363,7 @@ func (a *App) GetAllLogs() ([]LoginLog, error) {
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	// Query login_logs directly with joins to ensure all logs are returned
+	// Query log_entries directly with joins to ensure all logs are returned
 	// even if user profile data is missing
 	// Only returns non-archived logs (is_archived = FALSE or NULL for backwards compatibility)
 	query := `
@@ -390,16 +390,16 @@ func (a *App) GetAllLogs() ([]LoginLog, error) {
 				u.username
 			) as full_name,
 			COALESCE(
-				s.student_number,
-				t.employee_number,
-				a.employee_number,
+				s.student_id,
+				t.teacher_id,
+				a.admin_id,
 				u.username
 			) as user_id_number
-		FROM login_logs ll
+		FROM log_entries ll
 		JOIN users u ON ll.user_id = u.id
-		LEFT JOIN students s ON u.id = s.user_id AND u.user_type IN ('student', 'working_student')
-		LEFT JOIN teachers t ON u.id = t.user_id AND u.user_type = 'teacher'
-		LEFT JOIN admins a ON u.id = a.user_id AND u.user_type = 'admin'
+		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
+		LEFT JOIN admins a ON u.id = a.id AND u.user_type = 'admin'
 		WHERE (ll.is_archived = FALSE OR ll.is_archived IS NULL)
 		ORDER BY ll.login_time DESC 
 		LIMIT 1000
@@ -454,7 +454,7 @@ func (a *App) GetStudentLoginLogs(userID int) ([]LoginLog, error) {
 
 	log.Printf("GetStudentLoginLogs called for userID: %d", userID)
 
-	// Query the login_logs table directly and join with users to get the name
+	// Query the log_entries table directly and join with users to get the name
 	query := `
 		SELECT 
 			ll.id, 
@@ -479,16 +479,16 @@ func (a *App) GetStudentLoginLogs(userID int) ([]LoginLog, error) {
 				u.username
 			) as full_name,
 			COALESCE(
-				s.student_number,
-				t.employee_number,
-				a.employee_number,
+				s.student_id,
+				t.teacher_id,
+				a.admin_id,
 				u.username
 			) as user_id_number
-		FROM login_logs ll
+		FROM log_entries ll
 		JOIN users u ON ll.user_id = u.id
-		LEFT JOIN students s ON u.id = s.user_id AND u.user_type IN ('student', 'working_student')
-		LEFT JOIN teachers t ON u.id = t.user_id AND u.user_type = 'teacher'
-		LEFT JOIN admins a ON u.id = a.user_id AND u.user_type = 'admin'
+		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
+		LEFT JOIN admins a ON u.id = a.id AND u.user_type = 'admin'
 		WHERE ll.user_id = ?
 		ORDER BY ll.login_time DESC 
 		LIMIT 100
@@ -567,16 +567,16 @@ func (a *App) GetTeacherLoginLogs(userID int) ([]LoginLog, error) {
 				u.username
 			) as full_name,
 			COALESCE(
-				s.student_number,
-				t.employee_number,
-				a.employee_number,
+				s.student_id,
+				t.teacher_id,
+				a.admin_id,
 				u.username
 			) as user_id_number
-		FROM login_logs ll
+		FROM log_entries ll
 		JOIN users u ON ll.user_id = u.id
-		LEFT JOIN students s ON u.id = s.user_id AND u.user_type IN ('student', 'working_student')
-		LEFT JOIN teachers t ON u.id = t.user_id AND u.user_type = 'teacher'
-		LEFT JOIN admins a ON u.id = a.user_id AND u.user_type = 'admin'
+		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
+		LEFT JOIN admins a ON u.id = a.id AND u.user_type = 'admin'
 		WHERE ll.user_id = ? AND u.user_type = 'teacher'
 		ORDER BY ll.login_time DESC 
 		LIMIT 100
@@ -636,7 +636,7 @@ func (a *App) ExportLogsCSV() (string, error) {
 	}
 
 	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("login_logs_%s.csv", time.Now().Format("20060102_150405")))
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("log_entries_%s.csv", time.Now().Format("20060102_150405")))
 
 	file, err := os.Create(filename)
 	if err != nil {
@@ -717,7 +717,7 @@ func (a *App) ExportLogsPDF() (string, error) {
 	}
 
 	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("login_logs_%s.pdf", time.Now().Format("20060102_150405")))
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("log_entries_%s.pdf", time.Now().Format("20060102_150405")))
 	err = pdf.OutputFileAndClose(filename)
 	return filename, err
 }
@@ -752,7 +752,7 @@ func (a *App) GetArchivedLogSheets() ([]ArchivedLogSheet, error) {
 			SUM(CASE WHEN u.user_type = 'admin' THEN 1 ELSE 0 END) as admin_count,
 			SUM(CASE WHEN u.user_type = 'working_student' THEN 1 ELSE 0 END) as working_student_count,
 			COUNT(DISTINCT ll.pc_number) as unique_pcs
-		FROM login_logs ll
+		FROM log_entries ll
 		JOIN users u ON ll.user_id = u.id
 		WHERE ll.is_archived = TRUE
 		GROUP BY DATE(ll.login_time)
@@ -816,16 +816,16 @@ func (a *App) GetArchivedLogsByDate(date string) ([]LoginLog, error) {
 				u.username
 			) as full_name,
 			COALESCE(
-				s.student_number,
-				t.employee_number,
-				ad.employee_number,
+				s.student_id,
+				t.teacher_id,
+				ad.admin_id,
 				u.username
 			) as user_id_number
-		FROM login_logs ll
+		FROM log_entries ll
 		JOIN users u ON ll.user_id = u.id
-		LEFT JOIN students s ON u.id = s.user_id AND u.user_type IN ('student', 'working_student')
-		LEFT JOIN teachers t ON u.id = t.user_id AND u.user_type = 'teacher'
-		LEFT JOIN admins ad ON u.id = ad.user_id AND u.user_type = 'admin'
+		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
+		LEFT JOIN admins ad ON u.id = ad.id AND u.user_type = 'admin'
 		WHERE ll.is_archived = TRUE AND DATE(ll.login_time) = ?
 		ORDER BY ll.login_time DESC
 	`
@@ -878,7 +878,7 @@ func (a *App) ArchiveLogsByDate(date string, adminUserID int) (int, error) {
 		return 0, fmt.Errorf("database not connected")
 	}
 
-	query := `UPDATE login_logs 
+	query := `UPDATE log_entries 
 		SET is_archived = TRUE, 
 		    archived_at = NOW(), 
 		    archived_by_user_id = ?
@@ -895,7 +895,7 @@ func (a *App) ArchiveLogsByDate(date string, adminUserID int) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("✓ %d login logs archived for date %s by admin %d", rowsAffected, date, adminUserID)
+	log.Printf("✓ %d log entries archived for date %s by admin %d", rowsAffected, date, adminUserID)
 	return int(rowsAffected), nil
 }
 
@@ -905,7 +905,7 @@ func (a *App) UnarchiveLogSheet(date string) (int, error) {
 		return 0, fmt.Errorf("database not connected")
 	}
 
-	query := `UPDATE login_logs 
+	query := `UPDATE log_entries 
 		SET is_archived = FALSE, 
 		    archived_at = NULL, 
 		    archived_by_user_id = NULL
@@ -934,7 +934,7 @@ func (a *App) GetLogDates() ([]string, error) {
 
 	query := `
 		SELECT DISTINCT DATE(login_time) as log_date
-		FROM login_logs
+		FROM log_entries
 		WHERE is_archived = FALSE OR is_archived IS NULL
 		ORDER BY log_date DESC
 	`
@@ -969,7 +969,7 @@ func (a *App) ExportArchivedLogSheetCSV(date string) (string, error) {
 	}
 
 	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("login_logs_%s.csv", date))
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("log_entries_%s.csv", date))
 
 	file, err := os.Create(filename)
 	if err != nil {
@@ -1062,7 +1062,7 @@ func (a *App) ExportArchivedLogSheetPDF(date string) (string, error) {
 	}
 
 	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("login_logs_%s.pdf", date))
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("log_entries_%s.pdf", date))
 	err = pdf.OutputFileAndClose(filename)
 	return filename, err
 }
@@ -1090,7 +1090,7 @@ func (a *App) ArchiveLogs(logIDs []int, adminUserID int) (int, error) {
 		args = append(args, id)
 	}
 
-	query := fmt.Sprintf(`UPDATE login_logs 
+	query := fmt.Sprintf(`UPDATE log_entries 
 		SET is_archived = TRUE, 
 		    archived_at = NOW(), 
 		    archived_by_user_id = ?
@@ -1123,7 +1123,7 @@ func (a *App) ExportArchivedLogsCSV() (string, error) {
 	}
 
 	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("archived_login_logs_%s.csv", time.Now().Format("20060102_150405")))
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("archived_log_entries_%s.csv", time.Now().Format("20060102_150405")))
 
 	file, err := os.Create(filename)
 	if err != nil {
@@ -1216,7 +1216,7 @@ func (a *App) ExportArchivedLogsPDF() (string, error) {
 	}
 
 	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("archived_login_logs_%s.pdf", time.Now().Format("20060102_150405")))
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("archived_log_entries_%s.pdf", time.Now().Format("20060102_150405")))
 	err = pdf.OutputFileAndClose(filename)
 	return filename, err
 }

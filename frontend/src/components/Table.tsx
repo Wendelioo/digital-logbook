@@ -92,11 +92,11 @@ function Table<T extends Record<string, any>>({
 
   if (loading) {
     return (
-      <div className="bg-white rounded-card shadow-card border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-soft border border-gray-200 overflow-hidden">
         <div className="flex items-center justify-center h-64">
           <div className="flex flex-col items-center gap-3">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-            <p className="text-sm text-gray-500">Loading...</p>
+            <p className="text-sm text-gray-600">Loading...</p>
           </div>
         </div>
       </div>
@@ -104,7 +104,7 @@ function Table<T extends Record<string, any>>({
   }
 
   return (
-    <div className="bg-white rounded-card shadow-card border border-gray-100 overflow-hidden">
+    <div className="bg-white rounded-xl shadow-soft border border-gray-200 overflow-hidden">
       <div className={`overflow-x-auto ${stickyHeader ? 'max-h-[600px] overflow-y-auto' : ''}`}>
         <table className="min-w-full divide-y divide-gray-200">
           <thead className={`bg-gray-50 ${stickyHeader ? 'sticky top-0 z-10 shadow-sm' : ''}`}>
@@ -114,8 +114,8 @@ function Table<T extends Record<string, any>>({
                   key={column.key}
                   scope="col"
                   className={`
-                    px-6 ${compact ? 'py-2' : 'py-3'}
-                    text-xs font-semibold text-gray-600 uppercase tracking-wider
+                    px-6 ${compact ? 'py-2.5' : 'py-3.5'}
+                    text-xs font-semibold text-gray-700 uppercase tracking-wider
                     ${getAlignmentClass(column.align)}
                     ${column.sortable ? 'cursor-pointer select-none hover:bg-gray-100 transition-colors' : ''}
                     ${column.width ? column.width : ''}
@@ -164,7 +164,7 @@ function Table<T extends Record<string, any>>({
                         d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
                       />
                     </svg>
-                    <p className="text-sm text-gray-500 font-medium">{emptyMessage}</p>
+                    <p className="text-sm text-gray-600 font-medium">{emptyMessage}</p>
                   </div>
                 </td>
               </tr>
@@ -173,9 +173,10 @@ function Table<T extends Record<string, any>>({
                 <tr
                   key={index}
                   className={`
-                    ${striped && index % 2 === 0 ? 'bg-white' : striped ? 'bg-gray-50' : 'bg-white'}
-                    ${hoverable ? 'hover:bg-primary-50 transition-colors' : ''}
+                    ${striped && index % 2 === 0 ? 'bg-white' : striped ? 'bg-gray-50/50' : 'bg-white'}
+                    ${hoverable ? 'hover:bg-primary-50/50 transition-colors' : ''}
                     ${onRowClick ? 'cursor-pointer' : ''}
+                    border-b border-gray-100 last:border-b-0
                   `}
                   onClick={() => onRowClick && onRowClick(item, index)}
                 >
@@ -183,7 +184,7 @@ function Table<T extends Record<string, any>>({
                     <td
                       key={column.key}
                       className={`
-                        px-6 ${compact ? 'py-2' : 'py-4'}
+                        px-6 ${compact ? 'py-2.5' : 'py-4'}
                         text-sm text-gray-900
                         ${getAlignmentClass(column.align)}
                       `}

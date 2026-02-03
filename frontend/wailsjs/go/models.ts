@@ -64,6 +64,7 @@ export namespace main {
 	    absent_count: number;
 	    late_count: number;
 	    excused_count: number;
+	    is_finalized: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ArchivedAttendanceSheet(source);
@@ -82,6 +83,7 @@ export namespace main {
 	        this.absent_count = source["absent_count"];
 	        this.late_count = source["late_count"];
 	        this.excused_count = source["excused_count"];
+	        this.is_finalized = source["is_finalized"];
 	    }
 	}
 	export class ArchivedFeedbackSheet {
@@ -132,7 +134,7 @@ export namespace main {
 	}
 	export class ArchivedStudent {
 	    user_id: number;
-	    student_number: string;
+	    student_id: string;
 	    first_name: string;
 	    middle_name?: string;
 	    last_name: string;
@@ -151,7 +153,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.user_id = source["user_id"];
-	        this.student_number = source["student_number"];
+	        this.student_id = source["student_id"];
 	        this.first_name = source["first_name"];
 	        this.middle_name = source["middle_name"];
 	        this.last_name = source["last_name"];
@@ -200,6 +202,8 @@ export namespace main {
 	    remarks?: string;
 	    recorded_by: number;
 	    recorded_by_name: string;
+	    is_archived: boolean;
+	    is_finalized: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Attendance(source);
@@ -226,6 +230,44 @@ export namespace main {
 	        this.remarks = source["remarks"];
 	        this.recorded_by = source["recorded_by"];
 	        this.recorded_by_name = source["recorded_by_name"];
+	        this.is_archived = source["is_archived"];
+	        this.is_finalized = source["is_finalized"];
+	    }
+	}
+	export class AttendanceSheetSummary {
+	    class_id: number;
+	    date: string;
+	    subject_code: string;
+	    subject_name: string;
+	    edp_code: string;
+	    schedule: string;
+	    student_count: number;
+	    present_count: number;
+	    absent_count: number;
+	    late_count: number;
+	    excused_count: number;
+	    is_archived: boolean;
+	    is_finalized: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AttendanceSheetSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.class_id = source["class_id"];
+	        this.date = source["date"];
+	        this.subject_code = source["subject_code"];
+	        this.subject_name = source["subject_name"];
+	        this.edp_code = source["edp_code"];
+	        this.schedule = source["schedule"];
+	        this.student_count = source["student_count"];
+	        this.present_count = source["present_count"];
+	        this.absent_count = source["absent_count"];
+	        this.late_count = source["late_count"];
+	        this.excused_count = source["excused_count"];
+	        this.is_archived = source["is_archived"];
+	        this.is_finalized = source["is_finalized"];
 	    }
 	}
 	export class ClassStudent {
@@ -310,9 +352,11 @@ export namespace main {
 	    student_count: number;
 	    enrolled_count: number;
 	    is_active: boolean;
+	    is_archived: boolean;
 	    created_by_user_id?: number;
 	    created_at: string;
 	    latest_attendance_date?: string;
+	    is_attendance_finalized: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new CourseClass(source);
@@ -337,9 +381,11 @@ export namespace main {
 	        this.student_count = source["student_count"];
 	        this.enrolled_count = source["enrolled_count"];
 	        this.is_active = source["is_active"];
+	        this.is_archived = source["is_archived"];
 	        this.created_by_user_id = source["created_by_user_id"];
 	        this.created_at = source["created_at"];
 	        this.latest_attendance_date = source["latest_attendance_date"];
+	        this.is_attendance_finalized = source["is_attendance_finalized"];
 	    }
 	}
 	export class Department {
@@ -421,11 +467,8 @@ export namespace main {
 	    user_id_number: string;
 	    user_type: string;
 	    pc_number?: string;
-	    ip_address?: string;
 	    login_time: string;
 	    logout_time?: string;
-	    session_duration_minutes?: number;
-	    failure_reason?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new LoginLog(source);
@@ -439,11 +482,8 @@ export namespace main {
 	        this.user_id_number = source["user_id_number"];
 	        this.user_type = source["user_type"];
 	        this.pc_number = source["pc_number"];
-	        this.ip_address = source["ip_address"];
 	        this.login_time = source["login_time"];
 	        this.logout_time = source["logout_time"];
-	        this.session_duration_minutes = source["session_duration_minutes"];
-	        this.failure_reason = source["failure_reason"];
 	    }
 	}
 	export class PendingRegistration {
