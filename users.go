@@ -29,28 +29,28 @@ func (a *App) GetUsers() ([]User, error) {
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
 			a.first_name, a.middle_name, a.last_name,
-			a.employee_number, NULL as student_number,
+			a.admin_id, NULL as student_id,
 			a.email, a.contact_number, NULL as department_code
 		FROM users u
-		JOIN admins a ON u.id = a.user_id
+		JOIN admins a ON u.id = a.id
 		WHERE u.user_type = 'admin'
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
 			t.first_name, t.middle_name, t.last_name,
-			t.employee_number, NULL as student_number,
+			t.teacher_id, NULL as student_id,
 			t.email, t.contact_number, t.department_code
 		FROM users u
-		JOIN teachers t ON u.id = t.user_id
+		JOIN teachers t ON u.id = t.id
 		WHERE u.user_type IN ('teacher')
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
 			s.first_name, s.middle_name, s.last_name,
-			NULL as employee_number, s.student_number,
+			NULL as admin_id, s.student_id,
 			s.email, s.contact_number, NULL as department_code
 		FROM users u
-		JOIN students s ON u.id = s.user_id
+		JOIN students s ON u.id = s.id
 		WHERE u.user_type IN ('student', 'working_student')
 		ORDER BY created_at DESC
 	`
@@ -73,28 +73,28 @@ func (a *App) GetUsersByType(userType string) ([]User, error) {
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
 			a.first_name, a.middle_name, a.last_name,
-			a.employee_number, NULL as student_number,
+			a.admin_id, NULL as student_id,
 			a.email, a.contact_number, NULL as department_code
 		FROM users u
-		JOIN admins a ON u.id = a.user_id
+		JOIN admins a ON u.id = a.id
 		WHERE u.user_type = 'admin' AND u.user_type = ?
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
 			t.first_name, t.middle_name, t.last_name,
-			t.employee_number, NULL as student_number,
+			t.teacher_id, NULL as student_id,
 			t.email, t.contact_number, t.department_code
 		FROM users u
-		JOIN teachers t ON u.id = t.user_id
+		JOIN teachers t ON u.id = t.id
 		WHERE u.user_type = 'teacher' AND u.user_type = ?
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
 			s.first_name, s.middle_name, s.last_name,
-			NULL as employee_number, s.student_number,
+			NULL as admin_id, s.student_id,
 			s.email, s.contact_number, NULL as department_code
 		FROM users u
-		JOIN students s ON u.id = s.user_id
+		JOIN students s ON u.id = s.id
 		WHERE u.user_type IN ('student', 'working_student') AND u.user_type = ?
 		ORDER BY created_at DESC
 	`
@@ -117,48 +117,48 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
 			a.first_name, a.middle_name, a.last_name,
-			a.employee_number, NULL as student_number,
+			a.admin_id, NULL as student_id,
 			a.email, a.contact_number, NULL as department_code
 		FROM users u
-		JOIN admins a ON u.id = a.user_id
+		JOIN admins a ON u.id = a.id
 		WHERE u.user_type = 'admin' AND (
 			u.username LIKE ? OR
 			a.first_name LIKE ? OR
 			a.last_name LIKE ? OR
 			a.middle_name LIKE ? OR
-			a.employee_number LIKE ? OR
+			a.admin_id LIKE ? OR
 			DATE_FORMAT(u.created_at, '%Y-%m-%d') LIKE ?
 		)
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
 			t.first_name, t.middle_name, t.last_name,
-			t.employee_number, NULL as student_number,
+			t.teacher_id, NULL as student_id,
 			t.email, t.contact_number, t.department_code
 		FROM users u
-		JOIN teachers t ON u.id = t.user_id
+		JOIN teachers t ON u.id = t.id
 		WHERE u.user_type = 'teacher' AND (
 			u.username LIKE ? OR
 			t.first_name LIKE ? OR
 			t.last_name LIKE ? OR
 			t.middle_name LIKE ? OR
-			t.employee_number LIKE ? OR
+			t.teacher_id LIKE ? OR
 			DATE_FORMAT(u.created_at, '%Y-%m-%d') LIKE ?
 		)
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
 			s.first_name, s.middle_name, s.last_name,
-			NULL as employee_number, s.student_number,
+			NULL as admin_id, s.student_id,
 			s.email, s.contact_number, NULL as department_code
 		FROM users u
-		JOIN students s ON u.id = s.user_id
+		JOIN students s ON u.id = s.id
 		WHERE u.user_type IN ('student', 'working_student') AND (
 			u.username LIKE ? OR
 			s.first_name LIKE ? OR
 			s.last_name LIKE ? OR
 			s.middle_name LIKE ? OR
-			s.student_number LIKE ? OR
+			s.student_id LIKE ? OR
 			DATE_FORMAT(u.created_at, '%Y-%m-%d') LIKE ?
 		)
 	`
@@ -248,16 +248,16 @@ func (a *App) UpdateUser(id int, name, firstName, middleName, lastName, role, em
 
 	switch role {
 	case "admin":
-		query = `UPDATE admins SET first_name = ?, middle_name = ?, last_name = ?, employee_number = ?, email = ? WHERE user_id = ?`
+		query = `UPDATE admins SET first_name = ?, middle_name = ?, last_name = ?, admin_id = ?, email = ? WHERE id = ?`
 		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(employeeID), nullString(email), id)
 	case "teacher":
-		query = `UPDATE teachers SET first_name = ?, middle_name = ?, last_name = ?, employee_number = ?, email = ?, contact_number = ?, department_code = ? WHERE user_id = ?`
+		query = `UPDATE teachers SET first_name = ?, middle_name = ?, last_name = ?, teacher_id = ?, email = ?, contact_number = ?, department_code = ? WHERE id = ?`
 		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(employeeID), nullString(email), nullString(contactNumber), nullString(departmentCode), id)
 	case "student":
-		query = `UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, student_number = ?, email = ?, contact_number = ? WHERE user_id = ? AND is_working_student = FALSE`
+		query = `UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, student_id = ?, email = ?, contact_number = ? WHERE id = ? AND is_working_student = FALSE`
 		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(studentID), nullString(email), nullString(contactNumber), id)
 	case "working_student":
-		query = `UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, student_number = ?, email = ?, contact_number = ? WHERE user_id = ? AND is_working_student = TRUE`
+		query = `UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, student_id = ?, email = ?, contact_number = ? WHERE id = ? AND is_working_student = TRUE`
 		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(studentID), nullString(email), nullString(contactNumber), id)
 	}
 
@@ -409,17 +409,17 @@ func (a *App) insertRoleSpecificProfile(userID int64, role, firstName, middleNam
 
 	switch role {
 	case "admin":
-		query = `INSERT INTO admins (user_id, employee_number, first_name, middle_name, last_name, email) VALUES (?, ?, ?, ?, ?, ?)`
+		query = `INSERT INTO admins (id, admin_id, first_name, middle_name, last_name, email) VALUES (?, ?, ?, ?, ?, ?)`
 		_, err = a.db.Exec(query, userID, nullString(employeeID), firstName, nullString(middleName), lastName, nullString(email))
 	case "teacher":
-		query = `INSERT INTO teachers (user_id, employee_number, first_name, middle_name, last_name, email, contact_number, department_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		query = `INSERT INTO teachers (id, teacher_id, first_name, middle_name, last_name, email, contact_number, department_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 		_, err = a.db.Exec(query, userID, nullString(employeeID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), nullString(departmentCode))
 	case "student":
-		query = `INSERT INTO students (user_id, student_number, first_name, middle_name, last_name, email, contact_number, is_working_student) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		query = `INSERT INTO students (id, student_id, first_name, middle_name, last_name, email, contact_number, is_working_student) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), false)
 	case "working_student":
-		query = `INSERT INTO students (user_id, student_number, first_name, middle_name, last_name, email, contact_number, is_working_student) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-		log.Printf("📝 Inserting working student - user_id: %d, student_number: %s, name: %s %s, email: %s", userID, studentID, firstName, lastName, email)
+		query = `INSERT INTO students (id, student_id, first_name, middle_name, last_name, email, contact_number, is_working_student) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		log.Printf("📝 Inserting working student - id: %d, student_id: %s, name: %s %s, email: %s", userID, studentID, firstName, lastName, email)
 		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), true)
 	}
 
@@ -886,7 +886,7 @@ func (a *App) DeleteUserProfilePhoto(userID int) error {
 // ArchivedStudent represents a student that has been archived (graduated)
 type ArchivedStudent struct {
 	UserID              int       `json:"user_id"`
-	StudentNumber       string    `json:"student_number"`
+	StudentID           string    `json:"student_id"`
 	FirstName           string    `json:"first_name"`
 	MiddleName          *string   `json:"middle_name"`
 	LastName            string    `json:"last_name"`
@@ -911,7 +911,7 @@ func (a *App) ArchiveStudent(studentUserID int) error {
 		UPDATE students 
 		SET archived_at = ?,
 			deletion_scheduled_at = ?
-		WHERE user_id = ? AND archived_at IS NULL
+		WHERE id = ? AND archived_at IS NULL
 	`
 
 	result, err := a.db.Exec(query, now, deletionDate, studentUserID)
@@ -950,7 +950,7 @@ func (a *App) UnarchiveStudent(studentUserID int) error {
 		UPDATE students 
 		SET archived_at = NULL, 
 		    deletion_scheduled_at = NULL
-		WHERE user_id = ? AND archived_at IS NOT NULL
+		WHERE id = ? AND archived_at IS NOT NULL
 	`
 
 	result, err := a.db.Exec(query, studentUserID)
@@ -985,8 +985,8 @@ func (a *App) GetArchivedStudents() ([]ArchivedStudent, error) {
 
 	query := `
 		SELECT 
-			s.user_id,
-			s.student_number,
+			s.id,
+			s.student_id,
 			s.first_name,
 			s.middle_name,
 			s.last_name,
@@ -1011,7 +1011,7 @@ func (a *App) GetArchivedStudents() ([]ArchivedStudent, error) {
 		var student ArchivedStudent
 		err := rows.Scan(
 			&student.UserID,
-			&student.StudentNumber,
+			&student.StudentID,
 			&student.FirstName,
 			&student.MiddleName,
 			&student.LastName,
@@ -1039,7 +1039,7 @@ func (a *App) DeleteExpiredStudents() (int, error) {
 
 	// Get students to delete for logging
 	query := `
-		SELECT user_id, student_number 
+		SELECT id, student_id 
 		FROM students 
 		WHERE archived_at IS NOT NULL 
 		AND deletion_scheduled_at <= NOW()
@@ -1053,13 +1053,13 @@ func (a *App) DeleteExpiredStudents() (int, error) {
 	studentInfo := make(map[int]string)
 	for rows.Next() {
 		var userID int
-		var studentNumber string
-		if err := rows.Scan(&userID, &studentNumber); err != nil {
+		var studentID string
+		if err := rows.Scan(&userID, &studentID); err != nil {
 			rows.Close()
 			return 0, fmt.Errorf("failed to scan expired student: %w", err)
 		}
 		userIDs = append(userIDs, userID)
-		studentInfo[userID] = studentNumber
+		studentInfo[userID] = studentID
 	}
 	rows.Close()
 
@@ -1084,8 +1084,8 @@ func (a *App) DeleteExpiredStudents() (int, error) {
 		return 0, fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
-	for userID, studentNumber := range studentInfo {
-		log.Printf("Deleted expired student: user_id=%d, student_number=%s", userID, studentNumber)
+	for userID, studentID := range studentInfo {
+		log.Printf("Deleted expired student: user_id=%d, student_id=%s", userID, studentID)
 	}
 
 	return int(rowsAffected), nil
@@ -1105,12 +1105,12 @@ func (a *App) GetActiveStudentsForArchiving() ([]User, error) {
 			s.first_name,
 			s.middle_name,
 			s.last_name,
-			s.student_number,
+			s.student_id,
 			s.email,
 			s.contact_number,
 			u.created_at
 		FROM users u
-		JOIN students s ON u.id = s.user_id
+		JOIN students s ON u.id = s.id
 		WHERE u.user_type = 'student' 
 		AND u.is_active = TRUE
 		AND s.archived_at IS NULL

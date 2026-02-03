@@ -28,8 +28,8 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 	query := `
 		SELECT 
 			f.id, 
-			f.student_user_id, 
-			COALESCE(s.student_number, 'N/A') as student_id_str,
+			f.student_id, 
+			COALESCE(s.student_id, 'N/A') as student_id_str,
 			s.first_name, 
 			s.middle_name, 
 			s.last_name, 
@@ -53,11 +53,11 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 					ELSE '' END
 			) as forwarded_by_name
 		FROM feedback f
-		LEFT JOIN students s ON f.student_user_id = s.user_id
+		LEFT JOIN students s ON f.student_id = s.id
 		LEFT JOIN users u_fwd ON f.forwarded_by_user_id = u_fwd.id
-		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.user_id AND u_fwd.user_type IN ('student', 'working_student')
-		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.user_id AND u_fwd.user_type = 'teacher'
-		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.user_id AND u_fwd.user_type = 'admin'
+		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
+		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.id AND u_fwd.user_type = 'admin'
 		WHERE f.status = 'forwarded' AND (f.is_archived = FALSE OR f.is_archived IS NULL)
 		ORDER BY f.date_submitted DESC 
 		LIMIT 1000`
@@ -130,8 +130,8 @@ func (a *App) GetStudentFeedback(studentID int) ([]Feedback, error) {
 	query := `
 		SELECT 
 			f.id, 
-			f.student_user_id, 
-			COALESCE(s.student_number, 'N/A') as student_id_str,
+			f.student_id, 
+			COALESCE(s.student_id, 'N/A') as student_id_str,
 			s.first_name,
 			s.middle_name,
 			s.last_name,
@@ -143,8 +143,8 @@ func (a *App) GetStudentFeedback(studentID int) ([]Feedback, error) {
 			f.comments, 
 			f.date_submitted 
 		FROM feedback f
-		LEFT JOIN students s ON f.student_user_id = s.user_id
-		WHERE f.student_user_id = ? 
+		LEFT JOIN students s ON f.student_id = s.id
+		WHERE f.student_id = ? 
 		ORDER BY f.date_submitted DESC`
 	rows, err := a.db.Query(query, studentID)
 	if err != nil {
@@ -262,7 +262,7 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 		priority = "high"
 	}
 
-	query := `INSERT INTO feedback (student_user_id, pc_number, 
+	query := `INSERT INTO feedback (student_id, pc_number, 
 			  equipment_condition, monitor_condition, keyboard_condition, mouse_condition, 
 			  comments, priority, date_submitted) 
 			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`
@@ -288,8 +288,8 @@ func (a *App) GetPendingFeedback() ([]Feedback, error) {
 	query := `
 		SELECT 
 			f.id, 
-			f.student_user_id, 
-			COALESCE(s.student_number, 'N/A') as student_id_str,
+			f.student_id, 
+			COALESCE(s.student_id, 'N/A') as student_id_str,
 			s.first_name, 
 			s.middle_name, 
 			s.last_name, 
@@ -302,7 +302,7 @@ func (a *App) GetPendingFeedback() ([]Feedback, error) {
 			f.date_submitted,
 			f.status
 		FROM feedback f
-		LEFT JOIN students s ON f.student_user_id = s.user_id
+		LEFT JOIN students s ON f.student_id = s.id
 		WHERE f.status = 'pending'
 		ORDER BY f.date_submitted DESC 
 		LIMIT 1000`
@@ -555,7 +555,7 @@ func (a *App) GetArchivedFeedbackSheets() ([]ArchivedFeedbackSheet, error) {
 			SUM(CASE WHEN f.equipment_condition != 'Good' OR f.monitor_condition != 'Good' 
 			         OR f.keyboard_condition != 'Good' OR f.mouse_condition != 'Good' THEN 1 ELSE 0 END) as issue_count,
 			COUNT(DISTINCT f.pc_number) as unique_pcs,
-			COUNT(DISTINCT f.student_user_id) as unique_students
+			COUNT(DISTINCT f.student_id) as unique_students
 		FROM feedback f
 		WHERE f.is_archived = TRUE
 		GROUP BY DATE(f.date_submitted)
@@ -597,8 +597,8 @@ func (a *App) GetArchivedFeedbackByDate(date string) ([]Feedback, error) {
 	query := `
 		SELECT 
 			f.id, 
-			f.student_user_id, 
-			COALESCE(s.student_number, 'N/A') as student_id_str,
+			f.student_id, 
+			COALESCE(s.student_id, 'N/A') as student_id_str,
 			s.first_name, 
 			s.middle_name, 
 			s.last_name, 
@@ -622,11 +622,11 @@ func (a *App) GetArchivedFeedbackByDate(date string) ([]Feedback, error) {
 					ELSE '' END
 			) as forwarded_by_name
 		FROM feedback f
-		LEFT JOIN students s ON f.student_user_id = s.user_id
+		LEFT JOIN students s ON f.student_id = s.id
 		LEFT JOIN users u_fwd ON f.forwarded_by_user_id = u_fwd.id
-		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.user_id AND u_fwd.user_type IN ('student', 'working_student')
-		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.user_id AND u_fwd.user_type = 'teacher'
-		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.user_id AND u_fwd.user_type = 'admin'
+		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
+		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.id AND u_fwd.user_type = 'admin'
 		WHERE f.is_archived = TRUE AND DATE(f.date_submitted) = ?
 		ORDER BY f.date_submitted DESC
 	`
@@ -895,8 +895,8 @@ func (a *App) GetArchivedFeedback() ([]Feedback, error) {
 	query := `
 		SELECT 
 			f.id, 
-			f.student_user_id, 
-			COALESCE(s.student_number, 'N/A') as student_id_str,
+			f.student_id, 
+			COALESCE(s.student_id, 'N/A') as student_id_str,
 			s.first_name, 
 			s.middle_name, 
 			s.last_name, 
@@ -920,11 +920,11 @@ func (a *App) GetArchivedFeedback() ([]Feedback, error) {
 					ELSE '' END
 			) as forwarded_by_name
 		FROM feedback f
-		LEFT JOIN students s ON f.student_user_id = s.user_id
+		LEFT JOIN students s ON f.student_id = s.id
 		LEFT JOIN users u_fwd ON f.forwarded_by_user_id = u_fwd.id
-		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.user_id AND u_fwd.user_type IN ('student', 'working_student')
-		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.user_id AND u_fwd.user_type = 'teacher'
-		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.user_id AND u_fwd.user_type = 'admin'
+		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
+		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.id AND u_fwd.user_type = 'admin'
 		WHERE f.is_archived = TRUE
 		ORDER BY f.archived_at DESC, f.date_submitted DESC 
 		LIMIT 1000`

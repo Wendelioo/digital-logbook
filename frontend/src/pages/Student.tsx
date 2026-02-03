@@ -23,7 +23,11 @@ import {
   LogIn,
   MapPin,
   Library,
-  Eye
+  Eye,
+  Archive,
+  ArchiveRestore,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import {
   GetStudentDashboard,
@@ -31,12 +35,16 @@ import {
   GetStudentFeedback,
   GetStudentLoginLogs,
   GetStudentClasses,
+  GetStudentArchivedClasses,
   GetClassesByEDPCode,
   JoinClassByEDPCode,
-  GetClassStudents
+  GetClassStudents,
+  ArchiveStudentEnrollment,
+  UnarchiveStudentEnrollment
 } from '../../wailsjs/go/main/App';
 import { useAuth } from '../contexts/AuthContext';
 import { main } from '../../wailsjs/go/models';
+import LoginHistory from '../components/LoginHistory';
 
 // Use the generated models from the backend
 type Attendance = main.Attendance;
@@ -202,307 +210,6 @@ function DashboardOverview() {
   );
 }
 
-function LoginHistory() {
-  const { user } = useAuth();
-  const [loginLogs, setLoginLogs] = useState<LoginLog[]>([]);
-  const [filteredLogs, setFilteredLogs] = useState<LoginLog[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [autoDeleteDays, setAutoDeleteDays] = useState<number>(30);
-
-  useEffect(() => {
-    const loadLoginLogs = async () => {
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        console.log('Loading login logs for user ID:', user.id);
-        const data = await GetStudentLoginLogs(user.id);
-        console.log('Received login logs data:', data);
-        console.log('Number of logs:', data?.length || 0);
-
-        if (data && Array.isArray(data)) {
-          setLoginLogs(data);
-          setFilteredLogs(data);
-          setError('');
-        } else {
-          setLoginLogs([]);
-          setFilteredLogs([]);
-          setError('');
-        }
-      } catch (error) {
-        console.error('Failed to load login logs:', error);
-        setError(`Unable to load login history: ${error}`);
-        setLoginLogs([]);
-        setFilteredLogs([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadLoginLogs();
-
-    // Auto-refresh every 30 seconds to show updated login history
-    const refreshInterval = setInterval(() => {
-      if (user) loadLoginLogs();
-    }, 30000);
-
-    return () => clearInterval(refreshInterval);
-  }, [user]);
-
-  // Filter logs based on date and search
-  useEffect(() => {
-    let filtered = loginLogs;
-
-    // Apply date filter
-    if (selectedDate) {
-      filtered = filtered.filter(log => {
-        if (!log.login_time) return false;
-
-        const logDate = new Date(log.login_time);
-        const selected = new Date(selectedDate);
-
-        // Compare only the date part (ignore time)
-        return logDate.toDateString() === selected.toDateString();
-      });
-    }
-
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(log =>
-        (log.pc_number && log.pc_number.toLowerCase().includes(query)) ||
-        (log.login_time && new Date(log.login_time).toLocaleString().toLowerCase().includes(query))
-      );
-    }
-
-    setFilteredLogs(filtered);
-  }, [loginLogs, selectedDate, searchQuery]);
-
-  const clearFilters = () => {
-    setSelectedDate(null);
-    setSearchQuery('');
-  };
-
-  const activeFilterCount = selectedDate ? 1 : 0;
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-500"></div>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">Login History</h2>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-700">Auto-delete logs after:</span>
-          <select
-            value={autoDeleteDays}
-            onChange={(e) => setAutoDeleteDays(Number(e.target.value))}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-          >
-            <option value={30}>30 days</option>
-            <option value={60}>60 days</option>
-            <option value={90}>90 days</option>
-            <option value={180}>180 days</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Search and Filter Controls */}
-      <div className="mb-6 bg-white shadow rounded-lg p-4">
-        <div className="flex items-center gap-3">
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder=""
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            />
-            {searchQuery && (
-              <Button
-                onClick={() => setSearchQuery('')}
-                variant="secondary"
-                size="sm"
-                icon={<X className="h-5 w-5" />}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 !p-0"
-              />
-            )}
-          </div>
-          <div className="relative">
-            <Button
-              onClick={() => setShowFilters(!showFilters)}
-              variant={showFilters ? 'primary' : 'outline'}
-              icon={<SlidersHorizontal className="h-5 w-5" />}
-              className={showFilters ? 'bg-primary-50 border-primary-500 text-primary-700' : ''}
-            >
-              Filters
-              {activeFilterCount > 0 && (
-                <span className="ml-1 px-2 py-0.5 bg-primary-500 text-white rounded-full text-xs">
-                  {activeFilterCount}
-                </span>
-              )}
-            </Button>
-
-            {/* Dropdown with Date Picker */}
-            {showFilters && (
-              <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="text-sm font-medium text-gray-700">Filter by Date:</label>
-                  </div>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">Select Date</label>
-                      <div className="relative">
-                        <input
-                          type="date"
-                          value={selectedDate ? selectedDate.toISOString().split('T')[0] : ''}
-                          onChange={(e) => setSelectedDate(e.target.value ? new Date(e.target.value) : null)}
-                          max={new Date().toISOString().split('T')[0]}
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        />
-                      </div>
-                    </div>
-                    {selectedDate && (
-                      <Button
-                        onClick={() => setSelectedDate(null)}
-                        variant="secondary"
-                        size="sm"
-                        className="w-full text-xs text-gray-600 hover:text-gray-900 underline text-left !p-1"
-                      >
-                        Clear Date Filter
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-          {(searchQuery || selectedDate) && (
-            <Button
-              onClick={clearFilters}
-              variant="outline"
-            >
-              Clear All
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {error && (
-        <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md">
-          {error}
-        </div>
-      )}
-
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        {filteredLogs.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No logs found</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    PC Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Login Time
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Logout Time
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                          </svg>
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {log.pc_number || <span className="text-gray-400 italic">Unknown</span>}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {log.login_time ? new Date(log.login_time).toLocaleTimeString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                        hour12: true
-                      }) : '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {log.logout_time ? (
-                        new Date(log.logout_time).toLocaleTimeString('en-US', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                          hour12: true
-                        })
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          Active
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {log.login_time ? new Date(log.login_time).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
-                      }) : '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {log.logout_time ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                          Completed
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          <span className="w-2 h-2 mr-1.5 bg-green-600 rounded-full animate-pulse"></span>
-                          Active Session
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function FeedbackHistory() {
   const { user } = useAuth();
   const [feedbackList, setFeedbackList] = useState<Feedback[]>([]);
@@ -512,6 +219,8 @@ function FeedbackHistory() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [entriesPerPage, setEntriesPerPage] = useState(10);
 
   useEffect(() => {
     const loadFeedback = async () => {
@@ -568,6 +277,7 @@ function FeedbackHistory() {
     }
 
     setFilteredFeedback(filtered);
+    setCurrentPage(1); // Reset to first page when filters change
   }, [feedbackList, selectedDate, searchQuery]);
 
   const clearFilters = () => {
@@ -593,6 +303,25 @@ function FeedbackHistory() {
 
       {/* Search and Filter Controls */}
       <div className="mb-6 bg-white shadow rounded-lg p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700">Show</span>
+            <select
+              value={entriesPerPage}
+              onChange={(e) => {
+                setEntriesPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            <span className="text-sm text-gray-700">entries</span>
+          </div>
+        </div>
         <div className="flex items-center gap-3">
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -680,55 +409,65 @@ function FeedbackHistory() {
         </div>
       )}
 
-      {filteredFeedback.length === 0 ? (
-        <div className="bg-white shadow rounded-lg p-12 text-center">
-          <p className="text-gray-500">No reports available</p>
-        </div>
-      ) : (
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    #
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date & Time
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    PC Number
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Computer
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Mouse
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Keyboard
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Monitor
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px]">
-                    Comments
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredFeedback.map((feedback, index) => (
-                  <tr key={feedback.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {filteredFeedback.length - index}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      <div className="flex flex-col">
-                        <span className="font-medium">
-                          {new Date(feedback.date_submitted).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric'
+      {(() => {
+        // Pagination calculations
+        const totalPages = Math.ceil(filteredFeedback.length / entriesPerPage);
+        const startIndex = (currentPage - 1) * entriesPerPage;
+        const endIndex = startIndex + entriesPerPage;
+        const currentRecords = filteredFeedback.slice(startIndex, endIndex);
+        const startEntry = filteredFeedback.length > 0 ? startIndex + 1 : 0;
+        const endEntry = Math.min(endIndex, filteredFeedback.length);
+
+        return filteredFeedback.length === 0 ? (
+          <div className="bg-white shadow rounded-lg p-12 text-center">
+            <p className="text-gray-500">No reports available</p>
+          </div>
+        ) : (
+          <>
+            <div className="bg-white shadow rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        #
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Date & Time
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        PC Number
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Computer
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Mouse
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Keyboard
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Monitor
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[200px]">
+                        Comments
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {currentRecords.map((feedback, index) => (
+                      <tr key={feedback.id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          {startIndex + index + 1}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                          <div className="flex flex-col">
+                            <span className="font-medium">
+                              {new Date(feedback.date_submitted).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric'
                           })}
                         </span>
                         <span className="text-xs text-gray-500">
@@ -799,7 +538,37 @@ function FeedbackHistory() {
             </table>
           </div>
         </div>
-      )}
+
+        {/* Pagination */}
+        <div className="mt-4 flex items-center justify-between">
+          <div className="text-sm text-gray-700">
+            Showing {startEntry} to {endEntry} of {filteredFeedback.length} entries
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              variant="outline"
+              size="sm"
+            >
+              Previous
+            </Button>
+            <Button variant="primary" size="sm">
+              {currentPage}
+            </Button>
+            <Button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages || totalPages === 0}
+              variant="outline"
+              size="sm"
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+        </>
+      );
+      })()}
     </div>
   );
 }
@@ -881,6 +650,24 @@ function MyClasses() {
   const handleRefreshClasslist = async () => {
     if (viewingClasslist) {
       await loadClasslist(viewingClasslist);
+    }
+  };
+
+  const handleArchiveClass = async (classInfo: CourseClass) => {
+    if (!user) return;
+    
+    const confirmArchive = window.confirm(
+      `Are you sure you want to archive "${classInfo.subject_code}"? This will move it to your Archived Classes.`
+    );
+    
+    if (!confirmArchive) return;
+    
+    try {
+      await ArchiveStudentEnrollment(user.id, classInfo.class_id);
+      await loadClasses(); // Refresh the list
+    } catch (error) {
+      console.error('Failed to archive class:', error);
+      alert('Failed to archive class. Please try again.');
     }
   };
 
@@ -1181,13 +968,22 @@ function MyClasses() {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => handleViewClasslist(cls)}
-                        className="text-blue-600 hover:text-blue-800 transition-colors p-1"
-                        title="View Class List"
-                      >
-                        <Eye className="h-5 w-5" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleViewClasslist(cls)}
+                          className="text-blue-600 hover:text-blue-800 transition-colors p-1"
+                          title="View Class List"
+                        >
+                          <Eye className="h-5 w-5" />
+                        </button>
+                        <button
+                          onClick={() => handleArchiveClass(cls)}
+                          className="text-gray-500 hover:text-gray-700 transition-colors p-1"
+                          title="Archive Class"
+                        >
+                          <Archive className="h-5 w-5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1395,12 +1191,496 @@ function MyClasses() {
   );
 }
 
+// Interface for semester grouping
+interface SemesterGroup {
+  semester: string;
+  schoolYear: string;
+  classes: CourseClass[];
+}
+
+function ArchivedClasses() {
+  const { user } = useAuth();
+  const [archivedClasses, setArchivedClasses] = useState<CourseClass[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
+  const [expandedSemesters, setExpandedSemesters] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = useState('');
+  const [semesterFilter, setSemesterFilter] = useState<string>('all');
+  const [viewingClasslist, setViewingClasslist] = useState<CourseClass | null>(null);
+  const [classlistStudents, setClasslistStudents] = useState<ClasslistEntry[]>([]);
+  const [loadingClasslist, setLoadingClasslist] = useState(false);
+
+  useEffect(() => {
+    loadArchivedClasses();
+  }, [user]);
+
+  const loadArchivedClasses = async () => {
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      const data = await GetStudentArchivedClasses(user.id);
+      setArchivedClasses(data || []);
+      
+      // Auto-expand the first semester group
+      if (data && data.length > 0) {
+        const firstClass = data[0];
+        const key = `${firstClass.semester || 'Unknown'}-${firstClass.school_year || 'Unknown'}`;
+        setExpandedSemesters(new Set([key]));
+      }
+      setError('');
+    } catch (error) {
+      console.error('Failed to load archived classes:', error);
+      setError('Unable to load archived classes from server.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadClasslist = async (classInfo: CourseClass) => {
+    setLoadingClasslist(true);
+    try {
+      const students = await GetClassStudents(classInfo.class_id);
+      setClasslistStudents(students);
+    } catch (error) {
+      console.error('Failed to load classlist:', error);
+      alert('Failed to load classlist. Please try again.');
+    } finally {
+      setLoadingClasslist(false);
+    }
+  };
+
+  const handleViewClasslist = async (classInfo: CourseClass) => {
+    setViewingClasslist(classInfo);
+    await loadClasslist(classInfo);
+  };
+
+  const handleUnarchiveClass = async (classInfo: CourseClass) => {
+    if (!user) return;
+    
+    const confirmUnarchive = window.confirm(
+      `Are you sure you want to restore "${classInfo.subject_code}" to My Classes?`
+    );
+    
+    if (!confirmUnarchive) return;
+    
+    try {
+      await UnarchiveStudentEnrollment(user.id, classInfo.class_id);
+      await loadArchivedClasses(); // Refresh the list
+    } catch (error) {
+      console.error('Failed to unarchive class:', error);
+      alert('Failed to restore class. Please try again.');
+    }
+  };
+
+  // Group classes by semester and school year
+  const groupedClasses = React.useMemo(() => {
+    const groups: SemesterGroup[] = [];
+    const groupMap = new Map<string, SemesterGroup>();
+
+    // Filter classes based on search term and semester filter
+    let filteredClasses = archivedClasses;
+    
+    // Apply semester filter
+    if (semesterFilter !== 'all') {
+      filteredClasses = filteredClasses.filter(cls => 
+        cls.semester?.toLowerCase() === semesterFilter.toLowerCase()
+      );
+    }
+    
+    // Apply search term
+    if (searchTerm) {
+      const query = searchTerm.toLowerCase();
+      filteredClasses = filteredClasses.filter(cls =>
+        cls.subject_code.toLowerCase().includes(query) ||
+        (cls.subject_name && cls.subject_name.toLowerCase().includes(query)) ||
+        (cls.descriptive_title && cls.descriptive_title.toLowerCase().includes(query)) ||
+        (cls.edp_code && cls.edp_code.toLowerCase().includes(query)) ||
+        (cls.teacher_name && cls.teacher_name.toLowerCase().includes(query))
+      );
+    }
+
+    filteredClasses.forEach(cls => {
+      const semester = cls.semester || 'Unknown Semester';
+      const schoolYear = cls.school_year || 'Unknown Year';
+      const key = `${semester}-${schoolYear}`;
+
+      if (!groupMap.has(key)) {
+        const group: SemesterGroup = {
+          semester,
+          schoolYear,
+          classes: []
+        };
+        groupMap.set(key, group);
+        groups.push(group);
+      }
+      groupMap.get(key)!.classes.push(cls);
+    });
+
+    return groups;
+  }, [archivedClasses, searchTerm, semesterFilter]);
+
+  const toggleSemester = (key: string) => {
+    const newExpanded = new Set(expandedSemesters);
+    if (newExpanded.has(key)) {
+      newExpanded.delete(key);
+    } else {
+      newExpanded.add(key);
+    }
+    setExpandedSemesters(newExpanded);
+  };
+
+  const formatSemesterLabel = (semester: string, schoolYear: string) => {
+    return `${semester} - ${schoolYear}`;
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-500"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col">
+      {/* Header Section */}
+      <div className="flex-shrink-0 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Archive className="h-6 w-6 text-gray-600" />
+            <h2 className="text-2xl font-bold text-gray-900">Archived Classes</h2>
+          </div>
+          <div className="text-sm text-gray-500">
+            {archivedClasses.length} archived {archivedClasses.length === 1 ? 'class' : 'classes'}
+          </div>
+        </div>
+        <p className="mt-1 text-sm text-gray-600">
+          View your previously enrolled classes organized by semester.
+        </p>
+      </div>
+
+      {error && (
+        <div className="flex-shrink-0 mb-4 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md">
+          {error}
+        </div>
+      )}
+
+      {/* Search and Filter Section */}
+      <div className="flex-shrink-0 mb-4">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700">Semester</span>
+            <select
+              value={semesterFilter}
+              onChange={(e) => setSemesterFilter(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+            >
+              <option value="all">All Semesters</option>
+              <option value="1st Semester">1st Semester</option>
+              <option value="2nd Semester">2nd Semester</option>
+              <option value="Summer">Summer</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700">Search</span>
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Search classes..."
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Archived Classes by Semester */}
+      {groupedClasses.length > 0 ? (
+        <div className="space-y-4">
+          {groupedClasses.map((group) => {
+            const key = `${group.semester}-${group.schoolYear}`;
+            const isExpanded = expandedSemesters.has(key);
+
+            return (
+              <div key={key} className="bg-white shadow rounded-lg overflow-hidden">
+                {/* Semester Header */}
+                <button
+                  onClick={() => toggleSemester(key)}
+                  className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    {isExpanded ? (
+                      <ChevronDown className="h-5 w-5 text-gray-500" />
+                    ) : (
+                      <ChevronRight className="h-5 w-5 text-gray-500" />
+                    )}
+                    <div className="text-left">
+                      <h3 className="text-sm font-semibold text-gray-900">
+                        {formatSemesterLabel(group.semester, group.schoolYear)}
+                      </h3>
+                      <p className="text-xs text-gray-500">
+                        {group.classes.length} {group.classes.length === 1 ? 'class' : 'classes'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700">
+                    Archived
+                  </span>
+                </button>
+
+                {/* Classes Table */}
+                {isExpanded && (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            EDP Code
+                          </th>
+                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Subject Code
+                          </th>
+                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Descriptive Title
+                          </th>
+                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Teacher
+                          </th>
+                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Schedule
+                          </th>
+                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Room
+                          </th>
+                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Action
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {group.classes.map((cls) => (
+                          <tr key={cls.class_id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                              {cls.edp_code || '-'}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                              {cls.subject_code || '-'}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                              {cls.descriptive_title || cls.subject_name || '-'}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                              {cls.teacher_name || '-'}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                              {cls.schedule || '-'}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                              {cls.room || '-'}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleViewClasslist(cls)}
+                                  className="text-blue-600 hover:text-blue-800 transition-colors p-1"
+                                  title="View Class List"
+                                >
+                                  <Eye className="h-5 w-5" />
+                                </button>
+                                <button
+                                  onClick={() => handleUnarchiveClass(cls)}
+                                  className="text-green-600 hover:text-green-800 transition-colors p-1"
+                                  title="Restore to My Classes"
+                                >
+                                  <ArchiveRestore className="h-5 w-5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="bg-white shadow rounded-lg p-12 text-center">
+          <Archive className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          {searchTerm ? (
+            <>
+              <p className="text-gray-500 font-medium">No matching archived classes found</p>
+              <button
+                onClick={() => setSearchTerm('')}
+                className="mt-4 text-primary-600 hover:text-primary-700 text-sm font-medium"
+              >
+                Clear Search
+              </button>
+            </>
+          ) : (
+            <p className="text-gray-500 font-medium">No archived classes</p>
+          )}
+        </div>
+      )}
+
+      {/* Classlist Modal */}
+      {viewingClasslist && (
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
+          <div className="min-h-screen p-4 md:p-8">
+            {/* Bond Paper Style Class List Sheet */}
+            <div className="bg-white max-w-4xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
+              {/* Close Button */}
+              <button
+                onClick={() => {
+                  setViewingClasslist(null);
+                  setClasslistStudents([]);
+                }}
+                className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
+                title="Close"
+              >
+                <X className="h-6 w-6" />
+              </button>
+
+              {/* Header */}
+              <div className="text-center mb-6 pb-4 border-b-2 border-gray-300">
+                <h1 className="text-2xl font-bold text-gray-900 uppercase tracking-wide">Class List</h1>
+                <p className="text-sm text-gray-600 mt-1">{viewingClasslist.semester} - {viewingClasslist.school_year}</p>
+                <span className="inline-flex items-center mt-2 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700">
+                  Archived
+                </span>
+              </div>
+
+              {/* Combined Class Info and Student List Table */}
+              <div className="overflow-hidden">
+                <table className="min-w-full" style={{ tableLayout: 'fixed' }}>
+                  {/* Class Information Header */}
+                  <thead>
+                    <tr>
+                      <th colSpan={5} className="px-4 py-2 text-left border-b-2 border-gray-900">
+                        <div className="text-gray-900 font-bold text-sm tracking-wide">CLASS INFORMATION</div>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white text-sm">
+                    <tr>
+                      <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '120px' }}>Subject Code:</td>
+                      <td className="px-4 py-2 text-gray-900">{viewingClasslist.subject_code || 'N/A'}</td>
+                      <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '100px' }}>EDP Code:</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={2}>{viewingClasslist.edp_code || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 font-semibold text-gray-700">Descriptive Title:</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={4}>{viewingClasslist.descriptive_title || viewingClasslist.subject_name || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 font-semibold text-gray-700">Schedule:</td>
+                      <td className="px-4 py-2 text-gray-900">{viewingClasslist.schedule || 'N/A'}</td>
+                      <td className="px-4 py-2 font-semibold text-gray-700">Room:</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={2}>{viewingClasslist.room || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 font-semibold text-gray-700">Teacher:</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={4}>{viewingClasslist.teacher_name || 'N/A'}</td>
+                    </tr>
+                  </tbody>
+
+                  {/* Student List Header */}
+                  <thead>
+                    <tr>
+                      <th colSpan={5} className="px-4 py-3 text-left border-b-2 border-t-2 border-gray-900">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-900 font-bold text-sm tracking-wide">STUDENTS LIST</span>
+                          <div className="flex items-center gap-4">
+                            <span className="text-xs text-gray-600">Total: {classlistStudents.length}</span>
+                            {loadingClasslist && (
+                              <Loader2 className="h-4 w-4 animate-spin text-primary-600" />
+                            )}
+                          </div>
+                        </div>
+                      </th>
+                    </tr>
+                  </thead>
+
+                  {/* Student List Column Headers */}
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-1 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '25px' }}>No.</th>
+                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>Student ID</th>
+                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase">Name</th>
+                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '200px' }}>Email</th>
+                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Status</th>
+                    </tr>
+                  </thead>
+
+                  {/* Student Rows */}
+                  <tbody className="bg-white text-xs">
+                    {loadingClasslist && classlistStudents.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-12 text-center">
+                          <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary-600 mb-2" />
+                          <p className="text-gray-500 text-sm">Loading students...</p>
+                        </td>
+                      </tr>
+                    ) : classlistStudents.length > 0 ? (
+                      classlistStudents.map((student, index) => (
+                        <tr key={student.student_user_id} className="hover:bg-gray-50 border-b border-gray-100">
+                          <td className="px-1 py-1.5 text-center font-medium text-gray-900">
+                            {index + 1}
+                          </td>
+                          <td className="px-1 py-1.5 font-medium text-gray-900 text-xs">
+                            {student.student_code}
+                          </td>
+                          <td className="px-1 py-1.5 text-gray-900">
+                            {student.last_name}, {student.first_name} {student.middle_name ? student.middle_name.charAt(0) + '.' : ''}
+                          </td>
+                          <td className="px-1 py-1.5 text-gray-700">
+                            {student.email || '—'}
+                          </td>
+                          <td className="px-1 py-1.5">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${student.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                              {student.status || 'active'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="px-6 py-8 text-center">
+                          <Users className="mx-auto h-10 w-10 text-gray-400 mb-2" />
+                          <p className="text-gray-500 text-sm">No students enrolled</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Footer */}
+              <div className="mt-8 pt-4 border-t border-gray-300 text-xs text-gray-600 flex justify-between">
+                <span>Printed: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                <span>Digital Logbook System</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StudentDashboard() {
   const location = useLocation();
 
   const navigationItems = [
     { name: 'Dashboard', href: '/student', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/student' },
     { name: 'My Classes', href: '/student/classes', icon: <Library className="h-5 w-5" />, current: location.pathname === '/student/classes' },
+    { name: 'Archived Classes', href: '/student/archived-classes', icon: <Archive className="h-5 w-5" />, current: location.pathname === '/student/archived-classes' },
     { name: 'Login History', href: '/student/attendance', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/student/attendance' },
     { name: 'Feedback History', href: '/student/feedback', icon: <MessageSquare className="h-5 w-5" />, current: location.pathname === '/student/feedback' },
   ];
@@ -1410,7 +1690,8 @@ function StudentDashboard() {
       <Routes>
         <Route index element={<DashboardOverview />} />
         <Route path="classes" element={<MyClasses />} />
-        <Route path="attendance" element={<LoginHistory />} />
+        <Route path="archived-classes" element={<ArchivedClasses />} />
+        <Route path="attendance" element={<LoginHistory useDropdownFilter={true} />} />
         <Route path="feedback" element={<FeedbackHistory />} />
       </Routes>
     </Layout>
@@ -1419,3 +1700,5 @@ function StudentDashboard() {
 
 export default StudentDashboard;
 
+// Export student-specific components for use in WorkingStudent dashboard
+export { MyClasses, ArchivedClasses, FeedbackHistory };

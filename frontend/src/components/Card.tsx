@@ -43,12 +43,12 @@ export const CardHeader: React.FC<CardHeaderProps> = ({
   className = '' 
 }) => {
   return (
-    <div className={`px-6 py-4 border-b border-gray-200 bg-gray-50 ${className}`}>
+    <div className={`px-6 py-4 border-b border-gray-200 ${className}`}>
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+          <h3 className="text-base font-semibold text-gray-900">{title}</h3>
           {subtitle && (
-            <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
+            <p className="mt-1 text-sm text-gray-600">{subtitle}</p>
           )}
         </div>
         {action && <div className="flex items-center gap-2">{action}</div>}
@@ -84,7 +84,7 @@ interface CardFooterProps {
 
 export const CardFooter: React.FC<CardFooterProps> = ({ children, className = '' }) => {
   return (
-    <div className={`px-6 py-4 bg-gray-50 border-t border-gray-200 ${className}`}>
+    <div className={`px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-xl ${className}`}>
       {children}
     </div>
   );
@@ -112,13 +112,13 @@ export const StatCard: React.FC<StatCardProps> = ({
   className = '' 
 }) => {
   const colorClasses = {
-    blue: 'bg-blue-500 text-white',
-    green: 'bg-green-500 text-white',
-    red: 'bg-red-500 text-white',
-    yellow: 'bg-yellow-500 text-white',
-    purple: 'bg-purple-500 text-white',
-    indigo: 'bg-indigo-500 text-white',
-    orange: 'bg-orange-500 text-white',
+    blue: 'bg-primary-100 text-primary-700',
+    green: 'bg-success-100 text-success-700',
+    red: 'bg-danger-100 text-danger-700',
+    yellow: 'bg-warning-100 text-warning-700',
+    purple: 'bg-purple-100 text-purple-700',
+    indigo: 'bg-indigo-100 text-indigo-700',
+    orange: 'bg-orange-100 text-orange-700',
   };
 
   return (
@@ -127,17 +127,17 @@ export const StatCard: React.FC<StatCardProps> = ({
         <div className="flex items-center">
           {icon && (
             <div className="flex-shrink-0">
-              <div className={`${colorClasses[color]} rounded-lg p-3 shadow-md`}>
+              <div className={`${colorClasses[color]} rounded-lg p-3`}>
                 {icon}
               </div>
             </div>
           )}
           <div className={`${icon ? 'ml-5' : ''} flex-1`}>
-            <dt className="text-sm font-medium text-gray-500 uppercase tracking-wide truncate">
+            <dt className="text-xs font-medium text-gray-600 uppercase tracking-wide truncate">
               {title}
             </dt>
             <dd className="mt-1 flex items-baseline">
-              <span className="text-2xl font-bold text-gray-900">
+              <span className="text-2xl font-semibold text-gray-900">
                 {value}
               </span>
               {trend && (

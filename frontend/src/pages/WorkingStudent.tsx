@@ -6,6 +6,7 @@ import { Card, CardHeader, CardBody, StatCard } from '../components/Card';
 import Table from '../components/Table';
 import { Badge, StatusBadge } from '../components/Badge';
 import PendingRegistrations from '../components/PendingRegistrations';
+import { MyClasses, ArchivedClasses } from './Student';
 import { 
   LayoutDashboard, 
   UserPlus, 
@@ -30,7 +31,8 @@ import {
   ClipboardList,
   Archive,
   ArchiveRestore,
-  UserX
+  UserX,
+  Library
 } from 'lucide-react';
 import { 
   GetWorkingStudentDashboard,
@@ -44,7 +46,7 @@ import {
   UnarchiveStudent,
   DeleteExpiredStudents
 } from '../../wailsjs/go/main/App';
-import WorkingStudentLoginHistory from './WorkingStudentLoginHistory';
+import LoginHistory from '../components/LoginHistory';
 import { useAuth } from '../contexts/AuthContext';
 import { main } from '../../wailsjs/go/models';
 
@@ -57,7 +59,7 @@ type Feedback = main.Feedback;
 // ArchivedStudent represents a graduated student scheduled for deletion
 interface ArchivedStudent {
   user_id: number;
-  student_number: string;
+  student_id: string;
   first_name: string;
   middle_name?: string;
   last_name: string;
@@ -1319,7 +1321,7 @@ function ArchivedStudentsManagement() {
   );
 
   const filteredArchivedStudents = archivedStudents.filter(student =>
-    student.student_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    student.student_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
     student.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     student.last_name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -1515,7 +1517,7 @@ function ArchivedStudentsManagement() {
                   {filteredArchivedStudents.map((student) => (
                     <tr key={student.user_id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {student.student_number}
+                        {student.student_id}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {student.last_name}, {student.first_name} {student.middle_name || ''}
@@ -1616,7 +1618,7 @@ function ArchivedStudentsManagement() {
               <h3 className="text-lg font-semibold text-gray-900">Restore Student Account</h3>
             </div>
             <p className="text-sm text-gray-600 mb-4">
-              You are about to restore <strong>{studentToUnarchive.first_name} {studentToUnarchive.last_name}</strong> ({studentToUnarchive.student_number}).
+              You are about to restore <strong>{studentToUnarchive.first_name} {studentToUnarchive.last_name}</strong> ({studentToUnarchive.student_id}).
             </p>
             <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
               <p className="text-sm text-blue-800">
@@ -1653,24 +1655,42 @@ function WorkingStudentDashboard() {
   const location = useLocation();
   const { user } = useAuth();
   
+  // Navigation items organized into sections:
+  // 1. Working Student duties (lab management)
+  // 2. Student features (classes, personal records) - since working students are also students
+  // Note: Working students don't submit feedback - they FORWARD student feedback to admin
   const navigationItems = [
+    // Working Student Section
     { name: 'Dashboard', href: '/working-student', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/working-student' },
     { name: 'Pending Registrations', href: '/working-student/pending-registrations', icon: <ClipboardList className="h-5 w-5" />, current: location.pathname === '/working-student/pending-registrations' },
     { name: 'Student Management', href: '/working-student/manage-users', icon: <Users className="h-5 w-5" />, current: location.pathname === '/working-student/manage-users' },
     { name: 'Archived Students', href: '/working-student/archived-students', icon: <Archive className="h-5 w-5" />, current: location.pathname === '/working-student/archived-students' },
-    { name: 'Login History', href: '/working-student/login-history', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/working-student/login-history' },
     { name: 'Equipment Reports', href: '/working-student/equipment-reports', icon: <BarChart3 className="h-5 w-5" />, current: location.pathname === '/working-student/equipment-reports' },
+    
+    // Divider label for student features
+    { name: 'divider', href: '', icon: null, current: false, isDivider: true, label: 'My Student Records' },
+    
+    // Student Features Section - for when working students need to access their own student features
+    // Note: No "My Feedback History" because working students forward feedback, they don't submit it
+    { name: 'My Classes', href: '/working-student/my-classes', icon: <Library className="h-5 w-5" />, current: location.pathname === '/working-student/my-classes' },
+    { name: 'My Archived Classes', href: '/working-student/my-archived-classes', icon: <Archive className="h-5 w-5" />, current: location.pathname === '/working-student/my-archived-classes' },
+    { name: 'Login History', href: '/working-student/login-history', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/working-student/login-history' },
   ];
 
   return (
     <Layout navigationItems={navigationItems}>
       <Routes>
+        {/* Working Student Routes */}
         <Route index element={<DashboardOverview />} />
         <Route path="pending-registrations" element={<PendingRegistrations workingStudentUserId={user?.id || 0} />} />
         <Route path="manage-users" element={<ManageUsers />} />
         <Route path="archived-students" element={<ArchivedStudentsManagement />} />
-        <Route path="login-history" element={<WorkingStudentLoginHistory />} />
         <Route path="equipment-reports" element={<EquipmentReports />} />
+        
+        {/* Student Feature Routes - for working students to access their own student features */}
+        <Route path="my-classes" element={<MyClasses />} />
+        <Route path="my-archived-classes" element={<ArchivedClasses />} />
+        <Route path="login-history" element={<LoginHistory showStatus={false} />} />
       </Routes>
     </Layout>
   );

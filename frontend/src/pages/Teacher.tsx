@@ -57,9 +57,12 @@ import {
   GetArchivedClasses,
   ArchiveClass,
   UnarchiveClass,
-  DeleteAttendanceSheet
+  DeleteAttendanceSheet,
+  GetClassByID,
+  FinalizeAttendanceSheet,
+  UnfinalizeAttendanceSheet
 } from '../../wailsjs/go/main/App';
-import TeacherLoginHistory from './TeacherLoginHistory';
+import LoginHistory from '../components/LoginHistory';
 import { useAuth } from '../contexts/AuthContext';
 import { main } from '../../wailsjs/go/models';
 
@@ -183,17 +186,17 @@ function DashboardOverview() {
           color="green"
         />
         <StatCard
-          title="Today's Classes"
+          title="Classes"
           value={activeClasses}
           icon={<Calendar className="h-6 w-6" />}
           color="purple"
         />
       </div>
 
-      {/* Today's Schedule */}
+      {/* List of Schedule */}
       {activeClasses > 0 && (
         <Card className="mb-8">
-          <CardHeader title="Today's Schedule" />
+          <CardHeader title="List of Schedule" />
           <CardBody>
             <div className="space-y-3">
               {classes.filter(cls => cls.is_active).slice(0, 3).map(cls => (
@@ -407,6 +410,9 @@ function ClassManagement() {
                   Schedule
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Action
                 </th>
               </tr>
@@ -425,6 +431,15 @@ function ClassManagement() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {cls.schedule || '-'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      cls.is_active 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {cls.is_active ? 'Active' : 'Inactive'}
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
@@ -1015,8 +1030,34 @@ function ClassManagementDetail() {
 
     setLoading(true);
     try {
+      // Try to get class by ID (works for both active and archived classes)
+      try {
+        const classData = await GetClassByID(parseInt(id));
+        if (classData) {
+          setClassInfo(classData);
+          setEditFormData({
+            schedule: classData.schedule || '',
+            room: classData.room || '',
+            yearLevel: classData.year_level || '',
+            section: classData.section || '',
+            semester: classData.semester || '',
+            schoolYear: classData.school_year || ''
+          });
+
+          // Load students
+          const studentsData = await GetClassStudents(parseInt(id));
+          setStudents(studentsData || []);
+          setError('');
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.log('Class not found by ID, trying active classes list');
+      }
+
+      // Fallback: search through active classes
       const classes = await GetTeacherClassesByUserID(user?.id || 0);
-      const selectedClass = classes.find((c: any) => c.class_id === parseInt(id));
+      const selectedClass = (classes || []).find((c: any) => c.class_id === parseInt(id));
 
       if (selectedClass) {
         setClassInfo(selectedClass);
@@ -1210,7 +1251,7 @@ function ClassManagementDetail() {
         <div className="bg-white max-w-4xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
           {/* Close Button - Inside Sheet */}
           <button
-            onClick={() => navigate('/teacher/class-management')}
+            onClick={() => navigate(classInfo.is_archived ? '/teacher/stored-attendance?tab=classes' : '/teacher/class-management')}
             className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
             title="Close"
           >
@@ -1858,6 +1899,9 @@ function AttendanceClassSelection() {
                     Date
                   </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Action
                   </th>
                 </tr>
@@ -1887,6 +1931,48 @@ function AttendanceClassSelection() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {hasActiveAttendance ? new Date(latestDate + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                        {hasActiveAttendance ? (
+                          <button
+                            onClick={async () => {
+                              try {
+                                if (cls.is_attendance_finalized) {
+                                  await UnfinalizeAttendanceSheet(cls.class_id, latestDate);
+                                } else {
+                                  await FinalizeAttendanceSheet(cls.class_id, latestDate);
+                                }
+                                // Refresh the class list
+                                setRefreshKey(prev => prev + 1);
+                              } catch (error) {
+                                console.error('Failed to update attendance status:', error);
+                                alert('Failed to update attendance status. Please try again.');
+                              }
+                            }}
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors ${
+                              cls.is_attendance_finalized
+                                ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                                : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                            }`}
+                            title={cls.is_attendance_finalized ? 'Click to mark as Active' : 'Click to mark as Done'}
+                          >
+                            {cls.is_attendance_finalized ? (
+                              <>
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Done
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="h-3 w-3 mr-1" />
+                                Active
+                              </>
+                            )}
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                            No Attendance
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center gap-2">
@@ -2142,7 +2228,11 @@ function AttendanceClassSelection() {
 function StoredAttendance() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'attendance' | 'classes'>('attendance');
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const [activeTab, setActiveTab] = useState<'attendance' | 'classes'>(
+    tabParam === 'classes' ? 'classes' : 'attendance'
+  );
   
   // Attendance state
   const [archivedSheets, setArchivedSheets] = useState<any[]>([]);
@@ -2161,6 +2251,16 @@ function StoredAttendance() {
   const [classCurrentPage, setClassCurrentPage] = useState(1);
   const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
   const [unarchivingClass, setUnarchivingClass] = useState<number | null>(null);
+
+  useEffect(() => {
+    // Sync activeTab with URL query parameter
+    const tab = searchParams.get('tab');
+    if (tab === 'classes') {
+      setActiveTab('classes');
+    } else {
+      setActiveTab('attendance');
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     loadArchivedSheets();
@@ -2286,43 +2386,9 @@ function StoredAttendance() {
     <div className="flex flex-col h-full p-6">
       {/* Header Section */}
       <div className="flex-shrink-0 mb-4">
-        <h2 className="text-2xl font-bold text-gray-900">Archive</h2>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex-shrink-0 mb-4 border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setActiveTab('attendance')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'attendance'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Attendance Sheets
-            {archivedSheets.length > 0 && (
-              <span className="ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">
-                {archivedSheets.length}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('classes')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'classes'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Class Lists
-            {archivedClasses.length > 0 && (
-              <span className="ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">
-                {archivedClasses.length}
-              </span>
-            )}
-          </button>
-        </nav>
+        <h2 className="text-2xl font-bold text-gray-900">
+          {activeTab === 'classes' ? 'Archived Classlist' : 'Archived Attendance'}
+        </h2>
       </div>
 
       {/* Attendance Tab Content */}
@@ -2378,6 +2444,9 @@ function StoredAttendance() {
                         Summary
                       </th>
                       <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Action
                       </th>
                     </tr>
@@ -2413,28 +2482,30 @@ function StoredAttendance() {
                           </div>
                           <div className="text-xs text-gray-400 mt-1">{sheet.student_count} total students</div>
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                            Archived
+                          </span>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                           <div className="flex items-center justify-center gap-2">
-                            <Button
+                            <button
                               onClick={() => {
                                 navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}`);
                               }}
-                              variant="outline"
-                              size="sm"
-                              className="text-blue-600 hover:text-blue-900"
-                              icon={<Eye className="h-4 w-4" />}
+                              className="p-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="View"
                             >
-                              View
-                            </Button>
-                            <Button
+                              <Eye className="h-4 w-4" />
+                            </button>
+                            <button
                               onClick={() => handleUnarchiveAttendance(sheet.class_id, sheet.date)}
-                              variant="outline"
-                              size="sm"
-                              className="text-orange-600 hover:text-orange-900"
+                              className="p-2 text-orange-600 hover:text-orange-900 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
                               disabled={unarchivingAttendance === `${sheet.class_id}-${sheet.date}`}
+                              title="Unarchive"
                             >
-                              {unarchivingAttendance === `${sheet.class_id}-${sheet.date}` ? 'Removing...' : 'Unarchive'}
-                            </Button>
+                              <Archive className="h-4 w-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -2578,24 +2649,21 @@ function StoredAttendance() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                           <div className="flex items-center justify-center gap-2">
-                            <Button
+                            <button
                               onClick={() => navigate(`/teacher/class-management/${cls.class_id}?mode=view`)}
-                              variant="outline"
-                              size="sm"
-                              className="text-blue-600 hover:text-blue-900"
-                              icon={<Eye className="h-4 w-4" />}
+                              className="p-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="View"
                             >
-                              View
-                            </Button>
-                            <Button
+                              <Eye className="h-4 w-4" />
+                            </button>
+                            <button
                               onClick={() => handleUnarchiveClass(cls.class_id)}
-                              variant="outline"
-                              size="sm"
-                              className="text-orange-600 hover:text-orange-900"
+                              className="p-2 text-orange-600 hover:text-orange-900 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
                               disabled={unarchivingClass === cls.class_id}
+                              title="Unarchive"
                             >
-                              {unarchivingClass === cls.class_id ? 'Restoring...' : 'Unarchive'}
-                            </Button>
+                              <Archive className="h-4 w-4" />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -2738,6 +2806,20 @@ function AttendanceManagementDetail() {
 
       setLoading(true);
       try {
+        // Try to get class by ID (works for both active and archived classes)
+        try {
+          const foundClass = await GetClassByID(parseInt(id));
+          if (foundClass) {
+            setSelectedClass(foundClass);
+            setError('');
+            setLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.log('Class not found by ID, trying active classes list');
+        }
+
+        // Fallback: search through active classes
         const classes = await GetTeacherClassesByUserID(user.id);
         const foundClass = classes.find((c: any) => c.class_id === parseInt(id));
         setSelectedClass(foundClass || null);
@@ -2910,13 +2992,21 @@ function AttendanceManagementDetail() {
   };
 
   const handleCancelClick = () => {
-    // Just navigate back directly without confirmation
-    navigate('/teacher/attendance');
+    // Navigate back to archive if viewing archived class, otherwise attendance management
+    if (selectedClass && selectedClass.is_archived) {
+      navigate('/teacher/stored-attendance?tab=attendance');
+    } else {
+      navigate('/teacher/attendance');
+    }
   };
 
   const handleConfirmCancel = () => {
     setShowCancelConfirm(false);
-    navigate('/teacher/attendance');
+    if (selectedClass && selectedClass.is_archived) {
+      navigate('/teacher/stored-attendance?tab=attendance');
+    } else {
+      navigate('/teacher/attendance');
+    }
   };
 
   const handleArchive = async () => {
@@ -2956,7 +3046,7 @@ function AttendanceManagementDetail() {
           <div className="bg-white shadow rounded-lg p-6 mb-6 border border-gray-300 max-w-4xl mx-auto relative">
             {/* Close Button */}
             <button
-              onClick={() => navigate('/teacher/attendance')}
+              onClick={() => navigate(selectedClass && selectedClass.is_archived ? '/teacher/stored-attendance?tab=attendance' : '/teacher/attendance')}
               className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
               title="Close"
             >
@@ -2967,10 +3057,10 @@ function AttendanceManagementDetail() {
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No Attendance Selected</h3>
               <p className="text-sm text-gray-500 mb-4">Use the "ADD ATTENDANCE" button to create a new attendance sheet for this class.</p>
               <Button
-                onClick={() => navigate('/teacher/attendance')}
+                onClick={() => navigate(selectedClass && selectedClass.is_archived ? '/teacher/stored-attendance?tab=attendance' : '/teacher/attendance')}
                 variant="outline"
               >
-                Back to Attendance Management
+                {selectedClass && selectedClass.is_archived ? 'Back to Archive' : 'Back to Attendance Management'}
               </Button>
             </div>
           </div>
@@ -2988,9 +3078,24 @@ function AttendanceManagementDetail() {
               <X className="h-5 w-5" />
             </button>
 
+            {/* Archived Banner */}
+            {attendanceRecords.length > 0 && attendanceRecords[0].is_archived && (
+              <div className="mb-4 bg-orange-50 border border-orange-200 rounded-md px-4 py-2 flex items-center gap-2">
+                <Archive className="h-4 w-4 text-orange-600" />
+                <span className="text-sm font-medium text-orange-700">This attendance is archived and cannot be edited</span>
+              </div>
+            )}
+
             {/* Sheet Title */}
             <div className="mb-6 pb-4 border-b border-gray-400 text-center">
-              <h2 className="text-xl font-bold text-gray-900 tracking-wide">ATTENDANCE SHEET</h2>
+              <div className="flex items-center justify-center gap-2">
+                <h2 className="text-xl font-bold text-gray-900 tracking-wide">ATTENDANCE SHEET</h2>
+                {attendanceRecords.length > 0 && attendanceRecords[0].is_archived && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                    ARCHIVED
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-gray-600 mt-1">
                 {new Date(selectedDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
               </p>
@@ -3054,6 +3159,8 @@ function AttendanceManagementDetail() {
                         attendanceRecords.map((record, index) => {
                           const key = `${record.class_id}-${record.student_user_id}-${record.date}`;
                           const isUpdating = updatingStatus[key];
+                          const isArchived = record.is_archived;
+                          const isDisabled = isUpdating || isArchived;
                           return (
                             <tr key={key} className="hover:bg-gray-50 border-b border-gray-100">
                               <td className="px-2 py-1.5 text-center font-medium text-gray-900">
@@ -3065,23 +3172,72 @@ function AttendanceManagementDetail() {
                               <td className="px-3 py-1.5 text-gray-900">
                                 {record.last_name}, {record.first_name} {record.middle_name ? record.middle_name.charAt(0) + '.' : ''}
                               </td>
-                              <td className="px-3 py-1.5 text-center">
-                                <select
-                                  value={record.status || 'absent'}
-                                  onChange={(e) => handleStatusChange(record, e.target.value)}
-                                  disabled={isUpdating}
-                                  className={`px-2 py-1 text-xs font-medium border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 ${
-                                    record.status === 'present' 
-                                      ? 'bg-green-50 text-green-800 border-green-300' 
-                                      : record.status === 'late'
-                                      ? 'bg-yellow-50 text-yellow-800 border-yellow-300'
-                                      : 'bg-red-50 text-red-800 border-red-300'
-                                  }`}
-                                >
-                                  <option value="present">Present</option>
-                                  <option value="absent">Absent</option>
-                                  <option value="late">Late</option>
-                                </select>
+                              <td className="px-3 py-1.5">
+                                <div className="flex gap-3 justify-center items-center">
+                                  {/* Present Checkbox */}
+                                  <label 
+                                    className={`flex items-center gap-1 ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}`}
+                                    title={isArchived ? "Archived - cannot edit" : "Present"}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={record.status === 'present'}
+                                      onChange={() => !isDisabled && handleStatusChange(record, 'present')}
+                                      disabled={isDisabled}
+                                      className="attendance-checkbox checkbox-green"
+                                      style={{ color: '#16a34a' }}
+                                    />
+                                    <span className="text-xs font-medium text-green-700">P</span>
+                                  </label>
+
+                                  {/* Absent Checkbox */}
+                                  <label 
+                                    className={`flex items-center gap-1 ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}`}
+                                    title={isArchived ? "Archived - cannot edit" : "Absent"}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={record.status === 'absent'}
+                                      onChange={() => !isDisabled && handleStatusChange(record, 'absent')}
+                                      disabled={isDisabled}
+                                      className="attendance-checkbox checkbox-red"
+                                      style={{ color: '#dc2626' }}
+                                    />
+                                    <span className="text-xs font-medium text-red-700">A</span>
+                                  </label>
+
+                                  {/* Late Checkbox */}
+                                  <label 
+                                    className={`flex items-center gap-1 ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}`}
+                                    title={isArchived ? "Archived - cannot edit" : "Late"}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={record.status === 'late'}
+                                      onChange={() => !isDisabled && handleStatusChange(record, 'late')}
+                                      disabled={isDisabled}
+                                      className="attendance-checkbox checkbox-yellow"
+                                      style={{ color: '#ca8a04' }}
+                                    />
+                                    <span className="text-xs font-medium text-yellow-700">L</span>
+                                  </label>
+
+                                  {/* Excused Checkbox */}
+                                  <label 
+                                    className={`flex items-center gap-1 ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}`}
+                                    title={isArchived ? "Archived - cannot edit" : "Excused"}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={record.status === 'excused'}
+                                      onChange={() => !isDisabled && handleStatusChange(record, 'excused')}
+                                      disabled={isDisabled}
+                                      className="attendance-checkbox checkbox-blue"
+                                      style={{ color: '#2563eb' }}
+                                    />
+                                    <span className="text-xs font-medium text-blue-700">E</span>
+                                  </label>
+                                </div>
                               </td>
                               <td className="px-3 py-1.5 text-gray-700">
                                 {record.remarks || '—'}
@@ -3114,6 +3270,9 @@ function AttendanceManagementDetail() {
                               </span>
                               <span className="text-red-700">
                                 Absent: {attendanceRecords.filter(r => r.status === 'absent').length}
+                              </span>
+                              <span className="text-blue-700">
+                                Excused: {attendanceRecords.filter(r => r.status === 'excused').length}
                               </span>
                             </div>
                             <div className="font-bold text-gray-900">
@@ -3267,7 +3426,26 @@ function TeacherDashboard() {
     { name: 'Class Management', href: '/teacher/class-management', icon: <Library className="h-5 w-5" />, current: location.pathname.startsWith('/teacher/class-management') },
     { name: 'Attendance', href: '/teacher/attendance', icon: <CalendarPlus className="h-5 w-5" />, current: location.pathname.startsWith('/teacher/attendance') && !location.pathname.includes('/stored') },
     { name: 'Login History', href: '/teacher/login-history', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/teacher/login-history' },
-    { name: 'Archive', href: '/teacher/stored-attendance', icon: <Archive className="h-5 w-5" />, current: location.pathname === '/teacher/stored-attendance' },
+    { 
+      name: 'Archive', 
+      href: '/teacher/stored-attendance', 
+      icon: <Archive className="h-5 w-5" />, 
+      current: location.pathname === '/teacher/stored-attendance',
+      children: [
+        { 
+          name: 'Classlist', 
+          href: '/teacher/stored-attendance?tab=classes', 
+          icon: <ClipboardList className="h-4 w-4" />, 
+          current: location.pathname === '/teacher/stored-attendance' && (new URLSearchParams(location.search).get('tab') === 'classes')
+        },
+        { 
+          name: 'Attendance', 
+          href: '/teacher/stored-attendance?tab=attendance', 
+          icon: <CalendarPlus className="h-4 w-4" />, 
+          current: location.pathname === '/teacher/stored-attendance' && (!new URLSearchParams(location.search).get('tab') || new URLSearchParams(location.search).get('tab') === 'attendance')
+        },
+      ]
+    },
   ];
 
   return (
@@ -3279,7 +3457,7 @@ function TeacherDashboard() {
         <Route path="class-management/:id" element={<ClassManagementDetail />} />
         <Route path="attendance/:id" element={<AttendanceManagementDetail />} />
         <Route path="attendance" element={<AttendanceClassSelection />} />
-        <Route path="login-history" element={<TeacherLoginHistory />} />
+        <Route path="login-history" element={<LoginHistory showStatus={false} />} />
         <Route path="stored-attendance" element={<StoredAttendance />} />
       </Routes>
     </Layout>
