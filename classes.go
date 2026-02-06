@@ -2,8 +2,11 @@ package main
 
 import (
 	"database/sql"
+	"encoding/csv"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -1812,4 +1815,114 @@ func (a *App) GetCompletedEnrollments(classID int) ([]ClasslistEntry, error) {
 	}
 
 	return students, nil
+}
+
+// ExportClasslistCSV exports the classlist (enrolled students) for a class to CSV
+func (a *App) ExportClasslistCSV(classID int) (string, error) {
+	if a.db == nil {
+		return "", fmt.Errorf("database not connected")
+	}
+
+	// First get class info for the filename
+	var subjectCode, subjectName string
+	classQuery := `
+		SELECT c.subject_code, s.description
+		FROM classes c
+		JOIN subjects s ON c.subject_code = s.subject_code
+		WHERE c.class_id = ?
+	`
+	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName)
+	if err != nil {
+		log.Printf("⚠ Failed to get class info for export: %v", err)
+		subjectCode = fmt.Sprintf("class_%d", classID)
+		subjectName = "Unknown Subject"
+	}
+
+	// Get all students including archived ones for the classlist
+	query := `
+		SELECT 
+			stu.student_id, stu.first_name, stu.middle_name, stu.last_name,
+			stu.email, stu.contact_number,
+			cl.status, cl.enrollment_date
+		FROM classlist cl
+		JOIN students stu ON cl.student_id = stu.id
+		WHERE cl.class_id = ?
+		ORDER BY stu.last_name, stu.first_name
+	`
+
+	rows, err := a.db.Query(query, classID)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	type StudentRecord struct {
+		StudentID      string
+		FirstName      string
+		MiddleName     string
+		LastName       string
+		Email          string
+		ContactNumber  string
+		Status         string
+		EnrollmentDate string
+	}
+
+	var students []StudentRecord
+	for rows.Next() {
+		var s StudentRecord
+		var middleName, email, contactNumber sql.NullString
+		var enrollmentDate time.Time
+		err := rows.Scan(
+			&s.StudentID, &s.FirstName, &middleName, &s.LastName,
+			&email, &contactNumber, &s.Status, &enrollmentDate,
+		)
+		if err != nil {
+			continue
+		}
+		if middleName.Valid {
+			s.MiddleName = middleName.String
+		}
+		if email.Valid {
+			s.Email = email.String
+		}
+		if contactNumber.Valid {
+			s.ContactNumber = contactNumber.String
+		}
+		s.EnrollmentDate = enrollmentDate.Format("2006-01-02")
+		students = append(students, s)
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("classlist_%s_%s.csv", subjectCode, time.Now().Format("20060102_150405")))
+
+	file, err := os.Create(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	// Write header with class info
+	writer.Write([]string{"Subject", fmt.Sprintf("%s - %s", subjectCode, subjectName)})
+	writer.Write([]string{""})
+	writer.Write([]string{"Student ID", "First Name", "Middle Name", "Last Name", "Email", "Contact Number", "Status", "Enrollment Date"})
+
+	// Write student data
+	for _, s := range students {
+		writer.Write([]string{
+			s.StudentID,
+			s.FirstName,
+			s.MiddleName,
+			s.LastName,
+			s.Email,
+			s.ContactNumber,
+			s.Status,
+			s.EnrollmentDate,
+		})
+	}
+
+	log.Printf("✓ Classlist exported to CSV: %s (%d students)", filename, len(students))
+	return filename, nil
 }

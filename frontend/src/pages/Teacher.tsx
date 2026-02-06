@@ -29,7 +29,8 @@ import {
   CalendarPlus,
   AlertCircle,
   X,
-  Archive
+  Archive,
+  Download
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
@@ -39,6 +40,7 @@ import {
   UpdateAttendanceRecord,
   RecordAttendance,
   ExportAttendanceCSV,
+  ExportClasslistCSV,
   UpdateClass,
   DeleteClass,
   GetAllStudentsForEnrollment,
@@ -1024,6 +1026,20 @@ function ClassManagementDetail() {
     schoolYear: ''
   });
   const [saving, setSaving] = useState(false);
+  const [exportingClasslist, setExportingClasslist] = useState(false);
+
+  const handleExportClasslist = async (classId: number) => {
+    setExportingClasslist(true);
+    try {
+      const filePath = await ExportClasslistCSV(classId);
+      alert(`Classlist exported successfully!\nFile saved to: ${filePath}`);
+    } catch (error) {
+      console.error('Failed to export classlist:', error);
+      alert('Failed to export classlist. Please try again.');
+    } finally {
+      setExportingClasslist(false);
+    }
+  };
 
   const loadClassDetails = async () => {
     if (!id) return;
@@ -1276,6 +1292,18 @@ function ClassManagementDetail() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
               </Button>
+              {classInfo.is_archived && (
+                <Button
+                  onClick={() => handleExportClasslist(classInfo.class_id)}
+                  variant="outline"
+                  size="sm"
+                  icon={<Download className="h-4 w-4" />}
+                  disabled={exportingClasslist}
+                  title="Export to CSV"
+                >
+                  Export CSV
+                </Button>
+              )}
               {isEditMode && (
                 <>
                   <Button
@@ -2251,6 +2279,37 @@ function StoredAttendance() {
   const [classCurrentPage, setClassCurrentPage] = useState(1);
   const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
   const [unarchivingClass, setUnarchivingClass] = useState<number | null>(null);
+  
+  // Export state
+  const [exportingAttendance, setExportingAttendance] = useState<string | null>(null);
+  const [exportingClasslist, setExportingClasslist] = useState<number | null>(null);
+
+  const handleExportAttendance = async (classId: number, date: string) => {
+    const key = `${classId}-${date}`;
+    setExportingAttendance(key);
+    try {
+      const filePath = await ExportAttendanceCSV(classId);
+      alert(`Attendance exported successfully!\nFile saved to: ${filePath}`);
+    } catch (error) {
+      console.error('Failed to export attendance:', error);
+      alert('Failed to export attendance. Please try again.');
+    } finally {
+      setExportingAttendance(null);
+    }
+  };
+
+  const handleExportClasslist = async (classId: number) => {
+    setExportingClasslist(classId);
+    try {
+      const filePath = await ExportClasslistCSV(classId);
+      alert(`Classlist exported successfully!\nFile saved to: ${filePath}`);
+    } catch (error) {
+      console.error('Failed to export classlist:', error);
+      alert('Failed to export classlist. Please try again.');
+    } finally {
+      setExportingClasslist(null);
+    }
+  };
 
   useEffect(() => {
     // Sync activeTab with URL query parameter
@@ -2761,6 +2820,20 @@ function AttendanceManagementDetail() {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState<{[key: string]: boolean}>({});
+  const [exportingAttendance, setExportingAttendance] = useState(false);
+
+  const handleExportAttendance = async (classId: number, date: string) => {
+    setExportingAttendance(true);
+    try {
+      const filePath = await ExportAttendanceCSV(classId);
+      alert(`Attendance exported successfully!\nFile saved to: ${filePath}`);
+    } catch (error) {
+      console.error('Failed to export attendance:', error);
+      alert('Failed to export attendance. Please try again.');
+    } finally {
+      setExportingAttendance(false);
+    }
+  };
 
   const handleStatusChange = async (record: Attendance, newStatus: string) => {
     const key = `${record.class_id}-${record.student_user_id}-${record.date}`;
@@ -3087,18 +3160,34 @@ function AttendanceManagementDetail() {
             )}
 
             {/* Sheet Title */}
-            <div className="mb-6 pb-4 border-b border-gray-400 text-center">
-              <div className="flex items-center justify-center gap-2">
-                <h2 className="text-xl font-bold text-gray-900 tracking-wide">ATTENDANCE SHEET</h2>
-                {attendanceRecords.length > 0 && attendanceRecords[0].is_archived && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
-                    ARCHIVED
-                  </span>
-                )}
+            <div className="mb-6 pb-4 border-b border-gray-400">
+              <div className="text-center mb-4">
+                <div className="flex items-center justify-center gap-2">
+                  <h2 className="text-xl font-bold text-gray-900 tracking-wide">ATTENDANCE SHEET</h2>
+                  {attendanceRecords.length > 0 && attendanceRecords[0].is_archived && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                      ARCHIVED
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-600 mt-1">
+                  {new Date(selectedDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                </p>
               </div>
-              <p className="text-xs text-gray-600 mt-1">
-                {new Date(selectedDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-              </p>
+              {attendanceRecords.length > 0 && attendanceRecords[0].is_archived && (
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => handleExportAttendance(selectedClass.class_id, selectedDate)}
+                    variant="outline"
+                    size="sm"
+                    icon={<Download className="h-4 w-4" />}
+                    disabled={exportingAttendance}
+                    title="Export to CSV"
+                  >
+                    Export CSV
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Combined Class Info and Attendance Table */}

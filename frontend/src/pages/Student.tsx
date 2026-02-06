@@ -700,8 +700,8 @@ function MyClasses() {
       // First check if classes exist for this EDP code
       const availableClasses = await GetClassesByEDPCode(cleanedCode);
 
-      if (availableClasses.length === 0) {
-        setJoinError('No classes found for this EDP code.');
+      if (!availableClasses || !Array.isArray(availableClasses) || availableClasses.length === 0) {
+        setJoinError('No classes found for this EDP code. Please verify the code and try again.');
         setJoining(false);
         return;
       }
