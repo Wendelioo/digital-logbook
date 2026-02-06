@@ -146,6 +146,10 @@ export function ExportAttendanceCSV(arg1) {
   return window['go']['main']['App']['ExportAttendanceCSV'](arg1);
 }
 
+export function ExportClasslistCSV(arg1) {
+  return window['go']['main']['App']['ExportClasslistCSV'](arg1);
+}
+
 export function ExportFeedbackCSV() {
   return window['go']['main']['App']['ExportFeedbackCSV']();
 }

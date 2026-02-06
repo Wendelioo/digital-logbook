@@ -74,6 +74,8 @@ export function ExportArchivedLogsPDF():Promise<string>;
 
 export function ExportAttendanceCSV(arg1:number):Promise<string>;
 
+export function ExportClasslistCSV(arg1:number):Promise<string>;
+
 export function ExportFeedbackCSV():Promise<string>;
 
 export function ExportFeedbackPDF():Promise<string>;

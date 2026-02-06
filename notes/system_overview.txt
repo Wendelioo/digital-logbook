@@ -1,0 +1,1277 @@
+================================================================================
+                         DIGITAL LOGBOOK SYSTEM OVERVIEW
+================================================================================
+                     Comprehensive Documentation for Developers
+                              Last Updated: February 2026
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+1. Introduction & Purpose
+2. Technology Stack
+3. System Architecture
+4. User Roles & Access Control
+5. Core Features & Modules
+6. Database Schema
+7. Backend API Methods
+8. Frontend Structure
+9. Data Flow & Workflows
+10. Security Features
+11. Export & Reporting
+12. File Structure
+13. Development Setup
+14. Build & Deployment
+
+================================================================================
+1. INTRODUCTION & PURPOSE
+================================================================================
+
+Digital Logbook is a modern desktop application designed for academic 
+institutions to monitor and manage computer laboratory usage. The system 
+provides accurate attendance tracking, role-based access control, equipment 
+condition monitoring, and comprehensive reporting for administrators and 
+teachers.
+
+PRIMARY OBJECTIVES:
+- Track student time-in/time-out in computer laboratories
+- Monitor PC-based login sessions with hostname detection
+- Manage class enrollments and attendance records
+- Collect equipment condition feedback from students
+- Generate reports and export data in multiple formats
+- Provide role-specific dashboards for different user types
+
+TARGET USERS:
+- Academic institutions (colleges, universities)
+- Computer laboratory administrators
+- Teachers conducting lab classes
+- Students using laboratory equipment
+- Working students (lab assistants)
+
+DEVELOPMENT TEAM:
+- Group of 4th year BSIT students (Capstone Project)
+
+================================================================================
+2. TECHNOLOGY STACK
+================================================================================
+
+BACKEND:
+--------
+- Language: Go (Golang) 1.x
+- Framework: Wails v2.11 (Desktop App Runtime)
+- Database Driver: github.com/go-sql-driver/mysql
+- PDF Generation: gofpdf library
+- DOCX Generation: go-docx library
+- CSV Export: encoding/csv (Go standard library)
+
+FRONTEND:
+---------
+- Framework: React 18
+- Language: TypeScript
+- Build Tool: Vite
+- Styling: Tailwind CSS v3 (with custom primary color palette)
+- Icons: lucide-react
+- Routing: React Router v6
+
+DATABASE:
+---------
+- Engine: MySQL Server
+- Management Tool: MySQL Workbench (recommended)
+- Connection: Environment variables for credentials
+- Engine Type: InnoDB (with foreign key constraints)
+
+DESKTOP RUNTIME:
+----------------
+- Wails v2.11 (Go-based desktop framework)
+- Provides native window with embedded web view
+- Auto-generates JavaScript bridge for Go method calls
+- Supports Windows, macOS, and Linux builds
+
+================================================================================
+3. SYSTEM ARCHITECTURE
+================================================================================
+
+The application follows a desktop hybrid architecture:
+
++-------------------------------------------------------------------+
+|                        DESKTOP APPLICATION                         |
+|-------------------------------------------------------------------|
+|  +---------------------------+   +-----------------------------+  |
+|  |        FRONTEND           |   |          BACKEND            |  |
+|  |---------------------------|   |-----------------------------|  |
+|  |  React + TypeScript       |   |         Go (Wails)          |  |
+|  |  - Components             |<=>|  - App struct               |  |
+|  |  - Pages (Dashboards)     |   |  - Database connection      |  |
+|  |  - Contexts (Auth)        |   |  - Business logic           |  |
+|  |  - Tailwind CSS           |   |  - Export functions         |  |
+|  +---------------------------+   +-----------------------------+  |
+|                                             ||                     |
+|                                             \/                     |
+|                               +-------------------------+          |
+|                               |       MySQL Database    |          |
+|                               |-------------------------|          |
+|                               | - users, admins         |          |
+|                               | - teachers, students    |          |
+|                               | - classes, attendance   |          |
+|                               | - log_entries, feedback |          |
+|                               +-------------------------+          |
++-------------------------------------------------------------------+
+
+WAILS BRIDGE COMMUNICATION:
+---------------------------
+Frontend calls Go methods directly via Wails-generated JavaScript bridge:
+
+  // Generated in: wailsjs/go/main/App.js
+  import { Login, GetUsers } from '../../wailsjs/go/main/App';
+  
+  const user = await Login(username, password);  // Returns User struct as JSON
+  const users = await GetUsers();                // Returns []User as JSON array
+
+================================================================================
+4. USER ROLES & ACCESS CONTROL
+================================================================================
+
+The system implements four distinct user roles with specific permissions:
+
++-------------------+----------------------------------------------------------+
+| ROLE              | PERMISSIONS & CAPABILITIES                               |
++-------------------+----------------------------------------------------------+
+| ADMIN             | - Full system access                                     |
+|                   | - User management (create, edit, delete, bulk import)    |
+|                   | - Department management                                  |
+|                   | - View all login logs and reports                        |
+|                   | - Archive/unarchive logs and feedback                    |
+|                   | - Export reports (CSV, PDF)                              |
+|                   | - Process registration approvals                         |
+|                   | - Manage system settings                                 |
++-------------------+----------------------------------------------------------+
+| TEACHER           | - Manage assigned classes and subjects                   |
+|                   | - Create and update class schedules                      |
+|                   | - Enroll/unenroll students in classes                    |
+|                   | - Record and manage attendance                           |
+|                   | - Finalize/archive attendance sheets                     |
+|                   | - View class-specific reports                            |
+|                   | - Export attendance data (CSV)                           |
++-------------------+----------------------------------------------------------+
+| STUDENT           | - Login/logout tracking (automatic)                      |
+|                   | - View enrolled classes                                  |
+|                   | - View personal attendance records                       |
+|                   | - Submit equipment condition feedback                    |
+|                   | - View personal login history                            |
+|                   | - Join classes via EDP code                              |
++-------------------+----------------------------------------------------------+
+| WORKING_STUDENT   | - All student permissions                                |
+|                   | - Process pending student registrations                  |
+|                   | - View and forward equipment feedback to admin           |
+|                   | - Add notes to feedback reports                          |
+|                   | - View pending registrations queue                       |
++-------------------+----------------------------------------------------------+
+
+ACCOUNT STATUS TYPES:
+- pending: Awaiting approval (for self-registered students)
+- active: Normal operational status
+- suspended: Temporarily disabled by admin
+- rejected: Registration denied
+
+================================================================================
+5. CORE FEATURES & MODULES
+================================================================================
+
+A. AUTHENTICATION MODULE (auth.go)
+----------------------------------
+- Login(): User authentication with role-based profile loading
+- Logout(): Session termination with logout time recording
+- RecordTimeoutLogout(): Handle automatic timeout scenarios
+- ChangePassword(): Password update functionality
+- PC hostname detection for login tracking
+
+B. USER MANAGEMENT MODULE (users.go)
+------------------------------------
+- GetUsers(): Retrieve all users with profile data
+- GetUsersByType(): Filter users by role
+- SearchUsers(): Search with term and type filters
+- CreateUser(): Individual user creation
+- UpdateUser(): Modify user details
+- DeleteUser(): Remove user from system
+- CreateUsersBulkFromFile(): CSV/file-based bulk user import
+- UpdateUserProfilePhoto(): Profile photo management
+- DeleteUserProfilePhoto(): Remove profile photo
+- ArchiveStudent(): Soft delete with archival
+- UnarchiveStudent(): Restore archived student
+- GetArchivedStudents(): List archived accounts
+- DeleteExpiredStudents(): Permanent deletion of old archives
+
+C. CLASS MANAGEMENT MODULE (classes.go)
+---------------------------------------
+- GetSubjects(): List all subjects
+- CreateSubject(): Add new subject
+- GetAllClasses(): Retrieve all classes
+- GetTeacherClasses(): Classes by teacher
+- GetStudentClasses(): Classes for student enrollment
+- CreateClass(): New class creation with EDP code
+- UpdateClass(): Modify class details
+- DeleteClass(): Remove class
+- GetClassStudents(): Enrolled students list
+- EnrollStudentInClass(): Individual enrollment
+- EnrollMultipleStudents(): Batch enrollment
+- UnenrollStudentFromClass(): Remove from class
+- JoinClassByEDPCode(): Student self-enrollment
+- ArchiveClass(): Archive completed classes
+- UnarchiveClass(): Restore archived classes
+- SetStudentEnrollmentStatus(): Mark completed/dropped
+
+D. ATTENDANCE MODULE (attendance.go)
+------------------------------------
+- RecordAttendance(): Manual attendance marking
+- GetClassAttendance(): Retrieve attendance by class/date
+- InitializeAttendanceForClass(): Create blank attendance sheet
+- UpdateAttendanceRecord(): Modify existing record
+- DeleteAttendanceSheet(): Remove attendance sheet
+- GenerateAttendanceFromLogs(): Auto-generate from login logs
+- FinalizeAttendanceSheet(): Lock for editing
+- UnfinalizeAttendanceSheet(): Unlock for editing
+- ArchiveAttendanceSheet(): Archive old sheets
+- GetArchivedAttendanceSheets(): View archived sheets
+- ExportAttendanceCSV(): Export to CSV format
+
+E. LOGIN LOGS MODULE (logs.go)
+------------------------------
+- GetTodayLogs(): Current day's login activity
+- GetPastLogs(): Historical logs with date range
+- GetAllLogs(): Complete log history
+- GetStudentLoginLogs(): Logs for specific student
+- GetTeacherLoginLogs(): Logs for specific teacher
+- ArchiveSelectedLogs(): Move logs to archive
+- UnarchiveLogs(): Restore archived logs
+- GetArchivedLogs(): View archived log entries
+- GetArchivedLogSheets(): Logs grouped by date
+- ExportLogsCSV(): Export to CSV
+- ExportLogsPDF(): Export to PDF
+
+F. FEEDBACK MODULE (feedback.go)
+--------------------------------
+- GetFeedback(): All equipment feedback
+- GetStudentFeedback(): Feedback by student
+- SaveEquipmentFeedback(): Submit new feedback
+- GetPendingFeedback(): Unprocessed reports
+- ForwardFeedbackToAdmin(): Working student escalation
+- ForwardMultipleFeedbackToAdmin(): Batch forwarding
+- ArchiveFeedbackByDate(): Archive by date
+- UnarchiveFeedbackSheet(): Restore feedback
+- ExportFeedbackCSV(): Export to CSV
+- ExportFeedbackPDF(): Export to PDF
+
+G. REGISTRATION MODULE (registration.go)
+----------------------------------------
+- SubmitRegistration(): Student self-registration
+- GetPendingRegistrations(): List awaiting approval
+- ProcessRegistration(): Approve/reject applications
+
+H. DEPARTMENTS MODULE (departments.go)
+--------------------------------------
+- GetDepartments(): List all departments
+- CreateDepartment(): Add new department
+- UpdateDepartment(): Modify department details
+- DeleteDepartment(): Remove department
+
+I. PROFILE PHOTOS MODULE (profile_photos.go)
+--------------------------------------------
+- Separate table for photo metadata (file path storage)
+- File system storage instead of BLOB
+- MIME type and file size tracking
+
+================================================================================
+6. DATABASE SCHEMA
+================================================================================
+
+The database (logbookdb) follows a normalized structure with proper 
+relationships and constraints:
+
+CORE TABLES:
+------------
+
+users
+├── id (PK, AUTO_INCREMENT)
+├── username (UNIQUE, NOT NULL)
+├── password (NOT NULL)
+├── user_type (ENUM: admin, teacher, student, working_student)
+├── account_status (ENUM: pending, active, suspended, rejected)
+├── is_active (BOOLEAN)
+├── created_at (TIMESTAMP)
+└── updated_at (TIMESTAMP)
+
+profile_photos
+├── user_id (PK, FK → users.id)
+├── photo_path (VARCHAR)
+├── file_name (VARCHAR)
+├── file_size (INT)
+├── mime_type (VARCHAR)
+└── uploaded_at (TIMESTAMP)
+
+departments
+├── department_code (PK, VARCHAR)
+├── department_name (UNIQUE)
+├── description (TEXT)
+├── is_active (BOOLEAN)
+├── created_at (TIMESTAMP)
+└── updated_at (TIMESTAMP)
+
+ROLE-SPECIFIC PROFILE TABLES:
+-----------------------------
+
+admins
+├── id (PK, FK → users.id)
+├── admin_id (UNIQUE)
+├── first_name, middle_name, last_name
+├── email, contact_number
+├── created_at, updated_at
+
+teachers
+├── id (PK, FK → users.id)
+├── teacher_id (UNIQUE)
+├── first_name, middle_name, last_name
+├── email, contact_number
+├── department_code (FK → departments)
+├── created_at, updated_at
+
+students
+├── id (PK, FK → users.id)
+├── student_id (UNIQUE)
+├── first_name, middle_name, last_name
+├── email, contact_number
+├── is_working_student (BOOLEAN)
+├── archived_at, deletion_scheduled_at
+├── created_at, updated_at
+
+CLASS & ENROLLMENT TABLES:
+--------------------------
+
+subjects
+├── subject_code (PK)
+├── description (TEXT)
+├── created_at, updated_at
+
+classes
+├── class_id (PK, AUTO_INCREMENT)
+├── subject_code (FK → subjects)
+├── teacher_id (FK → teachers.id)
+├── edp_code (UNIQUE)
+├── descriptive_title
+├── schedule, room
+├── semester, school_year
+├── is_active, is_archived
+├── created_by_user_id (FK → users.id)
+├── created_at, updated_at
+
+classlist
+├── class_id (PK, FK → classes)
+├── student_id (PK, FK → students.id)
+├── enrollment_date
+├── status (ENUM: active, dropped, completed)
+├── is_archived (BOOLEAN)
+├── created_at, updated_at
+
+TRACKING & MONITORING TABLES:
+-----------------------------
+
+attendance
+├── class_id (PK, FK → classlist)
+├── student_id (PK, FK → classlist)
+├── date (PK)
+├── status (ENUM: present, absent, late, excused)
+├── remarks (TEXT)
+├── is_archived, is_finalized
+├── created_at, updated_at
+
+log_entries
+├── id (PK, AUTO_INCREMENT)
+├── user_id (FK → users.id)
+├── pc_number (VARCHAR) - Hostname detection
+├── login_time, logout_time
+├── is_archived (BOOLEAN)
+├── archived_at, archived_by_user_id
+
+feedback
+├── id (PK, AUTO_INCREMENT)
+├── student_id (FK → students.id)
+├── pc_number
+├── equipment_condition (ENUM: Good, Minor Issue, Not Working)
+├── monitor_condition (ENUM)
+├── keyboard_condition (ENUM)
+├── mouse_condition (ENUM)
+├── comments (TEXT)
+├── working_student_notes (TEXT)
+├── status (ENUM: pending, forwarded, resolved)
+├── priority (ENUM: low, medium, high, critical)
+├── forwarded_by_user_id, forwarded_at
+├── date_submitted
+├── is_archived, archived_at, archived_by_user_id
+├── created_at, updated_at
+
+registration_approvals
+├── id (PK, AUTO_INCREMENT)
+├── user_id (UNIQUE, FK → users.id)
+├── approved_by_user_id (FK → users.id)
+├── status (ENUM: pending, approved, rejected)
+├── rejection_reason (TEXT)
+├── processed_at
+├── created_at, updated_at
+
+================================================================================
+7. COMPLETE BACKEND FUNCTION REFERENCE (145 FUNCTIONS)
+================================================================================
+
+All public methods on App struct are exposed to frontend via Wails bridge.
+Private methods (lowercase) are internal helpers.
+
+--------------------------------------------------------------------------------
+APP.GO - Core Application & Dashboards (7 functions)
+--------------------------------------------------------------------------------
+PUBLIC (Exposed to Frontend):
+1.  startup(ctx context.Context)                                    [internal]
+    - Initializes database connection on app start
+
+2.  GetAdminDashboard() → (AdminDashboard, error)
+    - Returns admin dashboard statistics (user counts, recent logs, feedback)
+
+3.  GetTeacherDashboard(teacherUserID int) → (TeacherDashboard, error)
+    - Returns teacher dashboard data (classes, attendance stats)
+
+4.  GetRecentAttendance(classIDs []int, days int) → ([]Attendance, error)
+    - Gets recent attendance records for specified classes
+
+5.  GetStudentDashboard(userID int) → (StudentDashboard, error)
+    - Returns student dashboard data (enrolled classes, attendance)
+
+6.  GetWorkingStudentDashboard() → (WorkingStudentDashboard, error)
+    - Returns working student dashboard (pending registrations, feedback)
+
+7.  UpdateUserPhoto(userID int, userRole, photoURL string) → error
+    - Updates user profile photo URL
+
+--------------------------------------------------------------------------------
+AUTH.GO - Authentication (6 functions)
+--------------------------------------------------------------------------------
+PUBLIC (Exposed to Frontend):
+1.  Login(username, password string) → (*User, error)
+    - Authenticates user, creates login log, returns user profile
+
+2.  Logout(userID int) → error
+    - Records logout time in login log
+
+3.  RecordTimeoutLogout(userID int) → error
+    - Records automatic timeout logout
+
+4.  ChangePassword(username, oldPassword, newPassword string) → error
+    - Updates user password after verification
+
+PRIVATE (Internal Helpers):
+5.  loadUserProfile(user *User) → error
+    - Loads role-specific profile data (admin/teacher/student)
+
+6.  createLoginLog(userID int, pcNumber string) → (int, error)
+    - Creates new login log entry with PC hostname
+
+--------------------------------------------------------------------------------
+USERS.GO - User Management (17 functions)
+--------------------------------------------------------------------------------
+PUBLIC (Exposed to Frontend):
+1.  GetUsers() → ([]User, error)
+    - Retrieves all users with profile data
+
+2.  GetUsersByType(userType string) → ([]User, error)
+    - Filters users by role type
+
+3.  SearchUsers(searchTerm, userType string) → ([]User, error)
+    - Searches users by term and optionally by type
+
+4.  CreateUser(password, name, firstName, middleName, lastName, role,
+              employeeID, studentID, email, contactNumber, departmentCode string) → error
+    - Creates new user with role-specific profile
+
+5.  UpdateUser(id int, name, firstName, middleName, lastName, role,
+              employeeID, studentID, email, contactNumber, departmentCode string) → error
+    - Updates existing user details
+
+6.  DeleteUser(id int) → error
+    - Permanently deletes user and related data
+
+7.  CreateUsersBulkFromFile(fileDataBase64, fileName string) → (map[string]interface{}, error)
+    - Bulk imports users from base64-encoded CSV file
+
+8.  CreateUsersBulk(csvData string) → (map[string]interface{}, error)
+    - Bulk imports users from CSV string data
+
+9.  UpdateUserProfilePhoto(userID int, imageBase64 string) → error
+    - Updates user profile photo from base64 image
+
+10. DeleteUserProfilePhoto(userID int) → error
+    - Removes user profile photo
+
+11. ArchiveStudent(studentUserID int) → error
+    - Soft-deletes student (marks for future deletion)
+
+12. UnarchiveStudent(studentUserID int) → error
+    - Restores archived student account
+
+13. GetArchivedStudents() → ([]ArchivedStudent, error)
+    - Lists all archived student accounts
+
+14. DeleteExpiredStudents() → (int, error)
+    - Permanently deletes students past retention period
+
+15. GetActiveStudentsForArchiving() → ([]User, error)
+    - Lists students eligible for archival
+
+PRIVATE (Internal Helpers):
+16. scanUsers(rows *sql.Rows) → ([]User, error)
+    - Helper to scan database rows into User structs
+
+17. checkDuplicateUser(username, role string) → error
+    - Validates username uniqueness
+
+18. insertRoleSpecificProfile(userID int64, role, firstName, middleName,
+                             lastName, employeeID, studentID, email,
+                             contactNumber, departmentCode string) → error
+    - Creates role-specific profile record
+
+19. parseFileContent(fileData []byte, ext string) → (string, error)
+    - Parses uploaded file content by extension
+
+20. processBulkRecords(records [][]string) → (map[string]interface{}, error)
+    - Processes parsed CSV records for bulk import
+
+21. processBulkRecordsSimple(records [][]string) → (map[string]interface{}, error)
+    - Simplified bulk record processing
+
+--------------------------------------------------------------------------------
+CLASSES.GO - Class Management (42 functions)
+--------------------------------------------------------------------------------
+PUBLIC (Exposed to Frontend):
+1.  GetSubjects() → ([]Subject, error)
+    - Lists all subjects
+
+2.  CreateSubject(code, name string, teacherUserID int, description string) → error
+    - Creates new subject
+
+3.  GetAllClasses() → ([]CourseClass, error)
+    - Retrieves all classes with details
+
+4.  GetTeacherClassesByUserID(userID int) → ([]CourseClass, error)
+    - Gets classes by teacher's user ID
+
+5.  GetTeacherClasses(teacherID int) → ([]CourseClass, error)
+    - Gets classes by teacher's profile ID
+
+6.  GetTeacherClassesWithAttendance(userID int) → ([]CourseClass, error)
+    - Gets classes with attendance statistics
+
+7.  GetClassesByCreator(createdBy int) → ([]CourseClass, error)
+    - Gets classes created by specific user
+
+8.  GetStudentClasses(studentUserID int) → ([]CourseClass, error)
+    - Gets classes student is enrolled in
+
+9.  CreateClass(subjectCode string, teacherUserID int, edpCode, schedule,
+               room, yearLevel, section, semester, schoolYear,
+               descriptiveTitle string, createdBy int) → (int, error)
+    - Creates new class with all details
+
+10. UpdateClass(classID int, schedule, room, yearLevel, section,
+               semester, schoolYear string, isActive bool) → error
+    - Updates class details
+
+11. DeleteClass(classID int) → error
+    - Permanently deletes class
+
+12. GetClassStudents(classID int) → ([]ClasslistEntry, error)
+    - Lists enrolled students in class
+
+13. GetAvailableStudents(classID int) → ([]ClassStudent, error)
+    - Lists students not enrolled in class
+
+14. GetAllStudentsForEnrollment(classID int) → ([]ClassStudent, error)
+    - Lists all students with enrollment status
+
+15. EnrollStudentInClass(studentID, classID, enrolledBy int) → error
+    - Enrolls single student in class
+
+16. EnrollMultipleStudents(studentIDs []int, classID, enrolledBy int) → error
+    - Batch enrolls multiple students
+
+17. UnenrollStudentFromClass(classlistID int) → error
+    - Removes student from class by classlist ID
+
+18. UnenrollStudentFromClassByIDs(studentID, classID int) → error
+    - Removes student from class by IDs
+
+19. GetClassesByEDPCode(edpCode string) → ([]CourseClass, error)
+    - Searches classes by EDP code
+
+20. JoinClassByEDPCode(studentUserID int, edpCode string) → (int, error)
+    - Student self-enrollment via EDP code
+
+21. GetTeacherID(userID int) → (int, error)
+    - Gets teacher profile ID from user ID
+
+22. GetWorkingStudentID(userID int) → (int, error)
+    - Gets working student profile ID from user ID
+
+23. GetAllTeachers() → ([]User, error)
+    - Lists all teacher users
+
+24. GetAllRegisteredStudents(yearLevelFilter, sectionFilter string) → ([]ClassStudent, error)
+    - Lists students with optional filters
+
+25. GetAvailableSections() → ([]string, error)
+    - Lists distinct section values
+
+26. SetClassActiveStatus(classID int, isActive bool) → error
+    - Sets class active/inactive status
+
+27. DeactivateClass(classID int) → error
+    - Marks class as inactive
+
+28. ActivateClass(classID int) → error
+    - Marks class as active
+
+29. GetInactiveClasses(teacherUserID int) → ([]CourseClass, error)
+    - Lists inactive classes for teacher
+
+30. ArchiveClass(classID int) → error
+    - Archives completed class
+
+31. UnarchiveClass(classID int) → error
+    - Restores archived class
+
+32. GetArchivedClasses(teacherUserID int) → ([]CourseClass, error)
+    - Lists archived classes for teacher
+
+33. GetStudentArchivedClasses(studentUserID int) → ([]CourseClass, error)
+    - Lists archived classes for student
+
+34. GetClassByID(classID int) → (*CourseClass, error)
+    - Gets single class by ID
+
+35. ArchiveStudentEnrollment(studentUserID, classID int) → error
+    - Archives student's enrollment in class
+
+36. UnarchiveStudentEnrollment(studentUserID, classID int) → error
+    - Restores student's enrollment
+
+37. SetStudentEnrollmentStatus(studentUserID, classID int, status string) → error
+    - Sets enrollment status (active/dropped/completed)
+
+38. MarkEnrollmentCompleted(studentUserID, classID int) → error
+    - Marks enrollment as completed
+
+39. MarkEnrollmentDropped(studentUserID, classID int) → error
+    - Marks enrollment as dropped
+
+40. ReactivateEnrollment(studentUserID, classID int) → error
+    - Reactivates enrollment to active status
+
+41. MarkAllEnrollmentsCompleted(classID int) → error
+    - Marks all students in class as completed
+
+42. GetCompletedEnrollments(classID int) → ([]ClasslistEntry, error)
+    - Lists students with completed status
+
+--------------------------------------------------------------------------------
+ATTENDANCE.GO - Attendance Tracking (20 functions)
+--------------------------------------------------------------------------------
+PUBLIC (Exposed to Frontend):
+1.  RecordAttendance(classID, studentID int, status, remarks string,
+                    recordedBy int) → error
+    - Records attendance for student
+
+2.  GetClassAttendance(classID int, date string) → ([]Attendance, error)
+    - Gets attendance sheet for class/date
+
+3.  InitializeAttendanceForClass(classID int, date string, recordedBy int) → error
+    - Creates blank attendance sheet for all enrolled students
+
+4.  UpdateAttendanceRecord(classID, studentUserID int, date, status,
+                          remarks string) → error
+    - Updates existing attendance record
+
+5.  DeleteAttendanceSheet(classID int, date string) → error
+    - Deletes entire attendance sheet
+
+6.  RecordStudentLogin(classID, studentID int) → error
+    - Records student login for attendance
+
+7.  ExportAttendanceCSV(classID int) → (string, error)
+    - Exports class attendance to CSV file
+
+8.  GenerateAttendanceFromLogs(classID int, date string, recordedBy int) → error
+    - Auto-generates attendance from login logs
+
+9.  FinalizeAttendanceSheet(classID int, date string) → error
+    - Locks attendance sheet from editing
+
+10. UnfinalizeAttendanceSheet(classID int, date string) → error
+    - Unlocks attendance sheet for editing
+
+11. ArchiveAttendanceSheet(classID int, date string) → error
+    - Archives attendance sheet
+
+12. UnarchiveAttendanceSheet(classID int, date string) → error
+    - Restores archived attendance sheet
+
+13. GetArchivedAttendanceSheets(teacherUserID int) → ([]ArchivedAttendanceSheet, error)
+    - Lists archived attendance sheets
+
+14. GetFinalizedAttendanceSheets(teacherUserID int) → ([]AttendanceSheetSummary, error)
+    - Lists finalized attendance sheets
+
+15. GetActiveAttendanceSheets(teacherUserID int) → ([]AttendanceSheetSummary, error)
+    - Lists active (editable) attendance sheets
+
+PRIVATE (Internal Helpers):
+16. autoRecordAttendanceOnLogin(studentID int)
+    - Automatically records attendance when student logs in
+
+17. isWithinClassSchedule(schedule string, currentTime time.Time) → bool
+    - Checks if current time is within class schedule
+
+--------------------------------------------------------------------------------
+LOGS.GO - Login Log Management (21 functions)
+--------------------------------------------------------------------------------
+PUBLIC (Exposed to Frontend):
+1.  GetTodayLogs() → ([]LoginLog, error)
+    - Gets today's login logs
+
+2.  GetPastLogs(startDate, endDate string) → ([]LoginLog, error)
+    - Gets logs within date range
+
+3.  ArchiveSelectedLogs(logIDs []int, archivedByUserID int) → error
+    - Archives specific log entries
+
+4.  UnarchiveLogs(logIDs []int) → error
+    - Restores archived logs
+
+5.  GetArchivedLogs() → ([]LoginLog, error)
+    - Lists all archived logs
+
+6.  GetAllLogs() → ([]LoginLog, error)
+    - Gets all non-archived logs
+
+7.  GetStudentLoginLogs(userID int) → ([]LoginLog, error)
+    - Gets login history for student
+
+8.  GetTeacherLoginLogs(userID int) → ([]LoginLog, error)
+    - Gets login history for teacher
+
+9.  ExportLogsCSV() → (string, error)
+    - Exports all logs to CSV
+
+10. ExportLogsPDF() → (string, error)
+    - Exports all logs to PDF
+
+11. GetArchivedLogSheets() → ([]ArchivedLogSheet, error)
+    - Gets archived logs grouped by date
+
+12. GetArchivedLogsByDate(date string) → ([]LoginLog, error)
+    - Gets archived logs for specific date
+
+13. ArchiveLogsByDate(date string, adminUserID int) → (int, error)
+    - Archives all logs for specific date
+
+14. UnarchiveLogSheet(date string) → (int, error)
+    - Restores all logs for specific date
+
+15. GetLogDates() → ([]string, error)
+    - Gets list of dates with log entries
+
+16. ExportArchivedLogSheetCSV(date string) → (string, error)
+    - Exports archived logs for date to CSV
+
+17. ExportArchivedLogSheetPDF(date string) → (string, error)
+    - Exports archived logs for date to PDF
+
+18. ArchiveLogs(logIDs []int, adminUserID int) → (int, error)
+    - Archives multiple logs by ID
+
+19. ExportArchivedLogsCSV() → (string, error)
+    - Exports all archived logs to CSV
+
+20. ExportArchivedLogsPDF() → (string, error)
+    - Exports all archived logs to PDF
+
+--------------------------------------------------------------------------------
+FEEDBACK.GO - Equipment Feedback (20 functions)
+--------------------------------------------------------------------------------
+PUBLIC (Exposed to Frontend):
+1.  GetFeedback() → ([]Feedback, error)
+    - Gets all feedback records
+
+2.  GetStudentFeedback(studentID int) → ([]Feedback, error)
+    - Gets feedback submitted by student
+
+3.  SaveEquipmentFeedback(userID int, userName, computerStatus, computerIssue,
+                         mouseStatus, mouseIssue, keyboardStatus, keyboardIssue,
+                         monitorStatus, monitorIssue, additionalComments string) → error
+    - Submits new equipment feedback
+
+4.  GetPendingFeedback() → ([]Feedback, error)
+    - Gets unprocessed feedback
+
+5.  ForwardFeedbackToAdmin(feedbackID, workingStudentID int, notes string) → error
+    - Forwards feedback to admin with notes
+
+6.  ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID int,
+                                  notes string) → (int, error)
+    - Batch forwards multiple feedback
+
+7.  ExportFeedbackCSV() → (string, error)
+    - Exports all feedback to CSV
+
+8.  ExportFeedbackPDF() → (string, error)
+    - Exports all feedback to PDF
+
+9.  GetArchivedFeedbackSheets() → ([]ArchivedFeedbackSheet, error)
+    - Gets archived feedback grouped by date
+
+10. GetArchivedFeedbackByDate(date string) → ([]Feedback, error)
+    - Gets archived feedback for specific date
+
+11. ArchiveFeedbackByDate(date string, adminUserID int) → (int, error)
+    - Archives all feedback for specific date
+
+12. UnarchiveFeedbackSheet(date string) → (int, error)
+    - Restores feedback for specific date
+
+13. GetFeedbackDates() → ([]string, error)
+    - Gets list of dates with feedback
+
+14. ExportArchivedFeedbackSheetCSV(date string) → (string, error)
+    - Exports archived feedback for date to CSV
+
+15. ExportArchivedFeedbackSheetPDF(date string) → (string, error)
+    - Exports archived feedback for date to PDF
+
+16. GetArchivedFeedback() → ([]Feedback, error)
+    - Gets all archived feedback
+
+17. ArchiveFeedback(feedbackIDs []int, adminUserID int) → (int, error)
+    - Archives multiple feedback by ID
+
+18. UnarchiveFeedback(feedbackIDs []int) → (int, error)
+    - Restores multiple archived feedback
+
+19. ExportArchivedFeedbackCSV() → (string, error)
+    - Exports all archived feedback to CSV
+
+20. ExportArchivedFeedbackPDF() → (string, error)
+    - Exports all archived feedback to PDF
+
+--------------------------------------------------------------------------------
+REGISTRATION.GO - Student Registration (3 functions)
+--------------------------------------------------------------------------------
+PUBLIC (Exposed to Frontend):
+1.  SubmitRegistration(req RegistrationRequest) → error
+    - Submits new student registration
+
+2.  GetPendingRegistrations() → ([]PendingRegistration, error)
+    - Gets registrations awaiting approval
+
+3.  ProcessRegistration(req ApprovalRequest) → error
+    - Approves or rejects registration
+
+--------------------------------------------------------------------------------
+DEPARTMENTS.GO - Department Management (4 functions)
+--------------------------------------------------------------------------------
+PUBLIC (Exposed to Frontend):
+1.  GetDepartments() → ([]Department, error)
+    - Lists all departments
+
+2.  CreateDepartment(departmentCode, departmentName, description string) → error
+    - Creates new department
+
+3.  UpdateDepartment(oldDepartmentCode, departmentCode, departmentName,
+                    description string, isActive bool) → error
+    - Updates department details
+
+4.  DeleteDepartment(departmentCode string) → error
+    - Deletes department
+
+--------------------------------------------------------------------------------
+PROFILE_PHOTOS.GO - Profile Photo Management (5 functions)
+--------------------------------------------------------------------------------
+PUBLIC (Exposed to Frontend):
+1.  UploadProfilePhoto(userID int, photoData []byte, fileName, mimeType string) → error
+    - Uploads new profile photo
+
+2.  GetProfilePhoto(userID int) → (*ProfilePhoto, error)
+    - Gets profile photo metadata
+
+3.  DeleteProfilePhoto(userID int) → error
+    - Deletes profile photo
+
+4.  MigrateProfilePhotosFromBlob() → error
+    - Migrates photos from BLOB to file system
+
+PRIVATE (Internal Helpers):
+5.  migratePhotosFromTable(query string) → (int, int)
+    - Helper for photo migration
+
+--------------------------------------------------------------------------------
+CONFIG.GO - Database Configuration
+--------------------------------------------------------------------------------
+1.  InitDatabase() → (*sql.DB, error)
+    - Initializes MySQL database connection using environment variables
+
+--------------------------------------------------------------------------------
+MAIN.GO - Application Entry Point
+--------------------------------------------------------------------------------
+1.  main()
+    - Application entry point, creates Wails app with settings
+
+================================================================================
+FUNCTION SUMMARY BY CATEGORY
+================================================================================
+
+TOTAL FUNCTIONS: 145
+
+BY FILE:
+├── app.go ................ 7 functions
+├── auth.go ............... 6 functions
+├── users.go .............. 21 functions (15 public, 6 private)
+├── classes.go ............ 42 functions
+├── attendance.go ......... 17 functions (15 public, 2 private)
+├── logs.go ............... 20 functions
+├── feedback.go ........... 20 functions
+├── registration.go ....... 3 functions
+├── departments.go ........ 4 functions
+├── profile_photos.go ..... 5 functions (4 public, 1 private)
+├── config.go ............. 1 function
+└── main.go ............... 1 function
+
+BY CATEGORY:
+├── Authentication ........ 6 functions
+├── User Management ....... 21 functions
+├── Class Management ...... 42 functions
+├── Attendance ............ 17 functions
+├── Login Logs ............ 20 functions
+├── Equipment Feedback .... 20 functions
+├── Registration .......... 3 functions
+├── Departments ........... 4 functions
+├── Profile Photos ........ 5 functions
+├── Dashboard ............. 5 functions
+└── System/Config ......... 2 functions
+
+WAILS-EXPOSED (Frontend Callable): ~120 functions
+INTERNAL HELPERS (Private): ~25 functions
+
+================================================================================
+8. FRONTEND STRUCTURE
+================================================================================
+
+DIRECTORY LAYOUT:
+-----------------
+frontend/
+├── index.html              # Entry HTML
+├── package.json            # NPM dependencies
+├── tailwind.config.js      # Tailwind configuration
+├── vite.config.ts          # Vite build configuration
+├── tsconfig.json           # TypeScript configuration
+└── src/
+    ├── App.tsx             # Main app with routing
+    ├── main.tsx            # React entry point
+    ├── style.css           # Global styles (Tailwind imports)
+    ├── components/         # Reusable UI components
+    │   ├── Layout.tsx      # Main layout wrapper
+    │   ├── Button.tsx      # Button component
+    │   ├── Card.tsx        # Card container
+    │   ├── Modal.tsx       # Modal dialogs
+    │   ├── Table.tsx       # Data tables
+    │   ├── Form.tsx        # Form elements
+    │   ├── Badge.tsx       # Status badges
+    │   ├── DateRangeFilter.tsx
+    │   ├── LoginHistory.tsx
+    │   ├── PendingRegistrations.tsx
+    │   ├── ArchivedLogsView.tsx
+    │   ├── ArchivedReportsView.tsx
+    │   ├── LogoutFeedbackModal.tsx
+    │   └── ...more components
+    ├── contexts/           # React contexts
+    │   └── AuthContext.tsx # Authentication state management
+    ├── hooks/              # Custom React hooks
+    ├── pages/              # Page components (dashboards)
+    │   ├── LoginPage.tsx
+    │   ├── RegistrationPage.tsx
+    │   ├── Admin.tsx       # Admin dashboard
+    │   ├── Teacher.tsx     # Teacher dashboard
+    │   ├── Student.tsx     # Student dashboard
+    │   └── WorkingStudent.tsx  # Working student dashboard
+    └── assets/             # Static assets
+        └── background/
+
+WAILS BRIDGE (wailsjs/):
+------------------------
+wailsjs/
+├── go/
+│   └── main/
+│       ├── App.js          # Generated JS bridge for Go methods
+│       └── App.d.ts        # TypeScript definitions
+└── runtime/
+    └── runtime.js          # Wails runtime utilities
+
+KEY COMPONENTS:
+---------------
+
+AuthContext.tsx:
+- Manages user authentication state
+- Stores user in localStorage for persistence
+- Provides login/logout functions to components
+- Wraps application for protected routes
+
+App.tsx:
+- Defines all application routes
+- Implements ProtectedRoute for authentication
+- Implements RoleRoute for role-based access
+- Routes users to appropriate dashboards
+
+Dashboard Pages:
+- Admin.tsx: Full system management interface
+- Teacher.tsx: Class and attendance management
+- Student.tsx: View classes, attendance, submit feedback
+- WorkingStudent.tsx: Process registrations, forward feedback
+
+================================================================================
+9. DATA FLOW & WORKFLOWS
+================================================================================
+
+A. USER LOGIN WORKFLOW:
+-----------------------
+1. User enters credentials on LoginPage
+2. Frontend calls Login(username, password) via Wails bridge
+3. Backend validates credentials against users table
+4. Backend checks account_status (pending/active/suspended/rejected)
+5. Backend loads role-specific profile (admin/teacher/student)
+6. Backend creates log_entries record with PC hostname
+7. Backend returns User object with login_log_id
+8. Frontend stores user in AuthContext and localStorage
+9. Frontend redirects to role-appropriate dashboard
+
+B. STUDENT REGISTRATION WORKFLOW:
+---------------------------------
+1. Student fills RegistrationPage form
+2. Frontend calls SubmitRegistration(request)
+3. Backend creates user with account_status='pending'
+4. Backend creates registration_approvals record
+5. Working student views GetPendingRegistrations()
+6. Working student calls ProcessRegistration(approve/reject)
+7. Backend updates account_status accordingly
+8. If approved, student can now login
+
+C. ATTENDANCE TRACKING WORKFLOW:
+--------------------------------
+1. Teacher creates class with schedule
+2. Teacher enrolls students via classlist
+3. Teacher calls InitializeAttendanceForClass(classID, date)
+4. Students login → auto-attendance detection (optional)
+5. Teacher views/modifies attendance via GetClassAttendance()
+6. Teacher finalizes with FinalizeAttendanceSheet()
+7. Teacher can archive old sheets with ArchiveAttendanceSheet()
+8. Export with ExportAttendanceCSV()
+
+D. EQUIPMENT FEEDBACK WORKFLOW:
+-------------------------------
+1. Student logs out and modal appears
+2. Student selects condition for each equipment type
+3. Frontend calls SaveEquipmentFeedback(...conditions)
+4. Backend creates feedback record with status='pending'
+5. Working student views GetPendingFeedback()
+6. Working student forwards to admin with notes
+7. Admin views and resolves feedback
+8. Admin can archive resolved feedback
+
+E. LOG ARCHIVAL WORKFLOW:
+-------------------------
+1. Admin views GetTodayLogs() or GetPastLogs()
+2. Admin selects logs for archival
+3. Admin calls ArchiveSelectedLogs(logIDs, adminUserID)
+4. Logs marked is_archived=true with timestamp
+5. Admin views archived via GetArchivedLogs()
+6. Admin can export via ExportArchivedLogsPDF/CSV()
+7. Admin can unarchive if needed via UnarchiveLogs()
+
+================================================================================
+10. SECURITY FEATURES
+================================================================================
+
+AUTHENTICATION:
+- Username/password based login
+- Role-based access control (RBAC)
+- Account status checks (pending, suspended, rejected)
+- Login session tracking with timestamps
+
+DATA PROTECTION:
+- Parameterized SQL queries (SQL injection prevention)
+- Foreign key constraints (referential integrity)
+- Input validation on both frontend and backend
+
+ACCESS CONTROL:
+- Protected routes require authentication
+- Role-based route restrictions
+- Method-level permission checks in Go
+
+SESSION MANAGEMENT:
+- Login log tracking with PC hostname
+- Automatic logout time recording
+- Timeout logout handling
+
+NOTE: Password storage uses plain text comparison in current implementation.
+For production, proper password hashing (bcrypt) should be implemented.
+
+================================================================================
+11. EXPORT & REPORTING
+================================================================================
+
+EXPORT FORMATS:
+- CSV: Plain text comma-separated values
+- PDF: Formatted documents with tables
+
+EXPORT DESTINATIONS:
+- All exports save to user's Downloads folder
+- Filename includes date/timestamp for uniqueness
+
+AVAILABLE EXPORTS:
+------------------
+Logs:
+- ExportLogsCSV() → All login logs
+- ExportLogsPDF() → All login logs formatted
+- ExportArchivedLogSheetCSV(date) → Specific date
+- ExportArchivedLogSheetPDF(date) → Specific date
+
+Feedback:
+- ExportFeedbackCSV() → All feedback records
+- ExportFeedbackPDF() → All feedback formatted
+- ExportArchivedFeedbackSheetCSV(date) → Specific date
+- ExportArchivedFeedbackSheetPDF(date) → Specific date
+
+Attendance:
+- ExportAttendanceCSV(classID) → Class attendance records
+
+PDF LIBRARY: gofpdf
+CSV LIBRARY: encoding/csv (Go standard library)
+
+================================================================================
+12. FILE STRUCTURE
+================================================================================
+
+ROOT DIRECTORY:
+---------------
+digital-logbook/
+├── app.go              # App struct and shared types
+├── auth.go             # Authentication methods
+├── users.go            # User management methods
+├── classes.go          # Class management methods
+├── attendance.go       # Attendance tracking methods
+├── logs.go             # Login log methods
+├── feedback.go         # Equipment feedback methods
+├── departments.go      # Department management
+├── registration.go     # Student registration
+├── profile_photos.go   # Photo management
+├── config.go           # Database configuration
+├── main.go             # Application entry point
+├── go.mod              # Go module dependencies
+├── wails.json          # Wails configuration
+├── README.md           # Project documentation
+│
+├── frontend/           # React frontend application
+├── database/           # SQL schema and seed files
+├── build/              # Build configuration
+├── assets/             # Static assets (backgrounds)
+├── docs/               # Documentation files
+└── notes/              # Development notes
+
+IMPORTANT FILES:
+----------------
+- wails.json: Build configuration, frontend commands
+- config.go: Database connection with env variables
+- database/logbookdb.sql: Complete schema definition
+- database/seed.sql: Sample data for testing
+
+================================================================================
+13. DEVELOPMENT SETUP
+================================================================================
+
+PREREQUISITES:
+--------------
+1. Node.js (LTS version) - https://nodejs.org
+2. Go (latest) - https://go.dev/doc/install
+3. Wails CLI - go install github.com/wailsapp/wails/v2/cmd/wails@latest
+4. MySQL Server - https://dev.mysql.com/downloads/mysql/
+5. MySQL Workbench (optional) - https://dev.mysql.com/downloads/workbench/
+
+INSTALLATION:
+-------------
+1. Clone repository
+2. Install frontend dependencies:
+   > npm install (in project root)
+   
+3. Set up database:
+   > mysql -u root -p logbookdb < database/logbookdb.sql
+   > mysql -u root -p logbookdb < database/seed.sql
+
+4. Configure environment (optional, defaults work for local):
+   - DB_HOST=localhost
+   - DB_PORT=3306
+   - DB_USERNAME=root
+   - DB_PASSWORD=root
+   - DB_DATABASE=logbookdb
+
+5. Verify Wails installation:
+   > wails doctor
+
+RUNNING IN DEVELOPMENT:
+-----------------------
+> wails dev
+
+This will:
+- Start Go backend with hot reload
+- Launch React dev server
+- Open desktop application window
+
+================================================================================
+14. BUILD & DEPLOYMENT
+================================================================================
+
+PRODUCTION BUILD:
+-----------------
+> wails build
+
+This generates:
+- Windows: .exe executable + NSIS installer
+- macOS: .app bundle
+- Linux: Binary executable
+
+BUILD OUTPUT:
+-------------
+build/bin/
+├── digital-logbook.exe       # Windows executable
+└── digital-logbook-amd64-installer.exe  # Windows installer
+
+INSTALLER CONFIGURATION:
+- Windows NSIS: build/windows/installer/project.nsi
+- Windows manifest: build/windows/wails.exe.manifest
+- macOS plist: build/darwin/Info.plist
+
+DEPLOYMENT REQUIREMENTS:
+- MySQL Server must be accessible
+- Database must be initialized with schema
+- Environment variables configured for database connection
+
+================================================================================
+                              END OF DOCUMENT
+================================================================================
+
+For additional information, refer to:
+- README.md (Quick start guide)
+- docs/ folder (Detailed implementation guides)
+- database/README_DATABASE_DOCS.md (Database documentation)
+- .github/copilot-instructions.md (AI coding guidelines)
+
+================================================================================
