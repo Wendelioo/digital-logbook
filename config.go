@@ -6,25 +6,27 @@ import (
 	"log"
 	"os"
 
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/denisenkom/go-mssqldb"
 )
 
 // DBConfig holds database configuration
 type DBConfig struct {
-	Host     string
+	Server   string
 	Port     string
 	Username string
 	Password string
 	Database string
+	Instance string
 }
 
 // GetDBConfig returns database configuration from environment variables or defaults
 func GetDBConfig() DBConfig {
 	return DBConfig{
-		Host:     getEnv("DB_HOST", "localhost"),
-		Port:     getEnv("DB_PORT", "3306"),
-		Username: getEnv("DB_USERNAME", "root"),
-		Password: getEnv("DB_PASSWORD", "root"),
+		Server:   getEnv("DB_SERVER", "localhost"),
+		Port:     getEnv("DB_PORT", "1433"),
+		Instance: getEnv("DB_INSTANCE", "SQLEXPRESS"),
+		Username: getEnv("DB_USERNAME", "logbook_app"),
+		Password: getEnv("DB_PASSWORD", "SecurePassword123!"),
 		Database: getEnv("DB_DATABASE", "logbookdb"),
 	}
 }
@@ -41,16 +43,33 @@ func getEnv(key, defaultValue string) string {
 // InitDatabase initializes and returns a database connection
 func InitDatabase() (*sql.DB, error) {
 	config := GetDBConfig()
-	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%s)/%s?parseTime=true&charset=utf8mb4",
-		config.Username,
-		config.Password,
-		config.Host,
-		config.Port,
-		config.Database,
-	)
 
-	db, err := sql.Open("mysql", dsn)
+	// SQL Server connection string format
+	var dsn string
+	if config.Instance != "" {
+		// With instance name (e.g., SQLEXPRESS)
+		dsn = fmt.Sprintf(
+			"server=%s\\%s;port=%s;user id=%s;password=%s;database=%s",
+			config.Server,
+			config.Instance,
+			config.Port,
+			config.Username,
+			config.Password,
+			config.Database,
+		)
+	} else {
+		// Without instance name (default instance or cloud)
+		dsn = fmt.Sprintf(
+			"server=%s;port=%s;user id=%s;password=%s;database=%s",
+			config.Server,
+			config.Port,
+			config.Username,
+			config.Password,
+			config.Database,
+		)
+	}
+
+	db, err := sql.Open("mssql", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}

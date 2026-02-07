@@ -1,0 +1,547 @@
+================================================================================
+            CLOUD DATABASE SETUP GUIDE
+            Digital Logbook Desktop Application
+================================================================================
+
+This guide explains how to deploy your Digital Logbook application using a 
+cloud-hosted MySQL database. This approach eliminates local network issues and 
+allows all lab computers to connect to a centralized database via the internet.
+
+================================================================================
+WHY USE CLOUD DATABASE?
+================================================================================
+
+ADVANTAGES:
+✓ No network configuration needed (no firewall, router, or WiFi issues)
+✓ Works from anywhere with internet connection
+✓ Professional deployment approach (how real desktop apps work)
+✓ Easy to add more computers - just set environment variables
+✓ Automatic backups included by most cloud providers
+✓ Free tiers available for student projects
+
+COMPARED TO LOCAL SERVER:
+- Local server requires: Same network, firewall config, static IP, WiFi setup
+- Cloud database requires: Just internet connection + credentials
+
+================================================================================
+STEP 1: CREATE CLOUD MYSQL DATABASE
+================================================================================
+
+RECOMMENDED SERVICE: Railway.app
+- Free tier: $5 monthly credit (sufficient for small databases)
+- Easy setup, student-friendly
+- GitHub login (no credit card needed for trial)
+
+1.1 Sign Up for Railway
+    a) Go to: https://railway.app
+    b) Click "Login" button
+    c) Select "Login with GitHub"
+    d) Authorize Railway to access your GitHub account
+    e) Complete signup (free account)
+
+1.2 Create New MySQL Database
+    a) From Railway dashboard, click "New Project"
+    b) Select "Provision MySQL" from the templates
+    c) Wait for deployment (takes about 30-60 seconds)
+    d) MySQL service will appear as a card in your project
+
+1.3 Get Connection Credentials
+    a) Click on the MySQL service card
+    b) Click the "Variables" tab
+    c) You will see these variables - COPY THEM SOMEWHERE SAFE:
+       
+       MYSQLHOST      = containers-us-west-123.railway.app
+       MYSQLPORT      = 6543
+       MYSQLUSER      = root
+       MYSQLPASSWORD  = [long random string]
+       MYSQLDATABASE  = railway
+
+    d) Keep these credentials private - they're like passwords!
+
+================================================================================
+ALTERNATIVE CLOUD PROVIDERS (If Railway doesn't work)
+================================================================================
+
+OPTION B: Clever Cloud
+    - Website: https://www.clever-cloud.com
+    - Free tier: 256MB MySQL database
+    - Sign up → Create MySQL add-on → Get credentials
+    - Same process as Railway
+
+OPTION C: FreeSQLDatabase (For quick testing)
+    - Website: https://www.freesqldatabase.com
+    - Fill form → Instant credentials via email
+    - Good for testing, not recommended for production
+    - Limited features compared to Railway
+
+OPTION D: PlanetScale
+    - Website: https://planetscale.com
+    - Free tier available
+    - More advanced features (branching, migrations)
+    - Requires credit card for verification
+
+================================================================================
+STEP 2: IMPORT YOUR DATABASE SCHEMA
+================================================================================
+
+You need to create tables in your cloud database using the logbookdb.sql file.
+
+METHOD A: Using MySQL Workbench (Recommended - GUI Interface)
+
+2.1 Download and Install MySQL Workbench
+    - Download from: https://dev.mysql.com/downloads/workbench/
+    - Install on your computer
+
+2.2 Create New Connection
+    a) Open MySQL Workbench
+    b) Click the "+" icon next to "MySQL Connections"
+    c) Enter connection details:
+       
+       Connection Name: Digital Logbook Cloud
+       Hostname:        [Your MYSQLHOST from Railway]
+       Port:            [Your MYSQLPORT from Railway]
+       Username:        [Your MYSQLUSER from Railway]
+       Password:        Click "Store in Vault" → Enter MYSQLPASSWORD
+       Default Schema:  [Your MYSQLDATABASE from Railway]
+    
+    d) Click "Test Connection" to verify
+    e) Should show "Successfully made the MySQL connection"
+    f) Click "OK" to save connection
+
+2.3 Import Database Schema
+    a) Double-click your new connection to open it
+    b) Go to: File → Run SQL Script...
+    c) Navigate to: C:\Users\User Guest\digital-logbook\database\logbookdb.sql
+    d) Click "Open"
+    e) Click "Run"
+    f) Wait for script to complete (should see "Operation completed successfully")
+
+2.4 Verify Tables Were Created
+    a) In left sidebar, expand "Schemas"
+    b) Expand your database (railway or logbookdb)
+    c) Expand "Tables"
+    d) You should see: users, admins, teachers, students, login_logs, etc.
+
+METHOD B: Using Command Line (For Advanced Users)
+
+2.1 Open Command Prompt or PowerShell
+
+2.2 Import Database
+    Command format:
+    mysql -h [MYSQLHOST] -P [MYSQLPORT] -u [MYSQLUSER] -p [MYSQLDATABASE] < database\logbookdb.sql
+    
+    Example:
+    mysql -h containers-us-west-123.railway.app -P 6543 -u root -p railway < database\logbookdb.sql
+    
+    Press Enter, then type your MYSQLPASSWORD when prompted
+
+2.3 Verify Import
+    mysql -h containers-us-west-123.railway.app -P 6543 -u root -p railway
+    
+    Once connected:
+    SHOW TABLES;
+    
+    Should list all your tables (users, admins, teachers, etc.)
+    Type: exit
+
+================================================================================
+STEP 3: CONFIGURE YOUR APPLICATION
+================================================================================
+
+Your app is already configured to use environment variables (no code changes needed).
+You just need to set the correct environment variables on each PC.
+
+3.1 Create Launcher Batch File
+
+Create a file called "StartLogbook.bat" with this content:
+
+--------------------------------------------------------------------------------
+@echo off
+echo ====================================================
+echo   Digital Logbook - Cloud Database Launcher
+echo ====================================================
+echo.
+echo Configuring database connection...
+
+REM === REPLACE THESE WITH YOUR ACTUAL RAILWAY CREDENTIALS ===
+set DB_HOST=containers-us-west-123.railway.app
+set DB_PORT=6543
+set DB_USERNAME=root
+set DB_PASSWORD=YOUR_RAILWAY_PASSWORD_HERE
+set DB_DATABASE=railway
+
+echo Database Host: %DB_HOST%
+echo Database Port: %DB_PORT%
+echo Database Name: %DB_DATABASE%
+echo.
+echo Starting Digital Logbook...
+echo.
+
+REM Launch the application (adjust path if needed)
+start "" "Digital Logbook.exe"
+
+REM Optional: Keep window open to see any startup messages
+REM pause
+--------------------------------------------------------------------------------
+
+3.2 Edit the Batch File
+    a) Replace "containers-us-west-123.railway.app" with YOUR MYSQLHOST
+    b) Replace "6543" with YOUR MYSQLPORT
+    c) Replace "YOUR_RAILWAY_PASSWORD_HERE" with YOUR MYSQLPASSWORD
+    d) Save the file
+
+3.3 File Placement
+    Place "StartLogbook.bat" in the same folder as "Digital Logbook.exe"
+
+    Example folder structure:
+    C:\DigitalLogbook\
+        ├── Digital Logbook.exe
+        └── StartLogbook.bat
+
+SECURITY NOTE:
+The batch file contains your database password. Options:
+- Keep it secure, don't share publicly
+- Only distribute to trusted lab computers
+- Or use system environment variables (see Step 3.4)
+
+3.4 ALTERNATIVE: System Environment Variables (More Secure)
+
+Instead of batch file, set permanent environment variables on each PC:
+
+Windows 10/11:
+    a) Right-click "This PC" → Properties
+    b) Click "Advanced system settings"
+    c) Click "Environment Variables" button
+    d) Under "System variables" (or "User variables"), click "New"
+    e) Add each variable:
+       
+       Variable Name      | Variable Value
+       -------------------|----------------------------------
+       DB_HOST            | containers-us-west-123.railway.app
+       DB_PORT            | 6543
+       DB_USERNAME        | root
+       DB_PASSWORD        | [your password]
+       DB_DATABASE        | railway
+    
+    f) Click OK to save all
+    g) RESTART the computer for changes to take effect
+    h) Now you can run "Digital Logbook.exe" directly (no batch file needed)
+
+================================================================================
+STEP 4: TEST THE CONNECTION LOCALLY
+================================================================================
+
+Before deploying to lab computers, test on your development machine.
+
+4.1 Using PowerShell (Quick Test)
+
+    a) Open PowerShell in your project folder
+    b) Set environment variables for this session:
+       
+       $env:DB_HOST="containers-us-west-123.railway.app"
+       $env:DB_PORT="6543"
+       $env:DB_USERNAME="root"
+       $env:DB_PASSWORD="your_password_here"
+       $env:DB_DATABASE="railway"
+    
+    c) Run the application:
+       
+       .\build\bin\Digital` Logbook.exe
+       
+       (Note: The backtick ` escapes the space in "Digital Logbook.exe")
+
+4.2 Check Console Output
+
+    Look for this message in the terminal:
+    ✓ "Database connection established successfully"
+    
+    If you see an error instead:
+    ✗ "failed to connect to database" → Check credentials
+    ✗ "no such host" → Check DB_HOST value
+    ✗ "access denied" → Check DB_PASSWORD
+
+4.3 Test Application Functions
+
+    a) Login with a test account
+    b) Try viewing dashboard
+    c) Check if data loads correctly
+    d) Try creating a test log entry
+    e) Verify data persists (close app, reopen, check if data still there)
+
+4.4 Test from MySQL Workbench
+
+    Run this query to see if login was recorded:
+    
+    SELECT * FROM login_logs ORDER BY login_time DESC LIMIT 5;
+    
+    You should see your test login in the results.
+
+================================================================================
+STEP 5: DEPLOY TO LAB COMPUTERS
+================================================================================
+
+5.1 Prepare Distribution Files
+
+    On your development computer:
+    a) Build the application: wails build
+    b) Locate the executable: build\bin\Digital Logbook.exe
+    c) Create the StartLogbook.bat file (with credentials filled in)
+    d) Copy both files to a USB drive or network share
+
+5.2 Install on Each Lab Computer
+
+    Option A - Using Batch File Launcher:
+    a) Copy these files to each lab PC:
+       - Digital Logbook.exe
+       - StartLogbook.bat
+    b) Create a desktop shortcut to StartLogbook.bat
+    c) Students/teachers double-click the shortcut to launch
+
+    Option B - Using System Environment Variables:
+    a) Copy Digital Logbook.exe to each lab PC
+    b) Set environment variables on each PC (see Step 3.4)
+    c) Create desktop shortcut to Digital Logbook.exe
+    d) Users double-click to launch
+
+5.3 First Launch on Each PC
+
+    a) Double-click StartLogbook.bat (or the .exe if using env vars)
+    b) Observe the console output
+    c) Should see: "Database connection established successfully"
+    d) Login with a test account
+    e) Verify data syncs across all lab computers
+
+5.4 Verify Multi-Computer Sync
+
+    TEST: Create data on PC #1, view it on PC #2
+    
+    On PC #1:
+    - Login as admin
+    - Create a new student account
+    
+    On PC #2:
+    - Login as admin
+    - Check user management
+    - New student should appear in the list
+    
+    ✓ If you see the student → Cloud database is working!
+
+================================================================================
+STEP 6: ONGOING MAINTENANCE
+================================================================================
+
+6.1 Monitor Database Usage (Railway Dashboard)
+
+    a) Go to https://railway.app
+    b) Login and open your project
+    c) Click on MySQL service
+    d) Click "Metrics" tab
+    e) Check:
+       - Database size
+       - Memory usage
+       - Number of connections
+       - Monthly cost (should stay under free tier)
+
+6.2 Database Backups
+
+    Railway provides automatic backups, but you should also backup manually:
+    
+    Using mysqldump:
+    mysqldump -h containers-us-west-123.railway.app -P 6543 -u root -p railway > backup.sql
+    
+    Do this weekly or before major updates.
+
+6.3 Free Tier Limits
+
+    Railway free tier: $5/month credit
+    
+    Your usage should be minimal for this app:
+    - Small database size (<100MB typical)
+    - Low traffic (lab use only)
+    - Should last the entire month
+    
+    If you exceed: Railway will email you
+    Option: Upgrade to paid plan ($5/month minimum)
+
+6.4 Security Best Practices
+
+    a) NEVER commit credentials to GitHub
+       - Add StartLogbook.bat to .gitignore
+       - Don't share passwords publicly
+    
+    b) Change password periodically
+       - Railway dashboard → MySQL → Variables → Regenerate password
+       - Update all lab PCs with new password
+    
+    c) Monitor access logs
+       - Use login_logs table to track who accesses the system
+       - Check for suspicious activity
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+PROBLEM: "failed to connect to database"
+SOLUTIONS:
+  □ Check internet connection on the client PC
+  □ Verify environment variables are set correctly:
+    PowerShell: Get-ChildItem Env:DB_*
+  □ Test Railway database is online (login to Railway dashboard)
+  □ Try connecting via MySQL Workbench with same credentials
+  □ Check if Railway service is paused (unpause in dashboard)
+
+PROBLEM: "Access denied for user"
+SOLUTIONS:
+  □ Double-check DB_USERNAME and DB_PASSWORD values
+  □ Ensure no extra spaces in password
+  □ Copy password directly from Railway dashboard (don't type manually)
+  □ Regenerate password in Railway and update all PCs
+
+PROBLEM: "No such host"
+SOLUTIONS:
+  □ Verify DB_HOST value is correct (copy from Railway Variables tab)
+  □ Check for typos in hostname
+  □ Ensure internet connection is working (try pinging google.com)
+  □ Railway host might have changed - check dashboard for current host
+
+PROBLEM: App works on one PC but not others
+SOLUTIONS:
+  □ Ensure ALL PCs have environment variables set
+  □ Restart the app after setting environment variables
+  □ Check Windows Firewall isn't blocking outbound MySQL connections
+  □ Verify all PCs can access internet (not just local network)
+
+PROBLEM: Slow performance or timeouts
+SOLUTIONS:
+  □ Check internet speed on lab computers
+  □ Railway might be experiencing issues - check status.railway.app
+  □ Database size might be too large - optimize queries
+  □ Too many simultaneous connections - review connection pooling
+
+PROBLEM: Railway free tier exceeded
+SOLUTIONS:
+  □ Check database size in Railway metrics
+  □ Delete old/unnecessary logs to reduce size
+  □ Optimize database indexes
+  □ Upgrade to Railway paid plan ($5/month)
+  □ Or switch to another free provider (Clever Cloud, etc.)
+
+PROBLEM: Tables not created after import
+SOLUTIONS:
+  □ Re-run the SQL import script
+  □ Check MySQL Workbench output for error messages
+  □ Ensure correct database is selected before import
+  □ Manually create tables if needed (copy SQL from logbookdb.sql)
+
+================================================================================
+FREQUENTLY ASKED QUESTIONS
+================================================================================
+
+Q: Is cloud database secure for student data?
+A: Yes, Railway uses encrypted connections (SSL/TLS). However:
+   - Don't store highly sensitive data (SSN, credit cards)
+   - Use strong passwords
+   - Follow your institution's data privacy policies
+
+Q: What happens if Railway goes down?
+A: Your app won't work until service is restored. Mitigation:
+   - Railway has 99%+ uptime
+   - Have backup provider setup (Clever Cloud) ready to switch
+   - Keep regular database backups
+
+Q: Can I use this for the capstone demonstration?
+A: Absolutely! This is the professional way to deploy desktop apps.
+   - Show panelists it works from anywhere
+   - No need for special network setup
+   - Demonstrate real-world deployment knowledge
+
+Q: Will this cost money after graduation?
+A: Railway free tier: $5/month credit (ongoing)
+   - Should be sufficient for maintenance
+   - If usage increases, costs are minimal ($5-10/month typical)
+   - Can migrate to another free provider if needed
+
+Q: How many computers can connect simultaneously?
+A: Railway free tier: Typically 10-20 concurrent connections
+   - More than enough for a single lab
+   - If you need more, upgrade to paid plan
+
+Q: Can students access from home?
+A: Yes! That's the beauty of cloud database.
+   - Students can use the app from anywhere with internet
+   - Just need to install the app + environment variables
+   - Great for remote learning scenarios
+
+================================================================================
+COMPARISON: LOCAL VS CLOUD DATABASE
+================================================================================
+
+FEATURE                 | LOCAL SERVER      | CLOUD DATABASE
+------------------------|-------------------|------------------
+Setup Complexity        | High              | Low
+Network Configuration   | Required          | Not needed
+WiFi Issues            | Common problem    | No impact
+Works from Home        | No                | Yes
+Firewall Setup         | Required          | Not needed
+IT Admin Needed        | Often yes         | No
+Cost                   | Free (own server) | Free tier available
+Professional Approach  | Institutional     | Industry standard
+Scalability            | Limited           | Easy to scale
+Backup                 | Manual            | Often automatic
+Internet Required      | No                | Yes
+
+RECOMMENDATION: Use cloud database for this capstone project
+- Easier deployment
+- More professional
+- Better for demonstration
+- Industry-standard approach
+
+================================================================================
+NEXT STEPS AFTER SETUP
+================================================================================
+
+✓ Setup complete - what's next?
+
+1. IMPORT SAMPLE DATA
+   - Use database/seed.sql to create test accounts
+   - Import via MySQL Workbench or command line
+   - Test with multiple user roles
+
+2. DOCUMENTATION FOR USERS
+   - Create user manual with login credentials
+   - Include troubleshooting tips
+   - Provide IT contact for issues
+
+3. TRAINING
+   - Train admin on user management
+   - Show teachers how to log in/out
+   - Demo for students
+
+4. CAPSTONE PREPARATION
+   - Test thoroughly before demonstration
+   - Have backup plan (local database) ready
+   - Prepare slides showing cloud architecture
+
+5. LONG-TERM MAINTENANCE
+   - Schedule monthly database backups
+   - Monitor Railway usage/credits
+   - Keep application updated
+
+================================================================================
+SUPPORT RESOURCES
+================================================================================
+
+Railway Documentation:  https://docs.railway.app
+Railway Community:      https://discord.gg/railway
+MySQL Documentation:    https://dev.mysql.com/doc/
+
+For this project:
+- Check notes/remote_database_setup.txt for local server alternative
+- Review database/logbookdb.sql for schema details
+- See .github/copilot-instructions.md for architecture overview
+
+================================================================================
+                    Document Created: February 2026
+                    Digital Logbook - BSIT Capstone Project
+                    Cloud Database Deployment Guide
+================================================================================
