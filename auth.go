@@ -17,7 +17,8 @@ import (
 // Login authenticates a user
 func (a *App) Login(username, password string) (*User, error) {
 	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+		log.Printf("❌ LOGIN ERROR: Database not connected")
+		return nil, fmt.Errorf("database connection failed - please check database configuration")
 	}
 
 	var user User
@@ -29,8 +30,10 @@ func (a *App) Login(username, password string) (*User, error) {
 	err := a.db.QueryRow(query, username).Scan(&user.ID, &user.Name, &user.Password, &user.Role, &accountStatus, &isActive, &createdAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			log.Printf("❌ LOGIN ERROR: User '%s' not found", username)
 			return nil, fmt.Errorf("invalid credentials")
 		}
+		log.Printf("❌ LOGIN ERROR: Database query failed for user '%s': %v", username, err)
 		return nil, err
 	}
 

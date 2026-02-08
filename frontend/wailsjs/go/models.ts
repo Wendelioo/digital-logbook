@@ -370,28 +370,6 @@ export namespace main {
 	        this.is_attendance_finalized = source["is_attendance_finalized"];
 	    }
 	}
-	export class DatabaseSettings {
-	    server: string;
-	    port: string;
-	    username: string;
-	    password: string;
-	    database: string;
-	    instance: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new DatabaseSettings(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.server = source["server"];
-	        this.port = source["port"];
-	        this.username = source["username"];
-	        this.password = source["password"];
-	        this.database = source["database"];
-	        this.instance = source["instance"];
-	    }
-	}
 	export class Department {
 	    department_code: string;
 	    department_name: string;

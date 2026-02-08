@@ -32,11 +32,12 @@ func (a *App) startup(ctx context.Context) {
 	// Initialize database connection
 	db, err := InitDatabase()
 	if err != nil {
-		log.Printf("Database connection failed: %v", err)
-		log.Println("App will start but database features will be unavailable")
+		log.Printf("❌ Database connection failed: %v", err)
+		log.Println("⚠️  App will start but database features will be unavailable")
+		log.Println("💡 To fix: Check SQL Server is running, TCP/IP is enabled, and credentials are correct")
 	} else {
 		a.db = db
-		log.Println("Database ready")
+		log.Println("✅ Database connected successfully")
 	}
 }
 

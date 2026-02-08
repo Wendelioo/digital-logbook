@@ -142,8 +142,6 @@ export function GetClassesByEDPCode(arg1:string):Promise<Array<main.CourseClass>
 
 export function GetCompletedEnrollments(arg1:number):Promise<Array<main.ClasslistEntry>>;
 
-export function GetCurrentDatabaseSettings():Promise<main.DatabaseSettings>;
-
 export function GetDepartments():Promise<Array<main.Department>>;
 
 export function GetFeedback():Promise<Array<main.Feedback>>;
@@ -226,8 +224,6 @@ export function RecordStudentLogin(arg1:number,arg2:number):Promise<void>;
 
 export function RecordTimeoutLogout(arg1:number):Promise<void>;
 
-export function SaveDatabaseSettings(arg1:main.DatabaseSettings):Promise<void>;
-
 export function SaveEquipmentFeedback(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string):Promise<void>;
 
 export function SearchUsers(arg1:string,arg2:string):Promise<Array<main.User>>;
@@ -237,8 +233,6 @@ export function SetClassActiveStatus(arg1:number,arg2:boolean):Promise<void>;
 export function SetStudentEnrollmentStatus(arg1:number,arg2:number,arg3:string):Promise<void>;
 
 export function SubmitRegistration(arg1:main.RegistrationRequest):Promise<void>;
-
-export function TestDatabaseConnection(arg1:main.DatabaseSettings):Promise<void>;
 
 export function UnarchiveAttendanceSheet(arg1:number,arg2:string):Promise<void>;
 
@@ -265,8 +259,6 @@ export function UnfinalizeAttendanceSheet(arg1:number,arg2:string):Promise<void>
 export function UpdateAttendanceRecord(arg1:number,arg2:number,arg3:string,arg4:string,arg5:string):Promise<void>;
 
 export function UpdateClass(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:boolean):Promise<void>;
-
-export function UpdateDatabaseConnection(arg1:main.DatabaseSettings):Promise<void>;
 
 export function UpdateDepartment(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<void>;
 

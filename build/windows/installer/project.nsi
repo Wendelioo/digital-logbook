@@ -87,6 +87,9 @@ Section
     SetOutPath $INSTDIR
 
     !insertmacro wails.files
+    
+    # Include config.json in installation
+    File "..\..\..\config.json"
 
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
@@ -102,6 +105,9 @@ Section "uninstall"
 
     RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
 
+    # Remove config.json
+    Delete "$INSTDIR\config.json"
+    
     RMDir /r $INSTDIR
 
     Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk"
