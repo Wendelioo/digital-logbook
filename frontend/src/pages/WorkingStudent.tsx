@@ -477,9 +477,9 @@ function ViewStudentDetailsModal({ student, isOpen, onClose }: ViewStudentDetail
             {/* Left Section - Profile Picture */}
             <div className="flex-shrink-0">
               <div className="w-32 h-32 border-2 border-black rounded overflow-hidden bg-gray-100 flex items-center justify-center">
-                {(student as any).profile_photo || (student as any).profilePhoto ? (
+                {(student as any).photo_url ? (
                   <img 
-                    src={(student as any).profile_photo || (student as any).profilePhoto} 
+                    src={(student as any).photo_url} 
                     alt={getFullName()} 
                     className="w-full h-full object-cover"
                   />

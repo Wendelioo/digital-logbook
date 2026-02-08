@@ -282,6 +282,10 @@ export function GetCompletedEnrollments(arg1) {
   return window['go']['main']['App']['GetCompletedEnrollments'](arg1);
 }
 
+export function GetCurrentDatabaseSettings() {
+  return window['go']['main']['App']['GetCurrentDatabaseSettings']();
+}
+
 export function GetDepartments() {
   return window['go']['main']['App']['GetDepartments']();
 }
@@ -446,6 +450,10 @@ export function RecordTimeoutLogout(arg1) {
   return window['go']['main']['App']['RecordTimeoutLogout'](arg1);
 }
 
+export function SaveDatabaseSettings(arg1) {
+  return window['go']['main']['App']['SaveDatabaseSettings'](arg1);
+}
+
 export function SaveEquipmentFeedback(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
   return window['go']['main']['App']['SaveEquipmentFeedback'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }
@@ -464,6 +472,10 @@ export function SetStudentEnrollmentStatus(arg1, arg2, arg3) {
 
 export function SubmitRegistration(arg1) {
   return window['go']['main']['App']['SubmitRegistration'](arg1);
+}
+
+export function TestDatabaseConnection(arg1) {
+  return window['go']['main']['App']['TestDatabaseConnection'](arg1);
 }
 
 export function UnarchiveAttendanceSheet(arg1, arg2) {
@@ -516,6 +528,10 @@ export function UpdateAttendanceRecord(arg1, arg2, arg3, arg4, arg5) {
 
 export function UpdateClass(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
   return window['go']['main']['App']['UpdateClass'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+}
+
+export function UpdateDatabaseConnection(arg1) {
+  return window['go']['main']['App']['UpdateDatabaseConnection'](arg1);
 }
 
 export function UpdateDepartment(arg1, arg2, arg3, arg4, arg5) {

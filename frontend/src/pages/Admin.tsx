@@ -1275,12 +1275,12 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
                 <span className="text-sm font-semibold text-gray-700">Email:</span>
                 <span className="text-sm text-gray-900 ml-2">{user.email || ''}</span>
               </div>
-              <div>
-                <span className="text-sm font-semibold text-gray-700">
-                  {user.role === 'teacher' ? 'Department:' : 'Year & Section:'}
-                </span>
-                <span className="text-sm text-gray-900 ml-2">{getDepartment()}</span>
-              </div>
+              {user.role === 'teacher' && (
+                <div>
+                  <span className="text-sm font-semibold text-gray-700">Department:</span>
+                  <span className="text-sm text-gray-900 ml-2">{getDepartment()}</span>
+                </div>
+              )}
               <div>
                 <span className="text-sm font-semibold text-gray-700">Username:</span>
                 <span className="text-sm text-gray-900 ml-2">{getUsername()}</span>

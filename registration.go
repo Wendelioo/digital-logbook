@@ -34,9 +34,9 @@ type PendingRegistration struct {
 	LastName      string    `json:"last_name"`
 	FirstName     string    `json:"first_name"`
 	MiddleName    *string   `json:"middle_name"`
-	ContactNumber string    `json:"contact_number"`
-	Email         string    `json:"email"`
-	SubmittedAt   time.Time `json:"submitted_at"`
+	ContactNumber string `json:"contact_number"`
+	Email         string `json:"email"`
+	SubmittedAt   string `json:"submitted_at"`
 }
 
 // ApprovalRequest represents an approval/rejection action
@@ -117,23 +117,21 @@ func (a *App) SubmitRegistration(req RegistrationRequest) error {
 	defer tx.Rollback()
 
 	// Insert into users table with pending status
-	result, err := tx.Exec(`
+	insertUserQuery := `
 		INSERT INTO users (username, password, user_type, account_status, is_active)
-		VALUES (?, ?, 'student', 'pending', FALSE)
-	`, req.StudentID, string(hashedPassword))
+		OUTPUT INSERTED.id
+		VALUES (?, ?, 'student', 'pending', 0)
+	`
+	var userID int64
+	err = tx.QueryRow(insertUserQuery, req.StudentID, string(hashedPassword)).Scan(&userID)
 	if err != nil {
 		return fmt.Errorf("failed to create user: %v", err)
-	}
-
-	userID, err := result.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("failed to get user ID: %v", err)
 	}
 
 	// Insert into students table
 	_, err = tx.Exec(`
 		INSERT INTO students (id, student_id, first_name, middle_name, last_name, email, contact_number, is_working_student)
-		VALUES (?, ?, ?, ?, ?, ?, ?, FALSE)
+		VALUES (?, ?, ?, ?, ?, ?, ?, 0)
 	`, userID, req.StudentID, req.FirstName, nullString(req.MiddleName), req.LastName, req.Email, req.ContactNumber)
 	if err != nil {
 		return fmt.Errorf("failed to create student profile: %v", err)
@@ -189,6 +187,7 @@ func (a *App) GetPendingRegistrations() ([]PendingRegistration, error) {
 	var registrations []PendingRegistration
 	for rows.Next() {
 		var reg PendingRegistration
+		var submittedAt time.Time
 		err := rows.Scan(
 			&reg.UserID,
 			&reg.StudentID,
@@ -197,11 +196,15 @@ func (a *App) GetPendingRegistrations() ([]PendingRegistration, error) {
 			&reg.MiddleName,
 			&reg.ContactNumber,
 			&reg.Email,
-			&reg.SubmittedAt,
+			&submittedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan registration: %v", err)
 		}
+		
+		// Format time field as string
+		reg.SubmittedAt = submittedAt.Format("2006-01-02 15:04:05")
+		
 		registrations = append(registrations, reg)
 	}
 
@@ -260,7 +263,7 @@ func (a *App) ProcessRegistration(req ApprovalRequest) error {
 
 	_, err = tx.Exec(`
 		UPDATE registration_approvals
-		SET status = ?, approved_by_user_id = ?, rejection_reason = ?, processed_at = NOW()
+		SET status = ?, approved_by_user_id = ?, rejection_reason = ?, processed_at = GETDATE()
 		WHERE user_id = ? AND status = 'pending'
 	`, req.Action+"d", req.ApprovedBy, rejectionReason, req.UserID)
 	if err != nil {

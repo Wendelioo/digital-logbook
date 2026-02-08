@@ -140,10 +140,8 @@ export namespace main {
 	    last_name: string;
 	    email?: string;
 	    contact_number?: string;
-	    // Go type: time
-	    archived_at: any;
-	    // Go type: time
-	    deletion_scheduled_at: any;
+	    archived_at: string;
+	    deletion_scheduled_at: string;
 	    days_until_deletion: number;
 	
 	    static createFrom(source: any = {}) {
@@ -159,28 +157,10 @@ export namespace main {
 	        this.last_name = source["last_name"];
 	        this.email = source["email"];
 	        this.contact_number = source["contact_number"];
-	        this.archived_at = this.convertValues(source["archived_at"], null);
-	        this.deletion_scheduled_at = this.convertValues(source["deletion_scheduled_at"], null);
+	        this.archived_at = source["archived_at"];
+	        this.deletion_scheduled_at = source["deletion_scheduled_at"];
 	        this.days_until_deletion = source["days_until_deletion"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class Attendance {
 	    id: number;
@@ -280,6 +260,7 @@ export namespace main {
 	    email?: string;
 	    contact_number?: string;
 	    photo_path?: string;
+	    photo_url?: string;
 	    class_id?: number;
 	    is_enrolled: boolean;
 	
@@ -298,6 +279,7 @@ export namespace main {
 	        this.email = source["email"];
 	        this.contact_number = source["contact_number"];
 	        this.photo_path = source["photo_path"];
+	        this.photo_url = source["photo_url"];
 	        this.class_id = source["class_id"];
 	        this.is_enrolled = source["is_enrolled"];
 	    }
@@ -386,6 +368,28 @@ export namespace main {
 	        this.created_at = source["created_at"];
 	        this.latest_attendance_date = source["latest_attendance_date"];
 	        this.is_attendance_finalized = source["is_attendance_finalized"];
+	    }
+	}
+	export class DatabaseSettings {
+	    server: string;
+	    port: string;
+	    username: string;
+	    password: string;
+	    database: string;
+	    instance: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DatabaseSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.server = source["server"];
+	        this.port = source["port"];
+	        this.username = source["username"];
+	        this.password = source["password"];
+	        this.database = source["database"];
+	        this.instance = source["instance"];
 	    }
 	}
 	export class Department {
@@ -494,8 +498,7 @@ export namespace main {
 	    middle_name?: string;
 	    contact_number: string;
 	    email: string;
-	    // Go type: time
-	    submitted_at: any;
+	    submitted_at: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new PendingRegistration(source);
@@ -510,26 +513,8 @@ export namespace main {
 	        this.middle_name = source["middle_name"];
 	        this.contact_number = source["contact_number"];
 	        this.email = source["email"];
-	        this.submitted_at = this.convertValues(source["submitted_at"], null);
+	        this.submitted_at = source["submitted_at"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class ProfilePhoto {
 	    user_id: number;
@@ -692,6 +677,7 @@ export namespace main {
 	    email?: string;
 	    contact_number?: string;
 	    photo_path?: string;
+	    photo_url?: string;
 	    department_code?: string;
 	    created: string;
 	    login_log_id: number;
@@ -714,6 +700,7 @@ export namespace main {
 	        this.email = source["email"];
 	        this.contact_number = source["contact_number"];
 	        this.photo_path = source["photo_path"];
+	        this.photo_url = source["photo_url"];
 	        this.department_code = source["department_code"];
 	        this.created = source["created"];
 	        this.login_log_id = source["login_log_id"];

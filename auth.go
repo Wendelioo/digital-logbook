@@ -2,9 +2,11 @@ package main
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -90,16 +92,13 @@ func (a *App) Logout(userID int) error {
 	}
 
 	// Update the most recent login log for this user to set logout time
-	// Use a subquery to ensure we get the most recent login log
+	// SQL Server doesn't support LIMIT in subqueries, use TOP instead
 	query := `UPDATE log_entries 
-			  SET logout_time = NOW()
+			  SET logout_time = GETDATE()
 			  WHERE id = (
-				  SELECT id FROM (
-					  SELECT id FROM log_entries 
-					  WHERE user_id = ? AND logout_time IS NULL 
-					  ORDER BY login_time DESC 
-					  LIMIT 1
-				  ) AS subquery
+				  SELECT TOP 1 id FROM log_entries 
+				  WHERE user_id = ? AND logout_time IS NULL 
+				  ORDER BY login_time DESC
 			  )`
 	result, err := a.db.Exec(query, userID)
 	if err != nil {
@@ -177,9 +176,9 @@ func (a *App) loadUserProfile(user *User) error {
 	case "teacher":
 		detailQuery = `SELECT first_name, middle_name, last_name, teacher_id, email, contact_number FROM teachers WHERE id = ?`
 	case "student":
-		detailQuery = `SELECT first_name, middle_name, last_name, student_id, email, contact_number FROM students WHERE id = ? AND is_working_student = FALSE`
+		detailQuery = `SELECT first_name, middle_name, last_name, student_id, email, contact_number FROM students WHERE id = ? AND is_working_student = 0`
 	case "working_student":
-		detailQuery = `SELECT first_name, middle_name, last_name, student_id, email, contact_number FROM students WHERE id = ? AND is_working_student = TRUE`
+		detailQuery = `SELECT first_name, middle_name, last_name, student_id, email, contact_number FROM students WHERE id = ? AND is_working_student = 1`
 	default:
 		return fmt.Errorf("unknown user role: %s", user.Role)
 	}
@@ -244,6 +243,14 @@ func (a *App) loadUserProfile(user *User) error {
 	}
 	if photoPath.Valid {
 		user.PhotoPath = &photoPath.String
+		
+		// Convert file path to base64 data URL for frontend display
+		photoDataURL, err := a.convertPhotoToDataURL(photoPath.String)
+		if err != nil {
+			log.Printf("Warning: Failed to convert photo to data URL for user %d: %v", user.ID, err)
+		} else {
+			user.PhotoURL = &photoDataURL
+		}
 	}
 
 	return nil
@@ -252,16 +259,38 @@ func (a *App) loadUserProfile(user *User) error {
 // createLoginLog creates a login log entry and returns the log ID
 func (a *App) createLoginLog(userID int, pcNumber string) (int, error) {
 	insertLog := `INSERT INTO log_entries (user_id, pc_number, login_time) 
-				  VALUES (?, ?, NOW())`
-	result, err := a.db.Exec(insertLog, userID, pcNumber)
+				  OUTPUT INSERTED.id
+				  VALUES (?, ?, GETDATE())`
+	var logID int
+	err := a.db.QueryRow(insertLog, userID, pcNumber).Scan(&logID)
 	if err != nil {
 		return 0, err
 	}
 
-	logID, err := result.LastInsertId()
+	return logID, nil
+}
+
+// convertPhotoToDataURL reads a photo file and converts it to a base64 data URL
+func (a *App) convertPhotoToDataURL(filePath string) (string, error) {
+	// Read file from disk
+	fileBytes, err := os.ReadFile(filePath)
 	if err != nil {
-		return 0, err
+		return "", fmt.Errorf("failed to read photo file: %w", err)
 	}
 
-	return int(logID), nil
+	// Determine MIME type from file extension
+	mimeType := "image/jpeg" // default
+	if strings.HasSuffix(strings.ToLower(filePath), ".png") {
+		mimeType = "image/png"
+	} else if strings.HasSuffix(strings.ToLower(filePath), ".gif") {
+		mimeType = "image/gif"
+	}
+
+	// Convert to base64
+	base64Data := base64.StdEncoding.EncodeToString(fileBytes)
+
+	// Create data URL
+	dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
+
+	return dataURL, nil
 }

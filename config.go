@@ -22,9 +22,9 @@ type DBConfig struct {
 // GetDBConfig returns database configuration from environment variables or defaults
 func GetDBConfig() DBConfig {
 	return DBConfig{
-		Server:   getEnv("DB_SERVER", "localhost"),
+		Server:   getEnv("DB_SERVER", "192.168.1.200"),
 		Port:     getEnv("DB_PORT", "1433"),
-		Instance: getEnv("DB_INSTANCE", "SQLEXPRESS"),
+		Instance: getEnv("DB_INSTANCE", ""),
 		Username: getEnv("DB_USERNAME", "logbook_app"),
 		Password: getEnv("DB_PASSWORD", "SecurePassword123!"),
 		Database: getEnv("DB_DATABASE", "logbookdb"),
@@ -42,7 +42,7 @@ func getEnv(key, defaultValue string) string {
 
 // InitDatabase initializes and returns a database connection
 func InitDatabase() (*sql.DB, error) {
-	config := GetDBConfig()
+	config := LoadDatabaseSettings()
 
 	// SQL Server connection string format
 	var dsn string

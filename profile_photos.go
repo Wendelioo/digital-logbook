@@ -79,14 +79,14 @@ func (a *App) UploadProfilePhoto(userID int, photoData []byte, fileName string, 
 
 	// Insert or update profile_photos table
 	query := `
-		INSERT INTO profile_photos (user_id, photo_path, file_name, file_size, mime_type)
-		VALUES (?, ?, ?, ?, ?)
-		ON DUPLICATE KEY UPDATE 
-			photo_path = VALUES(photo_path),
-			file_name = VALUES(file_name),
-			file_size = VALUES(file_size),
-			mime_type = VALUES(mime_type),
-			uploaded_at = CURRENT_TIMESTAMP
+		MERGE profile_photos AS target
+		USING (SELECT ? AS user_id, ? AS photo_path, ? AS file_name, ? AS file_size, ? AS mime_type) AS source
+		ON target.user_id = source.user_id
+		WHEN MATCHED THEN
+			UPDATE SET photo_path = source.photo_path, file_name = source.file_name, file_size = source.file_size, mime_type = source.mime_type, uploaded_at = CURRENT_TIMESTAMP
+		WHEN NOT MATCHED THEN
+			INSERT (user_id, photo_path, file_name, file_size, mime_type)
+			VALUES (source.user_id, source.photo_path, source.file_name, source.file_size, source.mime_type);
 	`
 
 	_, err := a.db.Exec(query, userID, photoPath, fileName, len(photoData), mimeType)
@@ -248,11 +248,14 @@ func (a *App) migratePhotosFromTable(query string) (int, int) {
 
 		// Insert into profile_photos table
 		insertQuery := `
-			INSERT INTO profile_photos (user_id, photo_path, file_name, file_size, mime_type)
-			VALUES (?, ?, ?, ?, ?)
-			ON DUPLICATE KEY UPDATE 
-				photo_path = VALUES(photo_path),
-				file_size = VALUES(file_size)
+			MERGE profile_photos AS target
+			USING (SELECT ? AS user_id, ? AS photo_path, ? AS file_name, ? AS file_size, ? AS mime_type) AS source
+			ON target.user_id = source.user_id
+			WHEN MATCHED THEN
+				UPDATE SET photo_path = source.photo_path, file_size = source.file_size
+			WHEN NOT MATCHED THEN
+				INSERT (user_id, photo_path, file_name, file_size, mime_type)
+				VALUES (source.user_id, source.photo_path, source.file_name, source.file_size, source.mime_type);
 		`
 
 		_, err = a.db.Exec(insertQuery, userID, photoPath, photoFileName, len(photoBlob), "image/jpeg")

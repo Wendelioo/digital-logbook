@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { User, Lock, Eye, EyeOff, UserPlus } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, UserPlus, Settings } from 'lucide-react';
 import { CreateUser, GetDepartments } from '../../wailsjs/go/main/App';
 import { main } from '../../wailsjs/go/models';
 import Button from '../components/Button';
@@ -81,6 +81,12 @@ function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const isDatabaseError = (errorMsg: string) => {
+    return errorMsg.toLowerCase().includes('database') || 
+           errorMsg.toLowerCase().includes('connection') ||
+           errorMsg.toLowerCase().includes('connect');
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -210,8 +216,21 @@ function LoginPage() {
 
           {/* Error Message */}
           {error && (
-            <div className="mb-5 bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded-r-lg text-sm font-medium">
-              {error}
+            <div className="mb-5 bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded-r-lg">
+              <p className="text-sm font-medium">{error}</p>
+              {isDatabaseError(error) && (
+                <div className="mt-3 pt-3 border-t border-red-200">
+                  <p className="text-xs mb-2">Can't connect to the database? You may need to configure the database settings.</p>
+                  <button
+                    type="button"
+                    onClick={() => navigate('/database-setup')}
+                    className="inline-flex items-center gap-2 text-xs font-semibold text-red-800 hover:text-red-900 underline"
+                  >
+                    <Settings className="w-4 h-4" />
+                    Configure Database Connection
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

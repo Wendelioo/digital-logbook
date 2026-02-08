@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"database/sql"
@@ -24,7 +24,7 @@ func (a *App) RecordAttendance(classID, studentID int, status, remarks string, r
 	// Verify student is enrolled in the class
 	var exists int
 	err := a.db.QueryRow(
-		`SELECT 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = FALSE OR is_archived IS NULL) LIMIT 1`,
+		`SELECT 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = 0 OR is_archived IS NULL) LIMIT 1`,
 		classID, studentID,
 	).Scan(&exists)
 	if err != nil {
@@ -34,12 +34,14 @@ func (a *App) RecordAttendance(classID, studentID int, status, remarks string, r
 
 	// Record or update attendance using composite key (class_id, student_id, date)
 	query := `
-		INSERT INTO attendance (class_id, student_id, date, status, remarks)
-		VALUES (?, ?, CURDATE(), ?, ?)
-		ON DUPLICATE KEY UPDATE 
-			status = VALUES(status),
-			remarks = VALUES(remarks),
-			updated_at = CURRENT_TIMESTAMP
+		MERGE attendance AS target
+		USING (SELECT ? AS class_id, ? AS student_id, CAST(GETDATE() AS DATE) AS date, ? AS status, ? AS remarks) AS source
+		ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.date = source.date
+		WHEN MATCHED THEN
+			UPDATE SET status = source.status, remarks = source.remarks, updated_at = CURRENT_TIMESTAMP
+		WHEN NOT MATCHED THEN
+			INSERT (class_id, student_id, date, status, remarks)
+			VALUES (source.class_id, source.student_id, source.date, source.status, source.remarks);
 	`
 	_, err = a.db.Exec(query, classID, studentID, status, nullString(remarks))
 	if err != nil {
@@ -61,7 +63,7 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 		SELECT 
 			cl.class_id,
 			cl.student_id,
-			COALESCE(DATE_FORMAT(a.date, '%Y-%m-%d'), ?) as date,
+			COALESCE(CONVERT(VARCHAR(10), a.date, 23), ?) as date,
 			stu.student_id,
 			stu.first_name,
 			stu.middle_name,
@@ -70,13 +72,13 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 			s.description as subject_name,
 			a.status,
 			a.remarks,
-			COALESCE(a.is_archived, FALSE) as is_archived
+			COALESCE(a.is_archived, 0) as is_archived
 		FROM classlist cl
 		JOIN students stu ON cl.student_id = stu.id
 		JOIN classes c ON cl.class_id = c.class_id
 		JOIN subjects s ON c.subject_code = s.subject_code
 		LEFT JOIN attendance a ON cl.class_id = a.class_id AND cl.student_id = a.student_id AND a.date = ?
-		WHERE cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = FALSE OR cl.is_archived IS NULL)
+		WHERE cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
 		ORDER BY stu.last_name, stu.first_name
 	`
 
@@ -131,22 +133,27 @@ func (a *App) InitializeAttendanceForClass(classID int, date string, recordedBy 
 	}
 
 	query := `
-		INSERT INTO attendance (class_id, student_id, date, status, remarks, created_at)
-		SELECT 
-			cl.class_id,
-			cl.student_id,
-			?,
-			'absent',
-			'Not yet logged in',
-			CURRENT_TIMESTAMP
-		FROM classlist cl
-		WHERE cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = FALSE OR cl.is_archived IS NULL)
-		ON DUPLICATE KEY UPDATE 
-			remarks = CASE 
-				WHEN (attendance.remarks IS NULL OR attendance.remarks = '') THEN 'Not yet marked'
-				ELSE attendance.remarks
-			END,
-			attendance.class_id = attendance.class_id
+		MERGE attendance AS target
+		USING (
+			SELECT 
+				cl.class_id,
+				cl.student_id,
+				? AS date,
+				'absent' AS status,
+				'Not yet logged in' AS remarks,
+				CURRENT_TIMESTAMP AS created_at
+			FROM classlist cl
+			WHERE cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
+		) AS source
+		ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.date = source.date
+		WHEN MATCHED THEN
+			UPDATE SET remarks = CASE 
+				WHEN (target.remarks IS NULL OR target.remarks = '') THEN 'Not yet marked'
+				ELSE target.remarks
+			END
+		WHEN NOT MATCHED THEN
+			INSERT (class_id, student_id, date, status, remarks, created_at)
+			VALUES (source.class_id, source.student_id, source.date, source.status, source.remarks, source.created_at);
 	`
 
 	_, err := a.db.Exec(query, date, classID)
@@ -221,7 +228,7 @@ func (a *App) RecordStudentLogin(classID, studentID int) error {
 	// Verify student is enrolled in the class
 	var exists int
 	err := a.db.QueryRow(
-		`SELECT 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = FALSE OR is_archived IS NULL) LIMIT 1`,
+		`SELECT TOP 1 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = 0 OR is_archived IS NULL)`,
 		classID, studentID,
 	).Scan(&exists)
 	if err != nil {
@@ -231,15 +238,19 @@ func (a *App) RecordStudentLogin(classID, studentID int) error {
 	// Record attendance as present
 	// Clear "Not yet marked" remark when student is marked present
 	query := `
-		INSERT INTO attendance (class_id, student_id, date, status, remarks)
-		VALUES (?, ?, CURDATE(), 'present', NULL)
-		ON DUPLICATE KEY UPDATE 
-			status = 'present',
-			remarks = CASE 
-				WHEN remarks = 'Not yet marked' THEN NULL
-				ELSE remarks
-			END,
-			updated_at = CURRENT_TIMESTAMP
+		MERGE attendance AS target
+		USING (SELECT ? AS class_id, ? AS student_id, CAST(GETDATE() AS DATE) AS date, 'present' AS status, NULL AS remarks) AS source
+		ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.date = source.date
+		WHEN MATCHED THEN
+			UPDATE SET status = 'present',
+				remarks = CASE 
+					WHEN target.remarks = 'Not yet marked' THEN NULL
+					ELSE target.remarks
+				END,
+				updated_at = CURRENT_TIMESTAMP
+		WHEN NOT MATCHED THEN
+			INSERT (class_id, student_id, date, status, remarks)
+			VALUES (source.class_id, source.student_id, source.date, source.status, source.remarks);
 	`
 
 	_, err = a.db.Exec(query, classID, studentID)
@@ -260,7 +271,7 @@ func (a *App) ExportAttendanceCSV(classID int) (string, error) {
 
 	query := `
 		SELECT 
-			a.class_id, a.student_id, DATE_FORMAT(a.date, '%Y-%m-%d') as date, a.status, a.remarks,
+			a.class_id, a.student_id, CONVERT(VARCHAR(10), a.date, 23) as date, a.status, a.remarks,
 			stu.student_id, stu.first_name, stu.middle_name, stu.last_name,
 			c.subject_code, s.description as subject_name
 		FROM attendance a
@@ -369,14 +380,16 @@ func (a *App) GenerateAttendanceFromLogs(classID int, date string, recordedBy in
 	// For each student, initialize attendance record as absent (teacher will manually mark present)
 	for _, student := range students {
 		// Insert or update attendance record - all students start as absent
-		// Also reset is_archived to FALSE in case re-generating a previously archived sheet
+		// Also reset is_archived to 0 in case re-generating a previously archived sheet
 		insertQuery := `
-			INSERT INTO attendance (class_id, student_id, date, status, is_archived, created_at)
-			VALUES (?, ?, ?, 'absent', FALSE, CURRENT_TIMESTAMP)
-			ON DUPLICATE KEY UPDATE
-				status = 'absent',
-				is_archived = FALSE,
-				updated_at = CURRENT_TIMESTAMP
+			MERGE attendance AS target
+			USING (SELECT ? AS class_id, ? AS student_id, ? AS date, 'absent' AS status, 0 AS is_archived, CURRENT_TIMESTAMP AS created_at) AS source
+			ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.date = source.date
+			WHEN MATCHED THEN
+				UPDATE SET status = 'absent', is_archived = 0, updated_at = CURRENT_TIMESTAMP
+			WHEN NOT MATCHED THEN
+				INSERT (class_id, student_id, date, status, is_archived, created_at)
+				VALUES (source.class_id, source.student_id, source.date, source.status, source.is_archived, source.created_at);
 		`
 
 		_, err = a.db.Exec(insertQuery, classID, student.StudentUserID, date)
@@ -415,8 +428,8 @@ func (a *App) autoRecordAttendanceOnLogin(studentID int) {
 		LEFT JOIN attendance a ON cl.class_id = a.class_id AND cl.student_id = a.student_id AND a.date = ?
 		WHERE cl.student_id = ? 
 			AND cl.status = 'active'
-			AND (cl.is_archived = FALSE OR cl.is_archived IS NULL)
-			AND c.is_active = TRUE
+			AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
+			AND c.is_active = 1
 			AND a.class_id IS NOT NULL
 	`
 
@@ -540,7 +553,7 @@ func (a *App) FinalizeAttendanceSheet(classID int, date string) error {
 
 	query := `
 		UPDATE attendance 
-		SET is_finalized = TRUE,
+		SET is_finalized = 1,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE class_id = ? AND date = ?
 	`
@@ -564,7 +577,7 @@ func (a *App) UnfinalizeAttendanceSheet(classID int, date string) error {
 
 	query := `
 		UPDATE attendance 
-		SET is_finalized = FALSE,
+		SET is_finalized = 0,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE class_id = ? AND date = ?
 	`
@@ -593,7 +606,7 @@ func (a *App) ArchiveAttendanceSheet(classID int, date string) error {
 	// Archive attendance records
 	query := `
 		UPDATE attendance 
-		SET is_archived = TRUE,
+		SET is_archived = 1,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE class_id = ? AND date = ?
 	`
@@ -619,7 +632,7 @@ func (a *App) UnarchiveAttendanceSheet(classID int, date string) error {
 	// Unarchive attendance records
 	query := `
 		UPDATE attendance 
-		SET is_archived = FALSE,
+		SET is_archived = 0,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE class_id = ? AND date = ?
 	`
@@ -662,7 +675,7 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 	query := `
 		SELECT
 			a.class_id,
-			DATE_FORMAT(a.date, '%Y-%m-%d') AS date,
+			CONVERT(VARCHAR(10), a.date, 23) AS date,
 			subj.subject_code,
 			subj.description AS subject_name,
 			c.edp_code,
@@ -676,7 +689,7 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 		JOIN classes c ON a.class_id = c.class_id
 		JOIN subjects subj ON c.subject_code = subj.subject_code
 		WHERE c.teacher_id = ?
-		  AND a.is_archived = TRUE
+		  AND a.is_archived = 1
 		GROUP BY a.class_id, a.date, subj.subject_code, subj.description, c.edp_code, c.schedule
 		ORDER BY a.date DESC, subj.subject_code
 	`
@@ -743,7 +756,7 @@ func (a *App) GetFinalizedAttendanceSheets(teacherUserID int) ([]AttendanceSheet
 	query := `
 		SELECT
 			a.class_id,
-			DATE_FORMAT(a.date, '%Y-%m-%d') AS date,
+			CONVERT(VARCHAR(10), a.date, 23) AS date,
 			subj.subject_code,
 			subj.description AS subject_name,
 			c.edp_code,
@@ -753,14 +766,14 @@ func (a *App) GetFinalizedAttendanceSheets(teacherUserID int) ([]AttendanceSheet
 			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
 			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count,
 			SUM(CASE WHEN a.status = 'excused' THEN 1 ELSE 0 END) AS excused_count,
-			COALESCE(MAX(a.is_archived), FALSE) AS is_archived,
-			COALESCE(MAX(a.is_finalized), FALSE) AS is_finalized
+			COALESCE(MAX(a.is_archived), 0) AS is_archived,
+			COALESCE(MAX(a.is_finalized), 0) AS is_finalized
 		FROM attendance a
 		JOIN classes c ON a.class_id = c.class_id
 		JOIN subjects subj ON c.subject_code = subj.subject_code
 		WHERE c.teacher_id = ?
-		  AND COALESCE(a.is_finalized, FALSE) = TRUE
-		  AND COALESCE(a.is_archived, FALSE) = FALSE
+		  AND COALESCE(a.is_finalized, 0) = 0
+		  AND COALESCE(a.is_archived, 0) = 0
 		GROUP BY a.class_id, a.date, subj.subject_code, subj.description, c.edp_code, c.schedule
 		ORDER BY a.date DESC, subj.subject_code
 	`
@@ -811,7 +824,7 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 	query := `
 		SELECT
 			a.class_id,
-			DATE_FORMAT(a.date, '%Y-%m-%d') AS date,
+			CONVERT(VARCHAR(10), a.date, 23) AS date,
 			subj.subject_code,
 			subj.description AS subject_name,
 			c.edp_code,
@@ -821,14 +834,14 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
 			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count,
 			SUM(CASE WHEN a.status = 'excused' THEN 1 ELSE 0 END) AS excused_count,
-			COALESCE(MAX(a.is_archived), FALSE) AS is_archived,
-			COALESCE(MAX(a.is_finalized), FALSE) AS is_finalized
+			COALESCE(MAX(a.is_archived), 0) AS is_archived,
+			COALESCE(MAX(a.is_finalized), 0) AS is_finalized
 		FROM attendance a
 		JOIN classes c ON a.class_id = c.class_id
 		JOIN subjects subj ON c.subject_code = subj.subject_code
 		WHERE c.teacher_id = ?
-		  AND COALESCE(a.is_finalized, FALSE) = FALSE
-		  AND COALESCE(a.is_archived, FALSE) = FALSE
+		  AND COALESCE(a.is_finalized, 0) = 0
+		  AND COALESCE(a.is_archived, 0) = 0
 		GROUP BY a.class_id, a.date, subj.subject_code, subj.description, c.edp_code, c.schedule
 		ORDER BY a.date DESC, subj.subject_code
 	`

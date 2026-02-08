@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"database/sql"
@@ -64,13 +64,17 @@ func (a *App) CreateSubject(code, name string, teacherUserID int, description st
 		return fmt.Errorf("database not connected")
 	}
 
-	// Use INSERT ... ON DUPLICATE KEY UPDATE to handle existing subjects gracefully
+	// Use MERGE to handle existing subjects gracefully
 	// Note: teacher_id removed from subjects table - teacher assignment is at class level
 	query := `
-		INSERT INTO subjects (subject_code, description) 
-		VALUES (?, ?)
-		ON DUPLICATE KEY UPDATE 
-			description = VALUES(description)
+		MERGE subjects AS target
+		USING (SELECT ? AS subject_code, ? AS description) AS source
+		ON target.subject_code = source.subject_code
+		WHEN MATCHED THEN
+			UPDATE SET description = source.description
+		WHEN NOT MATCHED THEN
+			INSERT (subject_code, description)
+			VALUES (source.subject_code, source.description);
 	`
 	_, err := a.db.Exec(query, code, nullString(name))
 	if err != nil {
@@ -96,7 +100,7 @@ func (a *App) GetAllClasses() ([]CourseClass, error) {
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
+			c.teacher_id, (t.last_name + ', ' + t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.created_by_user_id
@@ -108,7 +112,7 @@ func (a *App) GetAllClasses() ([]CourseClass, error) {
 			FROM classlist 
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE c.is_active = TRUE 
+		WHERE c.is_active = 1 
 		ORDER BY c.subject_code
 	`
 	rows, err := a.db.Query(query)
@@ -187,7 +191,7 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
+			c.teacher_id, t.last_name + ', ' + t.first_name as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.created_by_user_id
@@ -199,7 +203,7 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 			FROM classlist 
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE c.teacher_id = ? AND c.is_active = TRUE AND (c.is_archived = FALSE OR c.is_archived IS NULL)
+		WHERE c.teacher_id = ? AND c.is_active = 1 AND (c.is_archived = 0 OR c.is_archived IS NULL)
 		ORDER BY c.subject_code, c.semester, c.school_year
 	`
 	rows, err := a.db.Query(query, teacherID)
@@ -274,16 +278,16 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
+			c.teacher_id, t.last_name + ', ' + t.first_name as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.created_by_user_id,
-			DATE_FORMAT(
-				(SELECT MAX(a.date) FROM attendance a WHERE a.class_id = c.class_id AND (a.is_archived = FALSE OR a.is_archived IS NULL)),
-			'%Y-%m-%d') as latest_attendance_date,
+			CONVERT(VARCHAR(10), 
+				(SELECT MAX(a.date) FROM attendance a WHERE a.class_id = c.class_id AND (a.is_archived = 0 OR a.is_archived IS NULL)),
+			120) as latest_attendance_date,
 			COALESCE(
-				(SELECT MAX(a.is_finalized) FROM attendance a WHERE a.class_id = c.class_id AND (a.is_archived = FALSE OR a.is_archived IS NULL) 
-				 AND a.date = (SELECT MAX(a2.date) FROM attendance a2 WHERE a2.class_id = c.class_id AND (a2.is_archived = FALSE OR a2.is_archived IS NULL))),
+				(SELECT MAX(a.is_finalized) FROM attendance a WHERE a.class_id = c.class_id AND (a.is_archived = 0 OR a.is_archived IS NULL) 
+				 AND a.date = (SELECT MAX(a2.date) FROM attendance a2 WHERE a2.class_id = c.class_id AND (a2.is_archived = 0 OR a2.is_archived IS NULL))),
 				FALSE
 			) as is_attendance_finalized
 		FROM classes c
@@ -294,8 +298,8 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 			FROM classlist 
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE c.teacher_id = ? AND c.is_active = TRUE 
-		AND EXISTS (SELECT 1 FROM attendance WHERE attendance.class_id = c.class_id AND (attendance.is_archived = FALSE OR attendance.is_archived IS NULL))
+		WHERE c.teacher_id = ? AND c.is_active = 1 
+		AND EXISTS (SELECT 1 FROM attendance WHERE attendance.class_id = c.class_id AND (attendance.is_archived = 0 OR attendance.is_archived IS NULL))
 		ORDER BY c.subject_code, c.semester, c.school_year
 	`
 	rows, err := a.db.Query(query, teacherID)
@@ -371,7 +375,7 @@ func (a *App) GetClassesByCreator(createdBy int) ([]CourseClass, error) {
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, c.descriptive_title,
-			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
+			c.teacher_id, (t.last_name + ', ' + t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.created_by_user_id
@@ -383,7 +387,7 @@ func (a *App) GetClassesByCreator(createdBy int) ([]CourseClass, error) {
 			FROM classlist 
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE c.is_active = TRUE AND c.created_by_user_id = ?
+		WHERE c.is_active = 1 AND c.created_by_user_id = ?
 		ORDER BY c.subject_code
 	`
 	rows, err := a.db.Query(query, createdBy)
@@ -440,7 +444,7 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
+			c.teacher_id, (t.last_name + ', ' + t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.created_by_user_id, c.created_at
@@ -454,7 +458,7 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 			WHERE status = 'active'
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE cl.student_id = ? AND cl.status = 'active' AND c.is_active = TRUE AND cl.is_archived = FALSE
+		WHERE cl.student_id = ? AND cl.status = 'active' AND c.is_active = 1 AND cl.is_archived = 0
 		ORDER BY c.subject_code
 	`
 	rows, err := a.db.Query(query, studentUserID)
@@ -557,8 +561,8 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 				    semester = ?, 
 				    school_year = ?, 
 				    descriptive_title = ?,
-				    is_active = TRUE,
-				    is_archived = FALSE,
+				    is_active = 1,
+				    is_archived = 0,
 				    updated_at = CURRENT_TIMESTAMP
 				WHERE class_id = ?
 			`
@@ -584,7 +588,8 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 	// No existing class found, create a new one
 	query := `
 		INSERT INTO classes (subject_code, teacher_id, edp_code, schedule, room, semester, school_year, descriptive_title, created_by_user_id, is_active)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)
+		OUTPUT INSERTED.class_id
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
 	`
 	// Handle created_by_user_id
 	var createdByValue interface{}
@@ -594,7 +599,8 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 		createdByValue = createdBy
 	}
 
-	result, err := a.db.Exec(
+	var classID int64
+	err := a.db.QueryRow(
 		query,
 		subjectCode, teacherUserID,
 		nullString(edpCode),
@@ -602,14 +608,9 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 		nullString(semester), nullString(schoolYear),
 		nullString(descriptiveTitle),
 		createdByValue,
-	)
+	).Scan(&classID)
 	if err != nil {
 		log.Printf("⚠ Failed to create class: %v", err)
-		return 0, err
-	}
-
-	classID, err := result.LastInsertId()
-	if err != nil {
 		return 0, err
 	}
 
@@ -650,7 +651,7 @@ func (a *App) DeleteClass(classID int) error {
 		return fmt.Errorf("database not connected")
 	}
 
-	query := `UPDATE classes SET is_active = FALSE WHERE class_id = ?`
+	query := `UPDATE classes SET is_active = 0 WHERE class_id = ?`
 	_, err := a.db.Exec(query, classID)
 	if err != nil {
 		log.Printf("⚠ Failed to delete class: %v", err)
@@ -684,7 +685,7 @@ func (a *App) GetClassStudents(classID int) ([]ClasslistEntry, error) {
 		JOIN students stu ON cl.student_id = stu.id
 		JOIN classes c ON cl.class_id = c.class_id
 		JOIN subjects sub ON c.subject_code = sub.subject_code
-		WHERE cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = FALSE OR cl.is_archived IS NULL)
+		WHERE cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
 		ORDER BY stu.last_name, stu.first_name
 	`
 
@@ -738,12 +739,12 @@ func (a *App) GetAvailableStudents(classID int) ([]ClassStudent, error) {
 			s.id as id, s.student_id, s.first_name, s.middle_name, s.last_name,
 			EXISTS(
 				SELECT 1 FROM classlist cl 
-				WHERE cl.student_id = s.id AND cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = FALSE OR cl.is_archived IS NULL)
+				WHERE cl.student_id = s.id AND cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
 			) as is_enrolled
 		FROM students s
 		WHERE NOT EXISTS (
 			SELECT 1 FROM classlist cl 
-			WHERE cl.student_id = s.id AND cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = FALSE OR cl.is_archived IS NULL)
+			WHERE cl.student_id = s.id AND cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
 		)
 		ORDER BY last_name, first_name
 	`
@@ -782,7 +783,7 @@ func (a *App) GetAllStudentsForEnrollment(classID int) ([]ClassStudent, error) {
 			s.id as id, s.student_id, s.first_name, s.middle_name, s.last_name,
 			EXISTS(
 				SELECT 1 FROM classlist cl 
-				WHERE cl.student_id = s.id AND cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = FALSE OR cl.is_archived IS NULL)
+				WHERE cl.student_id = s.id AND cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
 			) as is_enrolled
 		FROM students s
 		ORDER BY last_name, first_name
@@ -820,9 +821,14 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 	}
 
 	query := `
-		INSERT INTO classlist (class_id, student_id, enrollment_date, status, is_archived)
-		VALUES (?, ?, CURDATE(), 'active', FALSE)
-		ON DUPLICATE KEY UPDATE status = 'active', is_archived = FALSE, updated_at = CURRENT_TIMESTAMP
+		MERGE classlist AS target
+		USING (SELECT ? AS class_id, ? AS student_id, CAST(GETDATE() AS DATE) AS enrollment_date, 'active' AS status, 0 AS is_archived) AS source
+		ON target.class_id = source.class_id AND target.student_id = source.student_id
+		WHEN MATCHED THEN
+			UPDATE SET status = 'active', is_archived = 0, updated_at = CURRENT_TIMESTAMP
+		WHEN NOT MATCHED THEN
+			INSERT (class_id, student_id, enrollment_date, status, is_archived)
+			VALUES (source.class_id, source.student_id, source.enrollment_date, source.status, source.is_archived);
 	`
 	_, err := a.db.Exec(query, classID, studentID)
 	if err != nil {
@@ -848,9 +854,14 @@ func (a *App) EnrollMultipleStudents(studentIDs []int, classID int, enrolledBy i
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
-		INSERT INTO classlist (class_id, student_id, enrollment_date, status, is_archived)
-		VALUES (?, ?, CURDATE(), 'active', FALSE)
-		ON DUPLICATE KEY UPDATE status = 'active', is_archived = FALSE, updated_at = CURRENT_TIMESTAMP
+		MERGE classlist AS target
+		USING (SELECT ? AS class_id, ? AS student_id, CAST(GETDATE() AS DATE) AS enrollment_date, 'active' AS status, 0 AS is_archived) AS source
+		ON target.class_id = source.class_id AND target.student_id = source.student_id
+		WHEN MATCHED THEN
+			UPDATE SET status = 'active', is_archived = 0, updated_at = CURRENT_TIMESTAMP
+		WHEN NOT MATCHED THEN
+			INSERT (class_id, student_id, enrollment_date, status, is_archived)
+			VALUES (source.class_id, source.student_id, source.enrollment_date, source.status, source.is_archived);
 	`)
 	if err != nil {
 		return err
@@ -936,7 +947,7 @@ func (a *App) GetClassesByEDPCode(edpCode string) ([]CourseClass, error) {
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
+			c.teacher_id, (t.last_name + ', ' + t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.created_by_user_id, c.created_at
@@ -949,7 +960,7 @@ func (a *App) GetClassesByEDPCode(edpCode string) ([]CourseClass, error) {
 			WHERE status = 'active'
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE c.edp_code = ? AND c.is_active = TRUE
+		WHERE c.edp_code = ? AND c.is_active = 1
 		ORDER BY c.created_at DESC
 	`
 	rows, err := a.db.Query(query, edpCode)
@@ -1039,7 +1050,7 @@ func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error)
 	// Check if student is already enrolled in any of these classes
 	for _, class := range classes {
 		var exists int
-		checkQuery := `SELECT 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = FALSE OR is_archived IS NULL)`
+		checkQuery := `SELECT 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = 0 OR is_archived IS NULL)`
 		err := a.db.QueryRow(checkQuery, class.ClassID, studentUserID).Scan(&exists)
 		if err == nil {
 			// Already enrolled
@@ -1084,9 +1095,9 @@ func (a *App) GetWorkingStudentID(userID int) (int, error) {
 		return 0, fmt.Errorf("database not connected")
 	}
 
-	// Verify the user is actually a working student (students table with is_working_student = TRUE)
+	// Verify the user is actually a working student (students table with is_working_student = 1)
 	var exists int
-	query := `SELECT 1 FROM students WHERE id = ? AND is_working_student = TRUE`
+	query := `SELECT 1 FROM students WHERE id = ? AND is_working_student = 1`
 	err := a.db.QueryRow(query, userID).Scan(&exists)
 	if err != nil {
 		return 0, err
@@ -1177,6 +1188,10 @@ func (a *App) GetAllRegisteredStudents(yearLevelFilter, sectionFilter string) ([
 		}
 		if photoPath.Valid {
 			student.PhotoPath = &photoPath.String
+			// Convert file path to base64 data URL for frontend display
+			if photoDataURL, err := a.convertPhotoToDataURL(photoPath.String); err == nil {
+				student.PhotoURL = &photoDataURL
+			}
 		}
 		students = append(students, student)
 	}
@@ -1237,7 +1252,7 @@ func (a *App) GetInactiveClasses(teacherUserID int) ([]CourseClass, error) {
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
+			c.teacher_id, (t.last_name + ', ' + t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.is_archived, c.created_by_user_id
@@ -1250,7 +1265,7 @@ func (a *App) GetInactiveClasses(teacherUserID int) ([]CourseClass, error) {
 			WHERE status = 'active'
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE c.teacher_id = ? AND c.is_active = FALSE AND (c.is_archived = FALSE OR c.is_archived IS NULL)
+		WHERE c.teacher_id = ? AND c.is_active = 0 AND (c.is_archived = 0 OR c.is_archived IS NULL)
 		ORDER BY c.school_year DESC, c.semester DESC, s.subject_code
 	`
 
@@ -1329,7 +1344,7 @@ func (a *App) ArchiveClass(classID int) error {
 
 	query := `
 		UPDATE classes 
-		SET is_archived = TRUE,
+		SET is_archived = 1,
 		    updated_at = CURRENT_TIMESTAMP
 		WHERE class_id = ?
 	`
@@ -1353,7 +1368,7 @@ func (a *App) UnarchiveClass(classID int) error {
 
 	query := `
 		UPDATE classes 
-		SET is_archived = FALSE,
+		SET is_archived = 0,
 		    updated_at = CURRENT_TIMESTAMP
 		WHERE class_id = ?
 	`
@@ -1378,7 +1393,7 @@ func (a *App) GetArchivedClasses(teacherUserID int) ([]CourseClass, error) {
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
+			c.teacher_id, (t.last_name + ', ' + t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.is_archived, c.created_by_user_id
@@ -1391,7 +1406,7 @@ func (a *App) GetArchivedClasses(teacherUserID int) ([]CourseClass, error) {
 			WHERE status = 'active'
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE c.teacher_id = ? AND c.is_archived = TRUE
+		WHERE c.teacher_id = ? AND c.is_archived = 1
 		ORDER BY c.school_year DESC, c.semester DESC, s.subject_code
 	`
 
@@ -1470,7 +1485,7 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
+			c.teacher_id, (t.last_name + ', ' + t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.is_archived, c.created_by_user_id, c.created_at
@@ -1484,7 +1499,7 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 			WHERE status = 'active'
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE cl.student_id = ? AND cl.is_archived = TRUE
+		WHERE cl.student_id = ? AND cl.is_archived = 1
 		ORDER BY c.school_year DESC, c.semester DESC, c.subject_code ASC
 	`
 
@@ -1566,7 +1581,7 @@ func (a *App) GetClassByID(classID int) (*CourseClass, error) {
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
+			c.teacher_id, (t.last_name + ', ' + t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.is_archived, c.created_by_user_id
@@ -1643,7 +1658,7 @@ func (a *App) ArchiveStudentEnrollment(studentUserID int, classID int) error {
 	}
 
 	result, err := a.db.Exec(
-		"UPDATE classlist SET is_archived = TRUE WHERE student_id = ? AND class_id = ?",
+		"UPDATE classlist SET is_archived = 1 WHERE student_id = ? AND class_id = ?",
 		studentUserID, classID,
 	)
 	if err != nil {
@@ -1667,7 +1682,7 @@ func (a *App) UnarchiveStudentEnrollment(studentUserID int, classID int) error {
 	}
 
 	result, err := a.db.Exec(
-		"UPDATE classlist SET is_archived = FALSE WHERE student_id = ? AND class_id = ?",
+		"UPDATE classlist SET is_archived = 0 WHERE student_id = ? AND class_id = ?",
 		studentUserID, classID,
 	)
 	if err != nil {
@@ -1689,7 +1704,7 @@ func (a *App) UnarchiveStudentEnrollment(studentUserID int, classID int) error {
 // ==============================================================================
 
 // SetStudentEnrollmentStatus updates the status of a student's enrollment in a class
-// status can be: 'active', 'dropped', 'completed'
+// status can be: 'active' + 'dropped' + 'completed'
 func (a *App) SetStudentEnrollmentStatus(studentUserID int, classID int, status string) error {
 	if a.db == nil {
 		return fmt.Errorf("database not connected")
@@ -1698,7 +1713,7 @@ func (a *App) SetStudentEnrollmentStatus(studentUserID int, classID int, status 
 	// Validate status
 	validStatuses := map[string]bool{"active": true, "dropped": true, "completed": true}
 	if !validStatuses[status] {
-		return fmt.Errorf("invalid status: %s. Must be 'active', 'dropped', or 'completed'", status)
+		return fmt.Errorf("invalid status: %s. Must be 'active' + 'dropped', or 'completed'", status)
 	}
 
 	result, err := a.db.Exec(

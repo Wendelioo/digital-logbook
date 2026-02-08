@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"database/sql"
@@ -34,16 +34,13 @@ func (a *App) GetTodayLogs() ([]LoginLog, error) {
 			ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN CONCAT(s.last_name, ', ', s.first_name,
-						CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
+					THEN s.last_name + ', ' + s.first_name + CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN CONCAT(t.last_name, ', ', t.first_name,
-						CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
+					THEN t.last_name + ', ' + t.first_name + CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN a.last_name IS NOT NULL AND a.first_name IS NOT NULL
-					THEN CONCAT(a.last_name, ', ', a.first_name,
-						CASE WHEN a.middle_name IS NOT NULL THEN CONCAT(' ', a.middle_name) ELSE '' END)
+					THEN a.last_name + ', ' + a.first_name + CASE WHEN a.middle_name IS NOT NULL THEN ' ' + a.middle_name ELSE '' END
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -58,8 +55,8 @@ func (a *App) GetTodayLogs() ([]LoginLog, error) {
 		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
 		LEFT JOIN admins a ON u.id = a.id AND u.user_type = 'admin'
-		WHERE DATE(ll.login_time) = CURDATE()
-		AND (ll.is_archived = FALSE OR ll.is_archived IS NULL)
+		WHERE CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE)
+		AND (ll.is_archived = 0 OR ll.is_archived IS NULL)
 		ORDER BY ll.login_time DESC
 	`
 
@@ -121,16 +118,16 @@ func (a *App) GetPastLogs(startDate, endDate string) ([]LoginLog, error) {
 			ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN CONCAT(s.last_name, ', ', s.first_name,
-						CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
+					THEN s.last_name + ', ' + s.first_name +
+						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN CONCAT(t.last_name, ', ', t.first_name,
-						CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
+					THEN t.last_name + ', ' + t.first_name +
+						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN a.last_name IS NOT NULL AND a.first_name IS NOT NULL
-					THEN CONCAT(a.last_name, ', ', a.first_name,
-						CASE WHEN a.middle_name IS NOT NULL THEN CONCAT(' ', a.middle_name) ELSE '' END)
+					THEN a.last_name + ', ' + a.first_name +
+						CASE WHEN a.middle_name IS NOT NULL THEN ' ' + a.middle_name ELSE '' END
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -145,11 +142,10 @@ func (a *App) GetPastLogs(startDate, endDate string) ([]LoginLog, error) {
 		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
 		LEFT JOIN admins a ON u.id = a.id AND u.user_type = 'admin'
-		WHERE DATE(ll.login_time) < CURDATE()
-		AND (ll.is_archived = FALSE OR ll.is_archived IS NULL)
-		AND DATE(ll.login_time) BETWEEN ? AND ?
+		WHERE CAST(ll.login_time AS DATE) < CAST(GETDATE() AS DATE)
+		AND (ll.is_archived = 0 OR ll.is_archived IS NULL)
+		AND CAST(ll.login_time AS DATE) BETWEEN ? AND ?
 		ORDER BY ll.login_time DESC
-		LIMIT 1000
 	`
 
 	rows, err := a.db.Query(query, startDate, endDate)
@@ -216,8 +212,8 @@ func (a *App) ArchiveSelectedLogs(logIDs []int, archivedByUserID int) error {
 
 	query := fmt.Sprintf(`
 		UPDATE log_entries 
-		SET is_archived = TRUE, 
-			archived_at = NOW(), 
+		SET is_archived = 1, 
+			archived_at = GETDATE(), 
 			archived_by_user_id = ?
 		WHERE id IN (%s)
 	`, strings.Join(placeholders, ","))
@@ -253,7 +249,7 @@ func (a *App) UnarchiveLogs(logIDs []int) error {
 
 	query := fmt.Sprintf(`
 		UPDATE log_entries 
-		SET is_archived = FALSE, 
+		SET is_archived = 0, 
 			archived_at = NULL, 
 			archived_by_user_id = NULL
 		WHERE id IN (%s)
@@ -286,16 +282,16 @@ func (a *App) GetArchivedLogs() ([]LoginLog, error) {
 			ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN CONCAT(s.last_name, ', ', s.first_name,
-						CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
+					THEN s.last_name + ', ' + s.first_name +
+						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN CONCAT(t.last_name, ', ', t.first_name,
-						CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
+					THEN t.last_name + ', ' + t.first_name +
+						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN a.last_name IS NOT NULL AND a.first_name IS NOT NULL
-					THEN CONCAT(a.last_name, ', ', a.first_name,
-						CASE WHEN a.middle_name IS NOT NULL THEN CONCAT(' ', a.middle_name) ELSE '' END)
+					THEN a.last_name + ', ' + a.first_name +
+						CASE WHEN a.middle_name IS NOT NULL THEN ' ' + a.middle_name ELSE '' END
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -310,9 +306,8 @@ func (a *App) GetArchivedLogs() ([]LoginLog, error) {
 		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
 		LEFT JOIN admins a ON u.id = a.id AND u.user_type = 'admin'
-		WHERE ll.is_archived = TRUE
+		WHERE ll.is_archived = 1
 		ORDER BY ll.archived_at DESC, ll.login_time DESC
-		LIMIT 2000
 	`
 
 	rows, err := a.db.Query(query)
@@ -365,7 +360,7 @@ func (a *App) GetAllLogs() ([]LoginLog, error) {
 
 	// Query log_entries directly with joins to ensure all logs are returned
 	// even if user profile data is missing
-	// Only returns non-archived logs (is_archived = FALSE or NULL for backwards compatibility)
+	// Only returns non-archived logs (is_archived = 0 or NULL for backwards compatibility)
 	query := `
 		SELECT 
 			ll.id, 
@@ -376,16 +371,16 @@ func (a *App) GetAllLogs() ([]LoginLog, error) {
 			ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN CONCAT(s.last_name, ', ', s.first_name,
-						CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
+					THEN s.last_name + ', ' + s.first_name +
+						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN CONCAT(t.last_name, ', ', t.first_name,
-						CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
+					THEN t.last_name + ', ' + t.first_name +
+						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN a.last_name IS NOT NULL AND a.first_name IS NOT NULL
-					THEN CONCAT(a.last_name, ', ', a.first_name,
-						CASE WHEN a.middle_name IS NOT NULL THEN CONCAT(' ', a.middle_name) ELSE '' END)
+					THEN a.last_name + ', ' + a.first_name +
+						CASE WHEN a.middle_name IS NOT NULL THEN ' ' + a.middle_name ELSE '' END
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -400,9 +395,8 @@ func (a *App) GetAllLogs() ([]LoginLog, error) {
 		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
 		LEFT JOIN admins a ON u.id = a.id AND u.user_type = 'admin'
-		WHERE (ll.is_archived = FALSE OR ll.is_archived IS NULL)
-		ORDER BY ll.login_time DESC 
-		LIMIT 1000
+		WHERE (ll.is_archived = 0 OR ll.is_archived IS NULL)
+		ORDER BY ll.login_time DESC
 	`
 	rows, err := a.db.Query(query)
 	if err != nil {
@@ -465,16 +459,16 @@ func (a *App) GetStudentLoginLogs(userID int) ([]LoginLog, error) {
 			ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN CONCAT(s.last_name, ', ', s.first_name,
-						CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
+					THEN s.last_name + ', ' + s.first_name +
+						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN CONCAT(t.last_name, ', ', t.first_name,
-						CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
+					THEN t.last_name + ', ' + t.first_name +
+						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN a.last_name IS NOT NULL AND a.first_name IS NOT NULL
-					THEN CONCAT(a.last_name, ', ', a.first_name,
-						CASE WHEN a.middle_name IS NOT NULL THEN CONCAT(' ', a.middle_name) ELSE '' END)
+					THEN a.last_name + ', ' + a.first_name +
+						CASE WHEN a.middle_name IS NOT NULL THEN ' ' + a.middle_name ELSE '' END
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -490,8 +484,7 @@ func (a *App) GetStudentLoginLogs(userID int) ([]LoginLog, error) {
 		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
 		LEFT JOIN admins a ON u.id = a.id AND u.user_type = 'admin'
 		WHERE ll.user_id = ?
-		ORDER BY ll.login_time DESC 
-		LIMIT 100
+		ORDER BY ll.login_time DESC
 	`
 	rows, err := a.db.Query(query, userID)
 	if err != nil {
@@ -553,16 +546,16 @@ func (a *App) GetTeacherLoginLogs(userID int) ([]LoginLog, error) {
 			ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN CONCAT(s.last_name, ', ', s.first_name,
-						CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
+					THEN s.last_name + ', ' + s.first_name +
+						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN CONCAT(t.last_name, ', ', t.first_name,
-						CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
+					THEN t.last_name + ', ' + t.first_name +
+						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN a.last_name IS NOT NULL AND a.first_name IS NOT NULL
-					THEN CONCAT(a.last_name, ', ', a.first_name,
-						CASE WHEN a.middle_name IS NOT NULL THEN CONCAT(' ', a.middle_name) ELSE '' END)
+					THEN a.last_name + ', ' + a.first_name +
+						CASE WHEN a.middle_name IS NOT NULL THEN ' ' + a.middle_name ELSE '' END
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -578,8 +571,7 @@ func (a *App) GetTeacherLoginLogs(userID int) ([]LoginLog, error) {
 		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
 		LEFT JOIN admins a ON u.id = a.id AND u.user_type = 'admin'
 		WHERE ll.user_id = ? AND u.user_type = 'teacher'
-		ORDER BY ll.login_time DESC 
-		LIMIT 100
+		ORDER BY ll.login_time DESC
 	`
 
 	rows, err := a.db.Query(query, userID)
@@ -745,7 +737,7 @@ func (a *App) GetArchivedLogSheets() ([]ArchivedLogSheet, error) {
 
 	query := `
 		SELECT 
-			DATE(ll.login_time) as log_date,
+			CAST(ll.login_time AS DATE) as log_date,
 			COUNT(*) as total_logins,
 			SUM(CASE WHEN u.user_type = 'student' THEN 1 ELSE 0 END) as student_count,
 			SUM(CASE WHEN u.user_type = 'teacher' THEN 1 ELSE 0 END) as teacher_count,
@@ -754,8 +746,8 @@ func (a *App) GetArchivedLogSheets() ([]ArchivedLogSheet, error) {
 			COUNT(DISTINCT ll.pc_number) as unique_pcs
 		FROM log_entries ll
 		JOIN users u ON ll.user_id = u.id
-		WHERE ll.is_archived = TRUE
-		GROUP BY DATE(ll.login_time)
+		WHERE ll.is_archived = 1
+		GROUP BY CAST(ll.login_time AS DATE)
 		ORDER BY log_date DESC
 	`
 
@@ -802,16 +794,16 @@ func (a *App) GetArchivedLogsByDate(date string) ([]LoginLog, error) {
 			ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN CONCAT(s.last_name, ', ', s.first_name,
-						CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
+					THEN s.last_name + ', ' + s.first_name +
+						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN CONCAT(t.last_name, ', ', t.first_name,
-						CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
+					THEN t.last_name + ', ' + t.first_name +
+						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
 					ELSE NULL END,
 				CASE WHEN ad.last_name IS NOT NULL AND ad.first_name IS NOT NULL
-					THEN CONCAT(ad.last_name, ', ', ad.first_name,
-						CASE WHEN ad.middle_name IS NOT NULL THEN CONCAT(' ', ad.middle_name) ELSE '' END)
+					THEN ad.last_name + ', ' + ad.first_name +
+						CASE WHEN ad.middle_name IS NOT NULL THEN ' ' + ad.middle_name ELSE '' END
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -826,7 +818,7 @@ func (a *App) GetArchivedLogsByDate(date string) ([]LoginLog, error) {
 		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
 		LEFT JOIN admins ad ON u.id = ad.id AND u.user_type = 'admin'
-		WHERE ll.is_archived = TRUE AND DATE(ll.login_time) = ?
+		WHERE ll.is_archived = 1 AND CAST(ll.login_time AS DATE) = ?
 		ORDER BY ll.login_time DESC
 	`
 
@@ -879,10 +871,10 @@ func (a *App) ArchiveLogsByDate(date string, adminUserID int) (int, error) {
 	}
 
 	query := `UPDATE log_entries 
-		SET is_archived = TRUE, 
-		    archived_at = NOW(), 
+		SET is_archived = 1, 
+		    archived_at = GETDATE(), 
 		    archived_by_user_id = ?
-		WHERE DATE(login_time) = ? AND (is_archived = FALSE OR is_archived IS NULL)`
+		WHERE CAST(login_time AS DATE) = ? AND (is_archived = 0 OR archived IS NULL)`
 
 	result, err := a.db.Exec(query, adminUserID, date)
 	if err != nil {
@@ -906,10 +898,10 @@ func (a *App) UnarchiveLogSheet(date string) (int, error) {
 	}
 
 	query := `UPDATE log_entries 
-		SET is_archived = FALSE, 
+		SET is_archived = 0, 
 		    archived_at = NULL, 
 		    archived_by_user_id = NULL
-		WHERE DATE(login_time) = ? AND is_archived = TRUE`
+		WHERE CAST(login_time AS DATE) = ? AND is_archived = 1`
 
 	result, err := a.db.Exec(query, date)
 	if err != nil {
@@ -933,9 +925,9 @@ func (a *App) GetLogDates() ([]string, error) {
 	}
 
 	query := `
-		SELECT DISTINCT DATE(login_time) as log_date
+		SELECT DISTINCT CAST(login_time AS DATE) as log_date
 		FROM log_entries
-		WHERE is_archived = FALSE OR is_archived IS NULL
+		WHERE is_archived = 0 OR archived IS NULL
 		ORDER BY log_date DESC
 	`
 
@@ -1091,10 +1083,10 @@ func (a *App) ArchiveLogs(logIDs []int, adminUserID int) (int, error) {
 	}
 
 	query := fmt.Sprintf(`UPDATE log_entries 
-		SET is_archived = TRUE, 
-		    archived_at = NOW(), 
+		SET is_archived = 1, 
+		    archived_at = GETDATE(), 
 		    archived_by_user_id = ?
-		WHERE id IN (%s) AND is_archived = FALSE`, strings.Join(placeholders, ","))
+		WHERE id IN (%s) AND is_archived = 0`, strings.Join(placeholders, ","))
 
 	result, err := a.db.Exec(query, args...)
 	if err != nil {

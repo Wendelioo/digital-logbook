@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
+import DatabaseSetup from './pages/DatabaseSetup';
 import Admin from './pages/Admin';
 import Teacher from './pages/Teacher';
 import Student from './pages/Student';
@@ -36,6 +37,7 @@ function AppRoutes() {
       <div className="min-h-screen bg-gray-50">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/database-setup" element={<DatabaseSetup />} />
           <Route 
             path="/admin/*" 
             element={

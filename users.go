@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"database/sql"
@@ -127,7 +127,7 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 			a.last_name LIKE ? OR
 			a.middle_name LIKE ? OR
 			a.admin_id LIKE ? OR
-			DATE_FORMAT(u.created_at, '%Y-%m-%d') LIKE ?
+			CONVERT(VARCHAR(10), u.created_at, 120) LIKE ?
 		)
 		UNION ALL
 		SELECT 
@@ -143,7 +143,7 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 			t.last_name LIKE ? OR
 			t.middle_name LIKE ? OR
 			t.teacher_id LIKE ? OR
-			DATE_FORMAT(u.created_at, '%Y-%m-%d') LIKE ?
+			CONVERT(VARCHAR(10), u.created_at, 120) LIKE ?
 		)
 		UNION ALL
 		SELECT 
@@ -159,7 +159,7 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 			s.last_name LIKE ? OR
 			s.middle_name LIKE ? OR
 			s.student_id LIKE ? OR
-			DATE_FORMAT(u.created_at, '%Y-%m-%d') LIKE ?
+			CONVERT(VARCHAR(10), u.created_at, 120) LIKE ?
 		)
 	`
 	searchPattern := "%" + searchTerm + "%"
@@ -218,14 +218,14 @@ func (a *App) CreateUser(password, name, firstName, middleName, lastName, role, 
 	}
 
 	// Insert into users table
-	query := `INSERT INTO users (username, password, user_type) VALUES (?, ?, ?)`
-	result, err := a.db.Exec(query, username, password, role)
+	query := `INSERT INTO users (username, password, user_type) OUTPUT INSERTED.id VALUES (?, ?, ?)`
+	var userID int64
+	err := a.db.QueryRow(query, username, password, role).Scan(&userID)
 	if err != nil {
 		log.Printf("Failed to insert into users table: %v", err)
 		return fmt.Errorf("failed to create user account: %w", err)
 	}
 
-	userID, _ := result.LastInsertId()
 	log.Printf("Created user account with ID: %d", userID)
 
 	// Insert into role-specific table
@@ -254,10 +254,10 @@ func (a *App) UpdateUser(id int, name, firstName, middleName, lastName, role, em
 		query = `UPDATE teachers SET first_name = ?, middle_name = ?, last_name = ?, teacher_id = ?, email = ?, contact_number = ?, department_code = ? WHERE id = ?`
 		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(employeeID), nullString(email), nullString(contactNumber), nullString(departmentCode), id)
 	case "student":
-		query = `UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, student_id = ?, email = ?, contact_number = ? WHERE id = ? AND is_working_student = FALSE`
+		query = `UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, student_id = ?, email = ?, contact_number = ? WHERE id = ? AND is_working_student = 0`
 		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(studentID), nullString(email), nullString(contactNumber), id)
 	case "working_student":
-		query = `UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, student_id = ?, email = ?, contact_number = ? WHERE id = ? AND is_working_student = TRUE`
+		query = `UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, student_id = ?, email = ?, contact_number = ? WHERE id = ? AND is_working_student = 1`
 		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(studentID), nullString(email), nullString(contactNumber), id)
 	}
 
@@ -376,6 +376,18 @@ func (a *App) scanUsers(rows *sql.Rows) ([]User, error) {
 			user.DepartmentCode = &departmentCode.String
 		}
 
+		// Load profile photo from profile_photos table
+		var photoPath sql.NullString
+		photoQuery := `SELECT photo_path FROM profile_photos WHERE user_id = ?`
+		err = a.db.QueryRow(photoQuery, user.ID).Scan(&photoPath)
+		if err == nil && photoPath.Valid {
+			user.PhotoPath = &photoPath.String
+			// Convert file path to base64 data URL for frontend display
+			if photoDataURL, err := a.convertPhotoToDataURL(photoPath.String); err == nil {
+				user.PhotoURL = &photoDataURL
+			}
+		}
+
 		users = append(users, user)
 	}
 
@@ -416,11 +428,11 @@ func (a *App) insertRoleSpecificProfile(userID int64, role, firstName, middleNam
 		_, err = a.db.Exec(query, userID, nullString(employeeID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), nullString(departmentCode))
 	case "student":
 		query = `INSERT INTO students (id, student_id, first_name, middle_name, last_name, email, contact_number, is_working_student) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), false)
+		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), 0)
 	case "working_student":
 		query = `INSERT INTO students (id, student_id, first_name, middle_name, last_name, email, contact_number, is_working_student) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 		log.Printf("📝 Inserting working student - id: %d, student_id: %s, name: %s %s, email: %s", userID, studentID, firstName, lastName, email)
-		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), true)
+		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), 1)
 	}
 
 	if err != nil {
@@ -890,11 +902,11 @@ type ArchivedStudent struct {
 	FirstName           string    `json:"first_name"`
 	MiddleName          *string   `json:"middle_name"`
 	LastName            string    `json:"last_name"`
-	Email               *string   `json:"email"`
-	ContactNumber       *string   `json:"contact_number"`
-	ArchivedAt          time.Time `json:"archived_at"`
-	DeletionScheduledAt time.Time `json:"deletion_scheduled_at"`
-	DaysUntilDeletion   int       `json:"days_until_deletion"`
+	Email               *string `json:"email"`
+	ContactNumber       *string `json:"contact_number"`
+	ArchivedAt          string  `json:"archived_at"`
+	DeletionScheduledAt string  `json:"deletion_scheduled_at"`
+	DaysUntilDeletion   int     `json:"days_until_deletion"`
 }
 
 // ArchiveStudent archives a graduated student account
@@ -929,7 +941,7 @@ func (a *App) ArchiveStudent(studentUserID int) error {
 	}
 
 	// Also deactivate the user account
-	_, err = a.db.Exec("UPDATE users SET is_active = FALSE WHERE id = ?", studentUserID)
+	_, err = a.db.Exec("UPDATE users SET is_active = 0 WHERE id = ?", studentUserID)
 	if err != nil {
 		return fmt.Errorf("failed to deactivate user account: %w", err)
 	}
@@ -968,7 +980,7 @@ func (a *App) UnarchiveStudent(studentUserID int) error {
 	}
 
 	// Reactivate the user account
-	_, err = a.db.Exec("UPDATE users SET is_active = TRUE WHERE id = ?", studentUserID)
+	_, err = a.db.Exec("UPDATE users SET is_active = 1 WHERE id = ?", studentUserID)
 	if err != nil {
 		return fmt.Errorf("failed to reactivate user account: %w", err)
 	}
@@ -994,7 +1006,7 @@ func (a *App) GetArchivedStudents() ([]ArchivedStudent, error) {
 			s.contact_number,
 			s.archived_at,
 			s.deletion_scheduled_at,
-			DATEDIFF(s.deletion_scheduled_at, NOW()) as days_until_deletion
+			DATEDIFF(day, GETDATE(), s.deletion_scheduled_at) as days_until_deletion
 		FROM students s
 		WHERE s.archived_at IS NOT NULL
 		ORDER BY s.deletion_scheduled_at ASC
@@ -1009,6 +1021,7 @@ func (a *App) GetArchivedStudents() ([]ArchivedStudent, error) {
 	var students []ArchivedStudent
 	for rows.Next() {
 		var student ArchivedStudent
+		var archivedAt, deletionScheduledAt time.Time
 		err := rows.Scan(
 			&student.UserID,
 			&student.StudentID,
@@ -1017,13 +1030,18 @@ func (a *App) GetArchivedStudents() ([]ArchivedStudent, error) {
 			&student.LastName,
 			&student.Email,
 			&student.ContactNumber,
-			&student.ArchivedAt,
-			&student.DeletionScheduledAt,
+			&archivedAt,
+			&deletionScheduledAt,
 			&student.DaysUntilDeletion,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan archived student: %w", err)
 		}
+		
+		// Format time fields as strings
+		student.ArchivedAt = archivedAt.Format("2006-01-02 15:04:05")
+		student.DeletionScheduledAt = deletionScheduledAt.Format("2006-01-02 15:04:05")
+		
 		students = append(students, student)
 	}
 
@@ -1042,7 +1060,7 @@ func (a *App) DeleteExpiredStudents() (int, error) {
 		SELECT id, student_id 
 		FROM students 
 		WHERE archived_at IS NOT NULL 
-		AND deletion_scheduled_at <= NOW()
+		AND deletion_scheduled_at <= GETDATE()
 	`
 	rows, err := a.db.Query(query)
 	if err != nil {
@@ -1112,7 +1130,7 @@ func (a *App) GetActiveStudentsForArchiving() ([]User, error) {
 		FROM users u
 		JOIN students s ON u.id = s.id
 		WHERE u.user_type = 'student' 
-		AND u.is_active = TRUE
+		AND u.is_active = 1
 		AND s.archived_at IS NULL
 		ORDER BY s.last_name, s.first_name
 	`

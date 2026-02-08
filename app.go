@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"context"
@@ -58,6 +58,7 @@ type User struct {
 	Email          *string `json:"email"`
 	ContactNumber  *string `json:"contact_number"`
 	PhotoPath      *string `json:"photo_path"` // File path to profile photo (improved from BLOB)
+	PhotoURL       *string `json:"photo_url"`  // Base64 data URL for frontend display
 	DepartmentCode *string `json:"department_code"`
 	Created        string  `json:"created"`
 	LoginLogID     int     `json:"login_log_id"` // Track the login session
@@ -125,6 +126,7 @@ type ClassStudent struct {
 	Email         *string `json:"email,omitempty"`
 	ContactNumber *string `json:"contact_number,omitempty"`
 	PhotoPath     *string `json:"photo_path,omitempty"` // File path to profile photo
+	PhotoURL      *string `json:"photo_url,omitempty"`  // Base64 data URL for frontend display
 	ClassID       *int    `json:"class_id,omitempty"`
 	IsEnrolled    bool    `json:"is_enrolled"`
 }
@@ -167,7 +169,7 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	a.db.QueryRow(`SELECT COUNT(*) FROM users WHERE user_type = 'working_student'`).Scan(&dashboard.WorkingStudents)
 
 	// Count recent logins (last 24 hours)
-	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE login_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`).Scan(&dashboard.RecentLogins)
+	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE login_time >= DATEADD(HOUR, -24, GETDATE())`).Scan(&dashboard.RecentLogins)
 
 	// Count active users now (logged in without logout)
 	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE logout_time IS NULL`).Scan(&dashboard.ActiveUsersNow)
@@ -193,25 +195,25 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	// Count today's logins
 	a.db.QueryRow(`
 		SELECT COUNT(*) FROM log_entries 
-		WHERE DATE(login_time) = CURDATE()
+		WHERE CAST(login_time AS DATE) = CAST(GETDATE() AS DATE)
 	`).Scan(&dashboard.TodayLogins)
 
 	// Count users created today
 	a.db.QueryRow(`
 		SELECT COUNT(*) FROM users 
-		WHERE DATE(created_at) = CURDATE()
+		WHERE CAST(created_at AS DATE) = CAST(GETDATE() AS DATE)
 	`).Scan(&dashboard.TodayNewUsers)
 
 	// Count locked accounts
 	a.db.QueryRow(`
 		SELECT COUNT(*) FROM users 
-		WHERE account_lock = TRUE
+		WHERE account_lock = 1
 	`).Scan(&dashboard.LockedAccounts)
 
-	// Count pending feedback
+	// Count pending feedback (forwarded to admin but not archived)
 	a.db.QueryRow(`
 		SELECT COUNT(*) FROM feedback 
-		WHERE status = 'pending'
+		WHERE status = 'forwarded' AND (is_archived = 0 OR is_archived IS NULL)
 	`).Scan(&dashboard.PendingFeedback)
 
 	return dashboard, nil
@@ -325,14 +327,14 @@ func (a *App) GetTeacherDashboard(teacherUserID int) (TeacherDashboard, error) {
 		a.db.QueryRow(`
 			SELECT COUNT(*) FROM attendance 
 			WHERE class_id IN (`+strings.Repeat("?,", len(classIDs)-1)+`?) 
-			AND attendance_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+			AND attendance_date >= DATEADD(DAY, -7, CAST(GETDATE() AS DATE))
 		`, convertToInterfaceSlice(classIDs)...).Scan(&dashboard.TotalAttendanceWeek)
 
 		// Count attendance records this month
 		a.db.QueryRow(`
 			SELECT COUNT(*) FROM attendance 
 			WHERE class_id IN (`+strings.Repeat("?,", len(classIDs)-1)+`?) 
-			AND attendance_date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+			AND attendance_date >= DATEADD(DAY, -30, CAST(GETDATE() AS DATE))
 		`, convertToInterfaceSlice(classIDs)...).Scan(&dashboard.TotalAttendanceMonth)
 	}
 
@@ -374,10 +376,10 @@ func (a *App) GetRecentAttendance(classIDs []int, days int) ([]Attendance, error
 		SELECT 
 			a.id, a.class_id, c.subject_code, s.name, c.section, c.schedule,
 			a.student_id, st.student_id, 
-			CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.middle_name, ''), ' ', COALESCE(u.last_name, '')) as student_name,
+			COALESCE(u.first_name, '') + ' ' + COALESCE(u.middle_name, '') + ' ' + COALESCE(u.last_name, '') as student_name,
 			a.attendance_date, a.status, a.remarks,
 			a.recorded_by,
-			CONCAT(COALESCE(rec.first_name, ''), ' ', COALESCE(rec.middle_name, ''), ' ', COALESCE(rec.last_name, '')) as recorded_by_name
+			COALESCE(rec.first_name, '') + ' ' + COALESCE(rec.middle_name, '') + ' ' + COALESCE(rec.last_name, '') as recorded_by_name
 		FROM attendance a
 		JOIN classlist c ON a.class_id = c.id
 		JOIN subjects s ON c.subject_code = s.code
@@ -385,7 +387,7 @@ func (a *App) GetRecentAttendance(classIDs []int, days int) ([]Attendance, error
 		JOIN users u ON st.id = u.id
 		LEFT JOIN users rec ON a.recorded_by = rec.id
 		WHERE a.class_id IN (%s)
-		AND a.attendance_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+		AND a.attendance_date >= DATEADD(DAY, -?, CAST(GETDATE() AS DATE))
 		ORDER BY a.attendance_date DESC
 	`, strings.Join(placeholders, ","))
 
@@ -439,7 +441,7 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	// Get all attendance records for this student
 	query := `
 		SELECT 
-			a.class_id, a.student_id, DATE_FORMAT(a.date, '%Y-%m-%d') as date,
+			a.class_id, a.student_id, CONVERT(VARCHAR(10), a.date, 23) as date,
 			stu.student_id,
 			stu.first_name, stu.middle_name, stu.last_name,
 			c.subject_code, s.description as subject_name,
@@ -563,7 +565,7 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 	a.db.QueryRow(`
 		SELECT COUNT(*) FROM users u
 		JOIN students s ON u.id = s.id
-		WHERE DATE(u.created_at) = CURDATE()
+		WHERE CAST(u.created_at AS DATE) = CAST(GETDATE() AS DATE)
 	`).Scan(&dashboard.TodayRegistrations)
 
 	// Count students currently logged in
@@ -580,8 +582,7 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 // ==============================================================================
 
 // UpdateUserPhoto updates a user's profile photo
-// Note: This method accepts data URL format and stores it as Base64
-// Use UpdateUserProfilePhoto (in users.go) for proper BLOB storage
+// This method accepts data URL format and uses the profile_photos table
 func (a *App) UpdateUserPhoto(userID int, userRole, photoURL string) error {
 	if a.db == nil {
 		return fmt.Errorf("database not connected")
@@ -589,12 +590,31 @@ func (a *App) UpdateUserPhoto(userID int, userRole, photoURL string) error {
 
 	// Extract base64 data from data URL and decode to binary
 	// The photoURL is expected to be in format: "data:image/jpeg;base64,/9j/4AAQ..."
-	base64Data := photoURL
+	var mimeType string
+	var base64Data string
+	
 	if strings.HasPrefix(photoURL, "data:") {
 		parts := strings.Split(photoURL, ",")
-		if len(parts) == 2 {
-			base64Data = parts[1]
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid data URL format")
 		}
+		
+		// Extract MIME type from data URL header
+		header := parts[0]
+		if strings.Contains(header, "image/jpeg") || strings.Contains(header, "image/jpg") {
+			mimeType = "image/jpeg"
+		} else if strings.Contains(header, "image/png") {
+			mimeType = "image/png"
+		} else if strings.Contains(header, "image/gif") {
+			mimeType = "image/gif"
+		} else {
+			mimeType = "image/jpeg" // default
+		}
+		
+		base64Data = parts[1]
+	} else {
+		base64Data = photoURL
+		mimeType = "image/jpeg" // default
 	}
 
 	// Decode Base64 to binary for storage
@@ -603,25 +623,11 @@ func (a *App) UpdateUserPhoto(userID int, userRole, photoURL string) error {
 		return fmt.Errorf("failed to decode base64 image: %w", err)
 	}
 
-	// Update photo in respective table based on role
-	var query string
-	switch userRole {
-	case "admin":
-		query = `UPDATE admins SET profile_photo = ? WHERE id = ?`
-	case "teacher":
-		query = `UPDATE teachers SET profile_photo = ? WHERE id = ?`
-	case "student":
-		query = `UPDATE students SET profile_photo = ? WHERE id = ?`
-	case "working_student":
-		// Working students might be stored in a different table
-		// For now, assuming they're in students table
-		query = `UPDATE students SET profile_photo = ? WHERE id = ?`
-	default:
-		return fmt.Errorf("invalid user role: %s", userRole)
-	}
+	// Generate a file name
+	fileName := fmt.Sprintf("user_%d_profile.jpg", userID)
 
-	// Store as binary BLOB (not as text string)
-	_, err = a.db.Exec(query, imageBytes, userID)
+	// Use the UploadProfilePhoto method from profile_photos.go
+	err = a.UploadProfilePhoto(userID, imageBytes, fileName, mimeType)
 	if err != nil {
 		return fmt.Errorf("failed to update profile photo: %w", err)
 	}

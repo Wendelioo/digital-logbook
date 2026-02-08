@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"database/sql"
@@ -24,7 +24,7 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	// Only returns non-archived feedback (is_archived = FALSE or NULL for backwards compatibility)
+	// Only returns non-archived feedback (is_archived = 0 or NULL for backwards compatibility)
 	query := `
 		SELECT 
 			f.id, 
@@ -44,23 +44,21 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 			f.forwarded_by_user_id,
 			f.forwarded_at,
 			f.working_student_notes,
-			CONCAT(
-				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''), 
-				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
-				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, ''),
+			COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, '') + 
+				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END +
+				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, '') +
 				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL 
-					THEN CONCAT(' ', COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name)) 
+					THEN ' ' + COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) 
 					ELSE '' END
-			) as forwarded_by_name
+			as forwarded_by_name
 		FROM feedback f
 		LEFT JOIN students s ON f.student_id = s.id
 		LEFT JOIN users u_fwd ON f.forwarded_by_user_id = u_fwd.id
 		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
 		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.id AND u_fwd.user_type = 'admin'
-		WHERE f.status = 'forwarded' AND (f.is_archived = FALSE OR f.is_archived IS NULL)
-		ORDER BY f.date_submitted DESC 
-		LIMIT 1000`
+		WHERE f.status = 'forwarded' AND (f.is_archived = 0 OR f.is_archived IS NULL)
+		ORDER BY f.date_submitted DESC`
 	rows, err := a.db.Query(query)
 	if err != nil {
 		return nil, err
@@ -204,7 +202,7 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 	pcNumber := hostname
 
 	// Determine equipment conditions based on status
-	// ENUM values: 'Good', 'Minor Issue', 'Not Working'
+	// ENUM values: 'Good' + 'Minor Issue' + 'Not Working'
 	equipmentCondition := "Good"
 	if computerStatus == "no" {
 		equipmentCondition = "Not Working"
@@ -265,7 +263,7 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 	query := `INSERT INTO feedback (student_id, pc_number, 
 			  equipment_condition, monitor_condition, keyboard_condition, mouse_condition, 
 			  comments, priority, date_submitted) 
-			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE())`
 
 	_, err = a.db.Exec(query, userID, pcNumber,
 		equipmentCondition, monitorCondition, keyboardCondition, mouseCondition, nullString(combinedComments), priority)
@@ -304,8 +302,7 @@ func (a *App) GetPendingFeedback() ([]Feedback, error) {
 		FROM feedback f
 		LEFT JOIN students s ON f.student_id = s.id
 		WHERE f.status = 'pending'
-		ORDER BY f.date_submitted DESC 
-		LIMIT 1000`
+		ORDER BY f.date_submitted DESC`
 	rows, err := a.db.Query(query)
 	if err != nil {
 		return nil, err
@@ -359,7 +356,7 @@ func (a *App) ForwardFeedbackToAdmin(feedbackID int, workingStudentID int, notes
 	query := `UPDATE feedback 
 			  SET status = 'forwarded', 
 			      forwarded_by_user_id = ?, 
-			      forwarded_at = NOW(), 
+			      forwarded_at = GETDATE(), 
 			      working_student_notes = ?
 			  WHERE id = ? AND status = 'pending'`
 
@@ -410,7 +407,7 @@ func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID
 	query := fmt.Sprintf(`UPDATE feedback 
 			  SET status = 'forwarded', 
 			      forwarded_by_user_id = ?, 
-			      forwarded_at = NOW(), 
+			      forwarded_at = GETDATE(), 
 			      working_student_notes = ?
 			  WHERE id IN (%s) AND status = 'pending'`, strings.Join(placeholders, ","))
 
@@ -548,7 +545,7 @@ func (a *App) GetArchivedFeedbackSheets() ([]ArchivedFeedbackSheet, error) {
 
 	query := `
 		SELECT 
-			DATE(f.date_submitted) as feedback_date,
+			CAST(f.date_submitted AS DATE) as feedback_date,
 			COUNT(*) as total_reports,
 			SUM(CASE WHEN f.equipment_condition = 'Good' AND f.monitor_condition = 'Good' 
 			         AND f.keyboard_condition = 'Good' AND f.mouse_condition = 'Good' THEN 1 ELSE 0 END) as good_count,
@@ -557,8 +554,8 @@ func (a *App) GetArchivedFeedbackSheets() ([]ArchivedFeedbackSheet, error) {
 			COUNT(DISTINCT f.pc_number) as unique_pcs,
 			COUNT(DISTINCT f.student_id) as unique_students
 		FROM feedback f
-		WHERE f.is_archived = TRUE
-		GROUP BY DATE(f.date_submitted)
+		WHERE f.is_archived = 1
+		GROUP BY CAST(f.date_submitted AS DATE)
 		ORDER BY feedback_date DESC
 	`
 
@@ -613,21 +610,20 @@ func (a *App) GetArchivedFeedbackByDate(date string) ([]Feedback, error) {
 			f.forwarded_by_user_id,
 			f.forwarded_at,
 			f.working_student_notes,
-			CONCAT(
-				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''), 
-				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
-				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, ''),
+			COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, '') + 
+				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END +
+				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, '') +
 				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL 
-					THEN CONCAT(' ', COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name)) 
+					THEN ' ' + COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) 
 					ELSE '' END
-			) as forwarded_by_name
+			as forwarded_by_name
 		FROM feedback f
 		LEFT JOIN students s ON f.student_id = s.id
 		LEFT JOIN users u_fwd ON f.forwarded_by_user_id = u_fwd.id
 		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
 		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.id AND u_fwd.user_type = 'admin'
-		WHERE f.is_archived = TRUE AND DATE(f.date_submitted) = ?
+		WHERE f.is_archived = 1 AND CAST(f.date_submitted AS DATE) = ?
 		ORDER BY f.date_submitted DESC
 	`
 
@@ -699,10 +695,10 @@ func (a *App) ArchiveFeedbackByDate(date string, adminUserID int) (int, error) {
 	}
 
 	query := `UPDATE feedback 
-		SET is_archived = TRUE, 
-		    archived_at = NOW(), 
+		SET is_archived = 1, 
+		    archived_at = GETDATE(), 
 		    archived_by_user_id = ?
-		WHERE DATE(date_submitted) = ? AND status = 'forwarded' AND (is_archived = FALSE OR is_archived IS NULL)`
+		WHERE CAST(date_submitted AS DATE) = ? AND status = 'forwarded' AND (is_archived = 0 OR archived IS NULL)`
 
 	result, err := a.db.Exec(query, adminUserID, date)
 	if err != nil {
@@ -726,10 +722,10 @@ func (a *App) UnarchiveFeedbackSheet(date string) (int, error) {
 	}
 
 	query := `UPDATE feedback 
-		SET is_archived = FALSE, 
+		SET is_archived = 0, 
 		    archived_at = NULL, 
 		    archived_by_user_id = NULL
-		WHERE DATE(date_submitted) = ? AND is_archived = TRUE`
+		WHERE CAST(date_submitted AS DATE) = ? AND is_archived = 1`
 
 	result, err := a.db.Exec(query, date)
 	if err != nil {
@@ -753,9 +749,9 @@ func (a *App) GetFeedbackDates() ([]string, error) {
 	}
 
 	query := `
-		SELECT DISTINCT DATE(date_submitted) as feedback_date
+		SELECT DISTINCT CAST(date_submitted AS DATE) as feedback_date
 		FROM feedback
-		WHERE status = 'forwarded' AND (is_archived = FALSE OR is_archived IS NULL)
+		WHERE status = 'forwarded' AND (is_archived = 0 OR archived IS NULL)
 		ORDER BY feedback_date DESC
 	`
 
@@ -911,23 +907,21 @@ func (a *App) GetArchivedFeedback() ([]Feedback, error) {
 			f.forwarded_by_user_id,
 			f.forwarded_at,
 			f.working_student_notes,
-			CONCAT(
-				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''), 
-				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
-				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, ''),
+			COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, '') + 
+				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END +
+				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, '') +
 				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL 
-					THEN CONCAT(' ', COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name)) 
+					THEN ' ' + COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) 
 					ELSE '' END
-			) as forwarded_by_name
+			as forwarded_by_name
 		FROM feedback f
 		LEFT JOIN students s ON f.student_id = s.id
 		LEFT JOIN users u_fwd ON f.forwarded_by_user_id = u_fwd.id
 		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
 		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.id AND u_fwd.user_type = 'admin'
-		WHERE f.is_archived = TRUE
-		ORDER BY f.archived_at DESC, f.date_submitted DESC 
-		LIMIT 1000`
+		WHERE f.is_archived = 1
+		ORDER BY f.archived_at DESC, f.date_submitted DESC`
 	rows, err := a.db.Query(query)
 	if err != nil {
 		return nil, err
@@ -1012,10 +1006,10 @@ func (a *App) ArchiveFeedback(feedbackIDs []int, adminUserID int) (int, error) {
 	}
 
 	query := fmt.Sprintf(`UPDATE feedback 
-		SET is_archived = TRUE, 
-		    archived_at = NOW(), 
+		SET is_archived = 1, 
+		    archived_at = GETDATE(), 
 		    archived_by_user_id = ?
-		WHERE id IN (%s) AND is_archived = FALSE`, strings.Join(placeholders, ","))
+		WHERE id IN (%s) AND is_archived = 0`, strings.Join(placeholders, ","))
 
 	result, err := a.db.Exec(query, args...)
 	if err != nil {
@@ -1052,10 +1046,10 @@ func (a *App) UnarchiveFeedback(feedbackIDs []int) (int, error) {
 	}
 
 	query := fmt.Sprintf(`UPDATE feedback 
-		SET is_archived = FALSE, 
+		SET is_archived = 0, 
 		    archived_at = NULL, 
 		    archived_by_user_id = NULL
-		WHERE id IN (%s) AND is_archived = TRUE`, strings.Join(placeholders, ","))
+		WHERE id IN (%s) AND is_archived = 1`, strings.Join(placeholders, ","))
 
 	result, err := a.db.Exec(query, args...)
 	if err != nil {
