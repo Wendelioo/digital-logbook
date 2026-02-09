@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"database/sql"
@@ -20,8 +20,8 @@ import (
 
 // GetTodayLogs returns only today's non-archived login logs
 func (a *App) GetTodayLogs() ([]LoginLog, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -104,8 +104,8 @@ func (a *App) GetTodayLogs() ([]LoginLog, error) {
 
 // GetPastLogs returns non-archived logs from previous days within a date range
 func (a *App) GetPastLogs(startDate, endDate string) ([]LoginLog, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -192,8 +192,8 @@ func (a *App) GetPastLogs(startDate, endDate string) ([]LoginLog, error) {
 
 // ArchiveSelectedLogs archives multiple logs at once
 func (a *App) ArchiveSelectedLogs(logIDs []int, archivedByUserID int) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	if len(logIDs) == 0 {
@@ -231,8 +231,8 @@ func (a *App) ArchiveSelectedLogs(logIDs []int, archivedByUserID int) error {
 
 // UnarchiveLogs restores archived logs back to active state
 func (a *App) UnarchiveLogs(logIDs []int) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	if len(logIDs) == 0 {
@@ -268,8 +268,8 @@ func (a *App) UnarchiveLogs(logIDs []int) error {
 
 // GetArchivedLogs returns all archived logs grouped by archive date
 func (a *App) GetArchivedLogs() ([]LoginLog, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -354,8 +354,8 @@ func (a *App) GetArchivedLogs() ([]LoginLog, error) {
 
 // GetAllLogs returns all non-archived login logs (limited to 1000 most recent)
 func (a *App) GetAllLogs() ([]LoginLog, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	// Query log_entries directly with joins to ensure all logs are returned
@@ -442,8 +442,8 @@ func (a *App) GetAllLogs() ([]LoginLog, error) {
 
 // GetStudentLoginLogs returns login logs for a specific student (limited to 100 most recent)
 func (a *App) GetStudentLoginLogs(userID int) ([]LoginLog, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	log.Printf("GetStudentLoginLogs called for userID: %d", userID)
@@ -530,8 +530,8 @@ func (a *App) GetStudentLoginLogs(userID int) ([]LoginLog, error) {
 
 // GetTeacherLoginLogs returns login logs for a specific teacher (limited to 100 most recent)
 func (a *App) GetTeacherLoginLogs(userID int) ([]LoginLog, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	log.Printf("GetTeacherLoginLogs called for userID: %d", userID)
@@ -731,8 +731,8 @@ type ArchivedLogSheet struct {
 
 // GetArchivedLogSheets returns all archived log sheets grouped by date
 func (a *App) GetArchivedLogSheets() ([]ArchivedLogSheet, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -753,7 +753,7 @@ func (a *App) GetArchivedLogSheets() ([]ArchivedLogSheet, error) {
 
 	rows, err := a.db.Query(query)
 	if err != nil {
-		log.Printf("⚠ Failed to query archived log sheets: %v", err)
+		log.Printf("? Failed to query archived log sheets: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -768,7 +768,7 @@ func (a *App) GetArchivedLogSheets() ([]ArchivedLogSheet, error) {
 			&sheet.UniquePCs,
 		)
 		if err != nil {
-			log.Printf("⚠ Failed to scan archived log sheet: %v", err)
+			log.Printf("? Failed to scan archived log sheet: %v", err)
 			continue
 		}
 		sheets = append(sheets, sheet)
@@ -780,8 +780,8 @@ func (a *App) GetArchivedLogSheets() ([]ArchivedLogSheet, error) {
 
 // GetArchivedLogsByDate returns all archived login logs for a specific date
 func (a *App) GetArchivedLogsByDate(date string) ([]LoginLog, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -866,8 +866,8 @@ func (a *App) GetArchivedLogsByDate(date string) ([]LoginLog, error) {
 
 // ArchiveLogsByDate archives all login logs for a specific date
 func (a *App) ArchiveLogsByDate(date string, adminUserID int) (int, error) {
-	if a.db == nil {
-		return 0, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return 0, err
 	}
 
 	query := `UPDATE log_entries 
@@ -887,14 +887,14 @@ func (a *App) ArchiveLogsByDate(date string, adminUserID int) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("✓ %d log entries archived for date %s by admin %d", rowsAffected, date, adminUserID)
+	log.Printf("? %d log entries archived for date %s by admin %d", rowsAffected, date, adminUserID)
 	return int(rowsAffected), nil
 }
 
 // UnarchiveLogSheet unarchives all login logs for a specific date
 func (a *App) UnarchiveLogSheet(date string) (int, error) {
-	if a.db == nil {
-		return 0, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return 0, err
 	}
 
 	query := `UPDATE log_entries 
@@ -914,14 +914,14 @@ func (a *App) UnarchiveLogSheet(date string) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("✓ %d login logs unarchived for date %s", rowsAffected, date)
+	log.Printf("? %d login logs unarchived for date %s", rowsAffected, date)
 	return int(rowsAffected), nil
 }
 
 // GetLogDates returns distinct dates with available (non-archived) logs
 func (a *App) GetLogDates() ([]string, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -1061,8 +1061,8 @@ func (a *App) ExportArchivedLogSheetPDF(date string) (string, error) {
 
 // ArchiveLogs archives selected login logs by their IDs
 func (a *App) ArchiveLogs(logIDs []int, adminUserID int) (int, error) {
-	if a.db == nil {
-		return 0, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return 0, err
 	}
 
 	if len(logIDs) == 0 {
@@ -1099,7 +1099,7 @@ func (a *App) ArchiveLogs(logIDs []int, adminUserID int) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("✓ %d login logs archived by admin %d", rowsAffected, adminUserID)
+	log.Printf("? %d login logs archived by admin %d", rowsAffected, adminUserID)
 	return int(rowsAffected), nil
 }
 
@@ -1213,10 +1213,3 @@ func (a *App) ExportArchivedLogsPDF() (string, error) {
 	return filename, err
 }
 
-// truncateString truncates a string to a maximum length
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
-}

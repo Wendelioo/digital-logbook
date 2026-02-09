@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"database/sql"
@@ -21,8 +21,8 @@ import (
 
 // GetUsers returns all users with complete details
 func (a *App) GetUsers() ([]User, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -65,8 +65,8 @@ func (a *App) GetUsers() ([]User, error) {
 
 // GetUsersByType returns users filtered by type with complete details
 func (a *App) GetUsersByType(userType string) ([]User, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -109,8 +109,8 @@ func (a *App) GetUsersByType(userType string) ([]User, error) {
 
 // SearchUsers searches users by name, ID, gender, or date with complete details
 func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -187,8 +187,8 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 
 // CreateUser creates a new user
 func (a *App) CreateUser(password, name, firstName, middleName, lastName, role, employeeID, studentID, email, contactNumber string, departmentCode string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	log.Printf("CreateUser called - Role: %s, StudentID: %s, Email: %s", role, studentID, email)
@@ -239,8 +239,8 @@ func (a *App) CreateUser(password, name, firstName, middleName, lastName, role, 
 
 // UpdateUser updates an existing user
 func (a *App) UpdateUser(id int, name, firstName, middleName, lastName, role, employeeID, studentID, email, contactNumber string, departmentCode string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	var query string
@@ -266,8 +266,8 @@ func (a *App) UpdateUser(id int, name, firstName, middleName, lastName, role, em
 
 // DeleteUser deletes a user
 func (a *App) DeleteUser(id int) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	query := `DELETE FROM users WHERE id = ?`
@@ -281,8 +281,8 @@ func (a *App) DeleteUser(id int) error {
 
 // CreateUsersBulkFromFile creates multiple students from uploaded file (PDF, DOCX, CSV, TXT)
 func (a *App) CreateUsersBulkFromFile(fileDataBase64 string, fileName string) (map[string]interface{}, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	fileData, err := base64.StdEncoding.DecodeString(fileDataBase64)
@@ -310,8 +310,8 @@ func (a *App) CreateUsersBulkFromFile(fileDataBase64 string, fileName string) (m
 
 // CreateUsersBulk creates multiple students from CSV data
 func (a *App) CreateUsersBulk(csvData string) (map[string]interface{}, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	reader := csv.NewReader(strings.NewReader(csvData))
@@ -403,9 +403,9 @@ func (a *App) checkDuplicateUser(username, role string) error {
 
 	if err == nil {
 		if role == "student" || role == "working_student" {
-			return fmt.Errorf("⚠️ This Student ID is already registered. If you already have an account, please use the login form instead")
+			return fmt.Errorf("?? This Student ID is already registered. If you already have an account, please use the login form instead")
 		}
-		return fmt.Errorf("⚠️ This %s ID is already registered in the system", role)
+		return fmt.Errorf("?? This %s ID is already registered in the system", role)
 	} else if err != sql.ErrNoRows {
 		log.Printf("Error checking for duplicate user: %v", err)
 		return fmt.Errorf("failed to check existing registration: %w", err)
@@ -431,7 +431,7 @@ func (a *App) insertRoleSpecificProfile(userID int64, role, firstName, middleNam
 		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), 0)
 	case "working_student":
 		query = `INSERT INTO students (id, student_id, first_name, middle_name, last_name, email, contact_number, is_working_student) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-		log.Printf("📝 Inserting working student - id: %d, student_id: %s, name: %s %s, email: %s", userID, studentID, firstName, lastName, email)
+		log.Printf("?? Inserting working student - id: %d, student_id: %s, name: %s %s, email: %s", userID, studentID, firstName, lastName, email)
 		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), 1)
 	}
 
@@ -525,10 +525,10 @@ func (a *App) processBulkRecords(records [][]string) (map[string]interface{}, er
 		if err != nil {
 			errorCount++
 			errors = append(errors, fmt.Sprintf("Row %d (%s): %v", rowNum, studentCode, err))
-			log.Printf("❌ Failed to create student at row %d: %v", rowNum, err)
+			log.Printf("? Failed to create student at row %d: %v", rowNum, err)
 		} else {
 			successCount++
-			log.Printf("✅ Created student: %s %s (Code: %s)", firstName, lastName, studentCode)
+			log.Printf("? Created student: %s %s (Code: %s)", firstName, lastName, studentCode)
 		}
 	}
 
@@ -590,10 +590,10 @@ func (a *App) processBulkRecordsSimple(records [][]string) (map[string]interface
 		if err != nil {
 			errorCount++
 			errors = append(errors, fmt.Sprintf("Row %d (%s): %v", rowNum, studentCode, err))
-			log.Printf("❌ Failed to create student at row %d: %v", rowNum, err)
+			log.Printf("? Failed to create student at row %d: %v", rowNum, err)
 		} else {
 			successCount++
-			log.Printf("✅ Created student: %s %s (Code: %s)", firstName, lastName, studentCode)
+			log.Printf("? Created student: %s %s (Code: %s)", firstName, lastName, studentCode)
 		}
 	}
 
@@ -822,8 +822,8 @@ func getColumnValue(record []string, colIdx int, found bool) string {
 // Accepts Base64-encoded image data (with or without data URL prefix)
 // Stores as file in uploads/profiles/ directory (improved from BLOB storage)
 func (a *App) UpdateUserProfilePhoto(userID int, imageBase64 string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Remove data URL prefix if present (e.g., "data:image/jpeg;base64,")
@@ -877,8 +877,8 @@ func (a *App) UpdateUserProfilePhoto(userID int, imageBase64 string) error {
 
 // DeleteUserProfilePhoto removes the profile photo for a user
 func (a *App) DeleteUserProfilePhoto(userID int) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Use the new file-based delete system
@@ -912,8 +912,8 @@ type ArchivedStudent struct {
 // ArchiveStudent archives a graduated student account
 // The account will be scheduled for deletion after 360 days
 func (a *App) ArchiveStudent(studentUserID int) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	now := time.Now()
@@ -954,8 +954,8 @@ func (a *App) ArchiveStudent(studentUserID int) error {
 
 // UnarchiveStudent restores an archived student account
 func (a *App) UnarchiveStudent(studentUserID int) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	query := `
@@ -991,8 +991,8 @@ func (a *App) UnarchiveStudent(studentUserID int) error {
 
 // GetArchivedStudents returns all archived students with deletion schedule info
 func (a *App) GetArchivedStudents() ([]ArchivedStudent, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -1051,8 +1051,8 @@ func (a *App) GetArchivedStudents() ([]ArchivedStudent, error) {
 // DeleteExpiredStudents permanently deletes student accounts that have passed their deletion date
 // This should be called periodically (e.g., daily cron job)
 func (a *App) DeleteExpiredStudents() (int, error) {
-	if a.db == nil {
-		return 0, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return 0, err
 	}
 
 	// Get students to delete for logging
@@ -1111,8 +1111,8 @@ func (a *App) DeleteExpiredStudents() (int, error) {
 
 // GetActiveStudentsForArchiving returns active students that can be archived
 func (a *App) GetActiveStudentsForArchiving() ([]User, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `

@@ -23,16 +23,15 @@ type Department struct {
 
 // GetDepartments returns all departments
 func (a *App) GetDepartments() ([]Department, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
-	query := `
+	rows, err := a.db.Query(`
 		SELECT department_code, department_name, description, is_active, created_at, updated_at
 		FROM departments
 		ORDER BY department_code
-	`
-	rows, err := a.db.Query(query)
+	`)
 	if err != nil {
 		return nil, err
 	}
@@ -44,17 +43,13 @@ func (a *App) GetDepartments() ([]Department, error) {
 		var description sql.NullString
 		var createdAt, updatedAt time.Time
 
-		err := rows.Scan(&dept.DepartmentCode, &dept.DepartmentName, &description, &dept.IsActive, &createdAt, &updatedAt)
-		if err != nil {
+		if err := rows.Scan(&dept.DepartmentCode, &dept.DepartmentName, &description, &dept.IsActive, &createdAt, &updatedAt); err != nil {
 			continue
 		}
 
-		if description.Valid {
-			dept.Description = &description.String
-		}
-		dept.CreatedAt = createdAt.Format("2006-01-02 15:04:05")
-		dept.UpdatedAt = updatedAt.Format("2006-01-02 15:04:05")
-
+		dept.Description = scanNullString(description)
+		dept.CreatedAt = formatTime(createdAt)
+		dept.UpdatedAt = formatTime(updatedAt)
 		departments = append(departments, dept)
 	}
 
@@ -63,13 +58,14 @@ func (a *App) GetDepartments() ([]Department, error) {
 
 // CreateDepartment creates a new department
 func (a *App) CreateDepartment(departmentCode, departmentName, description string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
-	query := `INSERT INTO departments (department_code, department_name, description) VALUES (?, ?, ?)`
-	_, err := a.db.Exec(query, departmentCode, departmentName, nullString(description))
-	if err != nil {
+	if _, err := a.db.Exec(
+		`INSERT INTO departments (department_code, department_name, description) VALUES (?, ?, ?)`,
+		departmentCode, departmentName, nullString(description),
+	); err != nil {
 		log.Printf("Failed to create department: %v", err)
 		return fmt.Errorf("failed to create department: %w", err)
 	}
@@ -80,13 +76,14 @@ func (a *App) CreateDepartment(departmentCode, departmentName, description strin
 
 // UpdateDepartment updates an existing department
 func (a *App) UpdateDepartment(oldDepartmentCode, departmentCode, departmentName, description string, isActive bool) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
-	query := `UPDATE departments SET department_code = ?, department_name = ?, description = ?, is_active = ? WHERE department_code = ?`
-	_, err := a.db.Exec(query, departmentCode, departmentName, nullString(description), isActive, oldDepartmentCode)
-	if err != nil {
+	if _, err := a.db.Exec(
+		`UPDATE departments SET department_code = ?, department_name = ?, description = ?, is_active = ? WHERE department_code = ?`,
+		departmentCode, departmentName, nullString(description), isActive, oldDepartmentCode,
+	); err != nil {
 		log.Printf("Failed to update department: %v", err)
 		return fmt.Errorf("failed to update department: %w", err)
 	}
@@ -97,15 +94,13 @@ func (a *App) UpdateDepartment(oldDepartmentCode, departmentCode, departmentName
 
 // DeleteDepartment deletes a department
 func (a *App) DeleteDepartment(departmentCode string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Check if department is in use
 	var count int
-	checkQuery := `SELECT COUNT(*) FROM teachers WHERE department_code = ?`
-	err := a.db.QueryRow(checkQuery, departmentCode).Scan(&count)
-	if err != nil {
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM teachers WHERE department_code = ?`, departmentCode).Scan(&count); err != nil {
 		return fmt.Errorf("failed to check department usage: %w", err)
 	}
 
@@ -113,15 +108,13 @@ func (a *App) DeleteDepartment(departmentCode string) error {
 		return fmt.Errorf("cannot delete department: %d teacher(s) are assigned to this department", count)
 	}
 
-	query := `DELETE FROM departments WHERE department_code = ?`
-	result, err := a.db.Exec(query, departmentCode)
+	result, err := a.db.Exec(`DELETE FROM departments WHERE department_code = ?`, departmentCode)
 	if err != nil {
 		log.Printf("Failed to delete department: %v", err)
 		return fmt.Errorf("failed to delete department: %w", err)
 	}
 
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
+	if rowsAffected, _ := result.RowsAffected(); rowsAffected == 0 {
 		return fmt.Errorf("department not found: %s", departmentCode)
 	}
 
