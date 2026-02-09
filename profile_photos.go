@@ -32,8 +32,8 @@ type ProfilePhoto struct {
 
 // UploadProfilePhoto handles profile photo upload and storage
 func (a *App) UploadProfilePhoto(userID int, photoData []byte, fileName string, mimeType string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Validate file size
@@ -102,8 +102,8 @@ func (a *App) UploadProfilePhoto(userID int, photoData []byte, fileName string, 
 
 // GetProfilePhoto retrieves profile photo path for a user
 func (a *App) GetProfilePhoto(userID int) (*ProfilePhoto, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -134,8 +134,8 @@ func (a *App) GetProfilePhoto(userID int) (*ProfilePhoto, error) {
 
 // DeleteProfilePhoto removes a user's profile photo
 func (a *App) DeleteProfilePhoto(userID int) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Get photo path before deleting from database
@@ -167,8 +167,8 @@ func (a *App) DeleteProfilePhoto(userID int) error {
 // MigrateProfilePhotosFromBlob migrates existing BLOB photos to file system
 // This should be run once during migration from old schema to new schema
 func (a *App) MigrateProfilePhotosFromBlob() error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	log.Println("Starting profile photo migration from BLOB to file system...")

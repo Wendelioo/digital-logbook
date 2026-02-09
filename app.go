@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"context"
@@ -29,15 +29,29 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	// Initialize database connection
-	db, err := InitDatabase()
+	// Initialize database connection with retry
+	var db *sql.DB
+	var err error
+
+	maxRetries := 3
+	for i := 1; i <= maxRetries; i++ {
+		db, err = InitDatabase()
+		if err == nil {
+			break
+		}
+		log.Printf("? Database connection attempt %d/%d failed: %v", i, maxRetries, err)
+		if i < maxRetries {
+			log.Printf("? Retrying in %d seconds...", i*2)
+			time.Sleep(time.Duration(i*2) * time.Second)
+		}
+	}
+
 	if err != nil {
-		log.Printf("❌ Database connection failed: %v", err)
-		log.Println("⚠️  App will start but database features will be unavailable")
-		log.Println("💡 To fix: Check SQL Server is running, TCP/IP is enabled, and credentials are correct")
+		log.Println("??  All database connection attempts failed - will auto-reconnect on next request")
+		log.Println("?? To fix: Check SQL Server is running, TCP/IP is enabled, and credentials are correct")
 	} else {
 		a.db = db
-		log.Println("✅ Database connected successfully")
+		log.Println("? Database connected successfully")
 	}
 }
 
@@ -156,8 +170,8 @@ type AdminDashboard struct {
 func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	var dashboard AdminDashboard
 
-	if a.db == nil {
-		return dashboard, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return dashboard, err
 	}
 
 	// Count students
@@ -175,22 +189,25 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	// Count active users now (logged in without logout)
 	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE logout_time IS NULL`).Scan(&dashboard.ActiveUsersNow)
 
-	// Count students currently logged in
+	// Count students currently logged in (JOIN with users to get role)
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM log_entries 
-		WHERE logout_time IS NULL AND user_type = 'student'
+		SELECT COUNT(*) FROM log_entries ll
+		INNER JOIN users u ON ll.user_id = u.id
+		WHERE ll.logout_time IS NULL AND u.user_type = 'student'
 	`).Scan(&dashboard.StudentsLoggedIn)
 
 	// Count teachers currently logged in
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM log_entries 
-		WHERE logout_time IS NULL AND user_type = 'teacher'
+		SELECT COUNT(*) FROM log_entries ll
+		INNER JOIN users u ON ll.user_id = u.id
+		WHERE ll.logout_time IS NULL AND u.user_type = 'teacher'
 	`).Scan(&dashboard.TeachersLoggedIn)
 
 	// Count working students currently logged in
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM log_entries 
-		WHERE logout_time IS NULL AND user_type = 'working_student'
+		SELECT COUNT(*) FROM log_entries ll
+		INNER JOIN users u ON ll.user_id = u.id
+		WHERE ll.logout_time IS NULL AND u.user_type = 'working_student'
 	`).Scan(&dashboard.WorkingStudentsLoggedIn)
 
 	// Count today's logins
@@ -298,8 +315,8 @@ type Attendance struct {
 func (a *App) GetTeacherDashboard(teacherUserID int) (TeacherDashboard, error) {
 	var dashboard TeacherDashboard
 
-	if a.db == nil {
-		return dashboard, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return dashboard, err
 	}
 
 	// Get classes for this teacher
@@ -356,8 +373,8 @@ func convertToInterfaceSlice(nums []int) []interface{} {
 
 // GetRecentAttendance gets attendance records for given class IDs within the last N days
 func (a *App) GetRecentAttendance(classIDs []int, days int) ([]Attendance, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	if len(classIDs) == 0 {
@@ -435,8 +452,8 @@ type StudentDashboard struct {
 func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	var dashboard StudentDashboard
 
-	if a.db == nil {
-		return dashboard, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return dashboard, err
 	}
 
 	// Get all attendance records for this student
@@ -546,8 +563,8 @@ type WorkingStudentDashboard struct {
 func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 	var dashboard WorkingStudentDashboard
 
-	if a.db == nil {
-		return dashboard, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return dashboard, err
 	}
 
 	// Count students
@@ -585,8 +602,8 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 // UpdateUserPhoto updates a user's profile photo
 // This method accepts data URL format and uses the profile_photos table
 func (a *App) UpdateUserPhoto(userID int, userRole, photoURL string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Extract base64 data from data URL and decode to binary
@@ -635,16 +652,4 @@ func (a *App) UpdateUserPhoto(userID int, userRole, photoURL string) error {
 
 	log.Printf("Profile photo updated for user ID %d (%s) - %d bytes", userID, userRole, len(imageBytes))
 	return nil
-}
-
-// ==============================================================================
-// UTILITY FUNCTIONS
-// ==============================================================================
-
-// nullString converts empty string to sql.NullString
-func nullString(s string) sql.NullString {
-	if s == "" {
-		return sql.NullString{Valid: false}
-	}
-	return sql.NullString{String: s, Valid: true}
 }

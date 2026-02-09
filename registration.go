@@ -49,8 +49,8 @@ type ApprovalRequest struct {
 
 // SubmitRegistration handles student self-registration
 func (a *App) SubmitRegistration(req RegistrationRequest) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Validation
@@ -157,8 +157,8 @@ func (a *App) SubmitRegistration(req RegistrationRequest) error {
 
 // GetPendingRegistrations returns all registrations awaiting approval
 func (a *App) GetPendingRegistrations() ([]PendingRegistration, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -213,8 +213,8 @@ func (a *App) GetPendingRegistrations() ([]PendingRegistration, error) {
 
 // ProcessRegistration approves or rejects a student registration
 func (a *App) ProcessRegistration(req ApprovalRequest) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Validate action

@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"database/sql"
@@ -20,8 +20,8 @@ import (
 
 // GetFeedback returns all non-archived feedback that has been forwarded to admin
 func (a *App) GetFeedback() ([]Feedback, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	// Only returns non-archived feedback (is_archived = 0 or NULL for backwards compatibility)
@@ -121,8 +121,8 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 
 // GetStudentFeedback returns feedback history for a specific student
 func (a *App) GetStudentFeedback(studentID int) ([]Feedback, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -189,14 +189,14 @@ func (a *App) GetStudentFeedback(studentID int) ([]Feedback, error) {
 
 // SaveEquipmentFeedback saves equipment feedback from a student
 func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, computerIssue, mouseStatus, mouseIssue, keyboardStatus, keyboardIssue, monitorStatus, monitorIssue, additionalComments string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Get the hostname (PC number) of this device
 	hostname, err := os.Hostname()
 	if err != nil {
-		log.Printf("⚠ Failed to get hostname: %v", err)
+		log.Printf("? Failed to get hostname: %v", err)
 		hostname = "Unknown"
 	}
 	pcNumber := hostname
@@ -273,14 +273,14 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 		return fmt.Errorf("failed to save feedback: %w", err)
 	}
 
-	log.Printf("✓ Equipment feedback saved for user %d", userID)
+	log.Printf("? Equipment feedback saved for user %d", userID)
 	return nil
 }
 
 // GetPendingFeedback returns all pending feedback for working students to review
 func (a *App) GetPendingFeedback() ([]Feedback, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -348,8 +348,8 @@ func (a *App) GetPendingFeedback() ([]Feedback, error) {
 
 // ForwardFeedbackToAdmin forwards feedback from working student to admin
 func (a *App) ForwardFeedbackToAdmin(feedbackID int, workingStudentID int, notes string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Update feedback to forwarded status
@@ -362,7 +362,7 @@ func (a *App) ForwardFeedbackToAdmin(feedbackID int, workingStudentID int, notes
 
 	result, err := a.db.Exec(query, workingStudentID, nullString(notes), feedbackID)
 	if err != nil {
-		log.Printf("⚠ Failed to forward feedback %d: %v", feedbackID, err)
+		log.Printf("? Failed to forward feedback %d: %v", feedbackID, err)
 		return fmt.Errorf("failed to forward feedback: %w", err)
 	}
 
@@ -375,14 +375,14 @@ func (a *App) ForwardFeedbackToAdmin(feedbackID int, workingStudentID int, notes
 		return fmt.Errorf("feedback not found or already forwarded")
 	}
 
-	log.Printf("✓ Feedback %d forwarded to admin by working student %d", feedbackID, workingStudentID)
+	log.Printf("? Feedback %d forwarded to admin by working student %d", feedbackID, workingStudentID)
 	return nil
 }
 
 // ForwardMultipleFeedbackToAdmin forwards multiple feedback items from working student to admin in batch
 func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID int, notes string) (int, error) {
-	if a.db == nil {
-		return 0, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return 0, err
 	}
 
 	if len(feedbackIDs) == 0 {
@@ -413,7 +413,7 @@ func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID
 
 	result, err := a.db.Exec(query, args...)
 	if err != nil {
-		log.Printf("⚠ Failed to forward multiple feedback: %v", err)
+		log.Printf("? Failed to forward multiple feedback: %v", err)
 		return 0, fmt.Errorf("failed to forward feedback: %w", err)
 	}
 
@@ -426,7 +426,7 @@ func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID
 		return 0, fmt.Errorf("no feedback items were forwarded (may already be forwarded or not found)")
 	}
 
-	log.Printf("✓ %d feedback items forwarded to admin by working student %d", rowsAffected, workingStudentID)
+	log.Printf("? %d feedback items forwarded to admin by working student %d", rowsAffected, workingStudentID)
 	return int(rowsAffected), nil
 }
 
@@ -539,8 +539,8 @@ type ArchivedFeedbackSheet struct {
 
 // GetArchivedFeedbackSheets returns all archived feedback sheets grouped by date
 func (a *App) GetArchivedFeedbackSheets() ([]ArchivedFeedbackSheet, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -561,7 +561,7 @@ func (a *App) GetArchivedFeedbackSheets() ([]ArchivedFeedbackSheet, error) {
 
 	rows, err := a.db.Query(query)
 	if err != nil {
-		log.Printf("⚠ Failed to query archived feedback sheets: %v", err)
+		log.Printf("? Failed to query archived feedback sheets: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -575,7 +575,7 @@ func (a *App) GetArchivedFeedbackSheets() ([]ArchivedFeedbackSheet, error) {
 			&sheet.UniquePCs, &sheet.UniqueStudents,
 		)
 		if err != nil {
-			log.Printf("⚠ Failed to scan archived feedback sheet: %v", err)
+			log.Printf("? Failed to scan archived feedback sheet: %v", err)
 			continue
 		}
 		sheets = append(sheets, sheet)
@@ -587,8 +587,8 @@ func (a *App) GetArchivedFeedbackSheets() ([]ArchivedFeedbackSheet, error) {
 
 // GetArchivedFeedbackByDate returns all archived feedback for a specific date
 func (a *App) GetArchivedFeedbackByDate(date string) ([]Feedback, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -690,8 +690,8 @@ func (a *App) GetArchivedFeedbackByDate(date string) ([]Feedback, error) {
 
 // ArchiveFeedbackByDate archives all feedback for a specific date
 func (a *App) ArchiveFeedbackByDate(date string, adminUserID int) (int, error) {
-	if a.db == nil {
-		return 0, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return 0, err
 	}
 
 	query := `UPDATE feedback 
@@ -711,14 +711,14 @@ func (a *App) ArchiveFeedbackByDate(date string, adminUserID int) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("✓ %d feedback archived for date %s by admin %d", rowsAffected, date, adminUserID)
+	log.Printf("? %d feedback archived for date %s by admin %d", rowsAffected, date, adminUserID)
 	return int(rowsAffected), nil
 }
 
 // UnarchiveFeedbackSheet unarchives all feedback for a specific date
 func (a *App) UnarchiveFeedbackSheet(date string) (int, error) {
-	if a.db == nil {
-		return 0, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return 0, err
 	}
 
 	query := `UPDATE feedback 
@@ -738,14 +738,14 @@ func (a *App) UnarchiveFeedbackSheet(date string) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("✓ %d feedback unarchived for date %s", rowsAffected, date)
+	log.Printf("? %d feedback unarchived for date %s", rowsAffected, date)
 	return int(rowsAffected), nil
 }
 
 // GetFeedbackDates returns distinct dates with available (non-archived) feedback
 func (a *App) GetFeedbackDates() ([]string, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -858,7 +858,7 @@ func (a *App) ExportArchivedFeedbackSheetPDF(date string) (string, error) {
 	pdf.SetFont("Arial", "", 7)
 	for _, fb := range feedbacks {
 		pdf.Cell(15, 6, strconv.Itoa(fb.ID))
-		pdf.Cell(45, 6, truncateStr(fb.StudentName, 22))
+		pdf.Cell(45, 6, truncateString(fb.StudentName, 22))
 		pdf.Cell(25, 6, fb.PCNumber)
 		pdf.Cell(30, 6, fb.EquipmentCondition)
 		pdf.Cell(30, 6, fb.MonitorCondition)
@@ -874,18 +874,11 @@ func (a *App) ExportArchivedFeedbackSheetPDF(date string) (string, error) {
 	return filename, err
 }
 
-// truncateStr truncates a string to a maximum length (helper for PDF)
-func truncateStr(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
-}
 
 // Legacy function kept for backwards compatibility - returns all archived feedback
 func (a *App) GetArchivedFeedback() ([]Feedback, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -984,8 +977,8 @@ func (a *App) GetArchivedFeedback() ([]Feedback, error) {
 
 // ArchiveFeedback archives selected feedback by their IDs
 func (a *App) ArchiveFeedback(feedbackIDs []int, adminUserID int) (int, error) {
-	if a.db == nil {
-		return 0, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return 0, err
 	}
 
 	if len(feedbackIDs) == 0 {
@@ -1022,14 +1015,14 @@ func (a *App) ArchiveFeedback(feedbackIDs []int, adminUserID int) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("✓ %d feedback items archived by admin %d", rowsAffected, adminUserID)
+	log.Printf("? %d feedback items archived by admin %d", rowsAffected, adminUserID)
 	return int(rowsAffected), nil
 }
 
 // UnarchiveFeedback unarchives selected feedback by their IDs
 func (a *App) UnarchiveFeedback(feedbackIDs []int) (int, error) {
-	if a.db == nil {
-		return 0, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return 0, err
 	}
 
 	if len(feedbackIDs) == 0 {
@@ -1062,7 +1055,7 @@ func (a *App) UnarchiveFeedback(feedbackIDs []int) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("✓ %d feedback items unarchived", rowsAffected)
+	log.Printf("? %d feedback items unarchived", rowsAffected)
 	return int(rowsAffected), nil
 }
 

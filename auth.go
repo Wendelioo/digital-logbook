@@ -16,7 +16,7 @@ import (
 
 // Login authenticates a user
 func (a *App) Login(username, password string) (*User, error) {
-	if a.db == nil {
+	if err := a.checkDB(); err != nil {
 		log.Printf("❌ LOGIN ERROR: Database not connected")
 		return nil, fmt.Errorf("database connection failed - please check database configuration")
 	}
@@ -24,9 +24,9 @@ func (a *App) Login(username, password string) (*User, error) {
 	var user User
 	var accountStatus string
 	var isActive bool
-	query := `SELECT id, username, password, user_type, account_status, is_active, created_at FROM users WHERE username = ?`
-
 	var createdAt time.Time
+
+	query := `SELECT id, username, password, user_type, account_status, is_active, created_at FROM users WHERE username = ?`
 	err := a.db.QueryRow(query, username).Scan(&user.ID, &user.Name, &user.Password, &user.Role, &accountStatus, &isActive, &createdAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -37,49 +37,47 @@ func (a *App) Login(username, password string) (*User, error) {
 		return nil, err
 	}
 
-	// Simple password check (in production, use proper password hashing)
 	if user.Password != password {
 		return nil, fmt.Errorf("invalid credentials")
 	}
 
 	// Check account status
-	if accountStatus == "pending" {
-		return nil, fmt.Errorf("account pending approval - please wait for working student verification")
+	statusErrors := map[string]string{
+		"pending":   "account pending approval - please wait for working student verification",
+		"rejected":  "account registration was rejected - please contact administrator",
+		"suspended": "account suspended - please contact administrator",
 	}
-	if accountStatus == "rejected" {
-		return nil, fmt.Errorf("account registration was rejected - please contact administrator")
-	}
-	if accountStatus == "suspended" {
-		return nil, fmt.Errorf("account suspended - please contact administrator")
+	if msg, found := statusErrors[accountStatus]; found {
+		return nil, fmt.Errorf(msg)
 	}
 	if !isActive {
 		return nil, fmt.Errorf("account is inactive - please contact administrator")
 	}
 
-	user.Created = createdAt.Format("2006-01-02 15:04:05")
+	user.Created = formatTime(createdAt)
 
-	// Get additional user details based on role
+	// Load role-specific profile
 	if err := a.loadUserProfile(&user); err != nil {
 		log.Printf("Failed to load user profile: %v", err)
 	}
 
-	// Get the hostname (PC number) of this device
+	// Get hostname for PC tracking
 	hostname, err := os.Hostname()
 	if err != nil {
 		log.Printf("Failed to get hostname: %v", err)
 		hostname = "Unknown"
 	}
 
-	// Create a login log entry
+	// Create login log entry
 	logID, err := a.createLoginLog(user.ID, hostname)
 	if err != nil {
 		log.Printf("❌ Failed to create login log for user %d (username: %s): %v", user.ID, username, err)
 	} else {
 		user.LoginLogID = logID
-		log.Printf("✅ Login logged successfully - ID: %d, User: %s (ID: %d), Role: %s, PC: %s", logID, username, user.ID, user.Role, hostname)
+		log.Printf("✅ Login logged - ID: %d, User: %s (ID: %d), Role: %s, PC: %s", logID, username, user.ID, user.Role, hostname)
 	}
 
-	// Auto-record attendance for students if they log in during class time
+	// Auto-record attendance for students
 	if user.Role == "student" || user.Role == "working_student" {
 		go a.autoRecordAttendanceOnLogin(user.ID)
 	}
@@ -90,12 +88,10 @@ func (a *App) Login(username, password string) (*User, error) {
 
 // Logout logs a user out and records logout time
 func (a *App) Logout(userID int) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
-	// Update the most recent login log for this user to set logout time
-	// SQL Server doesn't support LIMIT in subqueries, use TOP instead
 	query := `UPDATE log_entries 
 			  SET logout_time = GETDATE()
 			  WHERE id = (
@@ -114,7 +110,6 @@ func (a *App) Logout(userID int) error {
 		log.Printf("Failed to get rows affected for logout: %v", err)
 	} else if rowsAffected == 0 {
 		log.Printf("No active login log found to update for user %d", userID)
-		// Don't return error - might be already logged out
 	} else {
 		log.Printf("User logout successful: user_id=%d (rows affected: %d)", userID, rowsAffected)
 	}
@@ -123,27 +118,18 @@ func (a *App) Logout(userID int) error {
 }
 
 // RecordTimeoutLogout records logout time for timed-out sessions
-// This can be called automatically or manually to handle session timeouts
 func (a *App) RecordTimeoutLogout(userID int) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
-	}
-
-	// Same logic as Logout - update the most recent login log
 	return a.Logout(userID)
 }
 
 // ChangePassword updates a user's password
 func (a *App) ChangePassword(username, oldPassword, newPassword string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
-	// Verify old password first
 	var storedPassword string
-	checkQuery := `SELECT password FROM users WHERE username = ?`
-	err := a.db.QueryRow(checkQuery, username).Scan(&storedPassword)
-	if err != nil {
+	if err := a.db.QueryRow(`SELECT password FROM users WHERE username = ?`, username).Scan(&storedPassword); err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("user not found")
 		}
@@ -154,10 +140,7 @@ func (a *App) ChangePassword(username, oldPassword, newPassword string) error {
 		return fmt.Errorf("current password is incorrect")
 	}
 
-	// Update password
-	updateQuery := `UPDATE users SET password = ? WHERE username = ?`
-	_, err = a.db.Exec(updateQuery, newPassword, username)
-	if err != nil {
+	if _, err := a.db.Exec(`UPDATE users SET password = ? WHERE username = ?`, newPassword, username); err != nil {
 		log.Printf("Failed to update password for %s: %v", username, err)
 		return fmt.Errorf("failed to update password: %w", err)
 	}
@@ -192,64 +175,39 @@ func (a *App) loadUserProfile(user *User) error {
 
 	switch user.Role {
 	case "admin":
-		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &employeeID, &email)
-		if err != nil {
+		if err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &employeeID, &email); err != nil {
 			return err
 		}
-		if employeeID.Valid {
-			user.EmployeeID = &employeeID.String
-		}
+		user.EmployeeID = scanNullString(employeeID)
 	case "teacher":
-		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &employeeID, &email, &contactNumber)
-		if err != nil {
+		if err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &employeeID, &email, &contactNumber); err != nil {
 			return err
 		}
-		if employeeID.Valid {
-			user.EmployeeID = &employeeID.String
-		}
-		if contactNumber.Valid {
-			user.ContactNumber = &contactNumber.String
-		}
+		user.EmployeeID = scanNullString(employeeID)
+		user.ContactNumber = scanNullString(contactNumber)
 	case "student", "working_student":
-		err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &studentID, &email, &contactNumber)
-		if err != nil {
+		if err := a.db.QueryRow(detailQuery, user.ID).Scan(&firstName, &middleName, &lastName, &studentID, &email, &contactNumber); err != nil {
 			return err
 		}
-		if studentID.Valid {
-			user.StudentID = &studentID.String
-		}
-		if contactNumber.Valid {
-			user.ContactNumber = &contactNumber.String
-		}
+		user.StudentID = scanNullString(studentID)
+		user.ContactNumber = scanNullString(contactNumber)
 	}
 
 	// Set common fields
-	if firstName.Valid {
-		user.FirstName = &firstName.String
-	}
-	if middleName.Valid {
-		user.MiddleName = &middleName.String
-	}
-	if lastName.Valid {
-		user.LastName = &lastName.String
-	}
-	if email.Valid {
-		user.Email = &email.String
-	}
+	user.FirstName = scanNullString(firstName)
+	user.MiddleName = scanNullString(middleName)
+	user.LastName = scanNullString(lastName)
+	user.Email = scanNullString(email)
 
-	// Get profile photo path from profile_photos table (improved from BLOB)
+	// Load profile photo
 	var photoPath sql.NullString
-	photoQuery := `SELECT photo_path FROM profile_photos WHERE user_id = ?`
-	err := a.db.QueryRow(photoQuery, user.ID).Scan(&photoPath)
+	err := a.db.QueryRow(`SELECT photo_path FROM profile_photos WHERE user_id = ?`, user.ID).Scan(&photoPath)
 	if err != nil && err != sql.ErrNoRows {
 		log.Printf("Warning: Failed to load profile photo for user %d: %v", user.ID, err)
 	}
 	if photoPath.Valid {
 		user.PhotoPath = &photoPath.String
-		
-		// Convert file path to base64 data URL for frontend display
-		photoDataURL, err := a.convertPhotoToDataURL(photoPath.String)
-		if err != nil {
+		if photoDataURL, err := a.convertPhotoToDataURL(photoPath.String); err != nil {
 			log.Printf("Warning: Failed to convert photo to data URL for user %d: %v", user.ID, err)
 		} else {
 			user.PhotoURL = &photoDataURL
@@ -261,39 +219,32 @@ func (a *App) loadUserProfile(user *User) error {
 
 // createLoginLog creates a login log entry and returns the log ID
 func (a *App) createLoginLog(userID int, pcNumber string) (int, error) {
-	insertLog := `INSERT INTO log_entries (user_id, pc_number, login_time) 
-				  OUTPUT INSERTED.id
-				  VALUES (?, ?, GETDATE())`
 	var logID int
-	err := a.db.QueryRow(insertLog, userID, pcNumber).Scan(&logID)
+	err := a.db.QueryRow(
+		`INSERT INTO log_entries (user_id, pc_number, login_time) OUTPUT INSERTED.id VALUES (?, ?, GETDATE())`,
+		userID, pcNumber,
+	).Scan(&logID)
 	if err != nil {
 		return 0, err
 	}
-
 	return logID, nil
 }
 
 // convertPhotoToDataURL reads a photo file and converts it to a base64 data URL
 func (a *App) convertPhotoToDataURL(filePath string) (string, error) {
-	// Read file from disk
 	fileBytes, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", fmt.Errorf("failed to read photo file: %w", err)
 	}
 
-	// Determine MIME type from file extension
-	mimeType := "image/jpeg" // default
-	if strings.HasSuffix(strings.ToLower(filePath), ".png") {
+	// Determine MIME type from extension
+	mimeType := "image/jpeg"
+	lower := strings.ToLower(filePath)
+	if strings.HasSuffix(lower, ".png") {
 		mimeType = "image/png"
-	} else if strings.HasSuffix(strings.ToLower(filePath), ".gif") {
+	} else if strings.HasSuffix(lower, ".gif") {
 		mimeType = "image/gif"
 	}
 
-	// Convert to base64
-	base64Data := base64.StdEncoding.EncodeToString(fileBytes)
-
-	// Create data URL
-	dataURL := fmt.Sprintf("data:%s;base64,%s", mimeType, base64Data)
-
-	return dataURL, nil
+	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(fileBytes)), nil
 }

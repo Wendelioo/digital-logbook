@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"database/sql"
@@ -17,8 +17,8 @@ import (
 
 // RecordAttendance records or updates attendance for a student in a class
 func (a *App) RecordAttendance(classID, studentID int, status, remarks string, recordedBy int) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Verify student is enrolled in the class
@@ -28,7 +28,7 @@ func (a *App) RecordAttendance(classID, studentID int, status, remarks string, r
 		classID, studentID,
 	).Scan(&exists)
 	if err != nil {
-		log.Printf("⚠ Student %d not enrolled in class %d: %v", studentID, classID, err)
+		log.Printf("? Student %d not enrolled in class %d: %v", studentID, classID, err)
 		return fmt.Errorf("student not enrolled in this class")
 	}
 
@@ -45,18 +45,18 @@ func (a *App) RecordAttendance(classID, studentID int, status, remarks string, r
 	`
 	_, err = a.db.Exec(query, classID, studentID, status, nullString(remarks))
 	if err != nil {
-		log.Printf("⚠ Failed to record attendance: %v", err)
+		log.Printf("? Failed to record attendance: %v", err)
 		return err
 	}
 
-	log.Printf("✓ Attendance recorded: student=%d, class=%d, status=%s", studentID, classID, status)
+	log.Printf("? Attendance recorded: student=%d, class=%d, status=%s", studentID, classID, status)
 	return nil
 }
 
 // GetClassAttendance gets attendance records for a specific class on a specific date
 func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -84,7 +84,7 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 
 	rows, err := a.db.Query(query, date, date, classID)
 	if err != nil {
-		log.Printf("⚠ Failed to query attendance: %v", err)
+		log.Printf("? Failed to query attendance: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -102,7 +102,7 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 			&status, &remarks, &isArchived,
 		)
 		if err != nil {
-			log.Printf("⚠ Failed to scan attendance row: %v", err)
+			log.Printf("? Failed to scan attendance row: %v", err)
 			continue
 		}
 
@@ -128,8 +128,8 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 // InitializeAttendanceForClass creates attendance records for all students in a class for a date
 // Status is initially set to 'absent' so teachers can mark who is present
 func (a *App) InitializeAttendanceForClass(classID int, date string, recordedBy int) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	query := `
@@ -158,18 +158,18 @@ func (a *App) InitializeAttendanceForClass(classID int, date string, recordedBy 
 
 	_, err := a.db.Exec(query, date, classID)
 	if err != nil {
-		log.Printf("⚠ Failed to initialize attendance: %v", err)
+		log.Printf("? Failed to initialize attendance: %v", err)
 		return err
 	}
 
-	log.Printf("✓ Attendance initialized for class %d on %s", classID, date)
+	log.Printf("? Attendance initialized for class %d on %s", classID, date)
 	return nil
 }
 
 // UpdateAttendanceRecord updates a specific attendance record with new details
 func (a *App) UpdateAttendanceRecord(classID, studentUserID int, date, status, remarks string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	query := `
@@ -182,18 +182,18 @@ func (a *App) UpdateAttendanceRecord(classID, studentUserID int, date, status, r
 
 	_, err := a.db.Exec(query, status, nullString(remarks), classID, studentUserID, date)
 	if err != nil {
-		log.Printf("⚠ Failed to update attendance record: %v", err)
+		log.Printf("? Failed to update attendance record: %v", err)
 		return err
 	}
 
-	log.Printf("✓ Attendance record updated: class_id=%d, student_id=%d, date=%s, status=%s", classID, studentUserID, date, status)
+	log.Printf("? Attendance record updated: class_id=%d, student_id=%d, date=%s, status=%s", classID, studentUserID, date, status)
 	return nil
 }
 
 // DeleteAttendanceSheet deletes an attendance sheet and all its records for a class on a specific date
 func (a *App) DeleteAttendanceSheet(classID int, date string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Start a transaction
@@ -206,7 +206,7 @@ func (a *App) DeleteAttendanceSheet(classID int, date string) error {
 	// Delete attendance records for this class and date
 	_, err = tx.Exec("DELETE FROM attendance WHERE class_id = ? AND date = ?", classID, date)
 	if err != nil {
-		log.Printf("⚠ Failed to delete attendance records: %v", err)
+		log.Printf("? Failed to delete attendance records: %v", err)
 		return fmt.Errorf("failed to delete attendance records: %w", err)
 	}
 
@@ -215,14 +215,14 @@ func (a *App) DeleteAttendanceSheet(classID int, date string) error {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	log.Printf("✓ Attendance sheet deleted: class_id=%d, date=%s", classID, date)
+	log.Printf("? Attendance sheet deleted: class_id=%d, date=%s", classID, date)
 	return nil
 }
 
 // RecordStudentLogin records when a student logs in during class time
 func (a *App) RecordStudentLogin(classID, studentID int) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Verify student is enrolled in the class
@@ -255,18 +255,18 @@ func (a *App) RecordStudentLogin(classID, studentID int) error {
 
 	_, err = a.db.Exec(query, classID, studentID)
 	if err != nil {
-		log.Printf("⚠ Failed to record student login: %v", err)
+		log.Printf("? Failed to record student login: %v", err)
 		return err
 	}
 
-	log.Printf("✓ Student login recorded: student=%d, class=%d", studentID, classID)
+	log.Printf("? Student login recorded: student=%d, class=%d", studentID, classID)
 	return nil
 }
 
 // ExportAttendanceCSV exports attendance to CSV for a specific class
 func (a *App) ExportAttendanceCSV(classID int) (string, error) {
-	if a.db == nil {
-		return "", fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return "", err
 	}
 
 	query := `
@@ -348,15 +348,15 @@ func (a *App) ExportAttendanceCSV(classID int) (string, error) {
 		})
 	}
 
-	log.Printf("✓ Attendance exported to CSV: %s", filename)
+	log.Printf("? Attendance exported to CSV: %s", filename)
 	return filename, nil
 }
 
 // GenerateAttendanceFromLogs generates attendance records for a class
 // It initializes all enrolled students as absent - teachers will manually mark present
 func (a *App) GenerateAttendanceFromLogs(classID int, date string, recordedBy int) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Validate the date format
@@ -373,7 +373,7 @@ func (a *App) GenerateAttendanceFromLogs(classID int, date string, recordedBy in
 
 	// If no students enrolled, still log success (sheet was created)
 	if len(students) == 0 {
-		log.Printf("✓ Attendance sheet created for class %d on %s (no students enrolled)", classID, date)
+		log.Printf("? Attendance sheet created for class %d on %s (no students enrolled)", classID, date)
 		return nil
 	}
 
@@ -394,12 +394,12 @@ func (a *App) GenerateAttendanceFromLogs(classID int, date string, recordedBy in
 
 		_, err = a.db.Exec(insertQuery, classID, student.StudentUserID, date)
 		if err != nil {
-			log.Printf("⚠ Failed to insert attendance for student %d: %v", student.StudentUserID, err)
+			log.Printf("? Failed to insert attendance for student %d: %v", student.StudentUserID, err)
 			continue
 		}
 	}
 
-	log.Printf("✓ Attendance generated from logs for class %d on %s", classID, date)
+	log.Printf("? Attendance generated from logs for class %d on %s", classID, date)
 	return nil
 }
 
@@ -410,7 +410,10 @@ func (a *App) GenerateAttendanceFromLogs(classID int, date string, recordedBy in
 // autoRecordAttendanceOnLogin automatically records attendance when a student logs in during class time
 func (a *App) autoRecordAttendanceOnLogin(studentID int) {
 	if a.db == nil {
-		return
+		if err := a.reconnectDB(); err != nil {
+			log.Printf("⚠️  Cannot auto-record attendance: %v", err)
+			return
+		}
 	}
 
 	today := time.Now().Format("2006-01-02")
@@ -512,34 +515,6 @@ func (a *App) isWithinClassSchedule(schedule string, currentTime time.Time) bool
 		(currentTimeOnly.Before(endTimeOnly) || currentTimeOnly.Equal(endTimeOnly))
 }
 
-// parseScheduleStartTime extracts the start time from a schedule string
-func parseScheduleStartTime(schedule string) (time.Time, error) {
-	// Parse schedule format: "MWF 8:00 AM - 10:00 AM" or "MWF 2:00 PM-4:00 PM" or "Monday 8:00 AM - 10:00 AM"
-	parts := strings.Split(schedule, " ")
-	if len(parts) < 3 {
-		return time.Time{}, fmt.Errorf("invalid schedule format")
-	}
-
-	// Extract AM/PM part - it might contain dash (e.g., "PM-6:00")
-	// Split on dash to separate start AM/PM from end time
-	amPmPart := parts[2]
-	dashIndex := strings.Index(amPmPart, "-")
-	if dashIndex != -1 {
-		// Remove everything after dash (e.g., "PM-6:00" becomes "PM")
-		amPmPart = amPmPart[:dashIndex]
-	}
-
-	// Parse start time
-	startTimeStr := parts[1] + " " + amPmPart // "8:00 AM" or "4:30 PM"
-	startTime, err := time.Parse("3:04 PM", startTimeStr)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to parse start time: %w", err)
-	}
-
-	// Convert to today's date with the parsed time
-	return time.Date(0, 1, 1, startTime.Hour(), startTime.Minute(), 0, 0, time.UTC), nil
-}
-
 // ==============================================================================
 // ATTENDANCE FINALIZATION (Mark as Done/Locked)
 // ==============================================================================
@@ -547,8 +522,8 @@ func parseScheduleStartTime(schedule string) (time.Time, error) {
 // FinalizeAttendanceSheet marks an attendance sheet as finalized (done/locked)
 // This prevents further edits and indicates the attendance is complete
 func (a *App) FinalizeAttendanceSheet(classID int, date string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	query := `
@@ -560,19 +535,19 @@ func (a *App) FinalizeAttendanceSheet(classID int, date string) error {
 
 	result, err := a.db.Exec(query, classID, date)
 	if err != nil {
-		log.Printf("⚠ Failed to finalize attendance sheet: %v", err)
+		log.Printf("? Failed to finalize attendance sheet: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
-	log.Printf("✓ Finalized attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
+	log.Printf("? Finalized attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
 	return nil
 }
 
 // UnfinalizeAttendanceSheet removes the finalized flag, allowing further edits
 func (a *App) UnfinalizeAttendanceSheet(classID int, date string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	query := `
@@ -584,12 +559,12 @@ func (a *App) UnfinalizeAttendanceSheet(classID int, date string) error {
 
 	result, err := a.db.Exec(query, classID, date)
 	if err != nil {
-		log.Printf("⚠ Failed to unfinalize attendance sheet: %v", err)
+		log.Printf("? Failed to unfinalize attendance sheet: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
-	log.Printf("✓ Unfinalized attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
+	log.Printf("? Unfinalized attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
 	return nil
 }
 
@@ -599,8 +574,8 @@ func (a *App) UnfinalizeAttendanceSheet(classID int, date string) error {
 
 // ArchiveAttendanceSheet marks all attendance records for a class on a specific date as archived
 func (a *App) ArchiveAttendanceSheet(classID int, date string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Archive attendance records
@@ -613,20 +588,20 @@ func (a *App) ArchiveAttendanceSheet(classID int, date string) error {
 
 	result, err := a.db.Exec(query, classID, date)
 	if err != nil {
-		log.Printf("⚠ Failed to archive attendance records: %v", err)
+		log.Printf("? Failed to archive attendance records: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
 
-	log.Printf("✓ Archived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
+	log.Printf("? Archived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
 	return nil
 }
 
 // UnarchiveAttendanceSheet removes the archived flag from attendance records
 func (a *App) UnarchiveAttendanceSheet(classID int, date string) error {
-	if a.db == nil {
-		return fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return err
 	}
 
 	// Unarchive attendance records
@@ -639,13 +614,13 @@ func (a *App) UnarchiveAttendanceSheet(classID int, date string) error {
 
 	result, err := a.db.Exec(query, classID, date)
 	if err != nil {
-		log.Printf("⚠ Failed to unarchive attendance records: %v", err)
+		log.Printf("? Failed to unarchive attendance records: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
 
-	log.Printf("✓ Unarchived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
+	log.Printf("? Unarchived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
 	return nil
 }
 
@@ -667,8 +642,8 @@ type ArchivedAttendanceSheet struct {
 
 // GetArchivedAttendanceSheets gets all archived attendance sheets for a teacher
 func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendanceSheet, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	// Get archived attendance sheets from attendance table only
@@ -696,7 +671,7 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 
 	rows, err := a.db.Query(query, teacherUserID)
 	if err != nil {
-		log.Printf("⚠ Failed to query archived attendance sheets: %v", err)
+		log.Printf("? Failed to query archived attendance sheets: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -713,7 +688,7 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 			&sheet.StudentCount, &sheet.PresentCount, &sheet.AbsentCount, &sheet.LateCount, &sheet.ExcusedCount,
 		)
 		if err != nil {
-			log.Printf("⚠ Failed to scan archived attendance sheet: %v", err)
+			log.Printf("? Failed to scan archived attendance sheet: %v", err)
 			continue
 		}
 
@@ -749,8 +724,8 @@ type AttendanceSheetSummary struct {
 
 // GetFinalizedAttendanceSheets gets all finalized (but not archived) attendance sheets for a teacher
 func (a *App) GetFinalizedAttendanceSheets(teacherUserID int) ([]AttendanceSheetSummary, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -780,7 +755,7 @@ func (a *App) GetFinalizedAttendanceSheets(teacherUserID int) ([]AttendanceSheet
 
 	rows, err := a.db.Query(query, teacherUserID)
 	if err != nil {
-		log.Printf("⚠ Failed to query finalized attendance sheets: %v", err)
+		log.Printf("? Failed to query finalized attendance sheets: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -798,7 +773,7 @@ func (a *App) GetFinalizedAttendanceSheets(teacherUserID int) ([]AttendanceSheet
 			&sheet.IsArchived, &sheet.IsFinalized,
 		)
 		if err != nil {
-			log.Printf("⚠ Failed to scan finalized attendance sheet: %v", err)
+			log.Printf("? Failed to scan finalized attendance sheet: %v", err)
 			continue
 		}
 
@@ -817,8 +792,8 @@ func (a *App) GetFinalizedAttendanceSheets(teacherUserID int) ([]AttendanceSheet
 
 // GetActiveAttendanceSheets gets all active (not finalized, not archived) attendance sheets for a teacher
 func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSummary, error) {
-	if a.db == nil {
-		return nil, fmt.Errorf("database not connected")
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
 	query := `
@@ -848,7 +823,7 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 
 	rows, err := a.db.Query(query, teacherUserID)
 	if err != nil {
-		log.Printf("⚠ Failed to query active attendance sheets: %v", err)
+		log.Printf("? Failed to query active attendance sheets: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -866,7 +841,7 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 			&sheet.IsArchived, &sheet.IsFinalized,
 		)
 		if err != nil {
-			log.Printf("⚠ Failed to scan active attendance sheet: %v", err)
+			log.Printf("? Failed to scan active attendance sheet: %v", err)
 			continue
 		}
 

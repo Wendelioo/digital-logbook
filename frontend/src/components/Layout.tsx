@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { UpdateUserPhoto, ChangePassword, SaveEquipmentFeedback, UpdateUser } from '../../wailsjs/go/main/App';
+import { compressImage, isImageFile, isValidFileSize } from '../utils/imageUtils';
 import { 
   User,
   Settings,
@@ -67,65 +68,16 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Utility function to compress and resize image
-  const compressImage = (file: File, maxWidth: number = 800, maxHeight: number = 800, quality: number = 0.8): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          // Calculate new dimensions
-          let width = img.width;
-          let height = img.height;
-          
-          if (width > maxWidth || height > maxHeight) {
-            if (width > height) {
-              height = (height * maxWidth) / width;
-              width = maxWidth;
-            } else {
-              width = (width * maxHeight) / height;
-              height = maxHeight;
-            }
-          }
-          
-          // Create canvas and resize
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          
-          if (!ctx) {
-            reject(new Error('Failed to get canvas context'));
-            return;
-          }
-          
-          ctx.drawImage(img, 0, 0, width, height);
-          
-          // Convert to base64 with compression
-          const dataUrl = canvas.toDataURL('image/jpeg', quality);
-          resolve(dataUrl);
-        };
-        img.onerror = () => reject(new Error('Failed to load image'));
-        img.src = e.target?.result as string;
-      };
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-    });
-  };
-
   const handleLogout = async () => {
-    // Show feedback modal ONLY for regular students (not working students)
-    // Working students forward feedback from other students - they don't submit their own
+    // Show feedback modal ONLY for regular students
     if (user?.role === 'student') {
       setShowLogoutConfirmModal(true);
     } else {
-      // For working students, teachers, admins - logout directly
       try {
         await logout();
         navigate('/login');
       } catch (error) {
         console.error('Logout error:', error);
-        // Even if logout fails, navigate to login
         navigate('/login');
       }
     }
@@ -178,28 +130,26 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        alert('Please select an image file.');
-        return;
-      }
-      
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Image size must be less than 5MB.');
-        return;
-      }
-      
-      try {
-        // Compress and resize the image before saving
-        const compressedDataUrl = await compressImage(file, 800, 800, 0.8);
-        setPhotoFile(file);
-        setPhotoPreview(compressedDataUrl);
-      } catch (error) {
-        console.error('Failed to process image:', error);
-        alert('Failed to process the image file. Please try again.');
-      }
+    if (!file) return;
+
+    // Validate file type and size
+    if (!isImageFile(file)) {
+      alert('Please select an image file.');
+      return;
+    }
+    
+    if (!isValidFileSize(file, 5)) {
+      alert('Image size must be less than 5MB.');
+      return;
+    }
+    
+    try {
+      const compressedDataUrl = await compressImage(file);
+      setPhotoFile(file);
+      setPhotoPreview(compressedDataUrl);
+    } catch (error) {
+      console.error('Failed to process image:', error);
+      alert('Failed to process the image file. Please try again.');
     }
   };
 
@@ -228,13 +178,21 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       // Clear the photo file state
       setPhotoFile(null);
       
-      // Close the modal
-      setShowAccountModal(false);
+      alert('Profile photo updated successfully!');
+    } catch (error: any) {
+      console.error('Failed to update profile photo:', error);
       
-      alert('Photo updated successfully!');
-    } catch (error) {
-      console.error('Failed to update photo:', error);
-      alert('Failed to update photo. Make sure you are connected to the database.');
+      // Clear the preview since save failed - photo is NOT actually saved
+      setPhotoPreview(user?.photo_url || '');
+      setPhotoFile(null);
+      
+      // Show the actual error message from the backend
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      if (errorMessage.toLowerCase().includes('database not connected')) {
+        alert('Database connection is not available. Your session was restored from a previous login, but the database is currently unreachable. Please restart the application.');
+      } else {
+        alert(`Failed to update profile photo: ${errorMessage}`);
+      }
     }
   };
 
@@ -242,12 +200,6 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
     e.preventDefault();
     setPasswordError('');
     setPasswordSuccess('');
-
-    // Validate inputs
-    if (!oldPassword || !newPassword || !confirmPassword) {
-      setPasswordError('All fields are required');
-      return;
-    }
 
     if (newPassword !== confirmPassword) {
       setPasswordError('New passwords do not match');
