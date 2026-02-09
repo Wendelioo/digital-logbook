@@ -7,6 +7,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // ==============================================================================
@@ -15,8 +17,10 @@ import (
 
 // App struct
 type App struct {
-	ctx context.Context
-	db  *sql.DB
+	ctx          context.Context
+	db           *sql.DB
+	kioskMode    bool
+	screenLocked bool
 }
 
 // NewApp creates a new App application struct
@@ -27,6 +31,11 @@ func NewApp() *App {
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Load app settings for kiosk mode
+	appConfig := LoadAppSettings()
+	a.kioskMode = appConfig.KioskMode
+	a.screenLocked = appConfig.KioskMode // Start locked if kiosk mode is on
 
 	// Initialize database connection with retry
 	var db *sql.DB
@@ -52,6 +61,41 @@ func (a *App) startup(ctx context.Context) {
 		a.db = db
 		log.Println("? Database connected successfully")
 	}
+}
+
+// ==============================================================================
+// KIOSK / SCREEN LOCK METHODS
+// ==============================================================================
+
+// UnlockScreen is called after successful login.
+// Removes fullscreen and always-on-top so the user can freely use Windows.
+func (a *App) UnlockScreen() {
+	if !a.kioskMode {
+		return
+	}
+	a.screenLocked = false
+	wailsRuntime.WindowUnfullscreen(a.ctx)
+	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, false)
+	wailsRuntime.WindowMinimise(a.ctx)
+	log.Println("🔓 Screen unlocked - user logged in, free to use Windows")
+}
+
+// LockScreen is called after logout.
+// Restores fullscreen and always-on-top to force the next user to login.
+func (a *App) LockScreen() {
+	if !a.kioskMode {
+		return
+	}
+	a.screenLocked = true
+	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
+	wailsRuntime.WindowMaximise(a.ctx)
+	wailsRuntime.WindowFullscreen(a.ctx)
+	log.Println("🔒 Screen locked - waiting for next user to login")
+}
+
+// IsKioskMode returns whether kiosk mode is enabled (for frontend to know)
+func (a *App) IsKioskMode() bool {
+	return a.kioskMode
 }
 
 // ==============================================================================

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Login, Logout } from '../../wailsjs/go/main/App';
+import { Login, Logout, UnlockScreen, LockScreen, IsKioskMode } from '../../wailsjs/go/main/App';
 import type { User } from '../types';
 import { useInactivityDetection, useWindowUnload } from '../hooks/useInactivity';
 
@@ -36,6 +36,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const parsedUser = JSON.parse(savedUser);
         setUser(parsedUser);
         setIsAuthenticated(true);
+        // If user session exists, unlock screen (kiosk mode - user was already logged in)
+        UnlockScreen().catch(() => {});
       } catch (error) {
         console.error('Failed to parse saved user:', error);
         localStorage.removeItem('user');
@@ -55,6 +57,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setIsAuthenticated(false);
       localStorage.removeItem('user');
+
+      // Lock screen in kiosk mode on auto-logout
+      try {
+        await LockScreen();
+      } catch (e) {
+        // Silently ignore if not in kiosk mode
+      }
     }
   }, [user]);
 
@@ -82,6 +91,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(userData);
       setIsAuthenticated(true);
       localStorage.setItem('user', JSON.stringify(userData));
+
+      // Unlock screen in kiosk mode so user can freely use Windows
+      try {
+        await UnlockScreen();
+      } catch (e) {
+        // Silently ignore if not in kiosk mode
+      }
       
       return userData;
     } catch (error) {
@@ -102,6 +118,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsAuthenticated(false);
       localStorage.removeItem('user');
       sessionStorage.clear();
+
+      // Lock screen in kiosk mode so next user must login
+      try {
+        await LockScreen();
+      } catch (e) {
+        // Silently ignore if not in kiosk mode
+      }
     }
   };
 

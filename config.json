@@ -3,5 +3,6 @@
   "port": "1433",
   "username": "logbook_app",
   "password": "SecurePassword123!",
-  "database": "logbookdb"
+  "database": "logbookdb",
+  "kiosk_mode": false
 }

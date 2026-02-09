@@ -200,7 +200,11 @@ export function GetWorkingStudentID(arg1:number):Promise<number>;
 
 export function InitializeAttendanceForClass(arg1:number,arg2:string,arg3:number):Promise<void>;
 
+export function IsKioskMode():Promise<boolean>;
+
 export function JoinClassByEDPCode(arg1:number,arg2:string):Promise<number>;
+
+export function LockScreen():Promise<void>;
 
 export function Login(arg1:string,arg2:string):Promise<main.User>;
 
@@ -213,6 +217,8 @@ export function MarkEnrollmentCompleted(arg1:number,arg2:number):Promise<void>;
 export function MarkEnrollmentDropped(arg1:number,arg2:number):Promise<void>;
 
 export function ProcessRegistration(arg1:main.ApprovalRequest):Promise<void>;
+
+export function UnlockScreen():Promise<void>;
 
 export function ReactivateEnrollment(arg1:number,arg2:number):Promise<void>;
 

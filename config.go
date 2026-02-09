@@ -20,6 +20,40 @@ type DBConfig struct {
 	Database string `json:"database"`
 }
 
+// AppConfig holds application-level configuration (kiosk mode, etc.)
+type AppConfig struct {
+	KioskMode bool `json:"kiosk_mode"`
+}
+
+// LoadAppSettings loads application settings from config.json
+// Returns default config (kiosk_mode=false) if config file is not found
+func LoadAppSettings() AppConfig {
+	defaultConfig := AppConfig{KioskMode: false}
+
+	// Try executable directory first (production)
+	exeDir, err := getExecutableDir()
+	if err != nil {
+		return defaultConfig
+	}
+
+	configPath := filepath.Join(exeDir, "config.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return defaultConfig
+	}
+
+	var config AppConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return defaultConfig
+	}
+
+	if config.KioskMode {
+		log.Println("🔒 Kiosk mode is ENABLED - app will run in fullscreen locked mode")
+	}
+
+	return config
+}
+
 // getExecutableDir returns the directory where the executable is located
 func getExecutableDir() (string, error) {
 	exePath, err := os.Executable()
