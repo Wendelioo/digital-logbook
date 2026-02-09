@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"strings"
@@ -72,7 +71,6 @@ type User struct {
 	StudentID      *string `json:"student_id"`
 	Email          *string `json:"email"`
 	ContactNumber  *string `json:"contact_number"`
-	PhotoPath      *string `json:"photo_path"` // File path to profile photo (improved from BLOB)
 	PhotoURL       *string `json:"photo_url"`  // Base64 data URL for frontend display
 	DepartmentCode *string `json:"department_code"`
 	Created        string  `json:"created"`
@@ -140,7 +138,6 @@ type ClassStudent struct {
 	Gender        *string `json:"gender,omitempty"`
 	Email         *string `json:"email,omitempty"`
 	ContactNumber *string `json:"contact_number,omitempty"`
-	PhotoPath     *string `json:"photo_path,omitempty"` // File path to profile photo
 	PhotoURL      *string `json:"photo_url,omitempty"`  // Base64 data URL for frontend display
 	ClassID       *int    `json:"class_id,omitempty"`
 	IsEnrolled    bool    `json:"is_enrolled"`
@@ -600,56 +597,22 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 // ==============================================================================
 
 // UpdateUserPhoto updates a user's profile photo
-// This method accepts data URL format and uses the profile_photos table
+// Accepts a base64 data URL (e.g. "data:image/jpeg;base64,...") and stores it directly in the database.
 func (a *App) UpdateUserPhoto(userID int, userRole, photoURL string) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
 
-	// Extract base64 data from data URL and decode to binary
-	// The photoURL is expected to be in format: "data:image/jpeg;base64,/9j/4AAQ..."
-	var mimeType string
-	var base64Data string
-	
-	if strings.HasPrefix(photoURL, "data:") {
-		parts := strings.Split(photoURL, ",")
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid data URL format")
-		}
-		
-		// Extract MIME type from data URL header
-		header := parts[0]
-		if strings.Contains(header, "image/jpeg") || strings.Contains(header, "image/jpg") {
-			mimeType = "image/jpeg"
-		} else if strings.Contains(header, "image/png") {
-			mimeType = "image/png"
-		} else if strings.Contains(header, "image/gif") {
-			mimeType = "image/gif"
-		} else {
-			mimeType = "image/jpeg" // default
-		}
-		
-		base64Data = parts[1]
-	} else {
-		base64Data = photoURL
-		mimeType = "image/jpeg" // default
+	// If raw base64 without data URL prefix, wrap it
+	if !strings.HasPrefix(photoURL, "data:") {
+		photoURL = "data:image/jpeg;base64," + photoURL
 	}
 
-	// Decode Base64 to binary for storage
-	imageBytes, err := base64.StdEncoding.DecodeString(base64Data)
-	if err != nil {
-		return fmt.Errorf("failed to decode base64 image: %w", err)
-	}
-
-	// Generate a file name
-	fileName := fmt.Sprintf("user_%d_profile.jpg", userID)
-
-	// Use the UploadProfilePhoto method from profile_photos.go
-	err = a.UploadProfilePhoto(userID, imageBytes, fileName, mimeType)
+	err := a.SaveProfilePhoto(userID, photoURL)
 	if err != nil {
 		return fmt.Errorf("failed to update profile photo: %w", err)
 	}
 
-	log.Printf("Profile photo updated for user ID %d (%s) - %d bytes", userID, userRole, len(imageBytes))
+	log.Printf("Profile photo updated for user ID %d (%s)", userID, userRole)
 	return nil
 }

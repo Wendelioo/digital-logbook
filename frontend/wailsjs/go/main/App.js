@@ -318,8 +318,8 @@ export function GetPendingRegistrations() {
   return window['go']['main']['App']['GetPendingRegistrations']();
 }
 
-export function GetProfilePhoto(arg1) {
-  return window['go']['main']['App']['GetProfilePhoto'](arg1);
+export function GetProfilePhotoURL(arg1) {
+  return window['go']['main']['App']['GetProfilePhotoURL'](arg1);
 }
 
 export function GetRecentAttendance(arg1, arg2) {
@@ -422,10 +422,6 @@ export function MarkEnrollmentDropped(arg1, arg2) {
   return window['go']['main']['App']['MarkEnrollmentDropped'](arg1, arg2);
 }
 
-export function MigrateProfilePhotosFromBlob() {
-  return window['go']['main']['App']['MigrateProfilePhotosFromBlob']();
-}
-
 export function ProcessRegistration(arg1) {
   return window['go']['main']['App']['ProcessRegistration'](arg1);
 }
@@ -448,6 +444,10 @@ export function RecordTimeoutLogout(arg1) {
 
 export function SaveEquipmentFeedback(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
   return window['go']['main']['App']['SaveEquipmentFeedback'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
+}
+
+export function SaveProfilePhoto(arg1, arg2) {
+  return window['go']['main']['App']['SaveProfilePhoto'](arg1, arg2);
 }
 
 export function SearchUsers(arg1, arg2) {
@@ -532,8 +532,4 @@ export function UpdateUserPhoto(arg1, arg2, arg3) {
 
 export function UpdateUserProfilePhoto(arg1, arg2) {
   return window['go']['main']['App']['UpdateUserProfilePhoto'](arg1, arg2);
-}
-
-export function UploadProfilePhoto(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['UploadProfilePhoto'](arg1, arg2, arg3, arg4);
 }

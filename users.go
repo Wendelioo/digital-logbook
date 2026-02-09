@@ -376,17 +376,8 @@ func (a *App) scanUsers(rows *sql.Rows) ([]User, error) {
 			user.DepartmentCode = &departmentCode.String
 		}
 
-		// Load profile photo from profile_photos table
-		var photoPath sql.NullString
-		photoQuery := `SELECT photo_path FROM profile_photos WHERE user_id = ?`
-		err = a.db.QueryRow(photoQuery, user.ID).Scan(&photoPath)
-		if err == nil && photoPath.Valid {
-			user.PhotoPath = &photoPath.String
-			// Convert file path to base64 data URL for frontend display
-			if photoDataURL, err := a.convertPhotoToDataURL(photoPath.String); err == nil {
-				user.PhotoURL = &photoDataURL
-			}
-		}
+		// Load profile photo from database
+		a.loadUserPhotoURL(&user)
 
 		users = append(users, user)
 	}
@@ -820,58 +811,24 @@ func getColumnValue(record []string, colIdx int, found bool) string {
 
 // UpdateUserProfilePhoto updates the profile photo for a user
 // Accepts Base64-encoded image data (with or without data URL prefix)
-// Stores as file in uploads/profiles/ directory (improved from BLOB storage)
+// Stores the data URL directly in the database.
 func (a *App) UpdateUserProfilePhoto(userID int, imageBase64 string) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
 
-	// Remove data URL prefix if present (e.g., "data:image/jpeg;base64,")
-	base64Data := imageBase64
-	mimeType := "image/jpeg" // Default MIME type
-
-	if strings.HasPrefix(imageBase64, "data:") {
-		parts := strings.Split(imageBase64, ",")
-		if len(parts) == 2 {
-			// Extract MIME type from data URL (e.g., "data:image/png;base64,")
-			mimeTypePart := strings.TrimPrefix(parts[0], "data:")
-			mimeTypePart = strings.TrimSuffix(mimeTypePart, ";base64")
-			if mimeTypePart != "" {
-				mimeType = mimeTypePart
-			}
-			base64Data = parts[1]
-		}
+	// Ensure it has data URL prefix
+	photoDataURL := imageBase64
+	if !strings.HasPrefix(imageBase64, "data:") {
+		photoDataURL = "data:image/jpeg;base64," + imageBase64
 	}
 
-	// Decode Base64 to binary
-	imageBytes, err := base64.StdEncoding.DecodeString(base64Data)
+	err := a.SaveProfilePhoto(userID, photoDataURL)
 	if err != nil {
-		return fmt.Errorf("failed to decode base64 image: %w", err)
+		return fmt.Errorf("failed to update profile photo: %w", err)
 	}
 
-	// Validate minimum size
-	if len(imageBytes) < 100 {
-		return fmt.Errorf("image too small: %d bytes (minimum 100 bytes)", len(imageBytes))
-	}
-
-	// Generate file name based on MIME type
-	fileName := fmt.Sprintf("user_%d_photo", userID)
-	switch mimeType {
-	case "image/png":
-		fileName += ".png"
-	case "image/gif":
-		fileName += ".gif"
-	default:
-		fileName += ".jpg"
-	}
-
-	// Use the new file-based upload system
-	err = a.UploadProfilePhoto(userID, imageBytes, fileName, mimeType)
-	if err != nil {
-		return fmt.Errorf("failed to upload profile photo: %w", err)
-	}
-
-	log.Printf("Profile photo updated for user ID %d - %d bytes", userID, len(imageBytes))
+	log.Printf("Profile photo updated for user ID %d", userID)
 	return nil
 }
 
@@ -881,7 +838,6 @@ func (a *App) DeleteUserProfilePhoto(userID int) error {
 		return err
 	}
 
-	// Use the new file-based delete system
 	err := a.DeleteProfilePhoto(userID)
 	if err != nil {
 		return fmt.Errorf("failed to delete profile photo: %w", err)

@@ -883,11 +883,11 @@ func (a *App) GetAllRegisteredStudents(yearLevelFilter, sectionFilter string) ([
 		return nil, err
 	}
 
-	// Base query that gets all students with photo paths from profile_photos table
+	// Base query that gets all students with photo data from profile_photos table
 	query := `
 		SELECT 
 			s.id as id, s.student_id, s.first_name, s.middle_name, s.last_name, 
-			s.email, s.contact_number, pp.photo_path
+			s.email, s.contact_number, pp.photo_data
 		FROM students s
 		LEFT JOIN profile_photos pp ON s.id = pp.user_id
 		ORDER BY s.last_name, s.first_name
@@ -902,9 +902,9 @@ func (a *App) GetAllRegisteredStudents(yearLevelFilter, sectionFilter string) ([
 	var students []ClassStudent
 	for rows.Next() {
 		var student ClassStudent
-		var middleName, email, contactNumber, photoPath sql.NullString
+		var middleName, email, contactNumber, photoData sql.NullString
 		err := rows.Scan(&student.ID, &student.StudentID, &student.FirstName, &middleName,
-			&student.LastName, &email, &contactNumber, &photoPath)
+			&student.LastName, &email, &contactNumber, &photoData)
 		if err != nil {
 			continue
 		}
@@ -917,12 +917,8 @@ func (a *App) GetAllRegisteredStudents(yearLevelFilter, sectionFilter string) ([
 		if contactNumber.Valid {
 			student.ContactNumber = &contactNumber.String
 		}
-		if photoPath.Valid {
-			student.PhotoPath = &photoPath.String
-			// Convert file path to base64 data URL for frontend display
-			if photoDataURL, err := a.convertPhotoToDataURL(photoPath.String); err == nil {
-				student.PhotoURL = &photoDataURL
-			}
+		if photoData.Valid {
+			student.PhotoURL = &photoData.String
 		}
 		students = append(students, student)
 	}

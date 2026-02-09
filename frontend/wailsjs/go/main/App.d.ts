@@ -160,7 +160,7 @@ export function GetPendingFeedback():Promise<Array<main.Feedback>>;
 
 export function GetPendingRegistrations():Promise<Array<main.PendingRegistration>>;
 
-export function GetProfilePhoto(arg1:number):Promise<main.ProfilePhoto>;
+export function GetProfilePhotoURL(arg1:number):Promise<string>;
 
 export function GetRecentAttendance(arg1:Array<number>,arg2:number):Promise<Array<main.Attendance>>;
 
@@ -212,8 +212,6 @@ export function MarkEnrollmentCompleted(arg1:number,arg2:number):Promise<void>;
 
 export function MarkEnrollmentDropped(arg1:number,arg2:number):Promise<void>;
 
-export function MigrateProfilePhotosFromBlob():Promise<void>;
-
 export function ProcessRegistration(arg1:main.ApprovalRequest):Promise<void>;
 
 export function ReactivateEnrollment(arg1:number,arg2:number):Promise<void>;
@@ -225,6 +223,8 @@ export function RecordStudentLogin(arg1:number,arg2:number):Promise<void>;
 export function RecordTimeoutLogout(arg1:number):Promise<void>;
 
 export function SaveEquipmentFeedback(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string):Promise<void>;
+
+export function SaveProfilePhoto(arg1:number,arg2:string):Promise<void>;
 
 export function SearchUsers(arg1:string,arg2:string):Promise<Array<main.User>>;
 
@@ -267,5 +267,3 @@ export function UpdateUser(arg1:number,arg2:string,arg3:string,arg4:string,arg5:
 export function UpdateUserPhoto(arg1:number,arg2:string,arg3:string):Promise<void>;
 
 export function UpdateUserProfilePhoto(arg1:number,arg2:string):Promise<void>;
-
-export function UploadProfilePhoto(arg1:number,arg2:Array<number>,arg3:string,arg4:string):Promise<void>;
