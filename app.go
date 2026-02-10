@@ -61,6 +61,18 @@ func (a *App) startup(ctx context.Context) {
 		a.db = db
 		log.Println("? Database connected successfully")
 	}
+
+	// If kiosk mode is on, force lock the screen on startup
+	// (using runtime API since Wails startup options alone aren't reliable)
+	if a.kioskMode {
+		go func() {
+			// Small delay to let the window fully initialize
+			time.Sleep(500 * time.Millisecond)
+			wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
+			wailsRuntime.WindowFullscreen(a.ctx)
+			log.Println("🔒 Kiosk mode: Screen locked on startup")
+		}()
+	}
 }
 
 // ==============================================================================
@@ -68,7 +80,7 @@ func (a *App) startup(ctx context.Context) {
 // ==============================================================================
 
 // UnlockScreen is called after successful login.
-// Removes fullscreen and always-on-top so the user can freely use Windows.
+// Turns the app into a normal resizable window so the user can use it alongside other apps.
 func (a *App) UnlockScreen() {
 	if !a.kioskMode {
 		return
@@ -76,8 +88,9 @@ func (a *App) UnlockScreen() {
 	a.screenLocked = false
 	wailsRuntime.WindowUnfullscreen(a.ctx)
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, false)
-	wailsRuntime.WindowMinimise(a.ctx)
-	log.Println("🔓 Screen unlocked - user logged in, free to use Windows")
+	wailsRuntime.WindowSetSize(a.ctx, 1000, 700)
+	wailsRuntime.WindowCenter(a.ctx)
+	log.Println("🔓 Screen unlocked - app is now a normal window")
 }
 
 // LockScreen is called after logout.
@@ -227,28 +240,28 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	// Count recent logins (last 24 hours)
 	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE login_time >= DATEADD(HOUR, -24, GETDATE())`).Scan(&dashboard.RecentLogins)
 
-	// Count active users now (logged in without logout)
-	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE logout_time IS NULL`).Scan(&dashboard.ActiveUsersNow)
+	// Count active users now (logged in today without logout, distinct per user)
+	a.db.QueryRow(`SELECT COUNT(DISTINCT user_id) FROM log_entries WHERE logout_time IS NULL AND CAST(login_time AS DATE) = CAST(GETDATE() AS DATE)`).Scan(&dashboard.ActiveUsersNow)
 
 	// Count students currently logged in (JOIN with users to get role)
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM log_entries ll
+		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
-		WHERE ll.logout_time IS NULL AND u.user_type = 'student'
+		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'student'
 	`).Scan(&dashboard.StudentsLoggedIn)
 
 	// Count teachers currently logged in
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM log_entries ll
+		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
-		WHERE ll.logout_time IS NULL AND u.user_type = 'teacher'
+		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'teacher'
 	`).Scan(&dashboard.TeachersLoggedIn)
 
 	// Count working students currently logged in
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM log_entries ll
+		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
-		WHERE ll.logout_time IS NULL AND u.user_type = 'working_student'
+		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'working_student'
 	`).Scan(&dashboard.WorkingStudentsLoggedIn)
 
 	// Count today's logins

@@ -405,45 +405,48 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
-      {/* LEFT SIDEBAR - No Logo/Title */}
+      {/* SIDEBAR OVERLAY BACKDROP */}
+      {!sidebarCollapsed && (
+        <div
+          className="fixed inset-0 bg-black/30 z-30 transition-opacity duration-300"
+          onClick={() => setSidebarCollapsed(true)}
+        />
+      )}
+
+      {/* LEFT SIDEBAR - YouTube Style (overlay) */}
       <aside 
-        className={`fixed left-0 top-0 bottom-0 bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out z-30 ${
-          sidebarCollapsed ? 'w-16' : 'w-64'
+        className={`fixed left-0 top-0 bottom-0 bg-white flex flex-col transition-transform duration-300 ease-in-out z-40 w-[240px] shadow-xl ${
+          sidebarCollapsed ? '-translate-x-full' : 'translate-x-0'
         }`}
       >
-        {/* Sidebar Toggle Button */}
-        <div className="absolute -right-3 top-6 z-40">
+        {/* Sidebar Toggle - Hamburger Menu */}
+        <div className="flex items-center h-14 flex-shrink-0 px-4">
           <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="w-6 h-6 bg-white rounded-full shadow-md border border-gray-200 flex items-center justify-center text-gray-600 hover:text-primary-600 hover:border-primary-300 transition-colors"
-            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onClick={() => setSidebarCollapsed(true)}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-gray-700 hover:bg-gray-100 active:bg-gray-200 transition-colors"
+            aria-label="Close sidebar"
           >
-            {sidebarCollapsed ? (
-              <Menu className="w-3.5 h-3.5" />
-            ) : (
-              <XIcon className="w-3.5 h-3.5" />
-            )}
+            <Menu className="w-6 h-6" />
           </button>
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 overflow-y-auto pt-6 pb-4 px-3">
-          <ul className="space-y-1.5">
+        <nav className="flex-1 overflow-y-auto scrollbar-thin pb-4 px-3">
+          <ul className="space-y-0.5">
             {navigationItems.map((item) => {
               // Handle divider items
               if (item.isDivider) {
                 return (
-                  <li key={item.name} className="pt-4 pb-2">
-                    {!sidebarCollapsed && (
-                      <div className="px-3">
-                        <div className="border-t border-gray-200 mb-2"></div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                          {item.label || item.name}
+                  <li key={item.name} className="py-3">
+                    <div className={sidebarCollapsed ? 'mx-3' : 'mx-3'}>
+                      <div className="border-t border-gray-200"></div>
+                    </div>
+                    {!sidebarCollapsed && item.label && (
+                      <div className="px-4 pt-3">
+                        <span className="text-xs font-medium text-gray-500">
+                          {item.label}
                         </span>
                       </div>
-                    )}
-                    {sidebarCollapsed && (
-                      <div className="border-t border-gray-200 mx-3"></div>
                     )}
                   </li>
                 );
@@ -466,78 +469,53 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                             setOpenDropdowns([...openDropdowns, item.name]);
                           }
                         }}
-                        className={`group relative w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                            className={`group w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-colors ${
                           isChildActive
-                            ? 'bg-primary-50 text-primary-700'
+                                ? 'bg-gray-100 text-gray-900 font-semibold'
                             : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                         }`}
                         title={item.name}
                       >
                         <div className="flex items-center">
-                          {/* Active Indicator */}
-                          {isChildActive && (
-                            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary-600 rounded-r-full" />
-                          )}
-                          
                           {/* Icon */}
-                          <div className={`flex-shrink-0 ${
-                            isChildActive ? 'text-primary-600' : 'text-gray-500 group-hover:text-gray-700'
+                            <div className={`flex-shrink-0 ${
+                            isChildActive ? 'text-gray-900' : 'text-gray-600 group-hover:text-gray-700'
                           } [&>svg]:w-5 [&>svg]:h-5`}>
                             {item.icon}
                           </div>
                           
                           {/* Label */}
-                          {!sidebarCollapsed && (
-                            <span className="ml-3 whitespace-nowrap">
+                            <span className="ml-6 whitespace-nowrap">
                               {item.name}
                             </span>
-                          )}
                         </div>
                         
                         {/* Dropdown Arrow */}
-                        {!sidebarCollapsed && (
-                          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${
+                          <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
                             isOpen ? 'rotate-180' : ''
                           }`} />
-                        )}
-                        
-                        {/* Tooltip for collapsed state */}
-                        {sidebarCollapsed && (
-                          <div className="absolute left-full ml-6 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50">
-                            {item.name}
-                            <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
-                          </div>
-                        )}
                       </button>
                       
                       {/* Dropdown Menu */}
-                      {isOpen && !sidebarCollapsed && item.children && (
-                        <ul className="mt-1 ml-4 space-y-1">
+                      {isOpen && item.children && (
+                        <ul className="mt-0.5">
                           {item.children.map((child) => (
                             <li key={child.name}>
                               <Link
                                 to={child.href}
-                                className={`group relative flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                                className={`flex items-center px-3 py-2 rounded-xl text-sm transition-colors ${
                                   child.current
-                                    ? 'bg-primary-50 text-primary-700'
+                                    ? 'bg-gray-100 text-gray-900 font-semibold'
                                     : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                                 }`}
                                 title={child.name}
                               >
-                                {/* Active Indicator */}
-                                {child.current && (
-                                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-4 bg-primary-600 rounded-r-full" />
-                                )}
-                                
-                                {/* Icon */}
-                                <div className={`flex-shrink-0 ${
-                                  child.current ? 'text-primary-600' : 'text-gray-500 group-hover:text-gray-700'
-                                } [&>svg]:w-4 [&>svg]:h-4`}>
+                                <div className={`flex-shrink-0 ml-2 ${
+                                  child.current ? 'text-gray-900' : 'text-gray-500'
+                                } [&>svg]:w-5 [&>svg]:h-5`}>
                                   {child.icon}
                                 </div>
-                                
-                                {/* Label */}
-                                <span className="ml-3 whitespace-nowrap text-xs">
+                                <span className="ml-6 whitespace-nowrap">
                                   {child.name}
                                 </span>
                               </Link>
@@ -550,39 +528,21 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                     // Regular item
                     <Link
                       to={item.href}
-                      className={`group relative flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      className={`flex items-center px-3 py-2 rounded-xl text-sm transition-colors ${
                         item.current
-                          ? 'bg-primary-50 text-primary-700'
+                          ? 'bg-gray-100 text-gray-900 font-semibold'
                           : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                       }`}
                       title={item.name}
                     >
-                      {/* Active Indicator */}
-                      {item.current && (
-                        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary-600 rounded-r-full" />
-                      )}
-                      
-                      {/* Icon */}
                       <div className={`flex-shrink-0 ${
-                        item.current ? 'text-primary-600' : 'text-gray-500 group-hover:text-gray-700'
+                        item.current ? 'text-gray-900' : 'text-gray-600'
                       } [&>svg]:w-5 [&>svg]:h-5`}>
                         {item.icon}
                       </div>
-                      
-                      {/* Label */}
-                      {!sidebarCollapsed && (
-                        <span className="ml-3 whitespace-nowrap">
-                          {item.name}
-                        </span>
-                      )}
-                      
-                      {/* Tooltip for collapsed state */}
-                      {sidebarCollapsed && (
-                        <div className="absolute left-full ml-6 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-50">
-                          {item.name}
-                          <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
-                        </div>
-                      )}
+                      <span className="ml-6 whitespace-nowrap">
+                        {item.name}
+                      </span>
                     </Link>
                   )}
                 </li>
@@ -592,14 +552,12 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
         </nav>
 
         {/* Bottom Section - User Profile */}
-        <div className="border-t border-gray-200 p-3">
+        <div className="border-t border-gray-200 p-2">
           <div className="relative">
             <button
               onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
               data-profile-icon
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm hover:bg-gray-100 transition-colors ${
-                sidebarCollapsed ? 'justify-center' : ''
-              }`}
+              className="w-full flex items-center gap-4 px-3 py-2 rounded-xl text-sm hover:bg-gray-100 active:bg-gray-200 transition-colors"
             >
               {/* Avatar */}
               <div className="relative flex-shrink-0">
@@ -607,45 +565,38 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                   <img 
                     src={photoPreview || user?.photo_url} 
                     alt="Profile" 
-                    className="w-9 h-9 rounded-full object-cover ring-2 ring-gray-200"
+                    className="w-8 h-8 rounded-full object-cover"
                   />
                 ) : (
-                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center ring-2 ring-gray-200">
-                    <User className="w-5 h-5 text-primary-600" />
+                  <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+                    <User className="w-4 h-4 text-gray-600" />
                   </div>
                 )}
                 <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-success-500 rounded-full border-2 border-white" />
               </div>
               
               {/* User Info */}
-              {!sidebarCollapsed && (
-                <div className="flex-1 min-w-0 text-left">
-                  <div className="text-sm font-semibold text-gray-900 truncate">
-                    {user?.first_name && user?.last_name 
-                      ? `${user.first_name} ${user.last_name}`
-                      : user?.first_name || user?.name || 'User'
-                    }
-                  </div>
-                  <div className="text-xs text-gray-500 capitalize truncate">
-                    {user?.role?.replace('_', ' ') || 'Role'}
-                  </div>
+              <div className="flex-1 min-w-0 text-left">
+                <div className="text-sm font-medium text-gray-900 truncate">
+                  {user?.first_name && user?.last_name 
+                    ? `${user.first_name} ${user.last_name}`
+                    : user?.first_name || user?.name || 'User'
+                  }
                 </div>
-              )}
-              
-              {!sidebarCollapsed && (
-                <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${
-                  profileDropdownOpen ? 'rotate-180' : ''
-                }`} />
-              )}
+                <div className="text-xs text-gray-500 capitalize truncate">
+                  {user?.role?.replace('_', ' ') || 'Role'}
+                </div>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
+                profileDropdownOpen ? 'rotate-180' : ''
+              }`} />
             </button>
 
             {/* Profile Dropdown */}
             {profileDropdownOpen && (
               <div 
                 ref={dropdownRef}
-                className={`absolute bottom-full mb-2 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-50 ${
-                  sidebarCollapsed ? 'left-full ml-2 w-56' : 'left-0 right-0'
-                }`}
+                className="absolute bottom-full mb-2 left-0 right-0 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden z-50"
               >
                 <div className="p-2">
                   <button
@@ -653,13 +604,13 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                       setShowAccountModal(true);
                       setProfileDropdownOpen(false);
                     }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors"
+                    className="w-full flex items-center gap-4 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
                   >
                     <Settings className="w-4 h-4 text-gray-500" />
                     <span className="font-medium">Account Settings</span>
                   </button>
                   
-                  <div className="border-t border-gray-100 my-1.5" />
+                  <div className="border-t border-gray-200 my-1" />
                   
                   <button
                     onClick={(e) => {
@@ -667,7 +618,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                       setProfileDropdownOpen(false);
                       handleLogout();
                     }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-danger-600 hover:bg-danger-50 rounded-md transition-colors"
+                    className="w-full flex items-center gap-4 px-3 py-2.5 text-sm text-danger-600 hover:bg-danger-50 rounded-xl transition-colors"
                   >
                     <LogOut className="w-4 h-4" />
                     <span className="font-medium">Sign out</span>
@@ -680,17 +631,23 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       </aside>
 
       {/* MAIN CONTENT AREA */}
-      <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${
-        sidebarCollapsed ? 'ml-16' : 'ml-64'
-      }`}>
+      <div className="flex-1 flex flex-col min-h-screen">
         {/* TOP HEADER */}
-        <header className="flex-shrink-0 h-16 bg-white border-b border-gray-200 flex items-center px-6">
+        <header className="flex-shrink-0 h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-4">
+          {/* Hamburger - always visible in header when sidebar is closed */}
+          <button
+            onClick={() => setSidebarCollapsed(false)}
+            className="w-10 h-10 rounded-full flex items-center justify-center text-gray-700 hover:bg-gray-100 active:bg-gray-200 transition-colors flex-shrink-0"
+            aria-label="Open sidebar"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
           <div className="flex-1">
             {title && (
               <div>
-                <h1 className="text-xl font-semibold text-gray-900">{title}</h1>
+                <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
                 {subtitle && (
-                  <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>
+                  <p className="text-sm text-gray-500">{subtitle}</p>
                 )}
               </div>
             )}

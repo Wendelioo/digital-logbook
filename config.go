@@ -30,28 +30,45 @@ type AppConfig struct {
 func LoadAppSettings() AppConfig {
 	defaultConfig := AppConfig{KioskMode: false}
 
-	// Try executable directory first (production)
+	// Try multiple locations for config.json
+	var configPaths []string
+
+	// 1. Executable directory (production - installed app)
 	exeDir, err := getExecutableDir()
-	if err != nil {
-		return defaultConfig
+	if err == nil {
+		configPaths = append(configPaths, filepath.Join(exeDir, "config.json"))
 	}
 
-	configPath := filepath.Join(exeDir, "config.json")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return defaultConfig
+	// 2. Current working directory (development / wails dev)
+	cwd, err := os.Getwd()
+	if err == nil {
+		configPaths = append(configPaths, filepath.Join(cwd, "config.json"))
 	}
 
-	var config AppConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return defaultConfig
+	// Try each path
+	for _, configPath := range configPaths {
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			continue
+		}
+
+		var config AppConfig
+		if err := json.Unmarshal(data, &config); err != nil {
+			log.Printf("⚠️  Failed to parse kiosk settings from %s: %v", configPath, err)
+			continue
+		}
+
+		if config.KioskMode {
+			log.Printf("🔒 Kiosk mode is ENABLED (loaded from %s)", configPath)
+		} else {
+			log.Printf("🔓 Kiosk mode is DISABLED (loaded from %s)", configPath)
+		}
+		return config
 	}
 
-	if config.KioskMode {
-		log.Println("🔒 Kiosk mode is ENABLED - app will run in fullscreen locked mode")
-	}
-
-	return config
+	log.Println("⚠️  No config.json found for kiosk settings - defaulting to kiosk_mode=false")
+	log.Printf("   Searched paths: %v", configPaths)
+	return defaultConfig
 }
 
 // getExecutableDir returns the directory where the executable is located

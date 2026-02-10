@@ -218,8 +218,6 @@ export function MarkEnrollmentDropped(arg1:number,arg2:number):Promise<void>;
 
 export function ProcessRegistration(arg1:main.ApprovalRequest):Promise<void>;
 
-export function UnlockScreen():Promise<void>;
-
 export function ReactivateEnrollment(arg1:number,arg2:number):Promise<void>;
 
 export function RecordAttendance(arg1:number,arg2:number,arg3:string,arg4:string,arg5:number):Promise<void>;
@@ -261,6 +259,8 @@ export function UnenrollStudentFromClass(arg1:number):Promise<void>;
 export function UnenrollStudentFromClassByIDs(arg1:number,arg2:number):Promise<void>;
 
 export function UnfinalizeAttendanceSheet(arg1:number,arg2:string):Promise<void>;
+
+export function UnlockScreen():Promise<void>;
 
 export function UpdateAttendanceRecord(arg1:number,arg2:number,arg3:string,arg4:string,arg5:string):Promise<void>;
 

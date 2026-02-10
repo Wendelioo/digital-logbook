@@ -398,12 +398,12 @@ export function InitializeAttendanceForClass(arg1, arg2, arg3) {
   return window['go']['main']['App']['InitializeAttendanceForClass'](arg1, arg2, arg3);
 }
 
-export function JoinClassByEDPCode(arg1, arg2) {
-  return window['go']['main']['App']['JoinClassByEDPCode'](arg1, arg2);
-}
-
 export function IsKioskMode() {
   return window['go']['main']['App']['IsKioskMode']();
+}
+
+export function JoinClassByEDPCode(arg1, arg2) {
+  return window['go']['main']['App']['JoinClassByEDPCode'](arg1, arg2);
 }
 
 export function LockScreen() {
@@ -416,10 +416,6 @@ export function Login(arg1, arg2) {
 
 export function Logout(arg1) {
   return window['go']['main']['App']['Logout'](arg1);
-}
-
-export function UnlockScreen() {
-  return window['go']['main']['App']['UnlockScreen']();
 }
 
 export function MarkAllEnrollmentsCompleted(arg1) {
@@ -520,6 +516,10 @@ export function UnenrollStudentFromClassByIDs(arg1, arg2) {
 
 export function UnfinalizeAttendanceSheet(arg1, arg2) {
   return window['go']['main']['App']['UnfinalizeAttendanceSheet'](arg1, arg2);
+}
+
+export function UnlockScreen() {
+  return window['go']['main']['App']['UnlockScreen']();
 }
 
 export function UpdateAttendanceRecord(arg1, arg2, arg3, arg4, arg5) {
