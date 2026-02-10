@@ -318,8 +318,8 @@ export function GetPendingRegistrations() {
   return window['go']['main']['App']['GetPendingRegistrations']();
 }
 
-export function GetProfilePhoto(arg1) {
-  return window['go']['main']['App']['GetProfilePhoto'](arg1);
+export function GetProfilePhotoURL(arg1) {
+  return window['go']['main']['App']['GetProfilePhotoURL'](arg1);
 }
 
 export function GetRecentAttendance(arg1, arg2) {
@@ -398,8 +398,16 @@ export function InitializeAttendanceForClass(arg1, arg2, arg3) {
   return window['go']['main']['App']['InitializeAttendanceForClass'](arg1, arg2, arg3);
 }
 
+export function IsKioskMode() {
+  return window['go']['main']['App']['IsKioskMode']();
+}
+
 export function JoinClassByEDPCode(arg1, arg2) {
   return window['go']['main']['App']['JoinClassByEDPCode'](arg1, arg2);
+}
+
+export function LockScreen() {
+  return window['go']['main']['App']['LockScreen']();
 }
 
 export function Login(arg1, arg2) {
@@ -420,10 +428,6 @@ export function MarkEnrollmentCompleted(arg1, arg2) {
 
 export function MarkEnrollmentDropped(arg1, arg2) {
   return window['go']['main']['App']['MarkEnrollmentDropped'](arg1, arg2);
-}
-
-export function MigrateProfilePhotosFromBlob() {
-  return window['go']['main']['App']['MigrateProfilePhotosFromBlob']();
 }
 
 export function ProcessRegistration(arg1) {
@@ -448,6 +452,10 @@ export function RecordTimeoutLogout(arg1) {
 
 export function SaveEquipmentFeedback(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
   return window['go']['main']['App']['SaveEquipmentFeedback'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
+}
+
+export function SaveProfilePhoto(arg1, arg2) {
+  return window['go']['main']['App']['SaveProfilePhoto'](arg1, arg2);
 }
 
 export function SearchUsers(arg1, arg2) {
@@ -510,6 +518,10 @@ export function UnfinalizeAttendanceSheet(arg1, arg2) {
   return window['go']['main']['App']['UnfinalizeAttendanceSheet'](arg1, arg2);
 }
 
+export function UnlockScreen() {
+  return window['go']['main']['App']['UnlockScreen']();
+}
+
 export function UpdateAttendanceRecord(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['UpdateAttendanceRecord'](arg1, arg2, arg3, arg4, arg5);
 }
@@ -532,8 +544,4 @@ export function UpdateUserPhoto(arg1, arg2, arg3) {
 
 export function UpdateUserProfilePhoto(arg1, arg2) {
   return window['go']['main']['App']['UpdateUserProfilePhoto'](arg1, arg2);
-}
-
-export function UploadProfilePhoto(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['UploadProfilePhoto'](arg1, arg2, arg3, arg4);
 }

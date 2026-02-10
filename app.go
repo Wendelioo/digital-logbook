@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"strings"
 	"time"
+
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // ==============================================================================
@@ -16,8 +17,10 @@ import (
 
 // App struct
 type App struct {
-	ctx context.Context
-	db  *sql.DB
+	ctx          context.Context
+	db           *sql.DB
+	kioskMode    bool
+	screenLocked bool
 }
 
 // NewApp creates a new App application struct
@@ -28,6 +31,11 @@ func NewApp() *App {
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Load app settings for kiosk mode
+	appConfig := LoadAppSettings()
+	a.kioskMode = appConfig.KioskMode
+	a.screenLocked = appConfig.KioskMode // Start locked if kiosk mode is on
 
 	// Initialize database connection with retry
 	var db *sql.DB
@@ -53,6 +61,54 @@ func (a *App) startup(ctx context.Context) {
 		a.db = db
 		log.Println("? Database connected successfully")
 	}
+
+	// If kiosk mode is on, force lock the screen on startup
+	// (using runtime API since Wails startup options alone aren't reliable)
+	if a.kioskMode {
+		go func() {
+			// Small delay to let the window fully initialize
+			time.Sleep(500 * time.Millisecond)
+			wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
+			wailsRuntime.WindowFullscreen(a.ctx)
+			log.Println("🔒 Kiosk mode: Screen locked on startup")
+		}()
+	}
+}
+
+// ==============================================================================
+// KIOSK / SCREEN LOCK METHODS
+// ==============================================================================
+
+// UnlockScreen is called after successful login.
+// Turns the app into a normal resizable window so the user can use it alongside other apps.
+func (a *App) UnlockScreen() {
+	if !a.kioskMode {
+		return
+	}
+	a.screenLocked = false
+	wailsRuntime.WindowUnfullscreen(a.ctx)
+	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, false)
+	wailsRuntime.WindowSetSize(a.ctx, 1000, 700)
+	wailsRuntime.WindowCenter(a.ctx)
+	log.Println("🔓 Screen unlocked - app is now a normal window")
+}
+
+// LockScreen is called after logout.
+// Restores fullscreen and always-on-top to force the next user to login.
+func (a *App) LockScreen() {
+	if !a.kioskMode {
+		return
+	}
+	a.screenLocked = true
+	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
+	wailsRuntime.WindowMaximise(a.ctx)
+	wailsRuntime.WindowFullscreen(a.ctx)
+	log.Println("🔒 Screen locked - waiting for next user to login")
+}
+
+// IsKioskMode returns whether kiosk mode is enabled (for frontend to know)
+func (a *App) IsKioskMode() bool {
+	return a.kioskMode
 }
 
 // ==============================================================================
@@ -72,7 +128,6 @@ type User struct {
 	StudentID      *string `json:"student_id"`
 	Email          *string `json:"email"`
 	ContactNumber  *string `json:"contact_number"`
-	PhotoPath      *string `json:"photo_path"` // File path to profile photo (improved from BLOB)
 	PhotoURL       *string `json:"photo_url"`  // Base64 data URL for frontend display
 	DepartmentCode *string `json:"department_code"`
 	Created        string  `json:"created"`
@@ -140,7 +195,6 @@ type ClassStudent struct {
 	Gender        *string `json:"gender,omitempty"`
 	Email         *string `json:"email,omitempty"`
 	ContactNumber *string `json:"contact_number,omitempty"`
-	PhotoPath     *string `json:"photo_path,omitempty"` // File path to profile photo
 	PhotoURL      *string `json:"photo_url,omitempty"`  // Base64 data URL for frontend display
 	ClassID       *int    `json:"class_id,omitempty"`
 	IsEnrolled    bool    `json:"is_enrolled"`
@@ -186,28 +240,28 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	// Count recent logins (last 24 hours)
 	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE login_time >= DATEADD(HOUR, -24, GETDATE())`).Scan(&dashboard.RecentLogins)
 
-	// Count active users now (logged in without logout)
-	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE logout_time IS NULL`).Scan(&dashboard.ActiveUsersNow)
+	// Count active users now (logged in today without logout, distinct per user)
+	a.db.QueryRow(`SELECT COUNT(DISTINCT user_id) FROM log_entries WHERE logout_time IS NULL AND CAST(login_time AS DATE) = CAST(GETDATE() AS DATE)`).Scan(&dashboard.ActiveUsersNow)
 
 	// Count students currently logged in (JOIN with users to get role)
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM log_entries ll
+		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
-		WHERE ll.logout_time IS NULL AND u.user_type = 'student'
+		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'student'
 	`).Scan(&dashboard.StudentsLoggedIn)
 
 	// Count teachers currently logged in
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM log_entries ll
+		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
-		WHERE ll.logout_time IS NULL AND u.user_type = 'teacher'
+		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'teacher'
 	`).Scan(&dashboard.TeachersLoggedIn)
 
 	// Count working students currently logged in
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM log_entries ll
+		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
-		WHERE ll.logout_time IS NULL AND u.user_type = 'working_student'
+		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'working_student'
 	`).Scan(&dashboard.WorkingStudentsLoggedIn)
 
 	// Count today's logins
@@ -600,56 +654,22 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 // ==============================================================================
 
 // UpdateUserPhoto updates a user's profile photo
-// This method accepts data URL format and uses the profile_photos table
+// Accepts a base64 data URL (e.g. "data:image/jpeg;base64,...") and stores it directly in the database.
 func (a *App) UpdateUserPhoto(userID int, userRole, photoURL string) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
 
-	// Extract base64 data from data URL and decode to binary
-	// The photoURL is expected to be in format: "data:image/jpeg;base64,/9j/4AAQ..."
-	var mimeType string
-	var base64Data string
-	
-	if strings.HasPrefix(photoURL, "data:") {
-		parts := strings.Split(photoURL, ",")
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid data URL format")
-		}
-		
-		// Extract MIME type from data URL header
-		header := parts[0]
-		if strings.Contains(header, "image/jpeg") || strings.Contains(header, "image/jpg") {
-			mimeType = "image/jpeg"
-		} else if strings.Contains(header, "image/png") {
-			mimeType = "image/png"
-		} else if strings.Contains(header, "image/gif") {
-			mimeType = "image/gif"
-		} else {
-			mimeType = "image/jpeg" // default
-		}
-		
-		base64Data = parts[1]
-	} else {
-		base64Data = photoURL
-		mimeType = "image/jpeg" // default
+	// If raw base64 without data URL prefix, wrap it
+	if !strings.HasPrefix(photoURL, "data:") {
+		photoURL = "data:image/jpeg;base64," + photoURL
 	}
 
-	// Decode Base64 to binary for storage
-	imageBytes, err := base64.StdEncoding.DecodeString(base64Data)
-	if err != nil {
-		return fmt.Errorf("failed to decode base64 image: %w", err)
-	}
-
-	// Generate a file name
-	fileName := fmt.Sprintf("user_%d_profile.jpg", userID)
-
-	// Use the UploadProfilePhoto method from profile_photos.go
-	err = a.UploadProfilePhoto(userID, imageBytes, fileName, mimeType)
+	err := a.SaveProfilePhoto(userID, photoURL)
 	if err != nil {
 		return fmt.Errorf("failed to update profile photo: %w", err)
 	}
 
-	log.Printf("Profile photo updated for user ID %d (%s) - %d bytes", userID, userRole, len(imageBytes))
+	log.Printf("Profile photo updated for user ID %d (%s)", userID, userRole)
 	return nil
 }

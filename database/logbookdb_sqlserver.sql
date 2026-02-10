@@ -43,13 +43,11 @@ GO
 
 /* ================================
    PROFILE PHOTOS
+   Stores profile photos as base64 data URLs directly in the database.
 ================================ */
 CREATE TABLE profile_photos (
     user_id INT PRIMARY KEY,
-    photo_path NVARCHAR(500) NOT NULL,
-    file_name NVARCHAR(255) NOT NULL,
-    file_size INT NOT NULL,
-    mime_type NVARCHAR(50) NOT NULL,
+    photo_data NVARCHAR(MAX) NOT NULL,
     uploaded_at DATETIME DEFAULT GETDATE(),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

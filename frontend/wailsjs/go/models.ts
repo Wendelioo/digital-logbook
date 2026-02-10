@@ -259,7 +259,6 @@ export namespace main {
 	    gender?: string;
 	    email?: string;
 	    contact_number?: string;
-	    photo_path?: string;
 	    photo_url?: string;
 	    class_id?: number;
 	    is_enrolled: boolean;
@@ -278,7 +277,6 @@ export namespace main {
 	        this.gender = source["gender"];
 	        this.email = source["email"];
 	        this.contact_number = source["contact_number"];
-	        this.photo_path = source["photo_path"];
 	        this.photo_url = source["photo_url"];
 	        this.class_id = source["class_id"];
 	        this.is_enrolled = source["is_enrolled"];
@@ -494,28 +492,6 @@ export namespace main {
 	        this.submitted_at = source["submitted_at"];
 	    }
 	}
-	export class ProfilePhoto {
-	    user_id: number;
-	    photo_path: string;
-	    file_name: string;
-	    file_size: number;
-	    mime_type: string;
-	    uploaded_at: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ProfilePhoto(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.user_id = source["user_id"];
-	        this.photo_path = source["photo_path"];
-	        this.file_name = source["file_name"];
-	        this.file_size = source["file_size"];
-	        this.mime_type = source["mime_type"];
-	        this.uploaded_at = source["uploaded_at"];
-	    }
-	}
 	export class RegistrationRequest {
 	    student_id: string;
 	    last_name: string;
@@ -654,7 +630,6 @@ export namespace main {
 	    student_id?: string;
 	    email?: string;
 	    contact_number?: string;
-	    photo_path?: string;
 	    photo_url?: string;
 	    department_code?: string;
 	    created: string;
@@ -677,7 +652,6 @@ export namespace main {
 	        this.student_id = source["student_id"];
 	        this.email = source["email"];
 	        this.contact_number = source["contact_number"];
-	        this.photo_path = source["photo_path"];
 	        this.photo_url = source["photo_url"];
 	        this.department_code = source["department_code"];
 	        this.created = source["created"];

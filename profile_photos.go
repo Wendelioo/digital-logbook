@@ -2,275 +2,121 @@ package main
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"fmt"
-	"io/ioutil"
 	"log"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
 // ==============================================================================
 // PROFILE PHOTO MANAGEMENT
+// Stores profile photos as base64 data URLs directly in the database.
+// No file system access needed — avoids permission issues in installed apps.
 // ==============================================================================
 
 const (
-	MaxPhotoSize     = 5 * 1024 * 1024 // 5MB
-	PhotoUploadDir   = "uploads/profiles"
-	AllowedMimeTypes = "image/jpeg,image/jpg,image/png,image/gif"
+	MaxPhotoSizeBytes = 5 * 1024 * 1024 // 5MB (decoded binary size)
 )
 
-// ProfilePhoto represents profile photo metadata
-type ProfilePhoto struct {
-	UserID     int    `json:"user_id"`
-	PhotoPath  string `json:"photo_path"`
-	FileName   string `json:"file_name"`
-	FileSize   int    `json:"file_size"`
-	MimeType   string `json:"mime_type"`
-	UploadedAt string `json:"uploaded_at"`
-}
-
-// UploadProfilePhoto handles profile photo upload and storage
-func (a *App) UploadProfilePhoto(userID int, photoData []byte, fileName string, mimeType string) error {
+// SaveProfilePhoto saves a base64 data URL to the profile_photos table.
+// photoDataURL should be in format: "data:image/jpeg;base64,/9j/4AAQ..."
+func (a *App) SaveProfilePhoto(userID int, photoDataURL string) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
 
-	// Validate file size
-	if len(photoData) > MaxPhotoSize {
-		return fmt.Errorf("file size exceeds maximum allowed size of 5MB")
+	// Validate it's a data URL
+	if !strings.HasPrefix(photoDataURL, "data:image/") {
+		return fmt.Errorf("invalid photo format: expected a data URL starting with data:image/")
 	}
 
-	// Validate MIME type
-	if !strings.Contains(AllowedMimeTypes, mimeType) {
-		return fmt.Errorf("invalid file type. Allowed types: jpeg, jpg, png, gif")
+	// Validate rough size (base64 string is ~1.33x the binary size)
+	parts := strings.SplitN(photoDataURL, ",", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid data URL format")
 	}
 
-	// Create upload directory if it doesn't exist
-	if err := os.MkdirAll(PhotoUploadDir, 0755); err != nil {
-		return fmt.Errorf("failed to create upload directory: %w", err)
+	decoded, err := base64.StdEncoding.DecodeString(parts[1])
+	if err != nil {
+		return fmt.Errorf("invalid base64 data: %w", err)
+	}
+	if len(decoded) > MaxPhotoSizeBytes {
+		return fmt.Errorf("photo exceeds maximum size of 5MB")
 	}
 
-	// Generate file path
-	ext := filepath.Ext(fileName)
-	if ext == "" {
-		// Determine extension from MIME type
-		switch mimeType {
-		case "image/jpeg", "image/jpg":
-			ext = ".jpg"
-		case "image/png":
-			ext = ".png"
-		case "image/gif":
-			ext = ".gif"
-		default:
-			ext = ".jpg"
-		}
-	}
-
-	photoFileName := fmt.Sprintf("user_%d%s", userID, ext)
-	photoPath := filepath.Join(PhotoUploadDir, photoFileName)
-
-	// Save file to disk
-	if err := ioutil.WriteFile(photoPath, photoData, 0644); err != nil {
-		return fmt.Errorf("failed to write photo file: %w", err)
-	}
-
-	log.Printf("Saved profile photo to: %s", photoPath)
-
-	// Insert or update profile_photos table
+	// Upsert: insert or update the photo_data for this user
 	query := `
 		MERGE profile_photos AS target
-		USING (SELECT ? AS user_id, ? AS photo_path, ? AS file_name, ? AS file_size, ? AS mime_type) AS source
+		USING (SELECT ? AS user_id, ? AS photo_data) AS source
 		ON target.user_id = source.user_id
 		WHEN MATCHED THEN
-			UPDATE SET photo_path = source.photo_path, file_name = source.file_name, file_size = source.file_size, mime_type = source.mime_type, uploaded_at = CURRENT_TIMESTAMP
+			UPDATE SET photo_data = source.photo_data, uploaded_at = CURRENT_TIMESTAMP
 		WHEN NOT MATCHED THEN
-			INSERT (user_id, photo_path, file_name, file_size, mime_type)
-			VALUES (source.user_id, source.photo_path, source.file_name, source.file_size, source.mime_type);
+			INSERT (user_id, photo_data) VALUES (source.user_id, source.photo_data);
 	`
 
-	_, err := a.db.Exec(query, userID, photoPath, fileName, len(photoData), mimeType)
+	_, err = a.db.Exec(query, userID, photoDataURL)
 	if err != nil {
-		// Clean up file if database insert fails
-		os.Remove(photoPath)
-		return fmt.Errorf("failed to save photo metadata: %w", err)
+		return fmt.Errorf("failed to save profile photo: %w", err)
 	}
 
-	log.Printf("Profile photo uploaded successfully for user %d", userID)
+	log.Printf("Profile photo saved to database for user %d (%d bytes)", userID, len(decoded))
 	return nil
 }
 
-// GetProfilePhoto retrieves profile photo path for a user
-func (a *App) GetProfilePhoto(userID int) (*ProfilePhoto, error) {
+// GetProfilePhotoURL retrieves the base64 data URL for a user's profile photo.
+// Returns empty string if no photo exists.
+func (a *App) GetProfilePhotoURL(userID int) (string, error) {
 	if err := a.checkDB(); err != nil {
-		return nil, err
+		return "", err
 	}
 
-	query := `
-		SELECT user_id, photo_path, file_name, file_size, mime_type, uploaded_at
-		FROM profile_photos
-		WHERE user_id = ?
-	`
-
-	var photo ProfilePhoto
-	err := a.db.QueryRow(query, userID).Scan(
-		&photo.UserID,
-		&photo.PhotoPath,
-		&photo.FileName,
-		&photo.FileSize,
-		&photo.MimeType,
-		&photo.UploadedAt,
-	)
-
+	var photoData sql.NullString
+	err := a.db.QueryRow(`SELECT photo_data FROM profile_photos WHERE user_id = ?`, userID).Scan(&photoData)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil // No photo found
+			return "", nil
 		}
-		return nil, err
+		return "", err
 	}
 
-	return &photo, nil
+	if !photoData.Valid {
+		return "", nil
+	}
+
+	return photoData.String, nil
 }
 
-// DeleteProfilePhoto removes a user's profile photo
+// DeleteProfilePhoto removes a user's profile photo from the database.
 func (a *App) DeleteProfilePhoto(userID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
 
-	// Get photo path before deleting from database
-	photo, err := a.GetProfilePhoto(userID)
+	result, err := a.db.Exec("DELETE FROM profile_photos WHERE user_id = ?", userID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to delete profile photo: %w", err)
 	}
 
-	if photo == nil {
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
 		return fmt.Errorf("no profile photo found for user %d", userID)
-	}
-
-	// Delete from database
-	_, err = a.db.Exec("DELETE FROM profile_photos WHERE user_id = ?", userID)
-	if err != nil {
-		return fmt.Errorf("failed to delete photo metadata: %w", err)
-	}
-
-	// Delete file from disk
-	if err := os.Remove(photo.PhotoPath); err != nil {
-		log.Printf("Warning: Failed to delete photo file %s: %v", photo.PhotoPath, err)
-		// Don't return error if file deletion fails - database record is already deleted
 	}
 
 	log.Printf("Profile photo deleted for user %d", userID)
 	return nil
 }
 
-// MigrateProfilePhotosFromBlob migrates existing BLOB photos to file system
-// This should be run once during migration from old schema to new schema
-func (a *App) MigrateProfilePhotosFromBlob() error {
-	if err := a.checkDB(); err != nil {
-		return err
+// loadUserPhotoURL is a helper that loads a user's photo data URL from the DB
+// and sets the PhotoURL field on the user struct. Used during login and user listing.
+func (a *App) loadUserPhotoURL(user *User) {
+	var photoData sql.NullString
+	err := a.db.QueryRow(`SELECT photo_data FROM profile_photos WHERE user_id = ?`, user.ID).Scan(&photoData)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("Warning: Failed to load profile photo for user %d: %v", user.ID, err)
+		return
 	}
-
-	log.Println("Starting profile photo migration from BLOB to file system...")
-
-	// Create upload directory
-	if err := os.MkdirAll(PhotoUploadDir, 0755); err != nil {
-		return fmt.Errorf("failed to create upload directory: %w", err)
+	if photoData.Valid {
+		user.PhotoURL = &photoData.String
 	}
-
-	migratedCount := 0
-	errorCount := 0
-
-	// Migrate admin photos
-	adminQuery := `SELECT user_id, profile_photo FROM admins WHERE profile_photo IS NOT NULL`
-	if count, errors := a.migratePhotosFromTable(adminQuery); errors == 0 {
-		migratedCount += count
-	} else {
-		errorCount += errors
-	}
-
-	// Migrate teacher photos
-	teacherQuery := `SELECT user_id, profile_photo FROM teachers WHERE profile_photo IS NOT NULL`
-	if count, errors := a.migratePhotosFromTable(teacherQuery); errors == 0 {
-		migratedCount += count
-	} else {
-		errorCount += errors
-	}
-
-	// Migrate student photos
-	studentQuery := `SELECT user_id, profile_photo FROM students WHERE profile_photo IS NOT NULL`
-	if count, errors := a.migratePhotosFromTable(studentQuery); errors == 0 {
-		migratedCount += count
-	} else {
-		errorCount += errors
-	}
-
-	log.Printf("Migration complete: %d photos migrated, %d errors", migratedCount, errorCount)
-
-	if errorCount > 0 {
-		return fmt.Errorf("migration completed with %d errors", errorCount)
-	}
-
-	return nil
-}
-
-// Helper function to migrate photos from a specific table
-func (a *App) migratePhotosFromTable(query string) (int, int) {
-	rows, err := a.db.Query(query)
-	if err != nil {
-		log.Printf("Error querying photos: %v", err)
-		return 0, 1
-	}
-	defer rows.Close()
-
-	migratedCount := 0
-	errorCount := 0
-
-	for rows.Next() {
-		var userID int
-		var photoBlob []byte
-
-		if err := rows.Scan(&userID, &photoBlob); err != nil {
-			log.Printf("Error scanning photo row: %v", err)
-			errorCount++
-			continue
-		}
-
-		// Save photo to file system
-		photoFileName := fmt.Sprintf("user_%d.jpg", userID)
-		photoPath := filepath.Join(PhotoUploadDir, photoFileName)
-
-		if err := ioutil.WriteFile(photoPath, photoBlob, 0644); err != nil {
-			log.Printf("Error writing photo file for user %d: %v", userID, err)
-			errorCount++
-			continue
-		}
-
-		// Insert into profile_photos table
-		insertQuery := `
-			MERGE profile_photos AS target
-			USING (SELECT ? AS user_id, ? AS photo_path, ? AS file_name, ? AS file_size, ? AS mime_type) AS source
-			ON target.user_id = source.user_id
-			WHEN MATCHED THEN
-				UPDATE SET photo_path = source.photo_path, file_size = source.file_size
-			WHEN NOT MATCHED THEN
-				INSERT (user_id, photo_path, file_name, file_size, mime_type)
-				VALUES (source.user_id, source.photo_path, source.file_name, source.file_size, source.mime_type);
-		`
-
-		_, err = a.db.Exec(insertQuery, userID, photoPath, photoFileName, len(photoBlob), "image/jpeg")
-		if err != nil {
-			log.Printf("Error inserting photo metadata for user %d: %v", userID, err)
-			os.Remove(photoPath) // Clean up file
-			errorCount++
-			continue
-		}
-
-		migratedCount++
-		if migratedCount%100 == 0 {
-			log.Printf("Migrated %d photos...", migratedCount)
-		}
-	}
-
-	return migratedCount, errorCount
 }

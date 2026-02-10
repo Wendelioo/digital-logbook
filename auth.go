@@ -2,11 +2,9 @@ package main
 
 import (
 	"database/sql"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -199,20 +197,8 @@ func (a *App) loadUserProfile(user *User) error {
 	user.LastName = scanNullString(lastName)
 	user.Email = scanNullString(email)
 
-	// Load profile photo
-	var photoPath sql.NullString
-	err := a.db.QueryRow(`SELECT photo_path FROM profile_photos WHERE user_id = ?`, user.ID).Scan(&photoPath)
-	if err != nil && err != sql.ErrNoRows {
-		log.Printf("Warning: Failed to load profile photo for user %d: %v", user.ID, err)
-	}
-	if photoPath.Valid {
-		user.PhotoPath = &photoPath.String
-		if photoDataURL, err := a.convertPhotoToDataURL(photoPath.String); err != nil {
-			log.Printf("Warning: Failed to convert photo to data URL for user %d: %v", user.ID, err)
-		} else {
-			user.PhotoURL = &photoDataURL
-		}
-	}
+	// Load profile photo from database
+	a.loadUserPhotoURL(user)
 
 	return nil
 }
@@ -230,21 +216,4 @@ func (a *App) createLoginLog(userID int, pcNumber string) (int, error) {
 	return logID, nil
 }
 
-// convertPhotoToDataURL reads a photo file and converts it to a base64 data URL
-func (a *App) convertPhotoToDataURL(filePath string) (string, error) {
-	fileBytes, err := os.ReadFile(filePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read photo file: %w", err)
-	}
 
-	// Determine MIME type from extension
-	mimeType := "image/jpeg"
-	lower := strings.ToLower(filePath)
-	if strings.HasSuffix(lower, ".png") {
-		mimeType = "image/png"
-	} else if strings.HasSuffix(lower, ".gif") {
-		mimeType = "image/gif"
-	}
-
-	return fmt.Sprintf("data:%s;base64,%s", mimeType, base64.StdEncoding.EncodeToString(fileBytes)), nil
-}
