@@ -105,8 +105,8 @@ function Table<T extends Record<string, any>>({
 
   return (
     <div className="bg-white rounded-xl shadow-soft border border-gray-200 overflow-hidden">
-      <div className={`overflow-x-auto ${stickyHeader ? 'max-h-[600px] overflow-y-auto' : ''}`}>
-        <table className="min-w-full divide-y divide-gray-200">
+      <div className={`overflow-x-auto overflow-y-auto ${stickyHeader ? 'max-h-[600px]' : ''}`} style={{ WebkitOverflowScrolling: 'touch' }}>
+        <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
           <thead className={`bg-gray-50 ${stickyHeader ? 'sticky top-0 z-10 shadow-sm' : ''}`}>
             <tr>
               {columns.map((column) => (
@@ -118,9 +118,9 @@ function Table<T extends Record<string, any>>({
                     text-xs font-semibold text-gray-700 uppercase tracking-wider
                     ${getAlignmentClass(column.align)}
                     ${column.sortable ? 'cursor-pointer select-none hover:bg-gray-100 transition-colors' : ''}
-                    ${column.width ? column.width : ''}
+                    ${column.width ? '' : 'whitespace-nowrap'}
                   `}
-                  style={column.width ? { width: column.width } : undefined}
+                  style={column.width ? { width: column.width, minWidth: column.width } : { minWidth: '100px' }}
                   onClick={() => column.sortable && handleHeaderClick(column)}
                 >
                   <div className="flex items-center gap-2">
@@ -188,6 +188,7 @@ function Table<T extends Record<string, any>>({
                         text-sm text-gray-900
                         ${getAlignmentClass(column.align)}
                       `}
+                      style={{ whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: column.width || 'none' }}
                     >
                       {getCellValue(item, column)}
                     </td>

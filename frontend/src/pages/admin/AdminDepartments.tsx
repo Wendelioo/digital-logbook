@@ -5,7 +5,8 @@ import {
   Edit,
   Trash2,
   Search,
-  X
+  X,
+  AlertCircle
 } from 'lucide-react';
 import {
   GetDepartments,
@@ -25,6 +26,9 @@ function DepartmentManagement() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [selectedDeptForStatus, setSelectedDeptForStatus] = useState<{ code: string; name: string; currentStatus: boolean; newStatus: boolean } | null>(null);
+  const [changingStatus, setChangingStatus] = useState(false);
   const [formData, setFormData] = useState({
     departmentCode: '',
     departmentName: '',
@@ -102,6 +106,45 @@ function DepartmentManagement() {
         const errorMessage = error instanceof Error ? error.message : 'Failed to delete department. Please try again.';
         showNotification('error', errorMessage);
       }
+    }
+  };
+
+  const handleStatusChange = (deptCode: string, deptName: string, currentStatus: boolean, newStatus: boolean) => {
+    if (currentStatus === newStatus) return;
+    
+    setSelectedDeptForStatus({ code: deptCode, name: deptName, currentStatus, newStatus });
+    setShowStatusModal(true);
+  };
+
+  const confirmStatusChange = async () => {
+    if (!selectedDeptForStatus) return;
+
+    setChangingStatus(true);
+    try {
+      // Update department with new status (keeping the same code, name, and description)
+      const dept = departments.find(d => d.department_code === selectedDeptForStatus.code);
+      if (!dept) {
+        throw new Error('Department not found');
+      }
+      
+      await UpdateDepartment(
+        dept.department_code,
+        dept.department_code,
+        dept.department_name,
+        dept.description || '',
+        selectedDeptForStatus.newStatus
+      );
+      
+      showNotification('success', `Department ${selectedDeptForStatus.newStatus ? 'activated' : 'deactivated'} successfully!`);
+      await loadDepartments();
+      setShowStatusModal(false);
+      setSelectedDeptForStatus(null);
+    } catch (error) {
+      console.error('Failed to change department status:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to change department status. Please try again.';
+      showNotification('error', errorMessage);
+    } finally {
+      setChangingStatus(false);
     }
   };
 
@@ -367,12 +410,18 @@ function DepartmentManagement() {
                     {dept.description || dept.department_name}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${dept.is_active
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-red-100 text-red-800'
-                      }`}>
-                      {dept.is_active ? 'Active' : 'Inactive'}
-                    </span>
+                    <select
+                      value={dept.is_active ? 'active' : 'inactive'}
+                      onChange={(e) => handleStatusChange(dept.department_code, dept.department_name, dept.is_active, e.target.value === 'active')}
+                      className={`px-3 py-1 border rounded-md text-xs font-medium focus:outline-none focus:ring-2 ${
+                        dept.is_active 
+                          ? 'bg-green-50 text-green-700 border-green-200 focus:ring-green-500'
+                          : 'bg-red-50 text-red-700 border-red-200 focus:ring-red-500'
+                      }`}
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
@@ -438,6 +487,96 @@ function DepartmentManagement() {
           </div>
         </div>
       </div>
+
+      {/* Status Change Confirmation Modal */}
+      {showStatusModal && selectedDeptForStatus && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                  selectedDeptForStatus.newStatus ? 'bg-green-100' : 'bg-red-100'
+                }`}>
+                  <AlertCircle className={`h-6 w-6 ${
+                    selectedDeptForStatus.newStatus ? 'text-green-600' : 'text-red-600'
+                  }`} />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Change Department Status
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  setShowStatusModal(false);
+                  setSelectedDeptForStatus(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="mb-6">
+              <p className="text-gray-700 mb-2">
+                Department: <strong>{selectedDeptForStatus.name}</strong>
+              </p>
+              {selectedDeptForStatus.newStatus ? (
+                <>
+                  <p className="text-gray-700 mb-3">
+                    You are about to <strong className="text-green-600">activate</strong> this department.
+                  </p>
+                  <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                    <h4 className="font-semibold text-green-800 mb-2">Changes when activated:</h4>
+                    <ul className="text-sm text-green-700 space-y-1 list-disc list-inside">
+                      <li>Department will be available for new user assignments</li>
+                      <li>Classes can be created under this department</li>
+                      <li>Department will appear in all active listings</li>
+                    </ul>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-gray-700 mb-3">
+                    You are about to <strong className="text-red-600">deactivate</strong> this department.
+                  </p>
+                  <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                    <h4 className="font-semibold text-red-800 mb-2">Restrictions when inactive:</h4>
+                    <ul className="text-sm text-red-700 space-y-1 list-disc list-inside">
+                      <li>New users <strong>cannot be assigned</strong> to this department</li>
+                      <li>New classes <strong>cannot be created</strong> under this department</li>
+                      <li>Existing data remains viewable</li>
+                      <li>Department will be hidden from active selections</li>
+                    </ul>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3">
+              <Button
+                onClick={() => {
+                  setShowStatusModal(false);
+                  setSelectedDeptForStatus(null);
+                }}
+                variant="outline"
+                disabled={changingStatus}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmStatusChange}
+                variant={selectedDeptForStatus.newStatus ? 'success' : 'danger'}
+                disabled={changingStatus}
+              >
+                {changingStatus ? 'Changing...' : selectedDeptForStatus.newStatus ? 'Activate Department' : 'Deactivate Department'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

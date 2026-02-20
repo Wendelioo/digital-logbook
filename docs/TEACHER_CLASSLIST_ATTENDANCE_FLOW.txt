@@ -1,0 +1,1058 @@
+================================================================================
+TEACHER CLASSLIST & ATTENDANCE SYSTEM - DETAILED LOGIC & FLOW
+================================================================================
+Digital Logbook - Academic Institution PC Laboratory Attendance Tracking
+Last Updated: February 10, 2026
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+1. OVERVIEW
+2. DATABASE SCHEMA
+3. CLASSLIST MANAGEMENT FLOW
+4. ATTENDANCE MANAGEMENT FLOW
+5. BACKEND GO METHODS (API)
+6. FRONTEND COMPONENTS
+7. COMPLETE USER WORKFLOWS
+8. BUSINESS RULES & VALIDATIONS
+9. EDGE CASES & ERROR HANDLING
+
+================================================================================
+1. OVERVIEW
+================================================================================
+
+The Teacher Classlist & Attendance system consists of two interconnected modules:
+
+A. CLASSLIST MODULE
+   - Teachers manage which students are enrolled in their classes
+   - Students can be added individually or in bulk
+   - Each student has an enrollment status (active, dropped, completed)
+   - Supports archiving of classlists for historical records
+
+B. ATTENDANCE MODULE
+   - Teachers generate attendance sheets for specific dates
+   - Attendance is initialized with all enrolled students marked as "absent"
+   - Teachers manually mark students as "present" or "late"
+   - Attendance sheets can be finalized to prevent further edits
+   - Supports archiving and deletion of attendance records
+
+DEPENDENCIES:
+   - Attendance generation requires students to be enrolled in the classlist
+   - Only "active" students in the classlist are included in attendance sheets
+   - Archived/dropped students are excluded from new attendance sheets
+
+================================================================================
+2. DATABASE SCHEMA
+================================================================================
+
+RELEVANT TABLES:
+----------------
+
+A. classes
+   - class_id (PK): Unique identifier for each class
+   - subject_code: Reference to subjects table
+   - teacher_id: Reference to teachers.id (NOT user_id)
+   - edp_code: Enrollment Data Processing code (unique identifier)
+   - schedule: Class schedule (e.g., "MWF 10:00-11:00")
+   - room: Room number/location
+   - semester: e.g., "1st Semester", "2nd Semester"
+   - school_year: e.g., "2025-2026"
+   - is_active: Boolean (1 = active, 0 = deleted/archived)
+   - created_by_user_id: User ID who created the class
+
+B. classlist
+   - classlist_id (PK): Auto-increment identifier
+   - class_id (FK): References classes.class_id
+   - student_id (FK): References students.id (teacher-specific student ID, NOT user_id)
+   - status: ENUM('active', 'dropped', 'completed')
+   - date_enrolled: Date when student was added to class
+   - is_archived: Boolean (0 = active, 1 = archived)
+   - created_at, updated_at: Timestamps
+
+C. attendance
+   - attendance_id (PK): Auto-increment identifier
+   - class_id (FK): References classes.class_id
+   - student_id (FK): References students.id (NOT user_id)
+   - date: Date of attendance (YYYY-MM-DD format)
+   - status: VARCHAR - 'present', 'absent', 'late'
+   - remarks: TEXT - Additional notes (e.g., "Signed in at 10:45")
+   - is_finalized: BIT (0 = editable, 1 = locked)
+   - is_archived: BIT (0 = active, 1 = archived)
+   - created_at, updated_at: Timestamps
+
+D. students
+   - id (PK): Teacher-specific student identifier
+   - user_id (FK): References users.id (global user account)
+   - student_code: Unique student identifier (e.g., "2021-12345")
+   - first_name, last_name, middle_name
+   - course, year_level, section
+   - department_id: Organizational grouping
+
+E. users
+   - id (PK): Global user identifier
+   - username: Unique login username
+   - password: Hashed password
+   - user_type: ENUM('admin', 'teacher', 'student', 'working_student')
+
+KEY RELATIONSHIPS:
+------------------
+   classes.teacher_id → teachers.id
+   teachers.user_id → users.id
+   classlist.student_id → students.id
+   students.user_id → users.id
+   attendance.student_id → students.id
+
+IMPORTANT NOTE ON IDs:
+   - student_id in classlist/attendance refers to students.id (teacher-specific)
+   - To get the user account, use: students.user_id → users.id
+   - Teachers are identified by teachers.id in classes, but by users.id in app context
+
+================================================================================
+3. CLASSLIST MANAGEMENT FLOW
+================================================================================
+
+A. VIEWING CLASSLIST
+--------------------
+   FRONTEND ROUTE: /teacher/classes/:classId
+   COMPONENT: TeacherClassDetail.tsx
+
+   FLOW:
+   1. Teacher navigates to class detail page
+   2. Frontend calls GetClassStudents(classId)
+   3. Backend queries:
+      ```sql
+      SELECT cl.classlist_id, s.id as student_user_id, s.student_code,
+             s.first_name, s.last_name, s.middle_name,
+             s.course, s.year_level, s.section,
+             cl.status, cl.date_enrolled, cl.is_archived
+      FROM classlist cl
+      INNER JOIN students s ON cl.student_id = s.id
+      WHERE cl.class_id = ? AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
+      ORDER BY s.last_name, s.first_name
+      ```
+   4. Returns array of ClassStudent objects
+   5. Frontend displays table with columns:
+      - Student Code
+      - Last Name, First Name
+      - Course, Year & Section
+      - Status (Active/Dropped/Completed badge)
+      - Actions (Remove button)
+
+B. ADDING STUDENTS (INDIVIDUAL)
+--------------------------------
+   FRONTEND: Modal with student search
+   BACKEND METHOD: AddStudentToClass(classID, studentUserID, enrolledBy)
+
+   FLOW:
+   1. Teacher clicks "Add" button
+   2. Modal opens with search interface
+   3. Teacher searches for student by:
+      - Student code
+      - Name
+      - Course
+   4. Frontend calls GetAvailableStudentsForClass(classId)
+      - Returns students NOT already enrolled (excludes active enrollments)
+      - Filters by is_archived = 0
+   5. Teacher selects student from dropdown
+   6. Frontend calls AddStudentToClass(classId, studentUserID, teacherUserID)
+   7. Backend:
+      a. Converts user_id to student.id:
+         ```sql
+         SELECT id FROM students WHERE user_id = ?
+         ```
+      b. Checks for duplicate enrollment:
+         ```sql
+         SELECT COUNT(*) FROM classlist
+         WHERE class_id = ? AND student_id = ? AND status = 'active'
+         ```
+      c. Inserts new enrollment:
+         ```sql
+         INSERT INTO classlist (class_id, student_id, status, date_enrolled)
+         VALUES (?, ?, 'active', CURRENT_TIMESTAMP)
+         ```
+   8. Frontend refreshes classlist
+   9. Success message displayed
+
+C. ADDING STUDENTS (BULK CSV)
+------------------------------
+   FRONTEND: CSV file upload modal
+   BACKEND METHOD: AddStudentsToClassBulk(classID, csvFilePath)
+
+   FLOW:
+   1. Teacher clicks "Import CSV" button
+   2. File picker opens (accepts .csv only)
+   3. Teacher selects CSV file with columns:
+      - student_code (required)
+      - first_name (required)
+      - last_name (required)
+      - middle_name (optional)
+      - course (optional)
+      - year_level (optional)
+      - section (optional)
+   4. Frontend uploads file to server
+   5. Backend:
+      a. Parses CSV using encoding/csv
+      b. Validates headers match expected columns
+      c. For each row:
+         - Looks up student by student_code
+         - If not found, skips with warning
+         - If found, calls AddStudentToClass()
+      d. Returns summary:
+         - Total processed
+         - Successfully added
+         - Skipped (already enrolled)
+         - Errors (student not found)
+   6. Frontend displays summary report
+   7. Refreshes classlist
+
+D. REMOVING STUDENTS
+--------------------
+   FRONTEND: Remove button in classlist table
+   BACKEND METHOD: RemoveStudentFromClass(classID, studentUserID)
+
+   FLOW:
+   1. Teacher clicks trash icon next to student
+   2. Confirmation dialog appears:
+      "Remove [Student Name] from this class? This action cannot be undone."
+   3. On confirm, frontend calls RemoveStudentFromClass()
+   4. Backend:
+      a. Converts user_id to student.id
+      b. HARD DELETE from classlist:
+         ```sql
+         DELETE FROM classlist
+         WHERE class_id = ? AND student_id = ?
+         ```
+      c. Optionally deletes associated attendance records:
+         ```sql
+         DELETE FROM attendance
+         WHERE class_id = ? AND student_id = ?
+         ```
+   5. Frontend refreshes classlist
+   6. Success message displayed
+
+   BUSINESS RULE:
+   - Removing a student also removes ALL their attendance records for that class
+   - This is permanent and cannot be undone
+   - Consider soft-delete (status = 'dropped') for audit trail
+
+E. UPDATING STUDENT STATUS
+---------------------------
+   FRONTEND: Status dropdown in classlist table
+   BACKEND METHOD: UpdateClasslistStatus(classlistID, status)
+
+   FLOW:
+   1. Teacher selects new status from dropdown:
+      - Active (enrolled and attending)
+      - Dropped (withdrawn from class)
+      - Completed (finished the course)
+   2. Frontend calls UpdateClasslistStatus()
+   3. Backend:
+      ```sql
+      UPDATE classlist
+      SET status = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE classlist_id = ?
+      ```
+   4. Status badge updates in UI
+
+   BUSINESS RULE:
+   - Only 'active' students appear in new attendance sheets
+   - Dropped/completed students remain in historical attendance
+   - Status change does NOT delete existing attendance records
+
+================================================================================
+4. ATTENDANCE MANAGEMENT FLOW
+================================================================================
+
+A. VIEWING ATTENDANCE CLASSES
+------------------------------
+   FRONTEND ROUTE: /teacher/attendance
+   COMPONENT: TeacherAttendanceSelection.tsx
+
+   FLOW:
+   1. Teacher navigates to attendance management
+   2. Frontend calls GetTeacherClassesWithAttendance(teacherUserID)
+   3. Backend queries:
+      ```sql
+      SELECT c.class_id, c.subject_code, s.description as subject_name,
+             c.schedule, c.room, c.semester, c.school_year,
+             COALESCE(enrollment_count.count, 0) as enrolled_count,
+             CONVERT(VARCHAR(10),
+               (SELECT MAX(a.date) FROM attendance a
+                WHERE a.class_id = c.class_id
+                AND (a.is_archived = 0 OR a.is_archived IS NULL)),
+             120) as latest_attendance_date,
+             COALESCE(
+               (SELECT MAX(CAST(a.is_finalized AS INT)) FROM attendance a
+                WHERE a.class_id = c.class_id
+                AND (a.is_archived = 0 OR a.is_archived IS NULL)
+                AND a.date = (SELECT MAX(a2.date) FROM attendance a2
+                              WHERE a2.class_id = c.class_id)),
+               0
+             ) as is_attendance_finalized
+      FROM classes c
+      LEFT JOIN subjects s ON c.subject_code = s.subject_code
+      LEFT JOIN teachers t ON c.teacher_id = t.id
+      LEFT JOIN (
+        SELECT class_id, COUNT(*) as count
+        FROM classlist
+        GROUP BY class_id
+      ) enrollment_count ON c.class_id = enrollment_count.class_id
+      WHERE c.teacher_id = ? AND c.is_active = 1
+      AND EXISTS (SELECT 1 FROM attendance
+                  WHERE attendance.class_id = c.class_id
+                  AND (attendance.is_archived = 0 OR attendance.is_archived IS NULL))
+      ORDER BY c.subject_code, c.semester, c.school_year
+      ```
+   4. Displays table showing:
+      - Subject code and name
+      - Enrolled student count
+      - Latest attendance date
+      - Finalized status (green checkmark or clock icon)
+      - Action buttons (View, Edit, Delete)
+
+B. GENERATING ATTENDANCE SHEET
+-------------------------------
+   FRONTEND: Modal with class selection
+   BACKEND METHOD: GenerateAttendanceFromLogs(classID, date, recordedBy)
+
+   DETAILED FLOW:
+   1. Teacher clicks "ADD NEW" button
+   2. Modal opens: "Generate Attendance"
+   3. Frontend loads all teacher's classes with GetTeacherClassesByUserID()
+      - Includes classes WITHOUT attendance (for first-time generation)
+   4. Teacher selects class from dropdown
+   5. Date is auto-set to TODAY (YYYY-MM-DD format)
+   6. Teacher clicks "Generate" button
+   7. Frontend calls CheckAttendanceExists(classID, today)
+   8. Backend checks:
+      ```sql
+      SELECT COUNT(*) FROM attendance
+      WHERE class_id = ? AND date = ?
+      AND (is_archived = 0 OR is_archived IS NULL)
+      ```
+   9. If attendance already exists:
+      a. Yellow warning banner appears:
+         "An attendance sheet already exists for this class today.
+          Regenerating will reset all students back to 'absent'. Are you sure?"
+      b. Button changes from green "Generate" to red "Yes, Regenerate"
+      c. confirmRegenerate state = true
+      d. Teacher must click again to confirm
+   10. On confirmed Generate:
+       a. Frontend calls GenerateAttendanceFromLogs(classID, today, teacherUserID)
+       b. Backend:
+          i. Validates date format (2006-01-02)
+          ii. Calls GetClassStudents(classID) to get enrolled students
+          iii. Filters for status = 'active' only
+          iv. For each active student:
+              ```sql
+              MERGE attendance AS target
+              USING (SELECT ? AS class_id, ? AS student_id, ? AS date,
+                           'absent' AS status, 0 AS is_archived,
+                           CURRENT_TIMESTAMP AS created_at) AS source
+              ON target.class_id = source.class_id
+                 AND target.student_id = source.student_id
+                 AND target.date = source.date
+              WHEN MATCHED THEN
+                UPDATE SET status = 'absent', is_archived = 0,
+                          updated_at = CURRENT_TIMESTAMP
+              WHEN NOT MATCHED THEN
+                INSERT (class_id, student_id, date, status,
+                        is_archived, created_at)
+                VALUES (source.class_id, source.student_id, source.date,
+                        source.status, source.is_archived, source.created_at);
+              ```
+          v. Logs: "✓ Attendance generated for class X on YYYY-MM-DD"
+   11. Frontend:
+       a. Closes modal
+       b. Reloads class list with GetTeacherClassesWithAttendance()
+       c. Navigates to attendance detail page:
+          /teacher/attendance/:classId?date=YYYY-MM-DD&generated=true
+   12. Success notification displayed
+
+   KEY BEHAVIORS:
+   - MERGE prevents true duplicates (only one record per class/student/date)
+   - Regenerating RESETS all students to 'absent' (overwrites existing data)
+   - Only 'active' students are included
+   - Dropped/completed students are excluded
+   - If no students enrolled, sheet is still created (empty)
+
+C. VIEWING & EDITING ATTENDANCE
+--------------------------------
+   FRONTEND ROUTE: /teacher/attendance/:classId
+   COMPONENT: TeacherAttendanceDetail.tsx
+
+   FLOW:
+   1. Teacher clicks on a class in attendance list
+   2. Frontend calls GetClassAttendance(classID, date)
+   3. Backend queries:
+      ```sql
+      SELECT a.attendance_id, a.student_id as student_user_id,
+             s.student_code, s.last_name, s.first_name, s.middle_name,
+             s.course, s.year_level, s.section,
+             a.date, a.status, a.remarks, a.is_finalized
+      FROM attendance a
+      INNER JOIN students s ON a.student_id = s.id
+      WHERE a.class_id = ? AND a.date = ?
+      AND (a.is_archived = 0 OR a.is_archived IS NULL)
+      ORDER BY s.last_name, s.first_name
+      ```
+   4. Displays attendance table:
+      - Student Code
+      - Student Name
+      - Status (dropdown: Absent/Present/Late)
+      - Remarks (text input)
+      - Color coding:
+        * Green row = Present
+        * Red row = Absent
+        * Yellow row = Late
+
+D. MARKING ATTENDANCE
+---------------------
+   FRONTEND: Inline editing in attendance table
+   BACKEND METHOD: UpdateAttendanceRecord(classID, studentUserID, date, status, remarks)
+
+   FLOW:
+   1. Teacher changes status dropdown or remarks field
+   2. On blur/change, frontend calls UpdateAttendanceRecord()
+   3. Backend:
+      a. Checks if attendance is finalized:
+         ```sql
+         SELECT is_finalized FROM attendance
+         WHERE class_id = ? AND student_id = ? AND date = ?
+         ```
+      b. If finalized, returns error: "Attendance is finalized and cannot be edited"
+      c. If not finalized:
+         ```sql
+         UPDATE attendance
+         SET status = ?, remarks = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE class_id = ? AND student_id = ? AND date = ?
+         ```
+   4. Frontend updates row styling immediately
+   5. Auto-save with debounce (500ms)
+
+   STATUS OPTIONS:
+   - 'absent' (default) - Red background
+   - 'present' - Green background
+   - 'late' - Yellow background
+   - Remarks can include time, reason, etc.
+
+E. FINALIZING ATTENDANCE
+------------------------
+   FRONTEND: "Finalize" button at top of attendance detail
+   BACKEND METHOD: FinalizeAttendanceSheet(classID, date)
+
+   FLOW:
+   1. Teacher reviews all attendance records
+   2. Clicks "Finalize Attendance" button
+   3. Confirmation dialog:
+      "Finalize attendance for [Date]? This will lock all records and prevent further edits."
+   4. On confirm, frontend calls FinalizeAttendanceSheet()
+   5. Backend:
+      ```sql
+      UPDATE attendance
+      SET is_finalized = 1, updated_at = CURRENT_TIMESTAMP
+      WHERE class_id = ? AND date = ?
+      ```
+   6. Frontend:
+      - Disables all status dropdowns and remarks fields
+      - Shows green checkmark badge: "Finalized"
+      - "Finalize" button changes to "Unfinalize"
+      - Displays yellow banner: "This attendance is finalized. All changes are locked."
+
+   BUSINESS RULE:
+   - Finalized attendance cannot be edited (Read-only mode)
+   - Can be unfinalized by admin or teacher
+   - Used for official record-keeping and reporting
+
+F. UNFINALIZING ATTENDANCE
+---------------------------
+   BACKEND METHOD: UnfinalizeAttendanceSheet(classID, date)
+
+   FLOW:
+   1. Teacher clicks "Unfinalize" button
+   2. Confirmation dialog appears
+   3. Backend:
+      ```sql
+      UPDATE attendance
+      SET is_finalized = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE class_id = ? AND date = ?
+      ```
+   4. All fields become editable again
+
+G. DELETING ATTENDANCE SHEET
+-----------------------------
+   BACKEND METHOD: DeleteAttendanceSheet(classID, date)
+
+   FLOW:
+   1. Teacher clicks trash icon on attendance sheet
+   2. Confirmation dialog:
+      "Delete attendance for [Date]? This will permanently remove all records."
+   3. Backend uses transaction:
+      ```sql
+      BEGIN TRANSACTION;
+      DELETE FROM attendance
+      WHERE class_id = ? AND date = ?;
+      COMMIT;
+      ```
+   4. Rollback on error
+   5. Sheet removed from list
+
+   BUSINESS RULE:
+   - Hard delete (permanent removal)
+   - Cannot delete finalized attendance (must unfinalize first)
+   - All student records for that date are deleted
+
+H. ARCHIVING ATTENDANCE SHEET
+------------------------------
+   BACKEND METHOD: ArchiveAttendanceSheet(classID, date)
+
+   FLOW:
+   1. Teacher clicks archive icon
+   2. Confirmation dialog
+   3. Backend:
+      ```sql
+      UPDATE attendance
+      SET is_archived = 1, updated_at = CURRENT_TIMESTAMP
+      WHERE class_id = ? AND date = ?
+      ```
+   4. Sheet hidden from active view
+   5. Moves to archived attendance section
+
+   VS DELETE:
+   - Archive = Soft delete (data preserved, can be restored)
+   - Delete = Hard delete (permanent removal)
+
+================================================================================
+5. BACKEND GO METHODS (API)
+================================================================================
+
+A. CLASSLIST METHODS (classes.go, classes_enrollment.go)
+---------------------------------------------------------
+
+1. GetClassStudents(classID int) ([]ClassStudent, error)
+   - Returns all students enrolled in a class
+   - Excludes archived enrollments (is_archived = 0)
+   - Joins students table for full details
+   - Ordered by last_name, first_name
+
+2. GetAvailableStudentsForClass(classID int) ([]Student, error)
+   - Returns students NOT already enrolled in class
+   - Used for "Add Student" dropdown
+   - Filters out active enrollments
+
+3. AddStudentToClass(classID, studentUserID, enrolledBy int) error
+   - Converts user_id → student.id
+   - Checks for duplicate enrollment
+   - Inserts with status = 'active'
+   - Returns error if already enrolled
+
+4. RemoveStudentFromClass(classID, studentUserID int) error
+   - Hard deletes from classlist
+   - Also deletes associated attendance records
+   - Permanent removal
+
+5. UpdateClasslistStatus(classlistID int, status string) error
+   - Updates enrollment status
+   - Validates status in ('active', 'dropped', 'completed')
+   - Preserves attendance history
+
+6. AddStudentsToClassBulk(classID int, csvFilePath string) (BulkResult, error)
+   - Parses CSV file
+   - Validates headers
+   - Batch inserts students
+   - Returns summary of success/errors
+
+B. ATTENDANCE METHODS (attendance.go)
+--------------------------------------
+
+1. GetClassAttendance(classID int, date string) ([]AttendanceRecord, error)
+   - Returns attendance for specific class and date
+   - Excludes archived records
+   - Joins students for full details
+   - Ordered by student name
+
+2. GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
+   - Returns classes that have attendance records
+   - Includes latest attendance date
+   - Shows finalized status
+   - Excludes classes with no attendance
+
+3. GenerateAttendanceFromLogs(classID int, date string, recordedBy int) error
+   - Validates date format
+   - Gets active students from classlist
+   - Uses MERGE to prevent duplicates
+   - Initializes all as 'absent'
+   - Returns nil if successful
+
+4. CheckAttendanceExists(classID int, date string) (bool, error)
+   - Checks if attendance exists for class/date
+   - Used for duplicate prevention
+   - Returns true if count > 0
+
+5. UpdateAttendanceRecord(classID, studentUserID int, date, status, remarks string) error
+   - Validates attendance not finalized
+   - Updates status and remarks
+   - Sets updated_at timestamp
+   - Returns error if finalized
+
+6. FinalizeAttendanceSheet(classID int, date string) error
+   - Sets is_finalized = 1 for all records
+   - Locks editing
+   - Used for official records
+
+7. UnfinalizeAttendanceSheet(classID int, date string) error
+   - Sets is_finalized = 0
+   - Unlocks editing
+   - Requires admin/teacher permission
+
+8. DeleteAttendanceSheet(classID int, date string) error
+   - Hard deletes all records for class/date
+   - Uses transaction for safety
+   - Permanent removal
+
+9. ArchiveAttendanceSheet(classID int, date string) error
+   - Sets is_archived = 1
+   - Soft delete (preserves data)
+   - Can be restored
+
+10. InitializeAttendanceForClass(classID int, date string, recordedBy int) error
+    - Similar to GenerateAttendanceFromLogs
+    - Uses MERGE pattern
+    - Handles NULL values safely
+
+C. CLASS METHODS (classes.go)
+------------------------------
+
+1. GetTeacherClasses(teacherID int) ([]CourseClass, error)
+   - Returns all classes for teacher
+   - teacher_id is teachers.id (not user_id)
+   - Includes enrollment counts
+   - Both with and without attendance
+
+2. GetTeacherClassesByUserID(userID int) ([]CourseClass, error)
+   - Wrapper that converts user_id → teacher_id
+   - Then calls GetTeacherClasses()
+
+================================================================================
+6. FRONTEND COMPONENTS
+================================================================================
+
+A. TeacherClassDetail.tsx
+--------------------------
+   PURPOSE: Manage students in a specific class
+   
+   STATE:
+   - students: Array of ClassStudent objects
+   - loading: Boolean for async operations
+   - showAddModal: Controls "Add Student" modal visibility
+   - selectedStudentId: For adding single student
+   - availableStudents: Students not yet enrolled
+   
+   KEY FUNCTIONS:
+   - loadStudents(): Fetches GetClassStudents()
+   - handleAddStudent(): Calls AddStudentToClass()
+   - handleRemoveStudent(): Calls RemoveStudentFromClass() with confirmation
+   - handleImportCSV(): Opens file picker and calls bulk import
+   
+   UI SECTIONS:
+   - Header with class info (subject, schedule, room)
+   - "Add" button (opens modal)
+   - Student table with status badges
+   - Remove buttons for each student
+   - Status dropdown for each enrollment
+
+B. TeacherAttendanceSelection.tsx
+----------------------------------
+   PURPOSE: View and select classes for attendance management
+   
+   STATE:
+   - classes: Classes with attendance records
+   - allTeacherClasses: All classes (for generation modal)
+   - showGenerateModal: Controls "Generate Attendance" modal
+   - selectedClassId: Class selected for generation
+   - confirmRegenerate: Boolean for duplicate warning
+   - generating: Boolean for loading state
+   - generateError: Error message display
+   
+   KEY FUNCTIONS:
+   - loadClasses(): Fetches GetTeacherClassesWithAttendance()
+   - handleGenerate(): Checks duplicates, calls GenerateAttendanceFromLogs()
+   - handleDelete(): Calls DeleteAttendanceSheet() with confirmation
+   - handleArchive(): Calls ArchiveAttendanceSheet()
+   
+   UI SECTIONS:
+   - "ADD NEW" button (opens generation modal)
+   - Table of classes with attendance
+   - Latest date column
+   - Finalized status badges
+   - Action buttons (View, Delete, Archive)
+   
+   MODAL FLOW:
+   1. Click "ADD NEW"
+   2. Select class from dropdown
+   3. Check if attendance exists for today
+   4. If exists: Show yellow warning + "Yes, Regenerate" button
+   5. If not exists: Show "Generate" button
+   6. On generate: Create sheet and navigate to detail page
+
+C. TeacherAttendanceDetail.tsx
+-------------------------------
+   PURPOSE: View and edit attendance for specific class/date
+   
+   STATE:
+   - attendanceRecords: Array of student attendance
+   - selectedDate: Date picker value (defaults to latest)
+   - isFinalized: Boolean from attendance data
+   - saving: Boolean for autosave operations
+   
+   KEY FUNCTIONS:
+   - loadAttendance(): Fetches GetClassAttendance()
+   - handleStatusChange(): Calls UpdateAttendanceRecord() with debounce
+   - handleRemarksChange(): Updates remarks field
+   - handleFinalize(): Calls FinalizeAttendanceSheet()
+   - handleUnfinalize(): Calls UnfinalizeAttendanceSheet()
+   
+   UI SECTIONS:
+   - Date selector (shows available dates)
+   - Finalize/Unfinalize button
+   - Status banner (if finalized)
+   - Student attendance table:
+     * Student info columns
+     * Status dropdown (color-coded)
+     * Remarks text input
+     * Row background color based on status
+   - Statistics summary (present/absent/late counts)
+
+D. Shared Components
+--------------------
+
+1. Button.tsx
+   - Reusable button with variants:
+     * primary (blue)
+     * success (green)
+     * danger (red)
+     * secondary (gray)
+   - Loading state with spinner
+   - Icon support
+
+2. Modal.tsx
+   - Overlay modal with close button
+   - Used for confirmations and forms
+
+3. Table.tsx
+   - Data table with sorting
+   - Pagination support
+   - Search/filter integration
+
+4. Badge.tsx
+   - Status indicators:
+     * Active (green)
+     * Dropped (red)
+     * Completed (blue)
+     * Finalized (green check)
+
+================================================================================
+7. COMPLETE USER WORKFLOWS
+================================================================================
+
+WORKFLOW 1: TEACHER CREATES CLASS AND ADDS STUDENTS
+----------------------------------------------------
+1. Teacher logs in
+2. Navigates to "My Classes"
+3. Clicks "Create New Class"
+4. Fills in:
+   - Subject code
+   - EDP code
+   - Schedule
+   - Room
+   - Semester
+   - School year
+5. Clicks "Create"
+6. Redirected to class detail page (empty classlist)
+7. Clicks "Add" button
+8. Modal opens with available students
+9. Searches for student by name or student code
+10. Selects student from dropdown
+11. Clicks "Add Student"
+12. Student appears in classlist table
+13. Repeats steps 7-12 for more students
+    OR
+14. Clicks "Import CSV"
+15. Selects CSV file with student data
+16. Reviews import summary
+17. Classlist now shows all imported students
+
+WORKFLOW 2: TEACHER GENERATES FIRST ATTENDANCE
+-----------------------------------------------
+1. Teacher navigates to "Attendance Management"
+2. Clicks "ADD NEW" button
+3. Modal opens: "Generate Attendance"
+4. Selects class from dropdown (shows all classes, even without attendance)
+5. Today's date is auto-selected
+6. Clicks "Generate"
+7. System creates attendance records for all active students
+8. Redirected to attendance detail page
+9. All students shown as "Absent" (red rows)
+10. Teacher marks students as Present/Late
+11. Updates remarks as needed
+12. Clicks "Finalize Attendance"
+13. Confirmation dialog appears
+14. Clicks "Yes"
+15. All fields become read-only
+16. Green "Finalized" badge appears
+
+WORKFLOW 3: TEACHER REGENERATES ATTENDANCE (DUPLICATE SCENARIO)
+----------------------------------------------------------------
+1. Teacher navigates to "Attendance Management"
+2. Sees class with today's date already listed
+3. Clicks "ADD NEW" (wants to regenerate for same day)
+4. Selects same class from dropdown
+5. Clicks "Generate"
+6. System calls CheckAttendanceExists()
+7. Yellow warning banner appears:
+   "An attendance sheet already exists for this class today.
+    Regenerating will reset all students back to 'absent'. Are you sure?"
+8. Button text changes to "Yes, Regenerate" (red color)
+9. Teacher confirms by clicking again
+10. Attendance is reset to all "Absent"
+11. Existing marks are overwritten
+12. Teacher can re-mark attendance
+
+WORKFLOW 4: TEACHER MARKS ATTENDANCE DURING CLASS
+--------------------------------------------------
+1. Class is in session
+2. Teacher opens attendance for today
+3. As students arrive, teacher:
+   a. Finds student in list
+   b. Changes status dropdown from "Absent" to "Present"
+   c. Row turns green immediately
+   d. Auto-save happens in background
+4. For late students:
+   a. Sets status to "Late"
+   b. Row turns yellow
+   c. Adds remarks: "Arrived at 10:15 AM"
+5. At end of class, teacher reviews:
+   - 25 Present (green)
+   - 3 Absent (red)
+   - 2 Late (yellow)
+6. Clicks "Finalize Attendance"
+7. Records locked for official reporting
+
+WORKFLOW 5: STUDENT DROPS CLASS MID-SEMESTER
+---------------------------------------------
+1. Teacher receives notice of student withdrawal
+2. Navigates to class detail page
+3. Finds student in classlist
+4. Changes status dropdown from "Active" to "Dropped"
+5. Student remains in classlist (for historical record)
+6. Student's existing attendance records preserved
+7. Student will NOT appear in future attendance sheets
+   (GenerateAttendanceFromLogs only includes status='active')
+
+WORKFLOW 6: TEACHER CORRECTS ATTENDANCE ERROR
+----------------------------------------------
+1. Teacher realizes yesterday's attendance has error
+2. Navigates to "Attendance Management"
+3. Clicks on class
+4. Attendance detail page opens (shows today by default)
+5. Sees "Finalized" green badge
+6. Clicks "Unfinalize" button
+7. Confirmation: "This will allow editing. Continue?"
+8. All fields become editable
+9. Teacher corrects the errors
+10. Clicks "Finalize" again
+11. Changes saved and locked
+
+================================================================================
+8. BUSINESS RULES & VALIDATIONS
+================================================================================
+
+CLASSLIST RULES:
+-----------------
+1. Student can be enrolled in same class only once (duplicate check)
+2. Only 'active' students appear in new attendance generation
+3. Dropped/completed students remain in classlist (audit trail)
+4. Removing student deletes ALL their attendance for that class
+5. Student must exist in students table before adding to class
+6. Bulk import skips students not found in database
+7. Archived enrollments excluded from active views
+
+ATTENDANCE RULES:
+-----------------
+1. One attendance record per student per class per date (MERGE prevents duplicates)
+2. Finalized attendance is read-only (must unfinalize to edit)
+3. Only enrolled students (classlist) can have attendance
+4. Regenerating attendance RESETS all to 'absent' (overwrites existing)
+5. Status must be: 'absent', 'present', or 'late' (validated)
+6. Date format must be YYYY-MM-DD (ISO 8601)
+7. Archived attendance hidden from active views
+8. Deleted attendance is permanent (hard delete)
+
+DATE HANDLING:
+--------------
+1. All dates stored as YYYY-MM-DD strings
+2. Date pickers default to today's date
+3. Backend validates date format with time.Parse()
+4. SQL Server uses CONVERT() for date formatting
+5. Attendance can be generated for any date (past or future)
+6. Latest attendance date shown in class list
+
+FINALIZATION RULES:
+-------------------
+1. Only teacher or admin can finalize
+2. Finalized attendance blocks ALL editing
+3. Must unfinalize before modifying
+4. Finalized status stored per-record (bit field)
+5. Used for official reporting and archival
+
+AUTHORIZATION:
+--------------
+1. Teacher can only manage their own classes
+2. Teacher identified by teachers.id (FK to user_id)
+3. Attendance methods check class ownership
+4. Students cannot modify attendance (view-only on their dashboard)
+
+================================================================================
+9. EDGE CASES & ERROR HANDLING
+================================================================================
+
+A. NO STUDENTS ENROLLED
+------------------------
+   SCENARIO: Teacher generates attendance for class with 0 students
+   BEHAVIOR:
+   - GenerateAttendanceFromLogs returns success (no error)
+   - Empty attendance sheet created
+   - Message: "Attendance sheet created (no students enrolled)"
+   - Teacher sees empty table on detail page
+   - Can add students later and regenerate
+
+B. ALL STUDENTS DROPPED
+------------------------
+   SCENARIO: All enrolled students have status='dropped'
+   BEHAVIOR:
+   - GetClassStudents returns full list (including dropped)
+   - GenerateAttendanceFromLogs filters for status='active' only
+   - No active students → empty attendance generated
+   - Similar to "no students enrolled" case
+
+C. DUPLICATE GENERATION
+------------------------
+   SCENARIO: Teacher clicks "Generate" twice for same class/date
+   BEHAVIOR:
+   - First click: CheckAttendanceExists returns false → generates
+   - Second click: CheckAttendanceExists returns true → shows warning
+   - Yellow banner with confirmation required
+   - MERGE prevents duplicate rows in database
+   - If confirmed: Existing records updated (reset to 'absent')
+
+D. CONCURRENT EDITS
+-------------------
+   SCENARIO: Two teachers editing same attendance (shouldn't happen, but...)
+   BEHAVIOR:
+   - Last update wins (standard SQL UPDATE behavior)
+   - updated_at timestamp shows most recent change
+   - No locking mechanism currently implemented
+   - Consider adding optimistic locking with version field
+
+E. STUDENT ADDED AFTER ATTENDANCE GENERATED
+--------------------------------------------
+   SCENARIO: Student enrolls after attendance sheet created
+   BEHAVIOR:
+   - Student added to classlist with current timestamp
+   - Student does NOT appear in existing attendance sheets
+   - Teacher must regenerate attendance for that date
+   - MERGE will add new student, preserve existing marks
+   - Other students remain unchanged (WHEN MATCHED)
+
+F. FINALIZED ATTENDANCE EDIT ATTEMPT
+-------------------------------------
+   SCENARIO: Teacher tries to edit finalized attendance
+   BEHAVIOR:
+   - Frontend disables all input fields (preventDefault)
+   - If API called directly:
+     * UpdateAttendanceRecord checks is_finalized
+     * Returns error: "Attendance is finalized and cannot be edited"
+   - Teacher must explicitly unfinalize first
+
+G. INVALID DATE FORMAT
+-----------------------
+   SCENARIO: Malformed date sent to backend
+   BEHAVIOR:
+   - time.Parse("2006-01-02", date) fails
+   - Returns error: "invalid date format"
+   - Frontend validation should prevent this
+   - Backend validates as safety check
+
+H. CLASS DELETED WHILE VIEWING
+-------------------------------
+   SCENARIO: Class soft-deleted (is_active=0) while teacher viewing
+   BEHAVIOR:
+   - GetClassStudents filters is_active=1
+   - Class disappears from lists on next refresh
+   - Direct URL access returns empty result
+   - Attendance preserved (queries don't check is_active)
+   - Consider adding cascade soft-delete
+
+I. DATABASE CONNECTION LOST
+----------------------------
+   SCENARIO: SQL Server connection drops mid-operation
+   BEHAVIOR:
+   - a.checkDB() called at start of each method
+   - Returns error: "Database connection not available"
+   - Frontend displays error banner
+   - User can retry operation
+   - Wails app attempts reconnection
+
+J. BULK IMPORT WITH ERRORS
+---------------------------
+   SCENARIO: CSV contains mix of valid/invalid student codes
+   BEHAVIOR:
+   - Continues processing all rows
+   - Tracks success/error counts
+   - Returns BulkResult object:
+     * TotalProcessed: int
+     * SuccessCount: int
+     * ErrorCount: int
+     * Errors: []string (details)
+   - Frontend shows summary modal
+   - Partial success (some students added, some skipped)
+
+K. ARCHIVING THEN REGENERATING
+-------------------------------
+   SCENARIO: Archived attendance regenerated for same date
+   BEHAVIOR:
+   - MERGE includes: is_archived = 0
+   - Sets is_archived back to 0 (unarchives)
+   - Attendance becomes active again
+   - Preserves data while un-hiding
+
+L. REMARKS TOO LONG
+--------------------
+   SCENARIO: Teacher enters 5000-character remarks
+   BEHAVIOR:
+   - Database field is TEXT (max ~2GB in SQL Server)
+   - No practical limit
+   - Frontend could add maxlength validation
+   - Consider limiting to 500-1000 chars for UX
+
+M. TIMEZONE MISMATCHES
+-----------------------
+   SCENARIO: Server and client in different timezones
+   BEHAVIOR:
+   - All dates stored as YYYY-MM-DD (no time component)
+   - new Date().toISOString().split('T')[0] gets local date
+   - SQL Server uses CURRENT_TIMESTAMP for created_at
+   - Dates are stable, times may vary
+   - Consider storing timezone in config
+
+================================================================================
+END OF DOCUMENT
+================================================================================
+
+For technical support or questions about this system, contact:
+- Development Team: BSIT Students (Capstone Project)
+- System: Digital Logbook v1.0
+- Database: SQL Server (migrated from MySQL)
+- Framework: Wails v2.11 + React 18
+
+Last reviewed: February 10, 2026

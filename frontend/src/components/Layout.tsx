@@ -404,7 +404,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen bg-gray-50">
       {/* SIDEBAR OVERLAY BACKDROP */}
       {!sidebarCollapsed && (
         <div
@@ -631,7 +631,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       </aside>
 
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 flex flex-col h-screen">
         {/* TOP HEADER */}
         <header className="flex-shrink-0 h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-4">
           {/* Hamburger - always visible in header when sidebar is closed */}

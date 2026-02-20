@@ -24,7 +24,11 @@ export function ArchiveStudentEnrollment(arg1:number,arg2:number):Promise<void>;
 
 export function ChangePassword(arg1:string,arg2:string,arg3:string):Promise<void>;
 
-export function CreateClass(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:number):Promise<number>;
+export function CheckAttendanceExists(arg1:number,arg2:string):Promise<boolean>;
+
+export function CloseClass(arg1:number):Promise<void>;
+
+export function CreateClass(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:number):Promise<number>;
 
 export function CreateDepartment(arg1:string,arg2:string,arg3:string):Promise<void>;
 
@@ -37,8 +41,6 @@ export function CreateUsersBulk(arg1:string):Promise<Record<string, any>>;
 export function CreateUsersBulkFromFile(arg1:string,arg2:string):Promise<Record<string, any>>;
 
 export function DeactivateClass(arg1:number):Promise<void>;
-
-export function DeleteAttendanceSheet(arg1:number,arg2:string):Promise<void>;
 
 export function DeleteClass(arg1:number):Promise<void>;
 
@@ -84,13 +86,9 @@ export function ExportLogsCSV():Promise<string>;
 
 export function ExportLogsPDF():Promise<string>;
 
-export function FinalizeAttendanceSheet(arg1:number,arg2:string):Promise<void>;
-
 export function ForwardFeedbackToAdmin(arg1:number,arg2:number,arg3:string):Promise<void>;
 
 export function ForwardMultipleFeedbackToAdmin(arg1:Array<number>,arg2:number,arg3:string):Promise<number>;
-
-export function GenerateAttendanceFromLogs(arg1:number,arg2:string,arg3:number):Promise<void>;
 
 export function GetActiveAttendanceSheets(arg1:number):Promise<Array<main.AttendanceSheetSummary>>;
 
@@ -102,7 +100,7 @@ export function GetAllClasses():Promise<Array<main.CourseClass>>;
 
 export function GetAllLogs():Promise<Array<main.LoginLog>>;
 
-export function GetAllRegisteredStudents(arg1:string,arg2:string):Promise<Array<main.ClassStudent>>;
+export function GetAllRegisteredStudents():Promise<Array<main.ClassStudent>>;
 
 export function GetAllStudentsForEnrollment(arg1:number):Promise<Array<main.ClassStudent>>;
 
@@ -147,8 +145,6 @@ export function GetDepartments():Promise<Array<main.Department>>;
 export function GetFeedback():Promise<Array<main.Feedback>>;
 
 export function GetFeedbackDates():Promise<Array<string>>;
-
-export function GetFinalizedAttendanceSheets(arg1:number):Promise<Array<main.AttendanceSheetSummary>>;
 
 export function GetInactiveClasses(arg1:number):Promise<Array<main.CourseClass>>;
 
@@ -198,8 +194,6 @@ export function GetWorkingStudentDashboard():Promise<main.WorkingStudentDashboar
 
 export function GetWorkingStudentID(arg1:number):Promise<number>;
 
-export function InitializeAttendanceForClass(arg1:number,arg2:string,arg3:number):Promise<void>;
-
 export function IsKioskMode():Promise<boolean>;
 
 export function JoinClassByEDPCode(arg1:number,arg2:string):Promise<number>;
@@ -216,6 +210,8 @@ export function MarkEnrollmentCompleted(arg1:number,arg2:number):Promise<void>;
 
 export function MarkEnrollmentDropped(arg1:number,arg2:number):Promise<void>;
 
+export function OpenClassAttendance(arg1:number,arg2:string):Promise<Array<main.Attendance>>;
+
 export function ProcessRegistration(arg1:main.ApprovalRequest):Promise<void>;
 
 export function ReactivateEnrollment(arg1:number,arg2:number):Promise<void>;
@@ -225,6 +221,8 @@ export function RecordAttendance(arg1:number,arg2:number,arg3:string,arg4:string
 export function RecordStudentLogin(arg1:number,arg2:number):Promise<void>;
 
 export function RecordTimeoutLogout(arg1:number):Promise<void>;
+
+export function ReopenClass(arg1:number):Promise<void>;
 
 export function SaveEquipmentFeedback(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string):Promise<void>;
 
@@ -258,13 +256,11 @@ export function UnenrollStudentFromClass(arg1:number):Promise<void>;
 
 export function UnenrollStudentFromClassByIDs(arg1:number,arg2:number):Promise<void>;
 
-export function UnfinalizeAttendanceSheet(arg1:number,arg2:string):Promise<void>;
-
 export function UnlockScreen():Promise<void>;
 
 export function UpdateAttendanceRecord(arg1:number,arg2:number,arg3:string,arg4:string,arg5:string):Promise<void>;
 
-export function UpdateClass(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:boolean):Promise<void>;
+export function UpdateClass(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:boolean):Promise<void>;
 
 export function UpdateDepartment(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<void>;
 

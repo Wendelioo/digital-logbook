@@ -196,7 +196,7 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 			FROM classlist 
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE c.teacher_id = ? AND c.is_active = 1 AND (c.is_archived = 0 OR c.is_archived IS NULL)
+		WHERE c.teacher_id = ? AND (c.is_archived = 0 OR c.is_archived IS NULL)
 		ORDER BY c.subject_code, c.semester, c.school_year
 	`
 	rows, err := a.db.Query(query, teacherID)
@@ -254,7 +254,7 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 	return classes, nil
 }
 
-// GetTeacherClassesWithAttendance returns only classes that have attendance records initialized
+// GetTeacherClassesWithAttendance returns classes that have attendance records (active, non-archived)
 func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
@@ -276,22 +276,18 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.created_by_user_id,
 			CONVERT(VARCHAR(10), 
-				(SELECT MAX(a.date) FROM attendance a WHERE a.class_id = c.class_id AND (a.is_archived = 0 OR a.is_archived IS NULL)),
-			120) as latest_attendance_date,
-			COALESCE(
-				(SELECT MAX(a.is_finalized) FROM attendance a WHERE a.class_id = c.class_id AND (a.is_archived = 0 OR a.is_archived IS NULL) 
-				 AND a.date = (SELECT MAX(a2.date) FROM attendance a2 WHERE a2.class_id = c.class_id AND (a2.is_archived = 0 OR a2.is_archived IS NULL))),
-				FALSE
-			) as is_attendance_finalized
+				(SELECT MAX(a.attendance_date) FROM attendance a WHERE a.class_id = c.class_id AND (a.is_archived = 0 OR a.is_archived IS NULL)),
+			120) as latest_attendance_date
 		FROM classes c
 		LEFT JOIN subjects s ON c.subject_code = s.subject_code
 		LEFT JOIN teachers t ON c.teacher_id = t.id
 		LEFT JOIN (
 			SELECT class_id, COUNT(*) as count 
 			FROM classlist 
+			WHERE status = 'active'
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE c.teacher_id = ? AND c.is_active = 1 
+		WHERE c.teacher_id = ? AND (c.is_archived = 0 OR c.is_archived IS NULL)
 		AND EXISTS (SELECT 1 FROM attendance WHERE attendance.class_id = c.class_id AND (attendance.is_archived = 0 OR attendance.is_archived IS NULL))
 		ORDER BY c.subject_code, c.semester, c.school_year
 	`
@@ -309,12 +305,11 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 		var teacherName sql.NullString
 		var createdBy sql.NullInt64
 		var latestDate sql.NullString
-		var isAttendanceFinalized bool
 		err := rows.Scan(
 			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &edpCode,
 			&class.TeacherUserID, &teacherName,
 			&schedule, &room, &semester, &schoolYear,
-			&class.EnrolledCount, &class.IsActive, &createdBy, &latestDate, &isAttendanceFinalized,
+			&class.EnrolledCount, &class.IsActive, &createdBy, &latestDate,
 		)
 		if err != nil {
 			log.Printf("⚠ Failed to scan class row: %v", err)
@@ -351,7 +346,8 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 		if latestDate.Valid {
 			class.LatestAttendanceDate = &latestDate.String
 		}
-		class.IsAttendanceFinalized = isAttendanceFinalized
+		// Compute class status
+		class.ClassStatus = a.computeClassStatus(class.IsActive, class.IsArchived)
 		classes = append(classes, class)
 	}
 
@@ -518,7 +514,7 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 // CreateClass creates a new class instance (by working student)
 // If a class with the same EDP code exists and is archived, it will be reactivated
 // If a class with the same EDP code exists and is NOT archived, it will return an error
-func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedule, room, yearLevel, section, semester, schoolYear, descriptiveTitle string, createdBy int) (int, error) {
+func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedule, room, section, semester, schoolYear, descriptiveTitle string, createdBy int) (int, error) {
 	if err := a.checkDB(); err != nil {
 		return 0, err
 	}
@@ -612,20 +608,20 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 }
 
 // UpdateClass updates a class
-func (a *App) UpdateClass(classID int, schedule, room, yearLevel, section, semester, schoolYear string, isActive bool) error {
+func (a *App) UpdateClass(classID int, schedule, room, section, semester, schoolYear string, isActive bool) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
 
 	query := `
 		UPDATE classes 
-		SET schedule = ?, room = ?, year_level = ?, section = ?, semester = ?, school_year = ?, is_active = ?
+		SET schedule = ?, room = ?, section = ?, semester = ?, school_year = ?, is_active = ?
 		WHERE class_id = ?
 	`
 	_, err := a.db.Exec(
 		query,
 		nullString(schedule), nullString(room),
-		nullString(yearLevel), nullString(section),
+		nullString(section),
 		nullString(semester), nullString(schoolYear),
 		isActive, classID,
 	)
@@ -638,21 +634,81 @@ func (a *App) UpdateClass(classID int, schedule, room, yearLevel, section, semes
 	return nil
 }
 
-// DeleteClass soft-deletes a class by setting is_active to false
+// DeleteClass soft-deletes a class by setting is_active to false (Close Class)
+// Rule: No hard deletes. This is equivalent to "Close Class".
 func (a *App) DeleteClass(classID int) error {
+	return a.CloseClass(classID)
+}
+
+// CloseClass closes a class (ACTIVE → CLOSED).
+// A closed class can no longer accept new enrollments or attendance.
+// Students remain enrolled but no new attendance records are created.
+func (a *App) CloseClass(classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
 
-	query := `UPDATE classes SET is_active = 0 WHERE class_id = ?`
-	_, err := a.db.Exec(query, classID)
+	// Check class exists and is active
+	var isActive bool
+	err := a.db.QueryRow(`SELECT is_active FROM classes WHERE class_id = ?`, classID).Scan(&isActive)
 	if err != nil {
-		log.Printf("⚠ Failed to delete class: %v", err)
+		return fmt.Errorf("class not found")
+	}
+	if !isActive {
+		return fmt.Errorf("class is already closed")
+	}
+
+	query := `UPDATE classes SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`
+	_, err = a.db.Exec(query, classID)
+	if err != nil {
+		log.Printf("⚠ Failed to close class: %v", err)
 		return err
 	}
 
-	log.Printf("✓ Class deactivated: class_id=%d", classID)
+	log.Printf("✓ Class closed: class_id=%d", classID)
 	return nil
+}
+
+// ReopenClass reopens a previously closed class (CLOSED → ACTIVE)
+func (a *App) ReopenClass(classID int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	// Check class exists and is not archived
+	var isActive bool
+	var isArchived bool
+	err := a.db.QueryRow(`SELECT is_active, COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isActive, &isArchived)
+	if err != nil {
+		return fmt.Errorf("class not found")
+	}
+	if isActive {
+		return fmt.Errorf("class is already active")
+	}
+	if isArchived {
+		return fmt.Errorf("archived classes cannot be reopened. Unarchive first")
+	}
+
+	query := `UPDATE classes SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`
+	_, err = a.db.Exec(query, classID)
+	if err != nil {
+		log.Printf("⚠ Failed to reopen class: %v", err)
+		return err
+	}
+
+	log.Printf("✓ Class reopened: class_id=%d", classID)
+	return nil
+}
+
+// computeClassStatus returns the human-readable class status string
+func (a *App) computeClassStatus(isActive bool, isArchived bool) string {
+	if isArchived {
+		return "ARCHIVED"
+	}
+	if !isActive {
+		return "CLOSED"
+	}
+	return "ACTIVE"
 }
 
 // ==============================================================================
@@ -877,8 +933,8 @@ func (a *App) GetAllTeachers() ([]User, error) {
 	return teachers, nil
 }
 
-// GetAllRegisteredStudents returns all registered students with optional year level filter
-func (a *App) GetAllRegisteredStudents(yearLevelFilter, sectionFilter string) ([]ClassStudent, error) {
+// GetAllRegisteredStudents returns all registered students
+func (a *App) GetAllRegisteredStudents() ([]ClassStudent, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}

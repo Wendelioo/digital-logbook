@@ -63,8 +63,6 @@ export namespace main {
 	    present_count: number;
 	    absent_count: number;
 	    late_count: number;
-	    excused_count: number;
-	    is_finalized: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ArchivedAttendanceSheet(source);
@@ -82,8 +80,6 @@ export namespace main {
 	        this.present_count = source["present_count"];
 	        this.absent_count = source["absent_count"];
 	        this.late_count = source["late_count"];
-	        this.excused_count = source["excused_count"];
-	        this.is_finalized = source["is_finalized"];
 	    }
 	}
 	export class ArchivedFeedbackSheet {
@@ -183,7 +179,7 @@ export namespace main {
 	    recorded_by: number;
 	    recorded_by_name: string;
 	    is_archived: boolean;
-	    is_finalized: boolean;
+	    is_editable: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Attendance(source);
@@ -211,7 +207,7 @@ export namespace main {
 	        this.recorded_by = source["recorded_by"];
 	        this.recorded_by_name = source["recorded_by_name"];
 	        this.is_archived = source["is_archived"];
-	        this.is_finalized = source["is_finalized"];
+	        this.is_editable = source["is_editable"];
 	    }
 	}
 	export class AttendanceSheetSummary {
@@ -225,9 +221,8 @@ export namespace main {
 	    present_count: number;
 	    absent_count: number;
 	    late_count: number;
-	    excused_count: number;
 	    is_archived: boolean;
-	    is_finalized: boolean;
+	    is_editable: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new AttendanceSheetSummary(source);
@@ -245,9 +240,8 @@ export namespace main {
 	        this.present_count = source["present_count"];
 	        this.absent_count = source["absent_count"];
 	        this.late_count = source["late_count"];
-	        this.excused_count = source["excused_count"];
 	        this.is_archived = source["is_archived"];
-	        this.is_finalized = source["is_finalized"];
+	        this.is_editable = source["is_editable"];
 	    }
 	}
 	export class ClassStudent {
@@ -324,7 +318,6 @@ export namespace main {
 	    section?: string;
 	    schedule?: string;
 	    room?: string;
-	    year_level?: string;
 	    school_year?: string;
 	    semester?: string;
 	    teacher_user_id: number;
@@ -336,7 +329,7 @@ export namespace main {
 	    created_by_user_id?: number;
 	    created_at: string;
 	    latest_attendance_date?: string;
-	    is_attendance_finalized: boolean;
+	    class_status: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CourseClass(source);
@@ -353,7 +346,6 @@ export namespace main {
 	        this.section = source["section"];
 	        this.schedule = source["schedule"];
 	        this.room = source["room"];
-	        this.year_level = source["year_level"];
 	        this.school_year = source["school_year"];
 	        this.semester = source["semester"];
 	        this.teacher_user_id = source["teacher_user_id"];
@@ -365,7 +357,7 @@ export namespace main {
 	        this.created_by_user_id = source["created_by_user_id"];
 	        this.created_at = source["created_at"];
 	        this.latest_attendance_date = source["latest_attendance_date"];
-	        this.is_attendance_finalized = source["is_attendance_finalized"];
+	        this.class_status = source["class_status"];
 	    }
 	}
 	export class Department {

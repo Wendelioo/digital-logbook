@@ -221,25 +221,26 @@ function ArchivedStudentsManagement() {
         </div>
       ) : (
         <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
           {selectedTab === 'active' ? (
             // Active Students Table
             filteredActiveStudents.length > 0 ? (
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-blue-600">
+              <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+                <thead className="bg-blue-600 sticky top-0 z-10">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Student Number
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
                       Full Name
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
                       Email
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Contact
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-white uppercase tracking-wider">
+                    <th className="px-4 py-3 text-right text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Actions
                     </th>
                   </tr>
@@ -247,19 +248,19 @@ function ArchivedStudentsManagement() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredActiveStudents.map((student) => (
                     <tr key={student.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {student.student_id}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
                         {student.last_name}, {student.first_name} {student.middle_name || ''}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
                         {student.email || 'N/A'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                         {student.contact_number || 'N/A'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <Button
                           variant="warning"
                           size="sm"
@@ -285,25 +286,25 @@ function ArchivedStudentsManagement() {
           ) : (
             // Archived Students Table
             filteredArchivedStudents.length > 0 ? (
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-600">
+              <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+                <thead className="bg-gray-600 sticky top-0 z-10">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Student Number
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
                       Full Name
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Archived Date
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Deletion Date
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
                       Days Left
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-white uppercase tracking-wider">
+                    <th className="px-4 py-3 text-right text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Actions
                     </th>
                   </tr>
@@ -311,19 +312,19 @@ function ArchivedStudentsManagement() {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredArchivedStudents.map((student) => (
                     <tr key={student.user_id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {student.student_id}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
                         {student.last_name}, {student.first_name} {student.middle_name || ''}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                         {new Date(student.archived_at).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
                         {new Date(student.deletion_scheduled_at).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                           student.days_until_deletion <= 30 
                             ? 'bg-red-100 text-red-800' 
@@ -334,7 +335,7 @@ function ArchivedStudentsManagement() {
                           {student.days_until_deletion} days
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <Button
                           variant="success"
                           size="sm"
@@ -358,6 +359,7 @@ function ArchivedStudentsManagement() {
               </div>
             )
           )}
+          </div>
         </div>
       )}
 

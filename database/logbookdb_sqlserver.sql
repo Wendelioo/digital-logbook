@@ -178,18 +178,18 @@ GO
    ATTENDANCE
 ================================ */
 CREATE TABLE attendance (
+    id INT IDENTITY(1,1) PRIMARY KEY,
     class_id INT NOT NULL,
     student_id INT NOT NULL,
-    date DATE NOT NULL,
-    status NVARCHAR(20) DEFAULT 'present' CHECK (status IN ('present', 'absent', 'late', 'excused')),
+    attendance_date DATE NOT NULL,
+    status NVARCHAR(20) DEFAULT 'absent' CHECK (status IN ('present', 'absent', 'late')),
     remarks NVARCHAR(MAX),
     is_archived BIT DEFAULT 0,
-    is_finalized BIT DEFAULT 0,
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME DEFAULT GETDATE(),
-    PRIMARY KEY (class_id, student_id, date),
-    FOREIGN KEY (class_id, student_id)
-        REFERENCES classlist(class_id, student_id) ON DELETE CASCADE
+    UNIQUE (class_id, student_id, attendance_date),
+    FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
 );
 GO
 
@@ -266,7 +266,7 @@ CREATE INDEX idx_log_entries_login_time ON log_entries(login_time);
 CREATE INDEX idx_log_entries_is_archived ON log_entries(is_archived);
 CREATE INDEX idx_feedback_student_id ON feedback(student_id);
 CREATE INDEX idx_feedback_is_archived ON feedback(is_archived);
-CREATE INDEX idx_attendance_date ON attendance(date);
+CREATE INDEX idx_attendance_date ON attendance(attendance_date);
 CREATE INDEX idx_classlist_class_id ON classlist(class_id);
 CREATE INDEX idx_classlist_student_id ON classlist(student_id);
 CREATE INDEX idx_teachers_teacher_id ON teachers(teacher_id);
@@ -389,7 +389,7 @@ BEGIN
     UPDATE attendance
     SET updated_at = GETDATE()
     FROM attendance a
-    INNER JOIN inserted i ON a.class_id = i.class_id AND a.student_id = i.student_id AND a.date = i.date;
+    INNER JOIN inserted i ON a.class_id = i.class_id AND a.student_id = i.student_id AND a.attendance_date = i.attendance_date;
 END;
 GO
 

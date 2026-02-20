@@ -103,9 +103,22 @@ func (a *App) GetAllStudentsForEnrollment(classID int) ([]ClassStudent, error) {
 
 // EnrollStudentInClass enrolls a student in a specific class
 // If the student was previously enrolled and archived, it will reactivate and unarchive the enrollment
+// Rule: Class must be ACTIVE for enrollment. When student joins and today's attendance exists,
+// auto-insert an attendance record for the student with status='absent'.
 func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) error {
 	if err := a.checkDB(); err != nil {
 		return err
+	}
+
+	// Check class is active (not closed or archived)
+	var isActive bool
+	var isArchived bool
+	err := a.db.QueryRow(`SELECT is_active, COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isActive, &isArchived)
+	if err != nil {
+		return fmt.Errorf("class not found")
+	}
+	if !isActive || isArchived {
+		return fmt.Errorf("cannot enroll students in a closed or archived class")
 	}
 
 	query := `
@@ -118,10 +131,35 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 			INSERT (class_id, student_id, enrollment_date, status, is_archived)
 			VALUES (source.class_id, source.student_id, source.enrollment_date, source.status, source.is_archived);
 	`
-	_, err := a.db.Exec(query, classID, studentID)
+	_, err = a.db.Exec(query, classID, studentID)
 	if err != nil {
 		log.Printf("⚠ Failed to enroll student %d in class %d: %v", studentID, classID, err)
 		return err
+	}
+
+	// Auto-insert attendance for today if today's attendance sheet already exists
+	today := time.Now().Format("2006-01-02")
+	var attendanceExists int
+	err = a.db.QueryRow(
+		`SELECT COUNT(*) FROM attendance WHERE class_id = ? AND attendance_date = ?`,
+		classID, today,
+	).Scan(&attendanceExists)
+	if err == nil && attendanceExists > 0 {
+		// Insert attendance record for this student with status='absent'
+		insertQuery := `
+			MERGE attendance AS target
+			USING (SELECT ? AS class_id, ? AS student_id, ? AS attendance_date, 'absent' AS status, 0 AS is_archived) AS source
+			ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.attendance_date = source.attendance_date
+			WHEN NOT MATCHED THEN
+				INSERT (class_id, student_id, attendance_date, status, is_archived)
+				VALUES (source.class_id, source.student_id, source.attendance_date, source.status, source.is_archived);
+		`
+		_, err = a.db.Exec(insertQuery, classID, studentID, today)
+		if err != nil {
+			log.Printf("⚠ Warning: Failed to auto-insert attendance for late joiner student %d: %v", studentID, err)
+		} else {
+			log.Printf("✓ Auto-inserted attendance for late joiner: student=%d, class=%d, date=%s", studentID, classID, today)
+		}
 	}
 
 	log.Printf("✓ Student %d enrolled in class %d", studentID, classID)
@@ -130,9 +168,21 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 
 // EnrollMultipleStudents enrolls multiple students in a class at once
 // If students were previously enrolled and archived, it will reactivate and unarchive their enrollments
+// Rule: Class must be ACTIVE for enrollment.
 func (a *App) EnrollMultipleStudents(studentIDs []int, classID int, enrolledBy int) error {
 	if err := a.checkDB(); err != nil {
 		return err
+	}
+
+	// Check class is active (not closed or archived)
+	var isActive bool
+	var isArchived bool
+	err := a.db.QueryRow(`SELECT is_active, COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isActive, &isArchived)
+	if err != nil {
+		return fmt.Errorf("class not found")
+	}
+	if !isActive || isArchived {
+		return fmt.Errorf("cannot enroll students in a closed or archived class")
 	}
 
 	tx, err := a.db.Begin()
@@ -353,6 +403,7 @@ func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error)
 		return 0, fmt.Errorf("failed to enroll student: %v", err)
 	}
 
+	log.Printf("✓ Student %d joined class %d via EDP code %s", studentUserID, classID, edpCode)
 	return classID, nil
 }
 

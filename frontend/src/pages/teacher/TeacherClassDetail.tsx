@@ -14,7 +14,6 @@ import {
   GetClassStudents,
   ExportClasslistCSV,
   UpdateClass,
-  DeleteClass,
   GetAllStudentsForEnrollment,
   EnrollMultipleStudents,
   UnenrollStudentFromClassByIDs,
@@ -44,7 +43,6 @@ function ClassManagementDetail() {
   const [editFormData, setEditFormData] = useState({
     schedule: '',
     room: '',
-    yearLevel: '',
     section: '',
     semester: '',
     schoolYear: ''
@@ -78,7 +76,6 @@ function ClassManagementDetail() {
           setEditFormData({
             schedule: classData.schedule || '',
             room: classData.room || '',
-            yearLevel: classData.year_level || '',
             section: classData.section || '',
             semester: classData.semester || '',
             schoolYear: classData.school_year || ''
@@ -104,7 +101,6 @@ function ClassManagementDetail() {
         setEditFormData({
           schedule: selectedClass.schedule || '',
           room: selectedClass.room || '',
-          yearLevel: selectedClass.year_level || '',
           section: selectedClass.section || '',
           semester: selectedClass.semester || '',
           schoolYear: selectedClass.school_year || ''
@@ -190,7 +186,6 @@ function ClassManagementDetail() {
         parseInt(id),
         editFormData.schedule,
         editFormData.room,
-        editFormData.yearLevel,
         editFormData.section,
         editFormData.semester,
         editFormData.schoolYear,
@@ -204,22 +199,6 @@ function ClassManagementDetail() {
       alert('Failed to update class. Please try again.');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleDeleteClass = async () => {
-    if (!id) return;
-    if (!confirm('Are you sure you want to delete this class? This action cannot be undone.')) {
-      return;
-    }
-
-    try {
-      await DeleteClass(parseInt(id));
-      alert('Class deleted successfully!');
-      navigate('/teacher/class-management');
-    } catch (error) {
-      console.error('Failed to delete class:', error);
-      alert('Failed to delete class. Please try again.');
     }
   };
 
@@ -328,7 +307,7 @@ function ClassManagementDetail() {
                   Export CSV
                 </Button>
               )}
-              {isEditMode && (
+              {isEditMode && classInfo.is_active && !classInfo.is_archived && (
                 <>
                   <Button
                     onClick={handleEditClass}
@@ -344,16 +323,21 @@ function ClassManagementDetail() {
                     size="sm"
                     icon={<Plus className="h-4 w-4" />}
                   >
-                    Add Student
+                    Add
                   </Button>
                 </>
+              )}
+              {isEditMode && !classInfo.is_active && (
+                <span className="text-xs text-amber-600 font-medium px-2 py-1 bg-amber-50 rounded">
+                  Class is {classInfo.is_archived ? 'archived' : 'closed'} — editing disabled
+                </span>
               )}
             </div>
           </div>
 
           {/* Combined Class Info and Student List Table */}
-          <div className="overflow-hidden">
-            <table className="min-w-full" style={{ tableLayout: 'fixed' }}>
+          <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <table className="w-full" style={{ minWidth: '100%', tableLayout: 'auto' }}>
               {/* Class Information Header */}
               <thead>
                 <tr>
@@ -406,15 +390,14 @@ function ClassManagementDetail() {
                   </th>
                 </tr>
                 <tr className="bg-gray-100">
-                  <th className="px-1 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '25px' }}>No.</th>
-                  <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '70px' }}>Student ID</th>
-                  <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '130px' }}>Name</th>
-                  <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase">Email</th>
-                  <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '85px' }}>Contact</th>
+                  <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '50px' }}>No.</th>
+                  <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '100px' }}>Student ID</th>
+                  <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '180px' }}>Name</th>
+                  <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '200px' }}>Email</th>
+                  <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '120px' }}>Contact</th>
                   {isEditMode && (
-                    <th className="px-1 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '65px' }}>Actions</th>
+                    <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '100px' }}>Actions</th>
                   )}
-                  {!isEditMode && <th style={{ width: '10px' }}></th>}
                 </tr>
               </thead>
 
@@ -423,23 +406,23 @@ function ClassManagementDetail() {
                 {filteredStudents.length > 0 ? (
                   filteredStudents.map((student, index) => (
                     <tr key={student.student_user_id} className="hover:bg-gray-50 border-b border-gray-100">
-                      <td className="px-1 py-1.5 text-center font-medium text-gray-900">
+                      <td className="px-2 py-1.5 text-center font-medium text-gray-900">
                         {index + 1}
                       </td>
-                      <td className="px-1 py-1.5 font-medium text-gray-900 text-xs">
+                      <td className="px-2 py-1.5 font-medium text-gray-900 text-xs whitespace-nowrap">
                         {student.student_code}
                       </td>
-                      <td className="px-1 py-1.5 text-gray-900">
+                      <td className="px-2 py-1.5 text-gray-900 whitespace-nowrap">
                         {student.last_name}, {student.first_name} {student.middle_name ? student.middle_name.charAt(0) + '.' : ''}
                       </td>
-                      <td className="px-1 py-1.5 text-gray-700">
+                      <td className="px-2 py-1.5 text-gray-700" style={{ wordBreak: 'break-word' }}>
                         {student.email || '—'}
                       </td>
-                      <td className="px-1 py-1.5 text-gray-700">
+                      <td className="px-2 py-1.5 text-gray-700 whitespace-nowrap">
                         {student.contact_number || '—'}
                       </td>
-                      {isEditMode && (
-                        <td className="px-3 py-1.5 text-center">
+                      {isEditMode && classInfo.is_active && !classInfo.is_archived && (
+                        <td className="px-2 py-1.5 text-center">
                           <Button
                             onClick={() => handleRemoveStudent(student.student_user_id, student.class_id)}
                             variant="danger"
@@ -450,7 +433,6 @@ function ClassManagementDetail() {
                           </Button>
                         </td>
                       )}
-                      {!isEditMode && <td></td>}
                     </tr>
                   ))
                 ) : (
@@ -476,7 +458,7 @@ function ClassManagementDetail() {
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl mx-4 relative max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 relative max-h-[90vh] flex flex-col">
             <button
               type="button"
               onClick={() => setShowAddModal(false)}
@@ -520,11 +502,12 @@ function ClassManagementDetail() {
               </div>
 
               <div className="flex-1 overflow-y-auto border border-gray-200 rounded-lg">
+                <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
                 {filteredAvailableStudents.length > 0 ? (
-                  <table className="min-w-full divide-y divide-gray-200">
+                  <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
                     <thead className="bg-gray-50 sticky top-0 z-10">
                       <tr>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '50px' }}>
                           <input
                             type="checkbox"
                             checked={filteredAvailableStudents.length > 0 && filteredAvailableStudents.every(s => selectedStudents.has(s.id))}
@@ -538,10 +521,10 @@ function ClassManagementDetail() {
                             className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                           />
                         </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
                           Student ID
                         </th>
-                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
                           Name
                         </th>
                       </tr>
@@ -553,7 +536,7 @@ function ClassManagementDetail() {
                           className={`hover:bg-gray-50 cursor-pointer ${selectedStudents.has(student.id) ? 'bg-blue-50' : ''}`}
                           onClick={() => toggleStudentSelection(student.id)}
                         >
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-4 py-4 whitespace-nowrap">
                             <input
                               type="checkbox"
                               checked={selectedStudents.has(student.id)}
@@ -562,10 +545,10 @@ function ClassManagementDetail() {
                               onClick={(e) => e.stopPropagation()}
                             />
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             {student.student_id}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
                             {student.last_name}, {student.first_name} {student.middle_name || ''}
                           </td>
                         </tr>
@@ -581,6 +564,7 @@ function ClassManagementDetail() {
                     </p>
                   </div>
                 )}
+                </div>
               </div>
 
               <div className="mt-6 flex justify-end gap-3 flex-shrink-0">
@@ -668,15 +652,6 @@ function ClassManagementDetail() {
                     type="text"
                     value={editFormData.room}
                     onChange={(e) => setEditFormData({ ...editFormData, room: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Year Level</label>
-                  <input
-                    type="text"
-                    value={editFormData.yearLevel}
-                    onChange={(e) => setEditFormData({ ...editFormData, yearLevel: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
