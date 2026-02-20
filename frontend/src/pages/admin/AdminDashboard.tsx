@@ -10,12 +10,15 @@ import {
   GraduationCap,
   BarChart3,
   AlertCircle,
-  UserCheck
+  UserCheck,
+  Bell
 } from 'lucide-react';
 import {
   GetAdminDashboard
 } from '../../../wailsjs/go/main/App';
 import { DashboardStats } from './types';
+
+const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
 
 function DashboardOverview() {
   const [stats, setStats] = useState<DashboardStats>({
@@ -48,18 +51,21 @@ function DashboardOverview() {
 
     loadStats();
 
-    // Auto-refresh every 30 seconds to keep stats up-to-date
-    const refreshInterval = setInterval(() => {
-      loadStats();
-    }, 30000);
+    const refreshInterval = setInterval(loadStats, 1000);
+    window.addEventListener('focus', loadStats);
+    window.addEventListener(AUTH_STATUS_CHANGED_EVENT, loadStats);
 
-    return () => clearInterval(refreshInterval);
+    return () => {
+      clearInterval(refreshInterval);
+      window.removeEventListener('focus', loadStats);
+      window.removeEventListener(AUTH_STATUS_CHANGED_EVENT, loadStats);
+    };
   }, []);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-500"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
       </div>
     );
   }
@@ -189,6 +195,29 @@ function DashboardOverview() {
           </CardBody>
         </Card>
       </div>
+
+      <Card className="mb-6">
+        <CardHeader title="Notifications" />
+        <CardBody>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center">
+                <Bell className="h-5 w-5 text-primary-600 mr-3" />
+                <span className="text-sm text-gray-700">System overview has been refreshed.</span>
+              </div>
+              <span className="text-xs text-gray-500">Now</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-700">{stats.locked_accounts > 0 ? `${stats.locked_accounts} locked account(s) need review.` : 'No locked accounts right now.'}</span>
+              <span className="text-xs text-gray-500">Today</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-700">{stats.pending_feedback > 0 ? `${stats.pending_feedback} feedback report(s) are pending action.` : 'No pending feedback reports.'}</span>
+              <span className="text-xs text-gray-500">Today</span>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
 
       <Card className="mt-8">
         <CardHeader title="Quick Actions" />

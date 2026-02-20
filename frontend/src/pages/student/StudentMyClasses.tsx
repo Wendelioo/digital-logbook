@@ -170,7 +170,7 @@ function MyClasses() {
       if (errorMessage.includes('already enrolled')) {
         setJoinError('You are already enrolled in this class.');
       } else if (errorMessage.includes('no classes found')) {
-        setJoinError('No classes found for this EDP code.');
+        setJoinError('Cannot join class. The class may be inactive or the EDP code is incorrect. Please verify with your teacher.');
       } else if (errorMessage.includes('invalid EDP code format')) {
         setJoinError('Invalid EDP code. Only letters, numbers, dashes, and underscores are allowed.');
       } else if (errorMessage.includes('too long')) {
@@ -188,7 +188,7 @@ function MyClasses() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-500"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
       </div>
     );
   }

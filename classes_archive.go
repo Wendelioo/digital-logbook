@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 )
@@ -99,27 +100,61 @@ func (a *App) GetInactiveClasses(teacherUserID int) ([]CourseClass, error) {
 	return classes, nil
 }
 
-// ArchiveClass marks a class as archived
+// ArchiveClass marks a class as archived.
+// Rule: A class must be CLOSED (is_active=false) before it can be archived.
+// When archiving a class, also archive all its attendance records and enrollments.
 func (a *App) ArchiveClass(classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
 
+	// Check class status: must be CLOSED (is_active=false) to archive
+	var isActive bool
+	var isArchived bool
+	err := a.db.QueryRow(`SELECT is_active, COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isActive, &isArchived)
+	if err != nil {
+		return fmt.Errorf("class not found")
+	}
+	if isArchived {
+		return fmt.Errorf("class is already archived")
+	}
+	if isActive {
+		return fmt.Errorf("class must be closed before it can be archived. Close the class first")
+	}
+
+	// Archive the class
 	query := `
 		UPDATE classes 
 		SET is_archived = 1,
 		    updated_at = CURRENT_TIMESTAMP
 		WHERE class_id = ?
 	`
-
-	result, err := a.db.Exec(query, classID)
+	_, err = a.db.Exec(query, classID)
 	if err != nil {
 		log.Printf("⚠ Failed to archive class: %v", err)
 		return err
 	}
 
-	rowsAffected, _ := result.RowsAffected()
-	log.Printf("✓ Archived class: class_id=%d, affected=%d", classID, rowsAffected)
+	// Also archive attendance records for this class (ONLY past attendance, not today or future)
+	today := time.Now().Format("2006-01-02")
+	_, err = a.db.Exec(
+		`UPDATE attendance SET is_archived = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ? AND attendance_date < ?`,
+		classID, today,
+	)
+	if err != nil {
+		log.Printf("⚠ Warning: Failed to archive past attendance for class %d: %v", classID, err)
+	}
+
+	// Also archive all enrollment records for this class
+	_, err = a.db.Exec(
+		`UPDATE classlist SET is_archived = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`,
+		classID,
+	)
+	if err != nil {
+		log.Printf("⚠ Warning: Failed to archive enrollments for class %d: %v", classID, err)
+	}
+
+	log.Printf("✓ Archived class and related records: class_id=%d", classID)
 	return nil
 }
 

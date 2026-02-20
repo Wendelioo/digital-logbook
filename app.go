@@ -325,7 +325,6 @@ type CourseClass struct {
 	Section               *string `json:"section,omitempty"`
 	Schedule              *string `json:"schedule,omitempty"`
 	Room                  *string `json:"room,omitempty"`
-	YearLevel             *string `json:"year_level,omitempty"`
 	SchoolYear            *string `json:"school_year,omitempty"`
 	Semester              *string `json:"semester,omitempty"`
 	TeacherUserID         int     `json:"teacher_user_id"`
@@ -336,8 +335,8 @@ type CourseClass struct {
 	IsArchived            bool    `json:"is_archived"`
 	CreatedByUserID       *int    `json:"created_by_user_id,omitempty"`
 	CreatedAt             string  `json:"created_at"`
-	LatestAttendanceDate  *string `json:"latest_attendance_date,omitempty"`
-	IsAttendanceFinalized bool    `json:"is_attendance_finalized"`
+	LatestAttendanceDate *string `json:"latest_attendance_date,omitempty"`
+	ClassStatus          string  `json:"class_status"`
 }
 
 // Attendance represents an attendance record
@@ -362,7 +361,7 @@ type Attendance struct {
 	RecordedBy     int     `json:"recorded_by"`
 	RecordedByName string  `json:"recorded_by_name"`
 	IsArchived     bool    `json:"is_archived"`
-	IsFinalized    bool    `json:"is_finalized"`
+	IsEditable     bool    `json:"is_editable"`
 }
 
 // GetTeacherDashboard returns teacher dashboard data
@@ -513,7 +512,7 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	// Get all attendance records for this student
 	query := `
 		SELECT 
-			a.class_id, a.student_id, CONVERT(VARCHAR(10), a.date, 23) as date,
+			a.class_id, a.student_id, CONVERT(VARCHAR(10), a.attendance_date, 23) as date,
 			stu.student_id,
 			stu.first_name, stu.middle_name, stu.last_name,
 			c.subject_code, s.description as subject_name,
@@ -523,7 +522,7 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 		JOIN classes c ON a.class_id = c.class_id
 		JOIN subjects s ON c.subject_code = s.subject_code
 		WHERE a.student_id = ?
-		ORDER BY a.date DESC
+		ORDER BY a.attendance_date DESC
 	`
 
 	rows, err := a.db.Query(query, userID)

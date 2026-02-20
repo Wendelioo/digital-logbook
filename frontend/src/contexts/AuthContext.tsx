@@ -23,6 +23,7 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -57,6 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setIsAuthenticated(false);
       localStorage.removeItem('user');
+      window.dispatchEvent(new CustomEvent(AUTH_STATUS_CHANGED_EVENT));
 
       // Lock screen in kiosk mode on auto-logout
       try {
@@ -91,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(userData);
       setIsAuthenticated(true);
       localStorage.setItem('user', JSON.stringify(userData));
+      window.dispatchEvent(new CustomEvent(AUTH_STATUS_CHANGED_EVENT));
 
       // Unlock screen in kiosk mode so user can freely use Windows
       try {
@@ -118,6 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsAuthenticated(false);
       localStorage.removeItem('user');
       sessionStorage.clear();
+      window.dispatchEvent(new CustomEvent(AUTH_STATUS_CHANGED_EVENT));
 
       // Lock screen in kiosk mode so next user must login
       try {

@@ -15,55 +15,92 @@ import (
 // ATTENDANCE MANAGEMENT
 // ==============================================================================
 
-// RecordAttendance records or updates attendance for a student in a class
-func (a *App) RecordAttendance(classID, studentID int, status, remarks string, recordedBy int) error {
+// OpenClassAttendance is the primary method for viewing/creating attendance.
+// It auto-creates attendance for today the first time a teacher opens it.
+// Rule: attendance is auto-created (default status='absent') for all active students.
+// Returns the attendance records for the given date.
+func (a *App) OpenClassAttendance(classID int, date string) ([]Attendance, error) {
 	if err := a.checkDB(); err != nil {
-		return err
+		return nil, err
 	}
 
-	// Verify student is enrolled in the class
-	var exists int
-	err := a.db.QueryRow(
-		`SELECT 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = 0 OR is_archived IS NULL) LIMIT 1`,
-		classID, studentID,
-	).Scan(&exists)
+	// Validate date format
+	_, err := time.Parse("2006-01-02", date)
 	if err != nil {
-		log.Printf("? Student %d not enrolled in class %d: %v", studentID, classID, err)
-		return fmt.Errorf("student not enrolled in this class")
+		return nil, fmt.Errorf("invalid date format: %w", err)
 	}
 
-	// Record or update attendance using composite key (class_id, student_id, date)
-	query := `
-		MERGE attendance AS target
-		USING (SELECT ? AS class_id, ? AS student_id, CAST(GETDATE() AS DATE) AS date, ? AS status, ? AS remarks) AS source
-		ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.date = source.date
-		WHEN MATCHED THEN
-			UPDATE SET status = source.status, remarks = source.remarks, updated_at = CURRENT_TIMESTAMP
-		WHEN NOT MATCHED THEN
-			INSERT (class_id, student_id, date, status, remarks)
-			VALUES (source.class_id, source.student_id, source.date, source.status, source.remarks);
-	`
-	_, err = a.db.Exec(query, classID, studentID, status, nullString(remarks))
+	// Check if class exists and get its status
+	var classIsActive bool
+	var isArchived bool
+	err = a.db.QueryRow(`SELECT is_active, COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&classIsActive, &isArchived)
 	if err != nil {
-		log.Printf("? Failed to record attendance: %v", err)
-		return err
+		return nil, fmt.Errorf("class not found")
 	}
 
-	log.Printf("? Attendance recorded: student=%d, class=%d, status=%s", studentID, classID, status)
-	return nil
+	today := time.Now().Format("2006-01-02")
+
+	// Only auto-create attendance if:
+	// 1. The requested date is TODAY
+	// 2. The class is ACTIVE (not closed)
+	// 3. The class is NOT archived
+	// 4. Attendance does NOT already exist for this date
+	if date == today && classIsActive && !isArchived {
+		var count int
+		err = a.db.QueryRow(
+			`SELECT COUNT(*) FROM attendance WHERE class_id = ? AND attendance_date = ?`,
+			classID, date,
+		).Scan(&count)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check existing attendance: %w", err)
+		}
+
+		if count == 0 {
+			// Auto-create attendance rows for all active students
+			insertQuery := `
+				INSERT INTO attendance (class_id, student_id, attendance_date, status, remarks, is_archived, created_at)
+				SELECT 
+					cl.class_id,
+					cl.student_id,
+					?,
+					'absent',
+					NULL,
+					0,
+					CURRENT_TIMESTAMP
+				FROM classlist cl
+				WHERE cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
+				AND NOT EXISTS (
+					SELECT 1 FROM attendance a 
+					WHERE a.class_id = cl.class_id AND a.student_id = cl.student_id AND a.attendance_date = ?
+				)
+			`
+			_, err = a.db.Exec(insertQuery, date, classID, date)
+			if err != nil {
+				log.Printf("⚠ Failed to auto-create attendance: %v", err)
+				return nil, fmt.Errorf("failed to create attendance: %w", err)
+			}
+			log.Printf("✓ Auto-created attendance for class %d on %s", classID, date)
+		}
+	}
+
+	// Return the attendance records for this date
+	return a.GetClassAttendance(classID, date)
 }
 
-// GetClassAttendance gets attendance records for a specific class on a specific date
+// GetClassAttendance gets attendance records for a specific class on a specific date.
+// Adds is_editable field: true only if date == TODAY and class is not archived.
 func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
 
+	today := time.Now().Format("2006-01-02")
+
 	query := `
 		SELECT 
-			cl.class_id,
-			cl.student_id,
-			COALESCE(CONVERT(VARCHAR(10), a.date, 23), ?) as date,
+			a.class_id,
+			a.student_id,
+			CONVERT(VARCHAR(10), a.attendance_date, 23) as date,
 			stu.student_id,
 			stu.first_name,
 			stu.middle_name,
@@ -73,18 +110,17 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 			a.status,
 			a.remarks,
 			COALESCE(a.is_archived, 0) as is_archived
-		FROM classlist cl
-		JOIN students stu ON cl.student_id = stu.id
-		JOIN classes c ON cl.class_id = c.class_id
+		FROM attendance a
+		JOIN students stu ON a.student_id = stu.id
+		JOIN classes c ON a.class_id = c.class_id
 		JOIN subjects s ON c.subject_code = s.subject_code
-		LEFT JOIN attendance a ON cl.class_id = a.class_id AND cl.student_id = a.student_id AND a.date = ?
-		WHERE cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
+		WHERE a.class_id = ? AND a.attendance_date = ?
 		ORDER BY stu.last_name, stu.first_name
 	`
 
-	rows, err := a.db.Query(query, date, date, classID)
+	rows, err := a.db.Query(query, classID, date)
 	if err != nil {
-		log.Printf("? Failed to query attendance: %v", err)
+		log.Printf("⚠ Failed to query attendance: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -102,7 +138,7 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 			&status, &remarks, &isArchived,
 		)
 		if err != nil {
-			log.Printf("? Failed to scan attendance row: %v", err)
+			log.Printf("⚠ Failed to scan attendance row: %v", err)
 			continue
 		}
 
@@ -115,9 +151,11 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 		if status.Valid {
 			att.Status = status.String
 		} else {
-			att.Status = "" // Empty string when no status is set yet
+			att.Status = "absent"
 		}
 		att.IsArchived = isArchived
+		// CRITICAL: editable only if date is TODAY and not archived
+		att.IsEditable = (date == today) && !isArchived
 
 		attendances = append(attendances, att)
 	}
@@ -125,51 +163,51 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 	return attendances, nil
 }
 
-// InitializeAttendanceForClass creates attendance records for all students in a class for a date
-// Status is initially set to 'absent' so teachers can mark who is present
-func (a *App) InitializeAttendanceForClass(classID int, date string, recordedBy int) error {
+// CheckAttendanceExists checks if an attendance sheet already exists for a class on a given date
+func (a *App) CheckAttendanceExists(classID int, date string) (bool, error) {
 	if err := a.checkDB(); err != nil {
-		return err
+		return false, err
 	}
 
-	query := `
-		MERGE attendance AS target
-		USING (
-			SELECT 
-				cl.class_id,
-				cl.student_id,
-				? AS date,
-				'absent' AS status,
-				'Not yet logged in' AS remarks,
-				CURRENT_TIMESTAMP AS created_at
-			FROM classlist cl
-			WHERE cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
-		) AS source
-		ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.date = source.date
-		WHEN MATCHED THEN
-			UPDATE SET remarks = CASE 
-				WHEN (target.remarks IS NULL OR target.remarks = '') THEN 'Not yet marked'
-				ELSE target.remarks
-			END
-		WHEN NOT MATCHED THEN
-			INSERT (class_id, student_id, date, status, remarks, created_at)
-			VALUES (source.class_id, source.student_id, source.date, source.status, source.remarks, source.created_at);
-	`
-
-	_, err := a.db.Exec(query, date, classID)
+	var count int
+	query := `SELECT COUNT(*) FROM attendance WHERE class_id = ? AND attendance_date = ?`
+	err := a.db.QueryRow(query, classID, date).Scan(&count)
 	if err != nil {
-		log.Printf("? Failed to initialize attendance: %v", err)
-		return err
+		return false, fmt.Errorf("failed to check existing attendance: %w", err)
 	}
-
-	log.Printf("? Attendance initialized for class %d on %s", classID, date)
-	return nil
+	return count > 0, nil
 }
 
-// UpdateAttendanceRecord updates a specific attendance record with new details
+// UpdateAttendanceRecord updates a specific attendance record.
+// CRITICAL RULE: Only allows updates if attendance_date == TODAY.
 func (a *App) UpdateAttendanceRecord(classID, studentUserID int, date, status, remarks string) error {
 	if err := a.checkDB(); err != nil {
 		return err
+	}
+
+	// Enforce same-day edit rule
+	today := time.Now().Format("2006-01-02")
+	if date != today {
+		return fmt.Errorf("attendance can only be edited on the same day. Date %s is read-only", date)
+	}
+
+	// Verify the record is not archived
+	var isArchived bool
+	err := a.db.QueryRow(
+		`SELECT COALESCE(is_archived, 0) FROM attendance WHERE class_id = ? AND student_id = ? AND attendance_date = ?`,
+		classID, studentUserID, date,
+	).Scan(&isArchived)
+	if err != nil {
+		return fmt.Errorf("attendance record not found")
+	}
+	if isArchived {
+		return fmt.Errorf("archived attendance cannot be edited")
+	}
+
+	// Validate status
+	validStatuses := map[string]bool{"absent": true, "present": true, "late": true}
+	if !validStatuses[status] {
+		return fmt.Errorf("invalid status: %s. Must be 'absent', 'present', or 'late'", status)
 	}
 
 	query := `
@@ -177,45 +215,62 @@ func (a *App) UpdateAttendanceRecord(classID, studentUserID int, date, status, r
 		SET status = ?,
 		    remarks = ?,
 		    updated_at = CURRENT_TIMESTAMP
-		WHERE class_id = ? AND student_id = ? AND date = ?
+		WHERE class_id = ? AND student_id = ? AND attendance_date = ?
 	`
 
-	_, err := a.db.Exec(query, status, nullString(remarks), classID, studentUserID, date)
+	_, err = a.db.Exec(query, status, nullString(remarks), classID, studentUserID, date)
 	if err != nil {
-		log.Printf("? Failed to update attendance record: %v", err)
+		log.Printf("⚠ Failed to update attendance record: %v", err)
 		return err
 	}
 
-	log.Printf("? Attendance record updated: class_id=%d, student_id=%d, date=%s, status=%s", classID, studentUserID, date, status)
+	log.Printf("✓ Attendance record updated: class_id=%d, student_id=%d, date=%s, status=%s", classID, studentUserID, date, status)
 	return nil
 }
 
-// DeleteAttendanceSheet deletes an attendance sheet and all its records for a class on a specific date
-func (a *App) DeleteAttendanceSheet(classID int, date string) error {
+// RecordAttendance records or updates attendance for a student in a class (same-day only)
+func (a *App) RecordAttendance(classID, studentID int, status, remarks string, recordedBy int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
 
-	// Start a transaction
-	tx, err := a.db.Begin()
+	today := time.Now().Format("2006-01-02")
+
+	// Verify student is enrolled in the class
+	var exists int
+	err := a.db.QueryRow(
+		`SELECT 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = 0 OR is_archived IS NULL)`,
+		classID, studentID,
+	).Scan(&exists)
 	if err != nil {
-		return fmt.Errorf("failed to start transaction: %w", err)
+		log.Printf("⚠ Student %d not enrolled in class %d: %v", studentID, classID, err)
+		return fmt.Errorf("student not enrolled in this class")
 	}
-	defer tx.Rollback()
 
-	// Delete attendance records for this class and date
-	_, err = tx.Exec("DELETE FROM attendance WHERE class_id = ? AND date = ?", classID, date)
+	// Validate status
+	validStatuses := map[string]bool{"absent": true, "present": true, "late": true}
+	if !validStatuses[status] {
+		return fmt.Errorf("invalid status: %s. Must be 'absent', 'present', or 'late'", status)
+	}
+
+	// Record or update attendance for TODAY only
+	query := `
+		MERGE attendance AS target
+		USING (SELECT ? AS class_id, ? AS student_id, ? AS attendance_date, ? AS status, ? AS remarks) AS source
+		ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.attendance_date = source.attendance_date
+		WHEN MATCHED AND target.is_archived = 0 THEN
+			UPDATE SET status = source.status, remarks = source.remarks, updated_at = CURRENT_TIMESTAMP
+		WHEN NOT MATCHED THEN
+			INSERT (class_id, student_id, attendance_date, status, remarks, is_archived)
+			VALUES (source.class_id, source.student_id, source.attendance_date, source.status, source.remarks, 0);
+	`
+	_, err = a.db.Exec(query, classID, studentID, today, status, nullString(remarks))
 	if err != nil {
-		log.Printf("? Failed to delete attendance records: %v", err)
-		return fmt.Errorf("failed to delete attendance records: %w", err)
+		log.Printf("⚠ Failed to record attendance: %v", err)
+		return err
 	}
 
-	// Commit the transaction
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	log.Printf("? Attendance sheet deleted: class_id=%d, date=%s", classID, date)
+	log.Printf("✓ Attendance recorded: student=%d, class=%d, status=%s", studentID, classID, status)
 	return nil
 }
 
@@ -224,6 +279,8 @@ func (a *App) RecordStudentLogin(classID, studentID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
+
+	today := time.Now().Format("2006-01-02")
 
 	// Verify student is enrolled in the class
 	var exists int
@@ -235,31 +292,25 @@ func (a *App) RecordStudentLogin(classID, studentID int) error {
 		return fmt.Errorf("student not enrolled in this class")
 	}
 
-	// Record attendance as present
-	// Clear "Not yet marked" remark when student is marked present
+	// Record attendance as present (today only)
 	query := `
 		MERGE attendance AS target
-		USING (SELECT ? AS class_id, ? AS student_id, CAST(GETDATE() AS DATE) AS date, 'present' AS status, NULL AS remarks) AS source
-		ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.date = source.date
-		WHEN MATCHED THEN
-			UPDATE SET status = 'present',
-				remarks = CASE 
-					WHEN target.remarks = 'Not yet marked' THEN NULL
-					ELSE target.remarks
-				END,
-				updated_at = CURRENT_TIMESTAMP
+		USING (SELECT ? AS class_id, ? AS student_id, ? AS attendance_date, 'present' AS status, NULL AS remarks) AS source
+		ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.attendance_date = source.attendance_date
+		WHEN MATCHED AND target.is_archived = 0 THEN
+			UPDATE SET status = 'present', updated_at = CURRENT_TIMESTAMP
 		WHEN NOT MATCHED THEN
-			INSERT (class_id, student_id, date, status, remarks)
-			VALUES (source.class_id, source.student_id, source.date, source.status, source.remarks);
+			INSERT (class_id, student_id, attendance_date, status, remarks, is_archived)
+			VALUES (source.class_id, source.student_id, source.attendance_date, source.status, source.remarks, 0);
 	`
 
-	_, err = a.db.Exec(query, classID, studentID)
+	_, err = a.db.Exec(query, classID, studentID, today)
 	if err != nil {
-		log.Printf("? Failed to record student login: %v", err)
+		log.Printf("⚠ Failed to record student login: %v", err)
 		return err
 	}
 
-	log.Printf("? Student login recorded: student=%d, class=%d", studentID, classID)
+	log.Printf("✓ Student login recorded: student=%d, class=%d", studentID, classID)
 	return nil
 }
 
@@ -271,7 +322,7 @@ func (a *App) ExportAttendanceCSV(classID int) (string, error) {
 
 	query := `
 		SELECT 
-			a.class_id, a.student_id, CONVERT(VARCHAR(10), a.date, 23) as date, a.status, a.remarks,
+			a.class_id, a.student_id, CONVERT(VARCHAR(10), a.attendance_date, 23) as date, a.status, a.remarks,
 			stu.student_id, stu.first_name, stu.middle_name, stu.last_name,
 			c.subject_code, s.description as subject_name
 		FROM attendance a
@@ -279,7 +330,7 @@ func (a *App) ExportAttendanceCSV(classID int) (string, error) {
 		JOIN classes c ON a.class_id = c.class_id
 		JOIN subjects s ON c.subject_code = s.subject_code
 		WHERE a.class_id = ?
-		ORDER BY a.date DESC, stu.last_name, stu.first_name
+		ORDER BY a.attendance_date DESC, stu.last_name, stu.first_name
 	`
 	rows, err := a.db.Query(query, classID)
 	if err != nil {
@@ -348,59 +399,8 @@ func (a *App) ExportAttendanceCSV(classID int) (string, error) {
 		})
 	}
 
-	log.Printf("? Attendance exported to CSV: %s", filename)
+	log.Printf("✓ Attendance exported to CSV: %s", filename)
 	return filename, nil
-}
-
-// GenerateAttendanceFromLogs generates attendance records for a class
-// It initializes all enrolled students as absent - teachers will manually mark present
-func (a *App) GenerateAttendanceFromLogs(classID int, date string, recordedBy int) error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	// Validate the date format
-	_, err := time.Parse("2006-01-02", date)
-	if err != nil {
-		return fmt.Errorf("invalid date format: %w", err)
-	}
-
-	// Get all enrolled students
-	students, err := a.GetClassStudents(classID)
-	if err != nil {
-		return fmt.Errorf("failed to get class students: %w", err)
-	}
-
-	// If no students enrolled, still log success (sheet was created)
-	if len(students) == 0 {
-		log.Printf("? Attendance sheet created for class %d on %s (no students enrolled)", classID, date)
-		return nil
-	}
-
-	// For each student, initialize attendance record as absent (teacher will manually mark present)
-	for _, student := range students {
-		// Insert or update attendance record - all students start as absent
-		// Also reset is_archived to 0 in case re-generating a previously archived sheet
-		insertQuery := `
-			MERGE attendance AS target
-			USING (SELECT ? AS class_id, ? AS student_id, ? AS date, 'absent' AS status, 0 AS is_archived, CURRENT_TIMESTAMP AS created_at) AS source
-			ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.date = source.date
-			WHEN MATCHED THEN
-				UPDATE SET status = 'absent', is_archived = 0, updated_at = CURRENT_TIMESTAMP
-			WHEN NOT MATCHED THEN
-				INSERT (class_id, student_id, date, status, is_archived, created_at)
-				VALUES (source.class_id, source.student_id, source.date, source.status, source.is_archived, source.created_at);
-		`
-
-		_, err = a.db.Exec(insertQuery, classID, student.StudentUserID, date)
-		if err != nil {
-			log.Printf("? Failed to insert attendance for student %d: %v", student.StudentUserID, err)
-			continue
-		}
-	}
-
-	log.Printf("? Attendance generated from logs for class %d on %s", classID, date)
-	return nil
 }
 
 // ==============================================================================
@@ -428,7 +428,7 @@ func (a *App) autoRecordAttendanceOnLogin(studentID int) {
 			c.semester
 		FROM classlist cl
 		JOIN classes c ON cl.class_id = c.class_id
-		LEFT JOIN attendance a ON cl.class_id = a.class_id AND cl.student_id = a.student_id AND a.date = ?
+		LEFT JOIN attendance a ON cl.class_id = a.class_id AND cl.student_id = a.student_id AND a.attendance_date = ?
 		WHERE cl.student_id = ? 
 			AND cl.status = 'active'
 			AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
@@ -460,7 +460,7 @@ func (a *App) autoRecordAttendanceOnLogin(studentID int) {
 				UPDATE attendance 
 				SET status = 'present',
 					updated_at = CURRENT_TIMESTAMP
-				WHERE class_id = ? AND student_id = ? AND date = ?
+				WHERE class_id = ? AND student_id = ? AND attendance_date = ? AND COALESCE(is_archived, 0) = 0
 			`
 			_, err := a.db.Exec(updateQuery, classID, studentID, today)
 			if err != nil {
@@ -516,66 +516,20 @@ func (a *App) isWithinClassSchedule(schedule string, currentTime time.Time) bool
 }
 
 // ==============================================================================
-// ATTENDANCE FINALIZATION (Mark as Done/Locked)
-// ==============================================================================
-
-// FinalizeAttendanceSheet marks an attendance sheet as finalized (done/locked)
-// This prevents further edits and indicates the attendance is complete
-func (a *App) FinalizeAttendanceSheet(classID int, date string) error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	query := `
-		UPDATE attendance 
-		SET is_finalized = 1,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE class_id = ? AND date = ?
-	`
-
-	result, err := a.db.Exec(query, classID, date)
-	if err != nil {
-		log.Printf("? Failed to finalize attendance sheet: %v", err)
-		return err
-	}
-
-	rowsAffected, _ := result.RowsAffected()
-	log.Printf("? Finalized attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
-	return nil
-}
-
-// UnfinalizeAttendanceSheet removes the finalized flag, allowing further edits
-func (a *App) UnfinalizeAttendanceSheet(classID int, date string) error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	query := `
-		UPDATE attendance 
-		SET is_finalized = 0,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE class_id = ? AND date = ?
-	`
-
-	result, err := a.db.Exec(query, classID, date)
-	if err != nil {
-		log.Printf("? Failed to unfinalize attendance sheet: %v", err)
-		return err
-	}
-
-	rowsAffected, _ := result.RowsAffected()
-	log.Printf("? Unfinalized attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
-	return nil
-}
-
-// ==============================================================================
 // ATTENDANCE ARCHIVING
 // ==============================================================================
 
-// ArchiveAttendanceSheet marks all attendance records for a class on a specific date as archived
+// ArchiveAttendanceSheet marks all attendance records for a class on a specific date as archived.
+// Rule: Only allowed for attendance_date < TODAY. Same-day attendance cannot be archived.
 func (a *App) ArchiveAttendanceSheet(classID int, date string) error {
 	if err := a.checkDB(); err != nil {
 		return err
+	}
+
+	// Enforce: cannot archive today's attendance
+	today := time.Now().Format("2006-01-02")
+	if date >= today {
+		return fmt.Errorf("cannot archive today's or future attendance. Only past attendance can be archived")
 	}
 
 	// Archive attendance records
@@ -583,22 +537,22 @@ func (a *App) ArchiveAttendanceSheet(classID int, date string) error {
 		UPDATE attendance 
 		SET is_archived = 1,
 			updated_at = CURRENT_TIMESTAMP
-		WHERE class_id = ? AND date = ?
+		WHERE class_id = ? AND attendance_date = ?
 	`
 
 	result, err := a.db.Exec(query, classID, date)
 	if err != nil {
-		log.Printf("? Failed to archive attendance records: %v", err)
+		log.Printf("⚠ Failed to archive attendance records: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
-
-	log.Printf("? Archived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
+	log.Printf("✓ Archived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
 	return nil
 }
 
-// UnarchiveAttendanceSheet removes the archived flag from attendance records
+// UnarchiveAttendanceSheet removes the archived flag from attendance records.
+// Note: unarchived past attendance is still read-only (only today's is editable).
 func (a *App) UnarchiveAttendanceSheet(classID int, date string) error {
 	if err := a.checkDB(); err != nil {
 		return err
@@ -609,18 +563,17 @@ func (a *App) UnarchiveAttendanceSheet(classID int, date string) error {
 		UPDATE attendance 
 		SET is_archived = 0,
 			updated_at = CURRENT_TIMESTAMP
-		WHERE class_id = ? AND date = ?
+		WHERE class_id = ? AND attendance_date = ?
 	`
 
 	result, err := a.db.Exec(query, classID, date)
 	if err != nil {
-		log.Printf("? Failed to unarchive attendance records: %v", err)
+		log.Printf("⚠ Failed to unarchive attendance records: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
-
-	log.Printf("? Unarchived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
+	log.Printf("✓ Unarchived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
 	return nil
 }
 
@@ -636,8 +589,6 @@ type ArchivedAttendanceSheet struct {
 	PresentCount int    `json:"present_count"`
 	AbsentCount  int    `json:"absent_count"`
 	LateCount    int    `json:"late_count"`
-	ExcusedCount int    `json:"excused_count"`
-	IsFinalized  bool   `json:"is_finalized"`
 }
 
 // GetArchivedAttendanceSheets gets all archived attendance sheets for a teacher
@@ -646,11 +597,10 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 		return nil, err
 	}
 
-	// Get archived attendance sheets from attendance table only
 	query := `
 		SELECT
 			a.class_id,
-			CONVERT(VARCHAR(10), a.date, 23) AS date,
+			CONVERT(VARCHAR(10), a.attendance_date, 23) AS date,
 			subj.subject_code,
 			subj.description AS subject_name,
 			c.edp_code,
@@ -658,20 +608,19 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 			COUNT(a.student_id) AS student_count,
 			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
 			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
-			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count,
-			SUM(CASE WHEN a.status = 'excused' THEN 1 ELSE 0 END) AS excused_count
+			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count
 		FROM attendance a
 		JOIN classes c ON a.class_id = c.class_id
 		JOIN subjects subj ON c.subject_code = subj.subject_code
 		WHERE c.teacher_id = ?
 		  AND a.is_archived = 1
-		GROUP BY a.class_id, a.date, subj.subject_code, subj.description, c.edp_code, c.schedule
-		ORDER BY a.date DESC, subj.subject_code
+		GROUP BY a.class_id, a.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
+		ORDER BY a.attendance_date DESC, subj.subject_code
 	`
 
 	rows, err := a.db.Query(query, teacherUserID)
 	if err != nil {
-		log.Printf("? Failed to query archived attendance sheets: %v", err)
+		log.Printf("⚠ Failed to query archived attendance sheets: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -685,10 +634,10 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 			&sheet.ClassID, &sheet.Date,
 			&sheet.SubjectCode, &sheet.SubjectName,
 			&edpCode, &schedule,
-			&sheet.StudentCount, &sheet.PresentCount, &sheet.AbsentCount, &sheet.LateCount, &sheet.ExcusedCount,
+			&sheet.StudentCount, &sheet.PresentCount, &sheet.AbsentCount, &sheet.LateCount,
 		)
 		if err != nil {
-			log.Printf("? Failed to scan archived attendance sheet: %v", err)
+			log.Printf("⚠ Failed to scan archived attendance sheet: %v", err)
 			continue
 		}
 
@@ -717,89 +666,22 @@ type AttendanceSheetSummary struct {
 	PresentCount int    `json:"present_count"`
 	AbsentCount  int    `json:"absent_count"`
 	LateCount    int    `json:"late_count"`
-	ExcusedCount int    `json:"excused_count"`
 	IsArchived   bool   `json:"is_archived"`
-	IsFinalized  bool   `json:"is_finalized"`
+	IsEditable   bool   `json:"is_editable"`
 }
 
-// GetFinalizedAttendanceSheets gets all finalized (but not archived) attendance sheets for a teacher
-func (a *App) GetFinalizedAttendanceSheets(teacherUserID int) ([]AttendanceSheetSummary, error) {
-	if err := a.checkDB(); err != nil {
-		return nil, err
-	}
-
-	query := `
-		SELECT
-			a.class_id,
-			CONVERT(VARCHAR(10), a.date, 23) AS date,
-			subj.subject_code,
-			subj.description AS subject_name,
-			c.edp_code,
-			c.schedule,
-			COUNT(a.student_id) AS student_count,
-			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
-			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
-			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count,
-			SUM(CASE WHEN a.status = 'excused' THEN 1 ELSE 0 END) AS excused_count,
-			COALESCE(MAX(a.is_archived), 0) AS is_archived,
-			COALESCE(MAX(a.is_finalized), 0) AS is_finalized
-		FROM attendance a
-		JOIN classes c ON a.class_id = c.class_id
-		JOIN subjects subj ON c.subject_code = subj.subject_code
-		WHERE c.teacher_id = ?
-		  AND COALESCE(a.is_finalized, 0) = 0
-		  AND COALESCE(a.is_archived, 0) = 0
-		GROUP BY a.class_id, a.date, subj.subject_code, subj.description, c.edp_code, c.schedule
-		ORDER BY a.date DESC, subj.subject_code
-	`
-
-	rows, err := a.db.Query(query, teacherUserID)
-	if err != nil {
-		log.Printf("? Failed to query finalized attendance sheets: %v", err)
-		return nil, err
-	}
-	defer rows.Close()
-
-	var sheets []AttendanceSheetSummary
-	for rows.Next() {
-		var sheet AttendanceSheetSummary
-		var edpCode, schedule sql.NullString
-
-		err := rows.Scan(
-			&sheet.ClassID, &sheet.Date,
-			&sheet.SubjectCode, &sheet.SubjectName,
-			&edpCode, &schedule,
-			&sheet.StudentCount, &sheet.PresentCount, &sheet.AbsentCount, &sheet.LateCount, &sheet.ExcusedCount,
-			&sheet.IsArchived, &sheet.IsFinalized,
-		)
-		if err != nil {
-			log.Printf("? Failed to scan finalized attendance sheet: %v", err)
-			continue
-		}
-
-		if edpCode.Valid {
-			sheet.EdpCode = edpCode.String
-		}
-		if schedule.Valid {
-			sheet.Schedule = schedule.String
-		}
-
-		sheets = append(sheets, sheet)
-	}
-
-	return sheets, nil
-}
-
-// GetActiveAttendanceSheets gets all active (not finalized, not archived) attendance sheets for a teacher
+// GetActiveAttendanceSheets gets all active (not archived) attendance sheets for a teacher
 func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSummary, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
 
+	today := time.Now().Format("2006-01-02")
+
 	query := `
 		SELECT
 			a.class_id,
-			CONVERT(VARCHAR(10), a.date, 23) AS date,
+			CONVERT(VARCHAR(10), a.attendance_date, 23) AS date,
 			subj.subject_code,
 			subj.description AS subject_name,
 			c.edp_code,
@@ -808,22 +690,20 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
 			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
 			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count,
-			SUM(CASE WHEN a.status = 'excused' THEN 1 ELSE 0 END) AS excused_count,
-			COALESCE(MAX(a.is_archived), 0) AS is_archived,
-			COALESCE(MAX(a.is_finalized), 0) AS is_finalized
+			COALESCE(MAX(CAST(a.is_archived AS INT)), 0) AS is_archived
 		FROM attendance a
 		JOIN classes c ON a.class_id = c.class_id
 		JOIN subjects subj ON c.subject_code = subj.subject_code
 		WHERE c.teacher_id = ?
-		  AND COALESCE(a.is_finalized, 0) = 0
 		  AND COALESCE(a.is_archived, 0) = 0
-		GROUP BY a.class_id, a.date, subj.subject_code, subj.description, c.edp_code, c.schedule
-		ORDER BY a.date DESC, subj.subject_code
+		  AND COALESCE(c.is_archived, 0) = 0
+		GROUP BY a.class_id, a.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
+		ORDER BY a.attendance_date DESC, subj.subject_code
 	`
 
 	rows, err := a.db.Query(query, teacherUserID)
 	if err != nil {
-		log.Printf("? Failed to query active attendance sheets: %v", err)
+		log.Printf("⚠ Failed to query active attendance sheets: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -837,11 +717,11 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 			&sheet.ClassID, &sheet.Date,
 			&sheet.SubjectCode, &sheet.SubjectName,
 			&edpCode, &schedule,
-			&sheet.StudentCount, &sheet.PresentCount, &sheet.AbsentCount, &sheet.LateCount, &sheet.ExcusedCount,
-			&sheet.IsArchived, &sheet.IsFinalized,
+			&sheet.StudentCount, &sheet.PresentCount, &sheet.AbsentCount, &sheet.LateCount,
+			&sheet.IsArchived,
 		)
 		if err != nil {
-			log.Printf("? Failed to scan active attendance sheet: %v", err)
+			log.Printf("⚠ Failed to scan active attendance sheet: %v", err)
 			continue
 		}
 
@@ -851,6 +731,8 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 		if schedule.Valid {
 			sheet.Schedule = schedule.String
 		}
+		// Is editable only if date == today
+		sheet.IsEditable = (sheet.Date == today)
 
 		sheets = append(sheets, sheet)
 	}

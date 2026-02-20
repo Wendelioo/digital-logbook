@@ -1,0 +1,1379 @@
+================================================================================
+                    DIGITAL LOGBOOK SYSTEM
+        PC Laboratory Attendance & Management System
+                  Capstone Project Documentation
+================================================================================
+
+PROJECT TITLE: Digital Logbook - PC Laboratory Attendance Tracking System
+
+DEVELOPMENT TEAM: BSIT Students (Capstone Project)
+
+DATE: February 2026
+
+================================================================================
+                        TABLE OF CONTENTS
+================================================================================
+
+1. PROJECT OVERVIEW
+2. PROBLEM STATEMENT
+3. BACKGROUND OF THE STUDY
+4. OBJECTIVES
+5. SCOPE AND LIMITATIONS
+6. SYSTEM FUNCTIONALITIES
+7. TECHNICAL ARCHITECTURE
+8. USER ROLES AND CAPABILITIES
+9. KEY FEATURES
+10. BENEFITS AND SIGNIFICANCE
+11. TECHNOLOGY STACK
+12. DATABASE DESIGN
+13. SYSTEM REQUIREMENTS
+14. FUTURE ENHANCEMENTS
+
+================================================================================
+                     1. PROJECT OVERVIEW
+================================================================================
+
+The Digital Logbook System is a comprehensive desktop application designed 
+specifically for academic institutions to manage and monitor PC laboratory 
+usage. This system replaces traditional paper-based attendance logs with an 
+automated, secure, and efficient digital solution.
+
+The application provides role-based access for four distinct user types:
+- Administrators (system management)
+- Teachers (class and attendance management)
+- Students (attendance logging and feedback)
+- Working Students (laboratory monitoring and equipment tracking)
+
+Built using modern web technologies embedded in a desktop runtime (Wails), 
+the system offers a native application experience while leveraging the 
+flexibility of web-based user interfaces.
+
+================================================================================
+                     2. PROBLEM STATEMENT
+================================================================================
+
+Academic institutions face several critical challenges in managing PC 
+laboratory attendance and equipment maintenance:
+
+PROBLEM 1: INEFFICIENT MANUAL ATTENDANCE TRACKING
+Traditional paper-based logbooks are prone to errors, falsification, and 
+loss of records. Manual entry is time-consuming and difficult to verify, 
+making it challenging to track actual laboratory usage patterns.
+
+PROBLEM 2: LACK OF REAL-TIME MONITORING
+Educational institutions have limited visibility into current laboratory 
+occupancy, making it difficult to manage lab capacity and schedule 
+maintenance activities during low-usage periods.
+
+PROBLEM 3: EQUIPMENT ACCOUNTABILITY ISSUES
+There is no systematic way to track which student used which computer, 
+leading to difficulties in identifying responsibility when equipment is 
+damaged or malfunctioning. This creates accountability gaps and increases 
+maintenance costs.
+
+PROBLEM 4: POOR EQUIPMENT CONDITION REPORTING
+Students and staff lack a structured mechanism to report equipment issues 
+(broken keyboards, malfunctioning mice, damaged monitors), resulting in 
+prolonged hardware problems that affect learning quality.
+
+PROBLEM 5: DIFFICULT DATA RETRIEVAL AND REPORTING
+Generating attendance reports, usage statistics, and historical data from 
+paper logs is extremely labor-intensive and error-prone. This hampers 
+administrative decision-making and audit processes.
+
+PROBLEM 6: SESSION TIME TRACKING CHALLENGES
+Manual systems cannot accurately track login/logout times, preventing 
+institutions from enforcing fair usage policies or identifying students 
+who overstay their allocated time slots.
+
+PROBLEM 7: SECURITY AND AUTHENTICATION WEAKNESSES
+Paper systems have no authentication mechanism, allowing anyone to sign 
+in under false identities, compromising security and attendance integrity.
+
+================================================================================
+                   3. BACKGROUND OF THE STUDY
+================================================================================
+
+Computer laboratories are essential educational resources in modern academic 
+institutions. However, effective management of these facilities requires 
+accurate tracking of:
+
+- Who uses the laboratory and when
+- Duration of laboratory sessions
+- Condition of equipment after use
+- Attendance patterns for capacity planning
+- Historical usage data for resource allocation
+
+The researchers observed that most institutions still rely on manual 
+attendance systems where students write their names, student IDs, time in, 
+and time out on paper. This approach has proven inadequate in the digital 
+age, leading to:
+
+- Lost or damaged logbook pages
+- Illegible handwriting making data unusable
+- No backup or archival system
+- Inability to generate statistical reports
+- Limited accountability for equipment damage
+- Time-consuming verification processes
+
+These observations motivated the development of an automated, secure, and 
+comprehensive digital solution that addresses all major pain points while 
+providing additional features for enhanced laboratory management.
+
+================================================================================
+                        4. OBJECTIVES
+================================================================================
+
+GENERAL OBJECTIVE:
+To develop a comprehensive desktop application that automates PC laboratory 
+attendance tracking and equipment management for educational institutions.
+
+SPECIFIC OBJECTIVES:
+
+1. TO AUTOMATE ATTENDANCE LOGGING
+   - Implement secure user authentication for all laboratory users
+   - Record accurate login and logout timestamps automatically
+   - Track which specific PC/workstation each student uses
+   - Support bulk user registration for efficient onboarding
+
+2. TO ENABLE EQUIPMENT CONDITION MONITORING
+   - Provide a feedback mechanism for reporting equipment issues
+   - Track computer, monitor, keyboard, and mouse condition per session
+   - Maintain historical records of equipment problems
+   - Generate equipment condition reports for maintenance planning
+
+3. TO IMPLEMENT ROLE-BASED ACCESS CONTROL
+   - Create distinct user interfaces for admin, teacher, student, and 
+     working student roles
+   - Enforce appropriate permissions and data access per role
+   - Secure sensitive administrative functions
+   - Support department-based user organization
+
+4. TO GENERATE COMPREHENSIVE REPORTS
+   - Export attendance logs in multiple formats (CSV, PDF, DOCX)
+   - Generate equipment feedback reports
+   - Support date-range filtering for historical analysis
+   - Enable data-driven decision making
+
+5. TO ENSURE DATA SECURITY AND INTEGRITY
+   - Implement password-based authentication with secure hashing
+   - Prevent unauthorized access through account locking mechanisms
+   - Maintain audit trails for all login/logout activities
+   - Protect against data loss through database backup capabilities
+
+6. TO IMPROVE LABORATORY MANAGEMENT EFFICIENCY
+   - Provide real-time visibility into laboratory usage
+   - Enable quick identification of frequent issues or problematic equipment
+   - Streamline report generation for administrative requirements
+   - Support capacity planning through usage analytics
+
+================================================================================
+                   5. SCOPE AND LIMITATIONS
+================================================================================
+
+SCOPE:
+
+The Digital Logbook System encompasses:
+
+1. User Management
+   - Registration and approval workflow for new users
+   - Profile management with photo upload
+   - Role assignment (admin, teacher, student, working student)
+   - Department assignment for organizational structure
+   - Bulk user import from CSV files
+
+2. Attendance Tracking
+   - Login/logout recording with timestamp precision
+   - Hostname/PC identification for each session
+   - Automatic session time calculation
+   - Historical attendance records with archiving
+
+3. Equipment Feedback System
+   - Structured reporting for computer hardware issues
+   - Status tracking (Good, Needs Service, Not Working)
+   - Component-level feedback (CPU, monitor, keyboard, mouse)
+   - Issue description with timestamp and user identification
+
+4. Class Management (Teacher Module)
+   - Class creation and enrollment management
+   - Student attendance monitoring per class
+   - Class-based reporting capabilities
+   - Class archiving for completed terms
+
+5. Reporting and Export
+   - Multi-format export (CSV, PDF, DOCX)
+   - Customizable date ranges
+   - Role-specific report access
+   - Equipment feedback summaries
+
+6. Administrative Functions
+   - User account approval/rejection
+   - Department management
+   - System-wide user oversight
+   - Login history monitoring
+
+LIMITATIONS:
+
+1. DEPLOYMENT SCOPE
+   - Designed as a standalone desktop application (not web-based)
+   - Requires installation on each PC in the laboratory
+   - Database must be centrally accessible via network
+
+2. PLATFORM COMPATIBILITY
+   - Primarily developed for Windows environment
+   - Cross-platform support (macOS, Linux) available but not primary focus
+
+3. NETWORK DEPENDENCY
+   - Requires active network connection to central MySQL database
+   - No offline mode for attendance logging
+
+4. SCALABILITY
+   - Optimized for single-institution deployment
+   - Not designed for multi-campus distributed systems
+
+5. HARDWARE INTEGRATION
+   - No biometric authentication (fingerprint, facial recognition)
+   - No RFID or barcode scanning integration
+   - Relies on username/password authentication
+
+6. MOBILE ACCESS
+   - Desktop application only; no mobile app version
+   - No remote access via web browser
+
+7. ADVANCED ANALYTICS
+   - Basic reporting capabilities included
+   - No advanced AI/ML-powered predictive analytics
+   - Manual data interpretation required for trends
+
+================================================================================
+                   6. SYSTEM FUNCTIONALITIES
+================================================================================
+
+6.1 AUTHENTICATION AND SECURITY
+
+- Secure Login System
+  * Username and password-based authentication
+  * Password hashing for security
+  * Account locking mechanism after failed attempts
+  * Session management with automatic logout
+  
+- User Registration
+  * Self-registration with admin approval workflow
+  * Profile photo upload capability
+  * Department selection during registration
+  * Role assignment by administrators
+
+- Account Management
+  * Password change functionality
+  * Profile information updates
+  * Account activation/deactivation by admins
+
+6.2 ATTENDANCE MANAGEMENT
+
+- Login/Logout Recording
+  * Automatic timestamp capture
+  * PC hostname identification
+  * Session duration calculation
+  * Real-time attendance tracking
+
+- Attendance History
+  * Comprehensive login log viewing
+  * Date range filtering
+  * Export capabilities
+  * Archive access for historical data
+
+- Class-Based Attendance (Teachers)
+  * View attendance by specific class
+  * Monitor student participation
+  * Generate class attendance reports
+  * Track attendance patterns
+
+6.3 EQUIPMENT FEEDBACK SYSTEM
+
+- Equipment Status Reporting
+  * Computer/CPU condition
+  * Monitor condition
+  * Keyboard condition
+  * Mouse condition
+  * Overall equipment status
+
+- Issue Documentation
+  * Detailed problem descriptions
+  * Timestamp and user tracking
+  * Equipment identification
+  * Historical issue tracking
+
+- Feedback Review
+  * Administrator review of all feedback
+  * Working student access to maintenance needs
+  * Export feedback reports
+  * Trend analysis for recurring issues
+
+6.4 USER MANAGEMENT (ADMIN)
+
+- User Approval System
+  * Review pending registrations
+  * Approve or reject new accounts
+  * Bulk approval capabilities
+  * Email/notification support
+
+- User Administration
+  * View all system users
+  * Edit user information
+  * Change user roles
+  * Lock/unlock accounts
+  * Delete user accounts
+
+- Bulk User Import
+  * CSV file upload for mass user creation
+  * Template-based import
+  * Validation and error reporting
+  * Department assignment during import
+
+6.5 DEPARTMENT MANAGEMENT
+
+- Department CRUD Operations
+  * Create new departments
+  * Edit department information
+  * Delete departments (with safeguards)
+  * Department code assignment
+
+- Department Organization
+  * Assign users to departments
+  * Department-based filtering
+  * Organizational hierarchy support
+
+6.6 CLASS MANAGEMENT (TEACHER)
+
+- Class Creation and Management
+  * Create new classes with details
+  * Set class schedules
+  * Assign department/course
+  * Archive completed classes
+
+- Student Enrollment
+  * Add students to classes
+  * Remove students from classes
+  * View enrolled students
+  * Enrollment verification
+
+- Class Attendance Tracking
+  * Real-time class attendance view
+  * Mark attendance manually (if needed)
+  * Generate class attendance reports
+  * Monitor student participation rates
+
+6.7 REPORTING AND EXPORTS
+
+- Login Log Reports
+  * Export to CSV format
+  * Export to PDF format
+  * Export to DOCX format
+  * Date range selection
+  * User filtering options
+
+- Equipment Feedback Reports
+  * Multiple format exports (CSV, PDF)
+  * Equipment condition summaries
+  * Issue categorization
+  * Maintenance scheduling support
+
+- Custom Date Ranges
+  * Flexible date selection
+  * Pre-defined ranges (today, this week, this month)
+  * Custom start/end dates
+  * Real-time report generation
+
+6.8 DASHBOARD FEATURES
+
+- Admin Dashboard
+  * Total user count
+  * Pending registrations count
+  * Recent activity overview
+  * Quick access to key functions
+  * System statistics
+
+- Teacher Dashboard
+  * My classes overview
+  * Recent student attendance
+  * Upcoming class sessions
+  * Class management shortcuts
+
+- Student Dashboard
+  * My attendance history
+  * Enrolled classes view
+  * Submit equipment feedback
+  * View personal statistics
+
+- Working Student Dashboard
+  * Recent equipment feedback
+  * Current laboratory status
+  * Common issues overview
+  * Maintenance priorities
+
+6.9 ADDITIONAL FEATURES
+
+- Search and Filter
+  * Search users by name, ID, department
+  * Filter logs by date, user, department
+  * Advanced search capabilities
+  * Real-time search results
+
+- Data Archiving
+  * Archive old attendance records
+  * Archive completed classes
+  * Historical data access
+  * Storage optimization
+
+- System Settings
+  * Database configuration
+  * Application preferences
+  * User interface customization
+  * Backup and restore options
+
+================================================================================
+                  7. TECHNICAL ARCHITECTURE
+================================================================================
+
+7.1 APPLICATION ARCHITECTURE
+
+ARCHITECTURE PATTERN: Desktop Application with Embedded Web UI
+
+The Digital Logbook uses Wails framework which combines:
+- Go backend for business logic and database operations
+- React frontend for user interface
+- Native desktop runtime for cross-platform deployment
+
+COMPONENTS:
+
+1. BACKEND LAYER (Go)
+   - Application Core (app.go)
+   - Database Configuration (config.go)
+   - Module-specific logic files:
+     * auth.go - Authentication and authorization
+     * users.go - User management operations
+     * attendance.go - Attendance logging
+     * feedback.go - Equipment feedback
+     * classes.go - Class management
+     * departments.go - Department operations
+     * logs.go - Login/logout logging
+     * registration.go - User registration workflow
+
+2. FRONTEND LAYER (React + TypeScript)
+   - Component-based UI architecture
+   - Context API for state management (AuthContext)
+   - Role-based routing and access control
+   - Responsive design with Tailwind CSS
+
+3. DATABASE LAYER (MySQL)
+   - Relational database design
+   - Normalized schema for data integrity
+   - Foreign key constraints
+   - Indexed tables for performance
+
+4. COMMUNICATION LAYER (Wails Bridge)
+   - JavaScript bridge auto-generated from Go methods
+   - Type-safe function calls from frontend to backend
+   - Promise-based async operations
+   - JSON serialization of data structures
+
+7.2 DATA FLOW
+
+LOGIN FLOW:
+User Input → Frontend Login Component → Wails Bridge → Go Login Method →
+Database Query → Password Verification → User Object Creation →
+Role-based Profile Loading → Login Log Entry → Response to Frontend →
+Context Update → localStorage Persistence → Dashboard Redirect
+
+ATTENDANCE LOGGING FLOW:
+Login Action → Record Timestamp + Hostname → Insert login_logs Entry →
+Store Session ID → User Works in Lab → Logout Action → Update Record
+with Logout Time → Calculate Duration → Update Status
+
+FEEDBACK SUBMISSION FLOW:
+Student Selects Equipment → Fills Feedback Form → Submit →
+Backend Validation → Insert feedback Record → Link to User + Session →
+Timestamp Creation → Success Response → Update UI
+
+================================================================================
+                 8. USER ROLES AND CAPABILITIES
+================================================================================
+
+8.1 ADMINISTRATOR ROLE
+
+RESPONSIBILITIES:
+- Overall system management
+- User account oversight
+- Department organization
+- System configuration
+
+CAPABILITIES:
+✓ Approve/reject user registrations
+✓ Create, edit, delete user accounts
+✓ Manage departments (CRUD operations)
+✓ View all login logs and attendance records
+✓ Generate system-wide reports
+✓ Export data in multiple formats
+✓ Access all equipment feedback
+✓ Lock/unlock user accounts
+✓ View system statistics and analytics
+✓ Bulk user import from CSV
+✓ Archive management
+
+ACCESS LEVEL: Full system access
+
+8.2 TEACHER ROLE
+
+RESPONSIBILITIES:
+- Class management
+- Student enrollment
+- Attendance monitoring for classes
+- Class-based reporting
+
+CAPABILITIES:
+✓ Create and manage classes
+✓ Enroll/remove students in classes
+✓ View class rosters
+✓ Monitor student attendance per class
+✓ Generate class attendance reports
+✓ Archive completed classes
+✓ View own attendance history
+✓ Submit equipment feedback
+✓ Export class-related reports
+
+ACCESS LEVEL: Class and student data within assigned classes
+
+8.3 STUDENT ROLE
+
+RESPONSIBILITIES:
+- Laboratory attendance compliance
+- Equipment condition reporting
+- Personal attendance tracking
+
+CAPABILITIES:
+✓ Login/logout for attendance tracking
+✓ View personal attendance history
+✓ Submit equipment feedback after sessions
+✓ View enrolled classes
+✓ View personal statistics
+✓ Access archived personal records
+✓ Update personal profile information
+
+ACCESS LEVEL: Personal data and assigned classes only
+
+8.4 WORKING STUDENT ROLE
+
+RESPONSIBILITIES:
+- Laboratory monitoring
+- Equipment issue tracking
+- First-line maintenance support
+- Usage pattern observation
+
+CAPABILITIES:
+✓ View all equipment feedback reports
+✓ Monitor current laboratory status
+✓ Track equipment issues and patterns
+✓ Generate equipment condition reports
+✓ Export feedback data
+✓ Login/logout attendance tracking
+✓ View laboratory usage statistics
+✓ Identify maintenance priorities
+
+ACCESS LEVEL: Equipment data and current laboratory status
+
+================================================================================
+                      9. KEY FEATURES
+================================================================================
+
+9.1 SECURITY FEATURES
+
+• Password Hashing
+  - Secure password storage using hashing algorithms
+  - Protection against database breaches
+  
+• Account Locking
+  - Automatic lock after multiple failed login attempts
+  - Admin ability to unlock accounts
+  
+• Role-Based Access Control (RBAC)
+  - Permission enforcement at backend level
+  - Frontend route protection
+  - Data access restrictions per role
+  
+• Session Management
+  - Automatic logout on inactivity
+  - Single active session per user
+  - Session timeout configuration
+
+9.2 DATA MANAGEMENT FEATURES
+
+• Bulk Operations
+  - Mass user import via CSV
+  - Batch approval of registrations
+  - Bulk export of records
+  
+• Data Export Formats
+  - CSV for spreadsheet analysis
+  - PDF for formal reports
+  - DOCX for document editing
+  
+• Archiving System
+  - Automatic archiving of old records
+  - Historical data preservation
+  - Performance optimization through archiving
+  
+• Data Validation
+  - Input validation on frontend and backend
+  - Database constraints for integrity
+  - Error handling and user feedback
+
+9.3 USER EXPERIENCE FEATURES
+
+• Responsive Design
+  - Tailwind CSS framework
+  - Adaptive layouts for different screen sizes
+  - Consistent design language
+  
+• Intuitive Navigation
+  - Role-specific dashboards
+  - Clear menu structure
+  - Breadcrumb navigation
+  
+• Real-time Feedback
+  - Instant form validation
+  - Loading states for async operations
+  - Success/error notifications
+  
+• Search and Filter
+  - Quick search functionality
+  - Advanced filtering options
+  - Date range selectors
+
+9.4 REPORTING FEATURES
+
+• Comprehensive Reports
+  - Attendance summaries
+  - Equipment condition reports
+  - User activity reports
+  - Department statistics
+  
+• Flexible Date Ranges
+  - Today, this week, this month presets
+  - Custom date range selection
+  - Historical data access
+  
+• Multi-format Export
+  - Download reports in preferred format
+  - Automated report generation
+  - Batch export capabilities
+  
+• Visual Data Presentation
+  - Tables with sorting capabilities
+  - Statistical summaries
+  - Clear data organization
+
+9.5 ADMINISTRATIVE FEATURES
+
+• User Approval Workflow
+  - Pending registration queue
+  - One-click approval/rejection
+  - Notification system
+  
+• Department Management
+  - Hierarchical organization
+  - Department-based filtering
+  - Department assignment during import
+  
+• System Monitoring
+  - Active user tracking
+  - Login history visibility
+  - System usage statistics
+
+================================================================================
+                 10. BENEFITS AND SIGNIFICANCE
+================================================================================
+
+10.1 BENEFITS TO EDUCATIONAL INSTITUTIONS
+
+IMPROVED EFFICIENCY
+- Eliminates manual data entry and transcription
+- Reduces administrative overhead
+- Streamlines report generation
+- Automates attendance tracking
+
+ENHANCED ACCURACY
+- Eliminates handwriting interpretation errors
+- Ensures precise timestamp recording
+- Prevents attendance falsification
+- Provides verifiable audit trails
+
+BETTER RESOURCE MANAGEMENT
+- Identifies peak usage times for capacity planning
+- Tracks equipment condition for maintenance scheduling
+- Enables data-driven decision making
+- Optimizes laboratory utilization
+
+COST SAVINGS
+- Reduces paper and printing costs
+- Minimizes equipment downtime through proactive maintenance
+- Decreases administrative labor hours
+- Prevents equipment loss and theft
+
+IMPROVED ACCOUNTABILITY
+- Links specific students to specific PCs
+- Tracks equipment condition at session end
+- Creates responsibility through user identification
+- Supports disciplinary actions with concrete evidence
+
+10.2 BENEFITS TO STUDENTS
+
+CONVENIENCE
+- Fast login/logout process
+- No paper forms to fill out
+- Easy access to personal attendance records
+- Simple equipment issue reporting
+
+TRANSPARENCY
+- View own attendance history anytime
+- Track class participation
+- Access personal statistics
+- Understand usage patterns
+
+EMPOWERMENT
+- Voice concerns about equipment issues
+- Contribute to laboratory improvement
+- Protect against false accusation through logs
+
+10.3 BENEFITS TO TEACHERS
+
+CLASS MANAGEMENT
+- Easy class creation and enrollment
+- Real-time attendance monitoring
+- Quick report generation for grading
+- Historical attendance access
+
+REDUCED WORKLOAD
+- Automated attendance tracking
+- Instant report exports
+- No manual attendance sheet collection
+- Streamlined administrative tasks
+
+BETTER INSIGHTS
+- Identify students with poor attendance
+- Track class participation patterns
+- Support student success interventions
+
+10.4 BENEFITS TO LABORATORY STAFF
+
+MAINTENANCE EFFICIENCY
+- Immediate notification of equipment issues
+- Prioritize repairs based on feedback
+- Track recurring problems
+- Plan preventive maintenance
+
+INVENTORY MANAGEMENT
+- Monitor equipment lifecycle
+- Identify replacement needs
+- Track damage patterns
+- Optimize procurement
+
+SECURITY ENHANCEMENT
+- Know who is in the lab at all times
+- Investigate incidents with log data
+- Prevent unauthorized access
+- Monitor after-hours usage
+
+10.5 SIGNIFICANCE OF THE STUDY
+
+EDUCATIONAL IMPACT
+This system contributes to the improvement of educational facilities 
+management in academic institutions. By providing accurate, real-time data 
+about laboratory usage, institutions can make informed decisions about 
+resource allocation, scheduling, and infrastructure investment.
+
+TECHNOLOGICAL ADVANCEMENT
+The project demonstrates the successful application of modern software 
+development practices (Wails framework, React, TypeScript, Go) in solving 
+real-world institutional problems. It serves as a reference implementation 
+for similar desktop applications in educational contexts.
+
+REPLICABILITY
+The Digital Logbook system can be adapted for use in:
+- Other educational institutions
+- Library computer areas
+- Public computer centers
+- Corporate training facilities
+- Coworking spaces with shared resources
+
+RESEARCH CONTRIBUTION
+This capstone project contributes to the body of knowledge in:
+- Educational technology systems
+- Attendance tracking methodologies
+- Equipment management solutions
+- Desktop application development best practices
+
+PRACTICAL RELEVANCE
+The system addresses immediate, real-world needs experienced by educational 
+institutions, making it highly relevant and immediately applicable. It 
+represents a practical solution that can be deployed and used immediately 
+rather than a theoretical exercise.
+
+================================================================================
+                    11. TECHNOLOGY STACK
+================================================================================
+
+11.1 FRONTEND TECHNOLOGIES
+
+FRAMEWORK: React 18
+- Component-based architecture
+- Hooks for state management
+- Virtual DOM for performance
+- Extensive ecosystem and community support
+
+LANGUAGE: TypeScript
+- Static typing for error prevention
+- Enhanced IDE support and autocomplete
+- Better code maintainability
+- Interface and type definitions
+
+STYLING: Tailwind CSS
+- Utility-first CSS framework
+- Rapid UI development
+- Consistent design system
+- Responsive design built-in
+
+BUILD TOOL: Vite
+- Fast development server
+- Hot module replacement (HMR)
+- Optimized production builds
+- Modern JavaScript support
+
+ROUTING: React Router v6
+- Client-side routing
+- Protected route implementation
+- Role-based route access
+- Programmatic navigation
+
+STATE MANAGEMENT: React Context API
+- Global state for authentication
+- User data persistence
+- No external dependencies
+- Simple and effective for project scale
+
+UI COMPONENTS: Custom + Lucide Icons
+- Reusable component library
+- Consistent design patterns
+- Icon library for visual elements
+
+11.2 BACKEND TECHNOLOGIES
+
+LANGUAGE: Go (Golang)
+- High performance and efficiency
+- Strong typing and compilation
+- Excellent concurrency support
+- Rich standard library
+
+FRAMEWORK: Wails v2.11
+- Desktop application runtime
+- Go + Web UI integration
+- Native OS integration
+- Cross-platform support
+
+DATABASE DRIVER: go-sql-driver/mysql
+- MySQL database connectivity
+- Prepared statement support
+- Connection pooling
+- Transaction management
+
+PDF GENERATION: gofpdf
+- PDF document creation
+- Custom formatting and styling
+- Report generation capabilities
+
+DOCX GENERATION: go-docx
+- Microsoft Word document creation
+- Structured document export
+
+CSV HANDLING: encoding/csv (Go standard library)
+- CSV file reading and writing
+- Bulk import/export support
+
+11.3 DATABASE
+
+DATABASE MANAGEMENT SYSTEM: MySQL
+- Relational database
+- ACID compliance
+- Transaction support
+- Rich query capabilities
+- Wide hosting support
+
+SCHEMA DESIGN:
+- Normalized database structure
+- Foreign key constraints
+- Indexed columns for performance
+- Enum types for status fields
+- NULL handling for optional fields
+
+11.4 DEVELOPMENT TOOLS
+
+VERSION CONTROL: Git
+- Source code management
+- Collaboration support
+- Version history tracking
+
+IDE/EDITOR: Visual Studio Code (recommended)
+- Go extension support
+- TypeScript/React tooling
+- Integrated terminal
+- Debugging capabilities
+
+PACKAGE MANAGEMENT:
+- npm (Node Package Manager) for frontend
+- Go modules for backend dependencies
+
+BUILD SYSTEM:
+- Wails CLI for application building
+- Platform-specific installers
+- Asset bundling
+
+11.5 RUNTIME ENVIRONMENT
+
+DESKTOP RUNTIME: Wails
+- Lightweight desktop framework
+- Web UI embedding
+- Native system integration
+- Cross-platform compilation
+
+OPERATING SYSTEMS:
+- Windows (primary target)
+- macOS (supported)
+- Linux (supported)
+
+DEPLOYMENT:
+- Standalone executable
+- Installer packages (.nsi for Windows)
+- No browser required
+- Network database connection
+
+================================================================================
+                     12. DATABASE DESIGN
+================================================================================
+
+12.1 CORE TABLES
+
+TABLE: users
+PURPOSE: Central authentication and user information
+KEY FIELDS:
+- id (Primary Key)
+- username (Unique)
+- password (Hashed)
+- user_type (ENUM: admin, teacher, student, working_student)
+- account_locked (Boolean)
+- created_at, updated_at (Timestamps)
+- department_id (Foreign Key to departments)
+
+TABLE: admins
+PURPOSE: Administrator-specific information
+KEY FIELDS:
+- admin_id (Primary Key)
+- user_id (Foreign Key to users)
+- employee_id
+- first_name, last_name
+- Additional admin-specific data
+
+TABLE: teachers
+PURPOSE: Teacher-specific information
+KEY FIELDS:
+- teacher_id (Primary Key)
+- user_id (Foreign Key to users)
+- employee_id
+- first_name, last_name
+- Department and contact information
+
+TABLE: students
+PURPOSE: Student-specific information
+KEY FIELDS:
+- student_id (Primary Key)
+- user_id (Foreign Key to users)
+- student_number (Unique)
+- first_name, last_name
+- year_level, program
+- Department information
+
+TABLE: departments
+PURPOSE: Organizational structure
+KEY FIELDS:
+- department_id (Primary Key)
+- department_code (Unique)
+- department_name
+- description
+
+12.2 ATTENDANCE TABLES
+
+TABLE: login_logs
+PURPOSE: Record all login/logout sessions
+KEY FIELDS:
+- log_id (Primary Key)
+- user_id (Foreign Key to users)
+- login_time (Timestamp)
+- logout_time (Nullable timestamp)
+- hostname (PC identifier)
+- status (ENUM: active, logged_out)
+- session_duration (Calculated field)
+
+TABLE: attendance
+PURPOSE: Class-based attendance records
+KEY FIELDS:
+- attendance_id (Primary Key)
+- class_id (Foreign Key to classes)
+- student_id (Foreign Key to students)
+- attendance_date (Date)
+- status (ENUM: present, absent, late)
+- remarks
+
+12.3 CLASS MANAGEMENT TABLES
+
+TABLE: classes
+PURPOSE: Teacher's class information
+KEY FIELDS:
+- class_id (Primary Key)
+- teacher_id (Foreign Key to teachers)
+- class_code (Unique)
+- class_name
+- section
+- schedule
+- archived (Boolean)
+- created_at
+
+TABLE: classes_enrollment
+PURPOSE: Student enrollment in classes
+KEY FIELDS:
+- enrollment_id (Primary Key)
+- class_id (Foreign Key to classes)
+- student_id (Foreign Key to students)
+- enrolled_at (Timestamp)
+
+TABLE: classes_archive
+PURPOSE: Archived class records
+SIMILAR STRUCTURE TO: classes table
+PURPOSE: Historical class data preservation
+
+12.4 FEEDBACK TABLES
+
+TABLE: feedback
+PURPOSE: Equipment condition reports
+KEY FIELDS:
+- feedback_id (Primary Key)
+- user_id (Foreign Key to users)
+- log_id (Foreign Key to login_logs)
+- computer_status (ENUM: Good, Needs Service, Not Working)
+- monitor_status (ENUM: Good, Needs Service, Not Working)
+- keyboard_status (ENUM: Good, Needs Service, Not Working)
+- mouse_status (ENUM: Good, Needs Service, Not Working)
+- issues_encountered (Text)
+- feedback_date (Timestamp)
+- hostname (PC identifier)
+
+12.5 REGISTRATION TABLE
+
+TABLE: pending_registrations
+PURPOSE: User registration approval workflow
+KEY FIELDS:
+- registration_id (Primary Key)
+- username
+- password (Hashed)
+- user_type
+- first_name, last_name
+- student_number or employee_id
+- department_id
+- status (ENUM: pending, approved, rejected)
+- submitted_at, processed_at
+
+12.6 DATABASE RELATIONSHIPS
+
+PRIMARY RELATIONSHIPS:
+- users → (admins, teachers, students) [One-to-One]
+- users → login_logs [One-to-Many]
+- users → feedback [One-to-Many]
+- departments → users [One-to-Many]
+- teachers → classes [One-to-Many]
+- classes → classes_enrollment [One-to-Many]
+- students → classes_enrollment [One-to-Many]
+- classes → attendance [One-to-Many]
+- students → attendance [One-to-Many]
+
+12.7 DATA INTEGRITY CONSTRAINTS
+
+- Foreign key constraints enforce referential integrity
+- Unique constraints on usernames, student numbers, class codes
+- NOT NULL constraints on critical fields
+- ENUM types for controlled vocabulary fields
+- Default values for timestamps and status fields
+- Cascading deletes where appropriate
+
+================================================================================
+                   13. SYSTEM REQUIREMENTS
+================================================================================
+
+13.1 HARDWARE REQUIREMENTS
+
+MINIMUM REQUIREMENTS (Client Workstation):
+- Processor: Dual-core CPU, 1.6 GHz or higher
+- RAM: 2 GB minimum
+- Storage: 500 MB available disk space
+- Display: 1024x768 resolution minimum
+- Network: Ethernet or Wi-Fi adapter
+
+RECOMMENDED REQUIREMENTS (Client Workstation):
+- Processor: Quad-core CPU, 2.0 GHz or higher
+- RAM: 4 GB or more
+- Storage: 1 GB available disk space
+- Display: 1920x1080 resolution (Full HD)
+- Network: Gigabit Ethernet
+
+DATABASE SERVER REQUIREMENTS:
+- Processor: Quad-core CPU, 2.5 GHz or higher
+- RAM: 8 GB minimum (16 GB recommended)
+- Storage: 50 GB available disk space (SSD recommended)
+- Network: Gigabit Ethernet connection
+- Backup storage for database backups
+
+13.2 SOFTWARE REQUIREMENTS
+
+CLIENT WORKSTATIONS:
+- Operating System: Windows 10/11 (64-bit) [Primary]
+  OR macOS 10.13+ OR Linux (Ubuntu 18.04+)
+- Digital Logbook Application (Latest version)
+- Network connectivity to database server
+
+DATABASE SERVER:
+- Operating System: Windows Server 2016+ OR Linux Server
+- MySQL Server 5.7 or higher (MySQL 8.0 recommended)
+- Database backup software
+- Network configuration for client connections
+
+DEVELOPMENT ENVIRONMENT:
+- Go 1.18 or higher
+- Node.js 16 or higher
+- Wails CLI v2.11
+- MySQL client tools
+- Git version control
+- Code editor (VS Code recommended)
+
+13.3 NETWORK REQUIREMENTS
+
+CONNECTIVITY:
+- Local Area Network (LAN) connecting all laboratory PCs
+- Reliable connection to database server
+- Network bandwidth: 100 Mbps minimum
+
+NETWORK CONFIGURATION:
+- Static IP address for database server (recommended)
+- Open port 3306 for MySQL database access
+- Firewall rules allowing database connections
+- DNS resolution or hosts file configuration
+
+DATABASE ACCESS:
+- Network-accessible MySQL server
+- Proper user permissions and database access rights
+- SSL/TLS encryption for database connections (recommended)
+
+13.4 USER REQUIREMENTS
+
+TECHNICAL SKILLS:
+- Basic computer operation knowledge
+- Ability to login with username/password
+- Understanding of laboratory rules and procedures
+
+ADMINISTRATOR SKILLS:
+- System administration basics
+- User management understanding
+- Report generation and data analysis
+- Basic database backup procedures
+
+INSTALLATION PERSONNEL:
+- Network configuration knowledge
+- Database administration skills
+- Software deployment experience
+- Troubleshooting capabilities
+
+13.5 ENVIRONMENTAL REQUIREMENTS
+
+LABORATORY SETUP:
+- Stable electrical power supply
+- Adequate cooling/ventilation for computers
+- Organized workstation layout
+- Clear PC identification (hostname labels)
+
+SECURITY MEASURES:
+- Physical access control to laboratory
+- Supervision during operating hours
+- Backup power (UPS) for critical components
+- Regular security updates
+
+================================================================================
+                   14. FUTURE ENHANCEMENTS
+================================================================================
+
+14.1 SHORT-TERM ENHANCEMENTS (Next 6-12 months)
+
+BIOMETRIC AUTHENTICATION
+- Integration with fingerprint scanners
+- Facial recognition login
+- Reduction of password-based authentication issues
+
+MOBILE APPLICATION
+- Companion mobile app for attendance checking
+- Push notifications for important updates
+- Mobile report viewing
+
+EMAIL NOTIFICATIONS
+- Automated email for account approval/rejection
+- Attendance summary emails for students
+- Equipment issue alerts to maintenance staff
+
+ADVANCED ANALYTICS DASHBOARD
+- Visual charts and graphs for usage patterns
+- Predictive analytics for peak times
+- Equipment failure trend analysis
+- Attendance rate calculations
+
+RFID/BARCODE INTEGRATION
+- RFID card-based login
+- Barcode scanning for quick attendance
+- Integration with institutional ID cards
+
+14.2 MEDIUM-TERM ENHANCEMENTS (1-2 years)
+
+WEB-BASED VERSION
+- Browser-accessible version alongside desktop app
+- Remote access capabilities
+- Responsive web design
+- Cloud deployment option
+
+MULTI-CAMPUS SUPPORT
+- Support for multiple institution branches
+- Centralized management across campuses
+- Campus-specific reporting
+- Data aggregation across locations
+
+RESERVATION SYSTEM
+- PC reservation feature
+- Time slot booking
+- Automated scheduling
+- Waiting list management
+
+INTEGRATION WITH LEARNING MANAGEMENT SYSTEMS
+- Connect with Moodle, Canvas, or similar LMS
+- Sync class and student data
+- Automated grade integration based on attendance
+- Single sign-on (SSO) capabilities
+
+AUTOMATED MAINTENANCE SCHEDULING
+- Automatic work order generation from feedback
+- Maintenance tracking and completion verification
+- Preventive maintenance scheduling
+- Equipment lifecycle management
+
+14.3 LONG-TERM ENHANCEMENTS (2+ years)
+
+ARTIFICIAL INTELLIGENCE FEATURES
+- AI-powered anomaly detection for unusual usage patterns
+- Predictive maintenance using machine learning
+- Intelligent scheduling optimization
+- Chatbot for user support
+
+CLOUD MIGRATION
+- Cloud-hosted database options
+- SaaS (Software as a Service) model
+- Automatic updates and patches
+- Scalable infrastructure
+
+VIDEO SURVEILLANCE INTEGRATION
+- Link to laboratory security cameras
+- Video evidence for incidents
+- Automated recording triggers
+- Privacy-compliant storage
+
+ADVANCED REPORTING
+- Custom report builder
+- Scheduled report generation
+- Interactive data visualization
+- Business intelligence integration
+
+MULTI-LANGUAGE SUPPORT
+- Internationalization (i18n)
+- Multiple language user interfaces
+- Localization for different regions
+
+API FOR THIRD-PARTY INTEGRATION
+- RESTful API for external systems
+- Webhook support for event notifications
+- OAuth authentication for integrations
+- Developer documentation and SDK
+
+BLOCKCHAIN FOR ATTENDANCE VERIFICATION
+- Immutable attendance records
+- Tamper-proof audit trails
+- Cryptographic verification
+- Distributed ledger technology
+
+14.4 FEATURE REQUESTS FROM STAKEHOLDERS
+
+Based on potential user feedback:
+
+- Printing station integration
+- File usage tracking
+- Internet usage monitoring
+- Application usage logging
+- Automated backup reminders
+- Password reset via email/SMS
+- Two-factor authentication (2FA)
+- Guest user support for visitors
+- Group booking for classes
+- Equipment checkout system
+- Inventory management module
+- Facility booking beyond PCs
+- Energy consumption tracking
+- Carbon footprint reporting
+
+================================================================================
+                         CONCLUSION
+================================================================================
+
+The Digital Logbook System represents a comprehensive solution to the 
+challenges faced by academic institutions in managing PC laboratory 
+attendance and equipment maintenance. By automating manual processes, 
+enhancing data accuracy, and providing role-based access to information, 
+the system significantly improves operational efficiency and accountability.
+
+This capstone project demonstrates the practical application of modern 
+software development technologies to solve real-world educational problems. 
+The system's modular architecture and robust features make it a valuable 
+tool for institutions seeking to modernize their laboratory management 
+practices.
+
+Through careful analysis of the problems faced by educational institutions, 
+the researchers have developed a solution that addresses immediate needs 
+while providing a foundation for future enhancements. The Digital Logbook 
+System stands as a testament to the power of technology in transforming 
+traditional institutional processes.
+
+As educational technology continues to evolve, systems like the Digital 
+Logbook will play an increasingly important role in creating efficient, 
+transparent, and data-driven learning environments. This project not only 
+solves current problems but also paves the way for future innovations in 
+educational facility management.
+
+================================================================================
+                        PROJECT TEAM
+================================================================================
+
+Developed by: BSIT Students (Capstone Project Team)
+Institution: [Your Institution Name]
+Program: Bachelor of Science in Information Technology
+Academic Year: 2025-2026
+
+================================================================================
+                        END OF DOCUMENT
+================================================================================

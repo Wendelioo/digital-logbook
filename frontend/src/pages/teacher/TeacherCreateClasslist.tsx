@@ -81,7 +81,6 @@ function CreateClasslist() {
         formData.schedule,
         formData.room,
         '',
-        '',
         formData.semester,
         formData.schoolYear,
         formData.descriptiveTitle, // Descriptive Title for the class
@@ -155,7 +154,7 @@ function CreateClasslist() {
           }
         }}
       >
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl mx-4 relative max-h-[90vh] flex flex-col">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 relative max-h-[90vh] flex flex-col">
           <button
             type="button"
             onClick={() => navigate('/teacher/class-management')}
