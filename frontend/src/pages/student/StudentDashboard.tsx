@@ -7,6 +7,7 @@ import {
   LogIn,
   MapPin,
   Library,
+  Bell,
 } from 'lucide-react';
 import {
   GetStudentDashboard,
@@ -66,7 +67,7 @@ function DashboardOverview() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-500"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
       </div>
     );
   }
@@ -154,6 +155,29 @@ function DashboardOverview() {
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-gray-600">Total Records</span>
               <span className="text-lg font-semibold text-gray-900">{totalAttendance}</span>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="Notifications" />
+        <CardBody>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center">
+                <Bell className="h-5 w-5 text-primary-600 mr-3" />
+                <span className="text-sm text-gray-700">Welcome back. Dashboard has been refreshed.</span>
+              </div>
+              <span className="text-xs text-gray-500">Now</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-700">{dashboardData.currently_logged_in ? `You are currently logged in at PC ${dashboardData.current_pc_number || ''}.` : 'You are currently logged out.'}</span>
+              <span className="text-xs text-gray-500">Today</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-700">{absentCount > 0 ? `You have ${absentCount} absent record(s). Please monitor attendance.` : 'No absences recorded so far.'}</span>
+              <span className="text-xs text-gray-500">This Term</span>
             </div>
           </div>
         </CardBody>

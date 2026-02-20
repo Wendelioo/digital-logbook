@@ -8,6 +8,7 @@ import {
   Clock,
   Calendar,
   Library,
+  Bell,
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
@@ -125,6 +126,29 @@ function DashboardOverview() {
           </CardBody>
         </Card>
       )}
+
+      <Card className="mb-8">
+        <CardHeader title="Notifications" />
+        <CardBody>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center">
+                <Bell className="h-5 w-5 text-primary-600 mr-3" />
+                <span className="text-sm text-gray-700">Your dashboard data is up to date.</span>
+              </div>
+              <span className="text-xs text-gray-500">Now</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-700">{activeClasses > 0 ? `${activeClasses} active class(es) ready for attendance.` : 'No active classes assigned yet.'}</span>
+              <span className="text-xs text-gray-500">Today</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-700">{totalStudents > 0 ? `${totalStudents} enrolled student(s) across your classes.` : 'No enrolled students found yet.'}</span>
+              <span className="text-xs text-gray-500">Today</span>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
