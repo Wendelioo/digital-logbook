@@ -18,14 +18,19 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { Class } from './types';
 
-function StoredAttendance() {
+export type StoredAttendanceTab = 'attendance' | 'classes';
+
+interface StoredAttendanceProps {
+  initialTab?: StoredAttendanceTab;
+  hideHeader?: boolean;
+}
+
+function StoredAttendance({ initialTab, hideHeader = false }: StoredAttendanceProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const tabParam = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<'attendance' | 'classes'>(
-    tabParam === 'classes' ? 'classes' : 'attendance'
-  );
+  const resolvedInitialTab: StoredAttendanceTab = initialTab || (searchParams.get('tab') === 'classes' ? 'classes' : 'attendance');
+  const [activeTab, setActiveTab] = useState<StoredAttendanceTab>(resolvedInitialTab);
   
   // Attendance state
   const [archivedSheets, setArchivedSheets] = useState<any[]>([]);
@@ -77,14 +82,13 @@ function StoredAttendance() {
   };
 
   useEffect(() => {
-    // Sync activeTab with URL query parameter
-    const tab = searchParams.get('tab');
-    if (tab === 'classes') {
-      setActiveTab('classes');
-    } else {
-      setActiveTab('attendance');
+    if (initialTab) {
+      setActiveTab(initialTab);
+      return;
     }
-  }, [searchParams]);
+    const tab = searchParams.get('tab');
+    setActiveTab(tab === 'classes' ? 'classes' : 'attendance');
+  }, [initialTab, searchParams]);
 
   useEffect(() => {
     loadArchivedSheets();
@@ -209,11 +213,13 @@ function StoredAttendance() {
   return (
     <div className="flex flex-col h-full p-6">
       {/* Header Section */}
-      <div className="flex-shrink-0 mb-4">
-        <h2 className="text-2xl font-bold text-gray-900">
-          {activeTab === 'classes' ? 'Archived Classlist' : 'Archived Attendance'}
-        </h2>
-      </div>
+      {!hideHeader && (
+        <div className="flex-shrink-0 mb-4">
+          <h2 className="text-2xl font-bold text-gray-900">
+            {activeTab === 'classes' ? 'Archived Classlist' : 'Archived Attendance'}
+          </h2>
+        </div>
+      )}
 
       {/* Attendance Tab Content */}
       {activeTab === 'attendance' && (
@@ -310,7 +316,12 @@ function StoredAttendance() {
                           <div className="flex items-center justify-center gap-2">
                             <button
                               onClick={() => {
-                                navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}`);
+                                navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}`, {
+                                  state: {
+                                    fromArchiveModal: true,
+                                    returnToArchiveTab: 'attendance',
+                                  },
+                                });
                               }}
                               className="p-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
                               title="View"
@@ -469,7 +480,12 @@ function StoredAttendance() {
                         <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                           <div className="flex items-center justify-center gap-2">
                             <button
-                              onClick={() => navigate(`/teacher/class-management/${cls.class_id}?mode=view`)}
+                              onClick={() => navigate(`/teacher/class-management/${cls.class_id}?mode=view`, {
+                                state: {
+                                  fromArchiveModal: true,
+                                  returnToArchiveTab: 'classes',
+                                },
+                              })}
                               className="p-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
                               title="View"
                             >

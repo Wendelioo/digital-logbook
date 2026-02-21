@@ -10,7 +10,6 @@ import {
   Clock,
   BarChart3,
   ClipboardList,
-  Archive,
   Library,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -32,7 +31,6 @@ function WorkingStudentDashboard() {
     { name: 'Dashboard', href: '/working-student', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/working-student' },
     { name: 'Pending Registrations', href: '/working-student/pending-registrations', icon: <ClipboardList className="h-5 w-5" />, current: location.pathname === '/working-student/pending-registrations' },
     { name: 'Student Management', href: '/working-student/manage-users', icon: <Users className="h-5 w-5" />, current: location.pathname === '/working-student/manage-users' },
-    { name: 'Archived Students', href: '/working-student/archived-students', icon: <Archive className="h-5 w-5" />, current: location.pathname === '/working-student/archived-students' },
     { name: 'Equipment Reports', href: '/working-student/equipment-reports', icon: <BarChart3 className="h-5 w-5" />, current: location.pathname === '/working-student/equipment-reports' },
     
     // Divider label for student features
@@ -41,7 +39,6 @@ function WorkingStudentDashboard() {
     // Student Features Section - for when working students need to access their own student features
     // Note: No "My Feedback History" because working students forward feedback, they don't submit it
     { name: 'My Classes', href: '/working-student/my-classes', icon: <Library className="h-5 w-5" />, current: location.pathname === '/working-student/my-classes' },
-    { name: 'My Archived Classes', href: '/working-student/my-archived-classes', icon: <Archive className="h-5 w-5" />, current: location.pathname === '/working-student/my-archived-classes' },
     { name: 'Login History', href: '/working-student/login-history', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/working-student/login-history' },
   ];
 

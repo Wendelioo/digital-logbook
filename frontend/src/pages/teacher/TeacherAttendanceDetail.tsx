@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
 import {
   ClipboardList,
@@ -22,6 +22,7 @@ import { Class, Attendance } from './types';
 
 function AttendanceManagementDetail() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
@@ -155,11 +156,16 @@ function AttendanceManagementDetail() {
   };
 
   const handleCancelClick = () => {
-    if (selectedClass && selectedClass.is_archived) {
-      navigate('/teacher/stored-attendance?tab=attendance');
-    } else {
-      navigate('/teacher/attendance');
+    const state = location.state as { fromArchiveModal?: boolean; returnToArchiveTab?: 'attendance' | 'classes' } | null;
+    if (state?.fromArchiveModal && state.returnToArchiveTab === 'attendance') {
+      navigate('/teacher/attendance', {
+        replace: true,
+        state: { openArchiveModal: true, archiveTab: 'attendance' },
+      });
+      return;
     }
+
+    navigate('/teacher/attendance');
   };
 
   const handleArchive = async () => {
@@ -174,7 +180,7 @@ function AttendanceManagementDetail() {
     setArchiving(true);
     try {
       await ArchiveAttendanceSheet(selectedClass.class_id, selectedDate);
-      navigate('/teacher/stored-attendance', { replace: true });
+      navigate('/teacher/attendance', { replace: true });
     } catch (error) {
       console.error('Failed to archive attendance:', error);
       alert('Failed to archive attendance. ' + (error instanceof Error ? error.message : 'Please try again.'));

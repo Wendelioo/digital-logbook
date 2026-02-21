@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
+import TeacherStoredArchiveModal from '../../components/TeacherStoredArchiveModal';
 import {
   Edit,
   Archive,
+  Trash2,
   Eye,
   Plus,
   X,
@@ -51,6 +53,15 @@ function AttendanceClassSelection() {
   // Modal state
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+
+  useEffect(() => {
+    const state = location.state as { openArchiveModal?: boolean; archiveTab?: 'attendance' | 'classes' } | null;
+    if (state?.openArchiveModal && state.archiveTab === 'attendance') {
+      setShowArchiveModal(true);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   // Load all teacher classes for the "Add Attendance" dropdown
   useEffect(() => {
@@ -160,14 +171,24 @@ function AttendanceClassSelection() {
       <div className="flex-shrink-0 mb-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-900">Attendance Management</h2>
-          <Button
-            onClick={() => setShowAddModal(true)}
-            variant="primary"
-            size="sm"
-            icon={<Plus className="h-4 w-4" />}
-          >
-            Add New
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setShowArchiveModal(true)}
+              variant="outline"
+              size="sm"
+              icon={<Trash2 className="h-4 w-4" />}
+            >
+              Archive
+            </Button>
+            <Button
+              onClick={() => setShowAddModal(true)}
+              variant="primary"
+              size="sm"
+              icon={<Plus className="h-4 w-4" />}
+            >
+              Add New
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -473,6 +494,12 @@ function AttendanceClassSelection() {
           </div>
         </div>
       )}
+
+      <TeacherStoredArchiveModal
+        isOpen={showArchiveModal}
+        onClose={() => setShowArchiveModal(false)}
+        initialTab="attendance"
+      />
     </div>
   );
 }

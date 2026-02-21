@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import Table from '../../components/Table';
+import AdminArchiveModal from '../../components/AdminArchiveModal';
 import { Badge } from '../../components/Badge';
 import {
   CheckSquare,
   AlertCircle,
-  Archive
+  Archive,
+  Trash2
 } from 'lucide-react';
 import {
   GetAllLogs,
@@ -36,6 +38,7 @@ function ViewLogs() {
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [logToArchive, setLogToArchive] = useState<LoginLog | null>(null);
   const [archiving, setArchiving] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
 
   // Dropdown menu state
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
@@ -163,8 +166,15 @@ function ViewLogs() {
       )}
 
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900">Log Entries</h1>
+        <Button
+          onClick={() => setShowArchiveModal(true)}
+          variant="outline"
+          icon={<Trash2 className="h-4 w-4" />}
+        >
+          Archive
+        </Button>
       </div>
 
       {/* Error Message */}
@@ -310,6 +320,12 @@ function ViewLogs() {
           itemDescription={`${logToArchive.user_name} (${logToArchive.user_id_number}) - ${formatTime(logToArchive.login_time)}`}
         />
       )}
+
+      <AdminArchiveModal
+        isOpen={showArchiveModal}
+        onClose={() => setShowArchiveModal(false)}
+        initialTab="archived-logs"
+      />
     </div>
   );
 }

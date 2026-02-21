@@ -19,7 +19,11 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { CourseClass, ClasslistEntry, SemesterGroup } from './types';
 
-function ArchivedClasses() {
+interface ArchivedClassesProps {
+  hideHeader?: boolean;
+}
+
+function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
   const { user } = useAuth();
   const [archivedClasses, setArchivedClasses] = useState<CourseClass[]>([]);
   const [loading, setLoading] = useState(true);
@@ -166,20 +170,22 @@ function ArchivedClasses() {
   return (
     <div className="flex flex-col">
       {/* Header Section */}
-      <div className="flex-shrink-0 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Archive className="h-6 w-6 text-gray-600" />
-            <h2 className="text-2xl font-bold text-gray-900">Archived Classes</h2>
+      {!hideHeader && (
+        <div className="flex-shrink-0 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Archive className="h-6 w-6 text-gray-600" />
+              <h2 className="text-2xl font-bold text-gray-900">Archived Classes</h2>
+            </div>
+            <div className="text-sm text-gray-500">
+              {archivedClasses.length} archived {archivedClasses.length === 1 ? 'class' : 'classes'}
+            </div>
           </div>
-          <div className="text-sm text-gray-500">
-            {archivedClasses.length} archived {archivedClasses.length === 1 ? 'class' : 'classes'}
-          </div>
+          <p className="mt-1 text-sm text-gray-600">
+            View your previously enrolled classes organized by semester.
+          </p>
         </div>
-        <p className="mt-1 text-sm text-gray-600">
-          View your previously enrolled classes organized by semester.
-        </p>
-      </div>
+      )}
 
       {error && (
         <div className="flex-shrink-0 mb-4 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md">

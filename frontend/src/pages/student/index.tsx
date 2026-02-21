@@ -6,7 +6,6 @@ import {
   Clock,
   MessageSquare,
   Library,
-  Archive,
 } from 'lucide-react';
 import LoginHistory from '../../components/LoginHistory';
 import DashboardOverview from './StudentDashboard';
@@ -20,7 +19,6 @@ function StudentDashboard() {
   const navigationItems = [
     { name: 'Dashboard', href: '/student', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/student' },
     { name: 'My Classes', href: '/student/classes', icon: <Library className="h-5 w-5" />, current: location.pathname === '/student/classes' },
-    { name: 'Archived Classes', href: '/student/archived-classes', icon: <Archive className="h-5 w-5" />, current: location.pathname === '/student/archived-classes' },
     { name: 'Login History', href: '/student/attendance', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/student/attendance' },
     { name: 'Feedback History', href: '/student/feedback', icon: <MessageSquare className="h-5 w-5" />, current: location.pathname === '/student/feedback' },
   ];

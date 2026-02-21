@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
 import {
   Users,
@@ -25,6 +25,7 @@ import { Class, ClasslistEntry, ClassStudent } from './types';
 
 function ClassManagementDetail() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
@@ -270,7 +271,18 @@ function ClassManagementDetail() {
         <div className="bg-white max-w-4xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
           {/* Close Button - Inside Sheet */}
           <button
-            onClick={() => navigate(classInfo.is_archived ? '/teacher/stored-attendance?tab=classes' : '/teacher/class-management')}
+            onClick={() => {
+              const state = location.state as { fromArchiveModal?: boolean; returnToArchiveTab?: 'attendance' | 'classes' } | null;
+              if (state?.fromArchiveModal && state.returnToArchiveTab === 'classes') {
+                navigate('/teacher/class-management', {
+                  replace: true,
+                  state: { openArchiveModal: true, archiveTab: 'classes' },
+                });
+                return;
+              }
+
+              navigate('/teacher/class-management');
+            }}
             className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
             title="Close"
           >

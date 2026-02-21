@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
+import StudentArchivedClassesModal from '../../components/StudentArchivedClassesModal';
 import {
   X,
   Plus,
@@ -8,6 +10,7 @@ import {
   Library,
   Eye,
   Archive,
+  Trash2,
 } from 'lucide-react';
 import {
   GetStudentClasses,
@@ -20,6 +23,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { CourseClass, ClasslistEntry } from './types';
 
 function MyClasses() {
+  const location = useLocation();
   const { user } = useAuth();
   const [classes, setClasses] = useState<CourseClass[]>([]);
   const [filteredClasses, setFilteredClasses] = useState<CourseClass[]>([]);
@@ -36,6 +40,7 @@ function MyClasses() {
   const [searchTerm, setSearchTerm] = useState('');
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
 
   useEffect(() => {
     loadClasses();
@@ -200,25 +205,33 @@ function MyClasses() {
   const currentClasses = filteredClasses.slice(startIndex, endIndex);
   const startEntry = filteredClasses.length > 0 ? startIndex + 1 : 0;
   const endEntry = Math.min(endIndex, filteredClasses.length);
-
   return (
     <div className="flex flex-col">
       {/* Header Section */}
       <div className="flex-shrink-0 mb-4">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-gray-900">My Classes</h2>
-          <Button
-            onClick={() => {
-              setShowJoinForm(true);
-              setEdpCode('');
-              setJoinError('');
-              setJoinSuccess('');
-            }}
-            variant="primary"
-            icon={<Plus className="h-4 w-4" />}
-          >
-            Join Class
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setShowArchiveModal(true)}
+              variant="outline"
+              icon={<Trash2 className="h-4 w-4" />}
+            >
+              Archive
+            </Button>
+            <Button
+              onClick={() => {
+                setShowJoinForm(true);
+                setEdpCode('');
+                setJoinError('');
+                setJoinSuccess('');
+              }}
+              variant="primary"
+              icon={<Plus className="h-4 w-4" />}
+            >
+              Join Class
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -227,6 +240,11 @@ function MyClasses() {
           {error}
         </div>
       )}
+
+      <StudentArchivedClassesModal
+        isOpen={showArchiveModal}
+        onClose={() => setShowArchiveModal(false)}
+      />
 
       {/* Controls Section */}
       <div className="flex-shrink-0 mb-4">

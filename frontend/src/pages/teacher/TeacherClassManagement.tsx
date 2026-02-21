@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
+import TeacherStoredArchiveModal from '../../components/TeacherStoredArchiveModal';
 import {
   Eye,
   Edit,
   Plus,
   Archive,
+  Trash2,
   AlertCircle,
   X,
 } from 'lucide-react';
@@ -20,6 +22,7 @@ import { Class } from './types';
 
 function ClassManagement() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [classes, setClasses] = useState<Class[]>([]);
   const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
@@ -31,6 +34,15 @@ function ClassManagement() {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedClassForStatus, setSelectedClassForStatus] = useState<{ id: number; currentStatus: boolean; newStatus: boolean } | null>(null);
   const [changingStatus, setChangingStatus] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+
+  useEffect(() => {
+    const state = location.state as { openArchiveModal?: boolean; archiveTab?: 'attendance' | 'classes' } | null;
+    if (state?.openArchiveModal && state.archiveTab === 'classes') {
+      setShowArchiveModal(true);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   const loadClasses = async () => {
     if (!user?.id) return;
@@ -153,6 +165,13 @@ function ClassManagement() {
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-gray-900">Class Management</h2>
           <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setShowArchiveModal(true)}
+              variant="outline"
+              icon={<Trash2 className="h-4 w-4" />}
+            >
+              Archive
+            </Button>
             <Button
               onClick={() => navigate('/teacher/create-classlist')}
               variant="primary"
@@ -460,6 +479,12 @@ function ClassManagement() {
           </div>
         </div>
       )}
+
+      <TeacherStoredArchiveModal
+        isOpen={showArchiveModal}
+        onClose={() => setShowArchiveModal(false)}
+        initialTab="classes"
+      />
     </div>
   );
 }

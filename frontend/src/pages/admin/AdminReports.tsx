@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import Table from '../../components/Table';
+import AdminArchiveModal from '../../components/AdminArchiveModal';
 import {
   Search,
   X,
@@ -10,7 +11,8 @@ import {
   MoreVertical,
   Archive,
   CheckSquare,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from 'lucide-react';
 import {
   GetFeedback,
@@ -45,6 +47,7 @@ function Reports() {
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [reportToArchive, setReportToArchive] = useState<Feedback | null>(null);
   const [archiving, setArchiving] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
 
   // Toast
@@ -161,6 +164,13 @@ function Reports() {
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
           </div>
+          <Button
+            onClick={() => setShowArchiveModal(true)}
+            variant="outline"
+            icon={<Trash2 className="h-4 w-4" />}
+          >
+            Archive
+          </Button>
         </div>
 
         {/* Search Bar and Filter Button */}
@@ -597,6 +607,12 @@ function Reports() {
           </div>
         </div>
       )}
+
+      <AdminArchiveModal
+        isOpen={showArchiveModal}
+        onClose={() => setShowArchiveModal(false)}
+        initialTab="reports"
+      />
     </div>
   );
 }

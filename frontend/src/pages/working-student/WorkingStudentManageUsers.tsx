@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import Button from '../../components/Button';
+import WorkingStudentArchivedStudentsModal from '../../components/WorkingStudentArchivedStudentsModal';
 import {
   Users,
   Eye,
   X,
+  Trash2,
 } from 'lucide-react';
 import { GetAllRegisteredStudents } from '../../../wailsjs/go/main/App';
 import { ClassStudent, ViewStudentDetailsModalProps } from './types';
@@ -104,6 +106,7 @@ function ManageUsers() {
   const [viewingStudent, setViewingStudent] = useState<ClassStudent | null>(null);
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
 
   const loadStudents = async () => {
     try {
@@ -156,8 +159,15 @@ function ManageUsers() {
 
   return (
     <div className="p-6">
-      <div className="mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Student Management</h2>
+        <Button
+          onClick={() => setShowArchiveModal(true)}
+          variant="outline"
+          icon={<Trash2 className="h-4 w-4" />}
+        >
+          Archive
+        </Button>
       </div>
 
       {error && (
@@ -305,6 +315,11 @@ function ManageUsers() {
         student={viewingStudent}
         isOpen={!!viewingStudent}
         onClose={() => setViewingStudent(null)}
+      />
+
+      <WorkingStudentArchivedStudentsModal
+        isOpen={showArchiveModal}
+        onClose={() => setShowArchiveModal(false)}
       />
     </div>
   );

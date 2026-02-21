@@ -19,7 +19,11 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { User, ArchivedStudent } from './types';
 
-function ArchivedStudentsManagement() {
+interface ArchivedStudentsManagementProps {
+  hideHeader?: boolean;
+}
+
+function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsManagementProps) {
   const { user } = useAuth();
   const [activeStudents, setActiveStudents] = useState<User[]>([]);
   const [archivedStudents, setArchivedStudents] = useState<ArchivedStudent[]>([]);
@@ -157,9 +161,11 @@ function ArchivedStudentsManagement() {
         </div>
       )}
 
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Student Archive Management</h2>
-      </div>
+      {!hideHeader && (
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Student Archive Management</h2>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">

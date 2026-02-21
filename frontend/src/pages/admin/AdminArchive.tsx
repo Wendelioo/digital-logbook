@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
 import Button from '../../components/Button';
 import ArchivedLogsView from '../../components/ArchivedLogsView';
 import ArchivedReportsView from '../../components/ArchivedReportsView';
@@ -27,14 +26,16 @@ import {
 } from '../../../wailsjs/go/main/App';
 import { LoginLog, Feedback, ArchivedLogSheet, ArchivedFeedbackSheet } from './types';
 
+export type ArchiveTab = 'archived-logs' | 'log-sheets' | 'reports';
+
+interface ArchiveManagementProps {
+  initialTab?: ArchiveTab;
+  hideHeader?: boolean;
+}
+
 // Archive Management Component
-function ArchiveManagement() {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const tabParam = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<'archived-logs' | 'log-sheets' | 'reports'>(
-    tabParam === 'reports' ? 'reports' : 'archived-logs'
-  );
+function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }: ArchiveManagementProps) {
+  const [activeTab, setActiveTab] = useState<ArchiveTab>(initialTab);
   const [archivedLogs, setArchivedLogs] = useState<LoginLog[]>([]);
   const [archivedFeedback, setArchivedFeedback] = useState<Feedback[]>([]);
   const [logSheets, setLogSheets] = useState<ArchivedLogSheet[]>([]);
@@ -44,14 +45,8 @@ function ArchiveManagement() {
   const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
-    // Sync activeTab with URL query parameter
-    const tab = searchParams.get('tab');
-    if (tab === 'reports') {
-      setActiveTab('reports');
-    } else {
-      setActiveTab('archived-logs');
-    }
-  }, [searchParams]);
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   // View modal state
   const [viewingSheet, setViewingSheet] = useState<{ type: 'logs' | 'reports'; date: string } | null>(null);
@@ -224,11 +219,13 @@ function ArchiveManagement() {
 
   return (
     <div className="space-y-6">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">
-          {activeTab === 'reports' ? 'Archived Feedback Reports' : 'Archived Log Entries'}
-        </h2>
-      </div>
+      {!hideHeader && (
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">
+            {activeTab === 'reports' ? 'Archived Feedback Reports' : 'Archived Log Entries'}
+          </h2>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
