@@ -6,6 +6,10 @@ export function ActivateClass(arg1) {
   return window['go']['main']['App']['ActivateClass'](arg1);
 }
 
+export function ArchiveAttendanceSession(arg1, arg2) {
+  return window['go']['main']['App']['ArchiveAttendanceSession'](arg1, arg2);
+}
+
 export function ArchiveAttendanceSheet(arg1, arg2) {
   return window['go']['main']['App']['ArchiveAttendanceSheet'](arg1, arg2);
 }

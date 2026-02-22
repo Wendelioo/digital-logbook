@@ -384,15 +384,6 @@ function ClassManagement() {
               <p className="mt-1 text-sm text-gray-500">
                 You haven't created any classes yet.
               </p>
-              <div className="mt-6">
-                <Button
-                  onClick={() => navigate('/teacher/create-classlist')}
-                  variant="primary"
-                  icon={<Plus className="h-4 w-4" />}
-                >
-                  Add New Class
-                </Button>
-              </div>
             </>
           )}
         </div>

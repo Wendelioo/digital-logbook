@@ -38,7 +38,9 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
   const [appliedEndDate, setAppliedEndDate] = useState('');
   const [rangeExporting, setRangeExporting] = useState(false);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
   const filterDropdownRef = useRef<HTMLDivElement | null>(null);
+  const downloadDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const isScopedModal = hideHeader;
   const allowReportsSection = !isScopedModal || initialTab === 'reports';
@@ -66,7 +68,7 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
   }, []);
 
   useEffect(() => {
-    if (!showFilterPanel) {
+    if (!showFilterPanel && !showDownloadMenu) {
       return;
     }
 
@@ -77,11 +79,18 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
       ) {
         setShowFilterPanel(false);
       }
+
+      if (
+        downloadDropdownRef.current &&
+        !downloadDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowDownloadMenu(false);
+      }
     };
 
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [showFilterPanel]);
+  }, [showFilterPanel, showDownloadMenu]);
 
   const loadArchivedData = async () => {
     setLoading(true);
@@ -347,7 +356,10 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
               variant="outline"
               size="sm"
               icon={<Filter className="h-4 w-4" />}
-              onClick={() => setShowFilterPanel((prev) => !prev)}
+              onClick={() => {
+                setShowFilterPanel((prev) => !prev);
+                setShowDownloadMenu(false);
+              }}
             >
               Filter
             </Button>
@@ -427,23 +439,43 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
               </div>
             )}
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            icon={<Download className="h-4 w-4" />}
-            onClick={() => handleExportRange('csv')}
-            disabled={rangeExporting}
-          >
-            Export CSV
-          </Button>
-          <Button
-            size="sm"
-            icon={<Download className="h-4 w-4" />}
-            onClick={() => handleExportRange('pdf')}
-            disabled={rangeExporting}
-          >
-            Export PDF
-          </Button>
+          <div className="relative" ref={downloadDropdownRef}>
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Download className="h-4 w-4" />}
+              onClick={() => {
+                setShowDownloadMenu((prev) => !prev);
+                setShowFilterPanel(false);
+              }}
+              disabled={rangeExporting}
+            >
+              Download
+            </Button>
+
+            {showDownloadMenu && (
+              <div className="absolute right-0 mt-2 w-36 rounded-xl border border-gray-200 bg-white shadow-xl z-30 overflow-hidden">
+                <button
+                  onClick={async () => {
+                    setShowDownloadMenu(false);
+                    await handleExportRange('csv');
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Download CSV
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowDownloadMenu(false);
+                    await handleExportRange('pdf');
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Download PDF
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

@@ -15,19 +15,21 @@ import {
   GetTeacherClassesByUserID,
   GetActiveAttendanceSheets,
   OpenClassAttendance,
-  ArchiveAttendanceSheet,
 } from '../../../wailsjs/go/main/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class } from './types';
 
 // Attendance sheet summary from backend
 interface AttendanceSheet {
+  session_id?: number;
   class_id: number;
   date: string;
   subject_code: string;
   subject_name: string;
   edp_code: string;
   schedule: string;
+  status?: 'open' | 'closed';
+  opened_at?: string;
   student_count: number;
   present_count: number;
   absent_count: number;
@@ -37,6 +39,7 @@ interface AttendanceSheet {
 }
 
 interface PendingArchiveSheet {
+  session_id?: number;
   class_id: number;
   date: string;
   subject_code: string;
@@ -121,8 +124,9 @@ function AttendanceClassSelection() {
       setLoading(true);
       try {
         const data = await GetActiveAttendanceSheets(user.id);
-        setAttendanceSheets(data || []);
-        setFilteredSheets(data || []);
+        const rows = (data || []) as unknown as AttendanceSheet[];
+        setAttendanceSheets(rows);
+        setFilteredSheets(rows);
         setError('');
       } catch (error) {
         console.error('Failed to load attendance sheets:', error);
@@ -248,6 +252,7 @@ function AttendanceClassSelection() {
   const handleArchiveClick = (sheet: AttendanceSheet) => {
     setNotice(null);
     setPendingArchiveSheet({
+      session_id: sheet.session_id,
       class_id: sheet.class_id,
       date: sheet.date,
       subject_code: sheet.subject_code,
@@ -261,7 +266,11 @@ function AttendanceClassSelection() {
     setArchiving(true);
     setNotice(null);
     try {
-      await ArchiveAttendanceSheet(pendingArchiveSheet.class_id, pendingArchiveSheet.date);
+      if (pendingArchiveSheet.session_id) {
+        await (window as any).go.main.App.ArchiveAttendanceSession(pendingArchiveSheet.session_id, user?.id || 0);
+      } else {
+        await (window as any).go.main.App.ArchiveAttendanceSheet(pendingArchiveSheet.class_id, pendingArchiveSheet.date);
+      }
       setPendingArchiveSheet(null);
       setRefreshKey(prev => prev + 1);
       setNotice({ type: 'success', text: 'Attendance archived successfully.' });
@@ -291,28 +300,45 @@ function AttendanceClassSelection() {
     );
   }
 
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredSheets.length / entriesPerPage);
-  const startIndex = (currentPage - 1) * entriesPerPage;
-  const endIndex = startIndex + entriesPerPage;
-  const currentSheets = filteredSheets.slice(startIndex, endIndex);
-  const startEntry = filteredSheets.length > 0 ? startIndex + 1 : 0;
-  const endEntry = Math.min(endIndex, filteredSheets.length);
-
   const today = new Date().toISOString().split('T')[0];
   const activeClasses = allTeacherClasses.filter(cls => cls.is_active);
-  const todaySessions = attendanceSessions.filter(
-    session => session.attendance_date === today && session.status === 'open'
-  );
-  const sessionStatusByKey = new Map<string, 'open' | 'closed'>();
-  const latestSessionIdByKey = new Map<string, number>();
+  const todaySessions = attendanceSessions
+    .filter((session) => session.attendance_date === today && session.status === 'open')
+    .sort((left, right) => right.session_id - left.session_id);
+
+  const tableSheets = filteredSheets.filter((sheet) => {
+    const matchedSession = sheet.session_id
+      ? attendanceSessions.find((session) => session.session_id === sheet.session_id)
+      : undefined;
+    const effectiveStatus = sheet.status || matchedSession?.status;
+    return effectiveStatus !== 'open';
+  });
+
+  // Calculate pagination
+  const totalPages = Math.ceil(tableSheets.length / entriesPerPage);
+  const startIndex = (currentPage - 1) * entriesPerPage;
+  const endIndex = startIndex + entriesPerPage;
+  const currentSheets = tableSheets.slice(startIndex, endIndex);
+  const startEntry = tableSheets.length > 0 ? startIndex + 1 : 0;
+  const endEntry = Math.min(endIndex, tableSheets.length);
+
+  const preferredSessionByKey = new Map<string, AttendanceSession>();
   attendanceSessions.forEach((session) => {
     const key = `${session.class_id}-${session.attendance_date}`;
-    if (!sessionStatusByKey.has(key)) {
-      sessionStatusByKey.set(key, session.status);
+    const existing = preferredSessionByKey.get(key);
+
+    if (!existing) {
+      preferredSessionByKey.set(key, session);
+      return;
     }
-    if (!latestSessionIdByKey.has(key)) {
-      latestSessionIdByKey.set(key, session.session_id);
+
+    if (existing.status === 'closed' && session.status === 'open') {
+      preferredSessionByKey.set(key, session);
+      return;
+    }
+
+    if (existing.status === session.status && session.session_id > existing.session_id) {
+      preferredSessionByKey.set(key, session);
     }
   });
 
@@ -465,13 +491,16 @@ function AttendanceClassSelection() {
                 currentSheets.map((sheet) => {
                   const isToday = sheet.date === today;
                   const sheetKey = `${sheet.class_id}-${sheet.date}`;
-                  const sessionStatus = sessionStatusByKey.get(sheetKey);
-                  const latestSessionId = latestSessionIdByKey.get(sheetKey);
+                  const preferredSession = preferredSessionByKey.get(sheetKey);
+                  const preferredSessionId = preferredSession?.session_id;
+                  const sheetSessionId = sheet.session_id || preferredSessionId;
+                  const generatedAt = sheet.opened_at || preferredSession?.opened_at;
+                  const sessionStatus = sheet.status || preferredSession?.status;
                   const canArchive = !isToday || sessionStatus === 'closed';
 
                   return (
                     <tr
-                      key={`${sheet.class_id}-${sheet.date}`}
+                      key={sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`}
                       className={`hover:bg-gray-50 transition-colors ${isToday ? 'bg-green-50' : ''}`}
                     >
                       <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
@@ -479,7 +508,12 @@ function AttendanceClassSelection() {
                         <div className="text-xs text-gray-500">EDP: {sheet.edp_code || '-'}</div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(sheet.date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                        <div>{new Date(sheet.date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                        {generatedAt && (
+                          <div className="text-[11px] text-gray-500">
+                            Generated: {new Date(generatedAt.replace(' ', 'T')).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
                         <div className="flex items-center justify-center gap-2 text-xs">
@@ -492,8 +526,8 @@ function AttendanceClassSelection() {
                         <div className="flex items-center justify-center gap-2">
                           <Button
                             onClick={() => navigate(
-                              latestSessionId
-                                ? `/teacher/attendance/${sheet.class_id}?date=${sheet.date}&sessionId=${latestSessionId}`
+                              sheetSessionId
+                                ? `/teacher/attendance/${sheet.class_id}?date=${sheet.date}&sessionId=${sheetSessionId}`
                                 : `/teacher/attendance/${sheet.class_id}?date=${sheet.date}`
                             )}
                             variant="outline"
@@ -539,12 +573,9 @@ function AttendanceClassSelection() {
                       </>
                     ) : (
                       <>
-                        <svg className="mx-auto h-10 w-10 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                        </svg>
-                        <h3 className="text-sm font-medium text-gray-900">No attendance records yet</h3>
+                        <h3 className="text-sm font-medium text-gray-900">No attendance sheets exist yet</h3>
                         <p className="mt-1 text-xs text-gray-500">
-                          Attendance is generated from your active classlist. Students submit attendance by tapping Time In while a session is open.
+                          No saved attendance sheets are available. Active sheets appear here only after you click Save.
                         </p>
                       </>
                     )}
@@ -558,10 +589,10 @@ function AttendanceClassSelection() {
       </div>
 
       {/* Pagination Section */}
-      {filteredSheets.length > 0 && (
+      {tableSheets.length > 0 && (
         <div className="flex-shrink-0 mt-2 flex items-center justify-between">
           <div className="text-xs text-gray-700">
-            Showing {startEntry} to {endEntry} of {filteredSheets.length} entries
+            Showing {startEntry} to {endEntry} of {tableSheets.length} entries
           </div>
           <div className="flex items-center gap-1">
             <Button

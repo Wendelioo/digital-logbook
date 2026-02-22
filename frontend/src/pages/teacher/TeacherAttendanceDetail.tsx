@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
 import {
-  ClipboardList,
   Calendar,
   X,
   Archive,
@@ -503,7 +502,6 @@ function AttendanceManagementDetail() {
                       ) : (
                         <tr>
                           <td colSpan={4} className="px-4 py-8 text-center">
-                            <ClipboardList className="mx-auto h-8 w-8 text-gray-300 mb-2" />
                             <p className="text-sm text-gray-500">No students enrolled in this class yet.</p>
                             <p className="text-xs text-gray-400 mt-1">Students will appear here once they are enrolled.</p>
                           </td>

@@ -53,6 +53,7 @@ export namespace main {
 	    }
 	}
 	export class ArchivedAttendanceSheet {
+	    session_id: number;
 	    class_id: number;
 	    date: string;
 	    subject_code: string;
@@ -70,6 +71,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.session_id = source["session_id"];
 	        this.class_id = source["class_id"];
 	        this.date = source["date"];
 	        this.subject_code = source["subject_code"];
@@ -249,12 +251,15 @@ export namespace main {
 	    }
 	}
 	export class AttendanceSheetSummary {
+	    session_id: number;
 	    class_id: number;
 	    date: string;
 	    subject_code: string;
 	    subject_name: string;
 	    edp_code: string;
 	    schedule: string;
+	    status: string;
+	    opened_at?: string;
 	    student_count: number;
 	    present_count: number;
 	    absent_count: number;
@@ -268,12 +273,15 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.session_id = source["session_id"];
 	        this.class_id = source["class_id"];
 	        this.date = source["date"];
 	        this.subject_code = source["subject_code"];
 	        this.subject_name = source["subject_name"];
 	        this.edp_code = source["edp_code"];
 	        this.schedule = source["schedule"];
+	        this.status = source["status"];
+	        this.opened_at = source["opened_at"];
 	        this.student_count = source["student_count"];
 	        this.present_count = source["present_count"];
 	        this.absent_count = source["absent_count"];

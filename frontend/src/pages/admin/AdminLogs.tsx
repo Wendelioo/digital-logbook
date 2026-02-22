@@ -376,6 +376,7 @@ function ViewLogs() {
           data={paginatedLogs}
           loading={loading}
           emptyMessage="No login activity recorded"
+          hideEmptyIcon
         />
         {filteredLogs.length > 0 && totalPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">

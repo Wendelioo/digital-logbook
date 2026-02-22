@@ -321,7 +321,7 @@ func (a *App) UpdateSessionAttendanceRecord(sessionID, studentUserID, teacherUse
 		SELECT s.class_id, CONVERT(VARCHAR(10), s.attendance_date, 23), s.status
 		FROM attendance_sessions s
 		JOIN classes c ON s.class_id = c.class_id
-		WHERE s.session_id = ? AND c.teacher_id = ?
+		WHERE s.session_id = ? AND c.teacher_id = ? AND COALESCE(s.is_archived, 0) = 0
 	`, sessionID, teacherUserID).Scan(&classID, &attendanceDate, &sessionStatus)
 	if err != nil {
 		return fmt.Errorf("attendance session not found or not authorized")
@@ -563,7 +563,7 @@ func (a *App) ArchiveAttendanceSheet(classID int, date string) error {
 	if date == today {
 		var sessionStatus string
 		err := a.db.QueryRow(
-			`SELECT TOP 1 status FROM attendance_sessions WHERE class_id = ? AND attendance_date = ? ORDER BY session_id DESC`,
+			`SELECT TOP 1 status FROM attendance_sessions WHERE class_id = ? AND attendance_date = ? AND COALESCE(is_archived, 0) = 0 ORDER BY session_id DESC`,
 			classID, date,
 		).Scan(&sessionStatus)
 		if err != nil {
@@ -588,8 +588,80 @@ func (a *App) ArchiveAttendanceSheet(classID int, date string) error {
 		return err
 	}
 
+	_, sessionArchiveErr := a.db.Exec(`
+		UPDATE attendance_sessions
+		SET is_archived = 1,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE class_id = ? AND attendance_date = ? AND status = 'closed'
+	`, classID, date)
+	if sessionArchiveErr != nil {
+		log.Printf("Warning: failed to archive attendance sessions for class_id=%d date=%s: %v", classID, date, sessionArchiveErr)
+	}
+
 	rowsAffected, _ := result.RowsAffected()
 	log.Printf("Archived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
+	return nil
+}
+
+// ArchiveAttendanceSession marks attendance records for a specific session as archived.
+// This allows archiving one saved attendance row at a time even if there are other sessions on the same date.
+func (a *App) ArchiveAttendanceSession(sessionID int, teacherUserID int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return fmt.Errorf("failed to initialize attendance sessions table: %w", err)
+	}
+
+	var attendanceDate string
+	var sessionStatus string
+	err := a.db.QueryRow(`
+		SELECT
+			CONVERT(VARCHAR(10), s.attendance_date, 23) AS attendance_date,
+			s.status
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
+		WHERE s.session_id = ? AND c.teacher_id = ? AND COALESCE(s.is_archived, 0) = 0
+	`, sessionID, teacherUserID).Scan(&attendanceDate, &sessionStatus)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("session not found or not authorized")
+	}
+	if err != nil {
+		return err
+	}
+
+	today := time.Now().Format("2006-01-02")
+	if attendanceDate > today {
+		return fmt.Errorf("cannot archive future attendance")
+	}
+	if attendanceDate == today && sessionStatus != "closed" {
+		return fmt.Errorf("cannot archive today's attendance while session is still open")
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE attendance
+		SET is_archived = 1,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE session_id = ?
+	`, sessionID)
+	if err != nil {
+		log.Printf("Failed to archive attendance records by session: %v", err)
+		return err
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	_, sessionArchiveErr := a.db.Exec(`
+		UPDATE attendance_sessions
+		SET is_archived = 1,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE session_id = ?
+	`, sessionID)
+	if sessionArchiveErr != nil {
+		log.Printf("Warning: failed to mark attendance session archived: session_id=%d err=%v", sessionID, sessionArchiveErr)
+	}
+
+	log.Printf("Archived attendance session: session_id=%d, records=%d", sessionID, rowsAffected)
 	return nil
 }
 
@@ -614,6 +686,16 @@ func (a *App) UnarchiveAttendanceSheet(classID int, date string) error {
 		return err
 	}
 
+	_, sessionUnarchiveErr := a.db.Exec(`
+		UPDATE attendance_sessions
+		SET is_archived = 0,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE class_id = ? AND attendance_date = ?
+	`, classID, date)
+	if sessionUnarchiveErr != nil {
+		log.Printf("Warning: failed to unarchive attendance sessions for class_id=%d date=%s: %v", classID, date, sessionUnarchiveErr)
+	}
+
 	rowsAffected, _ := result.RowsAffected()
 	log.Printf("Unarchived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
 	return nil
@@ -621,6 +703,7 @@ func (a *App) UnarchiveAttendanceSheet(classID int, date string) error {
 
 // ArchivedAttendanceSheet represents a summary of an archived attendance sheet
 type ArchivedAttendanceSheet struct {
+	SessionID    int    `json:"session_id"`
 	ClassID      int    `json:"class_id"`
 	Date         string `json:"date"`
 	SubjectCode  string `json:"subject_code"`
@@ -640,27 +723,55 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 	}
 
 	query := `
-		SELECT
-			a.class_id,
-			CONVERT(VARCHAR(10), a.attendance_date, 23) AS date,
-			subj.subject_code,
-			subj.description AS subject_name,
-			c.edp_code,
-			c.schedule,
-			COUNT(a.student_id) AS student_count,
-			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
-			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
-			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count
-		FROM attendance a
-		JOIN classes c ON a.class_id = c.class_id
-		JOIN subjects subj ON c.subject_code = subj.subject_code
-		WHERE c.teacher_id = ?
-		  AND a.is_archived = 1
-		GROUP BY a.class_id, a.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
-		ORDER BY a.attendance_date DESC, subj.subject_code
+		SELECT *
+		FROM (
+			SELECT
+				s.session_id,
+				s.class_id,
+				CONVERT(VARCHAR(10), s.attendance_date, 23) AS date,
+				subj.subject_code,
+				subj.description AS subject_name,
+				c.edp_code,
+				c.schedule,
+				COUNT(a.student_id) AS student_count,
+				SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
+				SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
+				SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count
+			FROM attendance_sessions s
+			JOIN classes c ON s.class_id = c.class_id
+			JOIN subjects subj ON c.subject_code = subj.subject_code
+			LEFT JOIN attendance a ON a.session_id = s.session_id AND COALESCE(a.is_archived, 0) = 1
+			WHERE c.teacher_id = ?
+			  AND (COALESCE(s.is_archived, 0) = 1 OR a.session_id IS NOT NULL)
+			GROUP BY s.session_id, s.class_id, s.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
+
+			UNION ALL
+
+			SELECT
+				0 AS session_id,
+				a.class_id,
+				CONVERT(VARCHAR(10), a.attendance_date, 23) AS date,
+				subj.subject_code,
+				subj.description AS subject_name,
+				c.edp_code,
+				c.schedule,
+				COUNT(a.student_id) AS student_count,
+				SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
+				SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
+				SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count
+			FROM attendance a
+			JOIN classes c ON a.class_id = c.class_id
+			JOIN subjects subj ON c.subject_code = subj.subject_code
+			LEFT JOIN attendance_sessions s ON s.session_id = a.session_id
+			WHERE c.teacher_id = ?
+			  AND COALESCE(a.is_archived, 0) = 1
+			  AND (a.session_id IS NULL OR s.session_id IS NULL)
+			GROUP BY a.class_id, a.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
+		) archived_union
+		ORDER BY archived_union.date DESC, archived_union.session_id DESC, archived_union.subject_code
 	`
 
-	rows, err := a.db.Query(query, teacherUserID)
+	rows, err := a.db.Query(query, teacherUserID, teacherUserID)
 	if err != nil {
 		log.Printf("Failed to query archived attendance sheets: %v", err)
 		return nil, err
@@ -673,6 +784,7 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 		var edpCode, schedule sql.NullString
 
 		err := rows.Scan(
+			&sheet.SessionID,
 			&sheet.ClassID, &sheet.Date,
 			&sheet.SubjectCode, &sheet.SubjectName,
 			&edpCode, &schedule,
@@ -698,12 +810,15 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 
 // AttendanceSheetSummary represents a summary of an attendance sheet with its status
 type AttendanceSheetSummary struct {
+	SessionID    int    `json:"session_id"`
 	ClassID      int    `json:"class_id"`
 	Date         string `json:"date"`
 	SubjectCode  string `json:"subject_code"`
 	SubjectName  string `json:"subject_name"`
 	EdpCode      string `json:"edp_code"`
 	Schedule     string `json:"schedule"`
+	Status       string `json:"status"`
+	OpenedAt     string `json:"opened_at,omitempty"`
 	StudentCount int    `json:"student_count"`
 	PresentCount int    `json:"present_count"`
 	AbsentCount  int    `json:"absent_count"`
@@ -724,36 +839,32 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 	today := time.Now().Format("2006-01-02")
 
 	query := `
-		WITH latest_sessions AS (
-			SELECT
-				s.class_id,
-				s.attendance_date,
-				MAX(s.session_id) AS latest_session_id
-			FROM attendance_sessions s
-			JOIN classes c ON s.class_id = c.class_id
-			WHERE c.teacher_id = ?
-			GROUP BY s.class_id, s.attendance_date
-		)
 		SELECT
-			ls.class_id,
-			CONVERT(VARCHAR(10), ls.attendance_date, 23) AS date,
+			s.session_id,
+			s.class_id,
+			CONVERT(VARCHAR(10), s.attendance_date, 23) AS date,
 			subj.subject_code,
 			subj.description AS subject_name,
 			c.edp_code,
 			c.schedule,
+			s.status,
+			CONVERT(VARCHAR(19), s.opened_at, 120) AS opened_at,
 			COUNT(a.student_id) AS student_count,
 			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
 			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
 			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count,
 			COALESCE(MAX(CAST(a.is_archived AS INT)), 0) AS is_archived
-		FROM latest_sessions ls
-		JOIN classes c ON ls.class_id = c.class_id
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
 		JOIN subjects subj ON c.subject_code = subj.subject_code
-		LEFT JOIN attendance a ON a.session_id = ls.latest_session_id
-		WHERE COALESCE(c.is_archived, 0) = 0
+		LEFT JOIN attendance a ON a.session_id = s.session_id
+		WHERE c.teacher_id = ?
+		  AND s.status = 'closed'
+		  AND COALESCE(s.is_archived, 0) = 0
+		  AND COALESCE(c.is_archived, 0) = 0
 		  AND (a.session_id IS NULL OR COALESCE(a.is_archived, 0) = 0)
-		GROUP BY ls.class_id, ls.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
-		ORDER BY ls.attendance_date DESC, subj.subject_code
+		GROUP BY s.session_id, s.class_id, s.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule, s.status, s.opened_at
+		ORDER BY s.attendance_date DESC, s.session_id DESC, subj.subject_code
 	`
 
 	rows, err := a.db.Query(query, teacherUserID)
@@ -766,12 +877,14 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 	var sheets []AttendanceSheetSummary
 	for rows.Next() {
 		var sheet AttendanceSheetSummary
-		var edpCode, schedule sql.NullString
+		var edpCode, schedule, openedAt, status sql.NullString
 
 		err := rows.Scan(
+			&sheet.SessionID,
 			&sheet.ClassID, &sheet.Date,
 			&sheet.SubjectCode, &sheet.SubjectName,
 			&edpCode, &schedule,
+			&status, &openedAt,
 			&sheet.StudentCount, &sheet.PresentCount, &sheet.AbsentCount, &sheet.LateCount,
 			&sheet.IsArchived,
 		)
@@ -785,6 +898,12 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 		}
 		if schedule.Valid {
 			sheet.Schedule = schedule.String
+		}
+		if status.Valid {
+			sheet.Status = status.String
+		}
+		if openedAt.Valid {
+			sheet.OpenedAt = openedAt.String
 		}
 		// Is editable only if date == today
 		sheet.IsEditable = (sheet.Date == today)
@@ -826,6 +945,7 @@ func (a *App) ensureAttendanceSessionsTable() error {
 				attendance_date DATE NOT NULL,
 				session_name NVARCHAR(255) NOT NULL,
 				status NVARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+				is_archived BIT NOT NULL DEFAULT 0,
 				late_threshold_minutes INT NULL,
 				opened_at DATETIME NULL,
 				closed_at DATETIME NULL,
@@ -856,6 +976,12 @@ func (a *App) ensureAttendanceSessionsTable() error {
 	}
 
 	migrateAttendanceQuery := `
+		IF OBJECT_ID('attendance_sessions', 'U') IS NOT NULL
+			AND COL_LENGTH('attendance_sessions', 'is_archived') IS NULL
+		BEGIN
+			ALTER TABLE attendance_sessions ADD is_archived BIT NOT NULL DEFAULT 0
+		END
+
 		IF OBJECT_ID('attendance', 'U') IS NOT NULL
 			AND COL_LENGTH('attendance', 'session_id') IS NULL
 		BEGIN
@@ -1096,7 +1222,7 @@ func (a *App) CreateAttendanceSession(classID int, date, sessionName string, tea
 	err = a.db.QueryRow(`
 		SELECT TOP 1 session_id
 		FROM attendance_sessions
-		WHERE class_id = ? AND attendance_date = ? AND status = 'open'
+		WHERE class_id = ? AND attendance_date = ? AND status = 'open' AND COALESCE(is_archived, 0) = 0
 		ORDER BY session_id DESC
 	`, classID, date).Scan(&openSessionID)
 	if err == nil {
@@ -1114,7 +1240,7 @@ func (a *App) CreateAttendanceSession(classID int, date, sessionName string, tea
 		countErr := a.db.QueryRow(`
 			SELECT COUNT(*)
 			FROM attendance_sessions
-			WHERE class_id = ? AND attendance_date = ?
+			WHERE class_id = ? AND attendance_date = ? AND COALESCE(is_archived, 0) = 0
 		`, classID, date).Scan(&existingCount)
 		if countErr == nil && existingCount > 0 {
 			sessionName = fmt.Sprintf("Attendance %s (%d)", date, existingCount+1)
@@ -1168,6 +1294,7 @@ func (a *App) GetTeacherAttendanceSessions(teacherUserID int) ([]AttendanceSessi
 		JOIN subjects subj ON c.subject_code = subj.subject_code
 		LEFT JOIN attendance a ON a.session_id = s.session_id
 		WHERE c.teacher_id = ?
+			AND COALESCE(s.is_archived, 0) = 0
 		GROUP BY s.session_id, s.class_id, s.attendance_date, s.session_name, s.status, s.late_threshold_minutes,
 			s.opened_at, s.closed_at, subj.subject_code, subj.description, c.edp_code
 		ORDER BY s.attendance_date DESC, s.session_id DESC
@@ -1241,7 +1368,7 @@ func (a *App) OpenAttendanceSession(sessionID int, teacherUserID int) error {
 			s.updated_at = CURRENT_TIMESTAMP
 		FROM attendance_sessions s
 		JOIN classes c ON s.class_id = c.class_id
-		WHERE s.session_id = ? AND c.teacher_id = ?
+		WHERE s.session_id = ? AND c.teacher_id = ? AND COALESCE(s.is_archived, 0) = 0
 	`, sessionID, teacherUserID)
 	if err != nil {
 		return err
@@ -1271,7 +1398,7 @@ func (a *App) SaveAttendanceSession(sessionID int, teacherUserID int) error {
 			s.updated_at = CURRENT_TIMESTAMP
 		FROM attendance_sessions s
 		JOIN classes c ON s.class_id = c.class_id
-		WHERE s.session_id = ? AND c.teacher_id = ?
+		WHERE s.session_id = ? AND c.teacher_id = ? AND COALESCE(s.is_archived, 0) = 0
 	`, sessionID, teacherUserID)
 	if err != nil {
 		return err
@@ -1305,7 +1432,7 @@ func (a *App) RenameAttendanceSession(sessionID int, sessionName string, teacher
 			s.updated_at = CURRENT_TIMESTAMP
 		FROM attendance_sessions s
 		JOIN classes c ON s.class_id = c.class_id
-		WHERE s.session_id = ? AND c.teacher_id = ?
+		WHERE s.session_id = ? AND c.teacher_id = ? AND COALESCE(s.is_archived, 0) = 0
 	`, sessionName, sessionID, teacherUserID)
 	if err != nil {
 		return err
@@ -1352,6 +1479,7 @@ func (a *App) GetStudentOpenAttendanceSessions(studentUserID int) ([]AttendanceS
 			AND cl.status = 'active'
 			AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
 			AND s.status = 'open'
+			AND COALESCE(s.is_archived, 0) = 0
 			AND CONVERT(VARCHAR(10), s.attendance_date, 23) = CONVERT(VARCHAR(10), GETDATE(), 23)
 		GROUP BY s.session_id, s.class_id, s.attendance_date, s.session_name, s.status, s.late_threshold_minutes,
 			s.opened_at, s.closed_at, subj.subject_code, subj.description, c.edp_code

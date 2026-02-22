@@ -7,7 +7,8 @@ import {
   X,
   SlidersHorizontal,
   Archive,
-  Trash2
+  Trash2,
+  AlertCircle
 } from 'lucide-react';
 import {
   GetFeedback,
@@ -404,6 +405,7 @@ function Reports() {
           data={paginatedReports}
           loading={loading}
           emptyMessage="No equipment reports submitted"
+          hideEmptyIcon
         />
         {filteredReports.length > 0 && totalReportPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">

@@ -1,11 +1,11 @@
 import React from 'react';
 import Modal from './Modal';
-import StoredAttendance, { StoredAttendanceTab } from '../pages/teacher/TeacherStoredAttendance';
+import TeacherAttendanceArchive, { AttendanceArchiveTab } from '../pages/teacher/TeacherAttendanceArchive';
 
 interface TeacherStoredArchiveModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab: StoredAttendanceTab;
+  initialTab: AttendanceArchiveTab;
 }
 
 function TeacherStoredArchiveModal({ isOpen, onClose, initialTab }: TeacherStoredArchiveModalProps) {
@@ -18,7 +18,7 @@ function TeacherStoredArchiveModal({ isOpen, onClose, initialTab }: TeacherStore
       title={title}
       size="2xl"
     >
-      <StoredAttendance initialTab={initialTab} hideHeader />
+      <TeacherAttendanceArchive initialTab={initialTab} hideHeader />
     </Modal>
   );
 }

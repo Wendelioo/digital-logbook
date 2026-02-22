@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function ActivateClass(arg1:number):Promise<void>;
 
+export function ArchiveAttendanceSession(arg1:number,arg2:number):Promise<void>;
+
 export function ArchiveAttendanceSheet(arg1:number,arg2:string):Promise<void>;
 
 export function ArchiveClass(arg1:number):Promise<void>;
