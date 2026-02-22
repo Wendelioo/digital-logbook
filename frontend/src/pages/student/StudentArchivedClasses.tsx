@@ -4,7 +4,6 @@ import {
   X,
   Search,
   Loader2,
-  Users,
   Eye,
   Archive,
   ArchiveRestore,
@@ -339,7 +338,6 @@ function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
         </div>
       ) : (
         <div className="bg-white shadow rounded-lg p-12 text-center">
-          <Archive className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           {searchTerm ? (
             <>
               <p className="text-gray-500 font-medium">No matching archived classes found</p>
@@ -351,7 +349,7 @@ function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
               </button>
             </>
           ) : (
-            <p className="text-gray-500 font-medium">No archived classes</p>
+            <p className="text-gray-500 font-medium">No archived classes.</p>
           )}
         </div>
       )}
@@ -479,7 +477,6 @@ function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
                     ) : (
                       <tr>
                         <td colSpan={5} className="px-6 py-8 text-center">
-                          <Users className="mx-auto h-10 w-10 text-gray-400 mb-2" />
                           <p className="text-gray-500 text-sm">No students enrolled</p>
                         </td>
                       </tr>

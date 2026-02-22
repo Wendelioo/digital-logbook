@@ -50,10 +50,6 @@ export function CheckAttendanceExists(arg1, arg2) {
   return window['go']['main']['App']['CheckAttendanceExists'](arg1, arg2);
 }
 
-export function CloseAttendanceSession(arg1, arg2) {
-  return window['go']['main']['App']['CloseAttendanceSession'](arg1, arg2);
-}
-
 export function CloseClass(arg1) {
   return window['go']['main']['App']['CloseClass'](arg1);
 }
@@ -330,6 +326,10 @@ export function GetRecentAttendance(arg1, arg2) {
   return window['go']['main']['App']['GetRecentAttendance'](arg1, arg2);
 }
 
+export function GetSessionAttendance(arg1, arg2) {
+  return window['go']['main']['App']['GetSessionAttendance'](arg1, arg2);
+}
+
 export function GetStudentArchivedClasses(arg1) {
   return window['go']['main']['App']['GetStudentArchivedClasses'](arg1);
 }
@@ -466,6 +466,10 @@ export function ReopenClass(arg1) {
   return window['go']['main']['App']['ReopenClass'](arg1);
 }
 
+export function SaveAttendanceSession(arg1, arg2) {
+  return window['go']['main']['App']['SaveAttendanceSession'](arg1, arg2);
+}
+
 export function SaveEquipmentFeedback(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
   return window['go']['main']['App']['SaveEquipmentFeedback'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
 }
@@ -548,6 +552,10 @@ export function UpdateClass(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
 
 export function UpdateDepartment(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['UpdateDepartment'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function UpdateSessionAttendanceRecord(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['UpdateSessionAttendanceRecord'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function UpdateUser(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {

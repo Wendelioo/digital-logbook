@@ -4,7 +4,6 @@ import Button from '../../components/Button';
 import {
   Eye,
   Archive,
-  Library,
   Download,
 } from 'lucide-react';
 import {
@@ -347,10 +346,7 @@ function StoredAttendance({ initialTab, hideHeader = false }: StoredAttendancePr
               <div className="text-center py-12">
                 {attendanceSearchTerm ? (
                   <>
-                    <svg className="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">No matching archived records found</h3>
+                    <h3 className="text-sm font-medium text-gray-900">No matching archived records found</h3>
                     <div className="mt-4">
                       <Button
                         onClick={() => setAttendanceSearchTerm('')}
@@ -363,8 +359,7 @@ function StoredAttendance({ initialTab, hideHeader = false }: StoredAttendancePr
                   </>
                 ) : (
                   <>
-                    <Archive className="mx-auto h-12 w-12 text-gray-300" />
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">No archived attendance sheets</h3>
+                    <h3 className="text-sm font-medium text-gray-900">No archived attendance sheets</h3>
                   </>
                 )}
               </div>
@@ -510,10 +505,7 @@ function StoredAttendance({ initialTab, hideHeader = false }: StoredAttendancePr
               <div className="text-center py-12">
                 {classSearchTerm ? (
                   <>
-                    <svg className="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">No matching archived classes found</h3>
+                    <h3 className="text-sm font-medium text-gray-900">No matching archived classes found</h3>
                     <div className="mt-4">
                       <Button
                         onClick={() => setClassSearchTerm('')}
@@ -526,8 +518,7 @@ function StoredAttendance({ initialTab, hideHeader = false }: StoredAttendancePr
                   </>
                 ) : (
                   <>
-                    <Library className="mx-auto h-12 w-12 text-gray-300" />
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">No archived classes</h3>
+                    <h3 className="text-sm font-medium text-gray-900">No archived classes</h3>
                   </>
                 )}
               </div>

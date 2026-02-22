@@ -6,7 +6,6 @@ import { Badge } from '../../components/Badge';
 import {
   Search,
   X,
-  CheckSquare,
   AlertCircle,
   Archive,
   Trash2
@@ -83,7 +82,7 @@ function ViewLogs() {
     successMessage: string
   ) => {
     if (logIDs.length === 0) {
-      showToast('error', 'No matching log entries to archive');
+      showToast('error', 'No log entries to archive.');
       return;
     }
 
@@ -97,7 +96,7 @@ function ViewLogs() {
       ids,
       'log entries',
       `${ids.length} selected entr${ids.length === 1 ? 'y' : 'ies'}`,
-      `Archived ${ids.length} log entr${ids.length === 1 ? 'y' : 'ies'} successfully`
+      `${ids.length} log entr${ids.length === 1 ? 'y' : 'ies'} archived.`
     );
   };
 
@@ -212,14 +211,7 @@ function ViewLogs() {
             ? 'bg-green-50 border-green-200 text-green-800' 
             : 'bg-red-50 border-red-200 text-red-800'
         } animate-slideIn`}>
-          <div className="flex items-center gap-3">
-            {toast.type === 'success' ? (
-              <CheckSquare className="h-5 w-5" />
-            ) : (
-              <AlertCircle className="h-5 w-5" />
-            )}
-            <span className="font-medium">{toast.message}</span>
-          </div>
+          <span className="font-medium">{toast.message}</span>
         </div>
       )}
 

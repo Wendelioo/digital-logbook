@@ -3,8 +3,6 @@ import Button from '../../components/Button';
 import {
   Users,
   Trash2,
-  CheckCircle,
-  XCircle,
   X,
   Archive,
   ArchiveRestore,
@@ -72,7 +70,7 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
 
     try {
       await ArchiveStudent(studentToArchive.id);
-      showNotification('success', 'Student archived successfully. Account will be deleted after 360 days.');
+      showNotification('success', 'Student archived. Deletion is scheduled after 360 days.');
       setShowArchiveModal(false);
       setStudentToArchive(null);
       loadData();
@@ -86,7 +84,7 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
 
     try {
       await UnarchiveStudent(studentToUnarchive.user_id);
-      showNotification('success', 'Student account restored successfully');
+      showNotification('success', 'Student account restored.');
       setShowUnarchiveModal(false);
       setStudentToUnarchive(null);
       loadData();
@@ -103,10 +101,10 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
     try {
       const count = await DeleteExpiredStudents();
       if (count > 0) {
-        showNotification('success', `Successfully deleted ${count} expired student account(s)`);
+        showNotification('success', `Deleted ${count} expired student account(s).`);
         loadData();
       } else {
-        showNotification('success', 'No expired accounts to delete');
+        showNotification('success', 'No expired accounts to delete.');
       }
     } catch (error: any) {
       showNotification('error', error.message || 'Failed to delete expired accounts');
@@ -134,14 +132,7 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
         }`}>
           <div className="p-4">
             <div className="flex items-start">
-              <div className="flex-shrink-0">
-                {notification.type === 'success' ? (
-                  <CheckCircle className="h-6 w-6 text-green-400" />
-                ) : (
-                  <XCircle className="h-6 w-6 text-red-400" />
-                )}
-              </div>
-              <div className="ml-3 w-0 flex-1 pt-0.5">
+              <div className="w-0 flex-1 pt-0.5">
                 <p className={`text-sm font-medium ${
                   notification.type === 'success' ? 'text-green-800' : 'text-red-800'
                 }`}>
@@ -285,8 +276,7 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
               </table>
             ) : (
               <div className="px-6 py-12 text-center">
-                <Users className="mx-auto h-12 w-12 text-gray-400" />
-                <p className="mt-2 text-gray-500">No active students found</p>
+                <p className="text-gray-500">No active students found.</p>
               </div>
             )
           ) : (
@@ -360,8 +350,7 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
               </table>
             ) : (
               <div className="px-6 py-12 text-center">
-                <Archive className="mx-auto h-12 w-12 text-gray-400" />
-                <p className="mt-2 text-gray-500">No archived students found</p>
+                <p className="text-gray-500">No archived students found.</p>
               </div>
             )
           )}
@@ -384,8 +373,7 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
             </p>
             <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-4">
               <p className="text-sm text-yellow-800">
-                <strong>Important:</strong> The student's account will be deactivated and scheduled for permanent deletion after 360 days. 
-                You can restore the account before the deletion date if needed.
+                The account will be inactive and scheduled for permanent deletion after 360 days.
               </p>
             </div>
             <div className="flex gap-3 justify-end">
@@ -425,8 +413,7 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
             </p>
             <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
               <p className="text-sm text-blue-800">
-                The student's account will be reactivated and removed from the deletion schedule. 
-                They will be able to log in again immediately.
+                The account will be active again and removed from the deletion schedule.
               </p>
             </div>
             <div className="flex gap-3 justify-end">

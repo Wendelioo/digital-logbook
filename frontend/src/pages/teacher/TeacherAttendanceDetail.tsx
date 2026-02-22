@@ -34,7 +34,6 @@ function AttendanceManagementDetail() {
   const [error, setError] = useState<string>('');
   const [hasSelectedDate, setHasSelectedDate] = useState(!!initialDate);
   const [archiving, setArchiving] = useState(false);
-  const [savingAttendance, setSavingAttendance] = useState(false);
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [sessionStatus, setSessionStatus] = useState<'open' | 'closed' | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<{[key: string]: boolean}>({});
@@ -49,7 +48,7 @@ function AttendanceManagementDetail() {
     if (!user?.id) {
       setSessionId(null);
       setSessionStatus(null);
-      return;
+      return { sessionId: null as number | null, status: null as 'open' | 'closed' | null };
     }
 
     try {
@@ -70,34 +69,17 @@ function AttendanceManagementDetail() {
       if (matched) {
         setSessionId(matched.session_id);
         setSessionStatus(matched.status);
+        return { sessionId: matched.session_id as number, status: matched.status as 'open' | 'closed' };
       } else {
         setSessionId(null);
         setSessionStatus(null);
+        return { sessionId: null as number | null, status: null as 'open' | 'closed' | null };
       }
     } catch (err) {
       console.error('Failed to load session metadata:', err);
       setSessionId(null);
       setSessionStatus(null);
-    }
-  };
-
-  const handleSaveAttendance = async () => {
-    if (!sessionId || !user?.id) {
-      setNotice({ type: 'error', text: 'No active attendance session found to save.' });
-      return;
-    }
-
-    setSavingAttendance(true);
-    setNotice(null);
-    try {
-      await (window as any).go.main.App.CloseAttendanceSession(sessionId, user.id);
-      setSessionStatus('closed');
-      setNotice({ type: 'success', text: 'Attendance saved successfully.' });
-    } catch (error) {
-      console.error('Failed to save attendance:', error);
-      setNotice({ type: 'error', text: 'Failed to save attendance. Please try again.' });
-    } finally {
-      setSavingAttendance(false);
+      return { sessionId: null as number | null, status: null as 'open' | 'closed' | null };
     }
   };
 
@@ -132,13 +114,23 @@ function AttendanceManagementDetail() {
     setNotice(null);
     
     try {
-      await UpdateAttendanceRecord(
-        record.class_id,
-        record.student_user_id,
-        record.date,
-        newStatus,
-        record.remarks || ''
-      );
+      if (sessionId && user?.id) {
+        await (window as any).go.main.App.UpdateSessionAttendanceRecord(
+          sessionId,
+          record.student_user_id,
+          user.id,
+          newStatus,
+          record.remarks || ''
+        );
+      } else {
+        await UpdateAttendanceRecord(
+          record.class_id,
+          record.student_user_id,
+          record.date,
+          newStatus,
+          record.remarks || ''
+        );
+      }
       
       // Update local state
       setAttendanceRecords(prev => 
@@ -207,15 +199,16 @@ function AttendanceManagementDetail() {
     setError('');
     try {
       let records;
-      // For today, use OpenClassAttendance (auto-creates if needed)
-      // For past dates, use GetClassAttendance (read-only)
-      if (selectedDate === today) {
+      const meta = await loadSessionMeta(selectedClass.class_id, selectedDate);
+
+      if (meta.sessionId && user?.id) {
+        records = await (window as any).go.main.App.GetSessionAttendance(meta.sessionId, user.id);
+      } else if (selectedDate === today) {
         records = await OpenClassAttendance(selectedClass.class_id, selectedDate);
       } else {
         records = await GetClassAttendance(selectedClass.class_id, selectedDate);
       }
       setAttendanceRecords(records || []);
-      await loadSessionMeta(selectedClass.class_id, selectedDate);
     } catch (error) {
       console.error('Failed to load attendance:', error);
       setError('Unable to load attendance records. Please try again.');
@@ -389,17 +382,6 @@ function AttendanceManagementDetail() {
               </div>
               {/* Export and Archive actions */}
               <div className="flex justify-end gap-2">
-                {selectedDate === today && sessionStatus === 'open' && attendanceRecords.length > 0 && !attendanceRecords[0].is_archived && (
-                  <Button
-                    onClick={handleSaveAttendance}
-                    variant="primary"
-                    size="sm"
-                    disabled={savingAttendance}
-                    title="Save attendance"
-                  >
-                    {savingAttendance ? 'Saving...' : 'Save Attendance'}
-                  </Button>
-                )}
                 {attendanceRecords.length > 0 && attendanceRecords[0].is_archived && (
                   <Button
                     onClick={() => handleExportAttendance(selectedClass.class_id)}

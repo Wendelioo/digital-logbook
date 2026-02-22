@@ -3,7 +3,7 @@ import { Card, CardHeader, CardBody } from './Card';
 import Table from './Table';
 import Button from './Button';
 import { Badge } from './Badge';
-import { Archive, ChevronRight, ChevronDown, RotateCcw, Trash2, Download, Calendar, Eye } from 'lucide-react';
+import { ChevronRight, ChevronDown, RotateCcw, Trash2, Download, Calendar, Eye } from 'lucide-react';
 
 interface LoginLog {
   id: number;
@@ -244,7 +244,6 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
         <Card>
           <CardBody>
             <div className="text-center py-12">
-              <Archive className="h-16 w-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-gray-700 mb-2">No Archived Logs</h3>
               <p className="text-gray-500">
                 Archived log entries will appear here organized by date

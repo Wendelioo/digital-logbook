@@ -159,15 +159,16 @@ function ClassManagement() {
   const endEntry = Math.min(endIndex, filteredClasses.length);
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col min-w-0">
       {/* Header Section */}
       <div className="flex-shrink-0 mb-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-gray-900">Class Management</h2>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Class Management</h2>
+          <div className="flex w-full sm:w-auto items-center gap-2 flex-wrap sm:flex-nowrap">
             <Button
               onClick={() => setShowArchiveModal(true)}
               variant="outline"
+              size="sm"
               icon={<Trash2 className="h-4 w-4" />}
             >
               Archive
@@ -175,6 +176,7 @@ function ClassManagement() {
             <Button
               onClick={() => navigate('/teacher/create-classlist')}
               variant="primary"
+              size="sm"
               icon={<Plus className="h-4 w-4" />}
             >
               ADD NEW
@@ -191,7 +193,7 @@ function ClassManagement() {
 
       {/* Controls Section */}
       <div className="flex-shrink-0 mb-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-700">Show</span>
             <select
@@ -209,13 +211,13 @@ function ClassManagement() {
             </select>
             <span className="text-sm text-gray-700">entries</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
             <span className="text-sm text-gray-700">Search</span>
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full sm:w-auto px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               placeholder=""
             />
           </div>
@@ -223,27 +225,27 @@ function ClassManagement() {
       </div>
 
       {/* Table Section */}
-      <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+      <div className="flex-1 min-w-0 overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
+                <th scope="col" className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '84px' }}>
                   EDP Code
                 </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                <th scope="col" className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '96px' }}>
                   Subject Code
                 </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                <th scope="col" className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '150px' }}>
                   Descriptive Title
                 </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '150px' }}>
+                <th scope="col" className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '120px' }}>
                   Schedule
                 </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
+                <th scope="col" className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '96px' }}>
                   Status
                 </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                <th scope="col" className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '104px' }}>
                   Action
                 </th>
               </tr>
@@ -253,19 +255,19 @@ function ClassManagement() {
                 const status = getClassStatusBadge(cls);
                 return (
                   <tr key={cls.class_id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
                       {cls.edp_code || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
                       {cls.subject_code || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-3 sm:px-6 py-4 whitespace-normal break-words text-xs sm:text-sm text-gray-900">
                       {cls.descriptive_title || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-3 sm:px-6 py-4 whitespace-normal break-words text-xs sm:text-sm text-gray-900">
                       {cls.schedule || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-xs sm:text-sm">
                       {cls.is_archived ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
                           Archived
@@ -274,7 +276,7 @@ function ClassManagement() {
                         <select
                           value={cls.is_active ? 'active' : 'inactive'}
                           onChange={(e) => handleStatusChange(cls.class_id, cls.is_active, e.target.value === 'active')}
-                          className={`px-3 py-1 border rounded-md text-xs font-medium focus:outline-none focus:ring-2 ${
+                          className={`px-2 py-1 border rounded-md text-xs font-medium focus:outline-none focus:ring-2 ${
                             cls.is_active 
                               ? 'bg-green-50 text-green-700 border-green-200 focus:ring-green-500'
                               : 'bg-red-50 text-red-700 border-red-200 focus:ring-red-500'
@@ -286,12 +288,12 @@ function ClassManagement() {
                         </select>
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex items-center gap-2">
+                    <td className="px-3 sm:px-6 py-4 text-sm font-medium">
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                         <Button
                           onClick={() => handleViewClassList(cls.class_id)}
                           variant="outline"
-                          size="sm"
+                          size="xs"
                           className="text-blue-600 bg-blue-50 hover:bg-blue-100"
                           icon={<Eye className="h-3 w-3" />}
                           title="View"
@@ -300,7 +302,7 @@ function ClassManagement() {
                           <Button
                             onClick={() => navigate(`/teacher/class-management/${cls.class_id}?mode=edit`)}
                             variant="primary"
-                            size="sm"
+                            size="xs"
                             icon={<Edit className="h-3 w-3" />}
                             title="Edit"
                           />
@@ -310,7 +312,7 @@ function ClassManagement() {
                           <Button
                             onClick={() => handleArchiveClass(cls.class_id)}
                             variant="outline"
-                            size="sm"
+                            size="xs"
                             className="text-orange-600 hover:bg-orange-50"
                             icon={<Archive className="h-3 w-3" />}
                             title="Archive Class"
@@ -328,20 +330,22 @@ function ClassManagement() {
 
       {/* Pagination Section */}
       {filteredClasses.length > 0 && (
-        <div className="flex-shrink-0 mt-4 flex items-center justify-between">
-          <div className="text-sm text-gray-700">
+        <div className="flex-shrink-0 mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-xs sm:text-sm text-gray-700">
             Showing {startEntry} to {endEntry} of {filteredClasses.length} entries
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
               disabled={currentPage === 1}
               variant="outline"
+              size="sm"
             >
               Previous
             </Button>
             <Button
               variant="primary"
+              size="sm"
             >
               {currentPage}
             </Button>
@@ -349,6 +353,7 @@ function ClassManagement() {
               onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
               disabled={currentPage === totalPages}
               variant="outline"
+              size="sm"
             >
               Next
             </Button>

@@ -184,14 +184,35 @@ CREATE TABLE attendance (
     class_id INT NOT NULL,
     student_id INT NOT NULL,
     attendance_date DATE NOT NULL,
+    session_id INT NULL,
     status NVARCHAR(20) DEFAULT 'absent' CHECK (status IN ('present', 'absent', 'late')),
     remarks NVARCHAR(MAX),
     is_archived BIT DEFAULT 0,
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME DEFAULT GETDATE(),
-    UNIQUE (class_id, student_id, attendance_date),
+    UNIQUE (class_id, student_id, attendance_date, session_id),
     FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+GO
+
+/* ================================
+   ATTENDANCE SESSIONS
+================================ */
+CREATE TABLE attendance_sessions (
+    session_id INT IDENTITY(1,1) PRIMARY KEY,
+    class_id INT NOT NULL,
+    attendance_date DATE NOT NULL,
+    session_name NVARCHAR(255) NOT NULL,
+    status NVARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+    late_threshold_minutes INT NULL,
+    opened_at DATETIME NULL,
+    closed_at DATETIME NULL,
+    created_by_user_id INT NOT NULL,
+    created_at DATETIME DEFAULT GETDATE(),
+    updated_at DATETIME DEFAULT GETDATE(),
+    FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE,
+    FOREIGN KEY (created_by_user_id) REFERENCES users(id)
 );
 GO
 
@@ -269,6 +290,8 @@ CREATE INDEX idx_log_entries_is_archived ON log_entries(is_archived);
 CREATE INDEX idx_feedback_student_id ON feedback(student_id);
 CREATE INDEX idx_feedback_is_archived ON feedback(is_archived);
 CREATE INDEX idx_attendance_date ON attendance(attendance_date);
+CREATE INDEX idx_attendance_class_date_session_student ON attendance(class_id, attendance_date, session_id, student_id);
+CREATE INDEX idx_attendance_sessions_class_date ON attendance_sessions(class_id, attendance_date);
 CREATE INDEX idx_classlist_class_id ON classlist(class_id);
 CREATE INDEX idx_classlist_student_id ON classlist(student_id);
 CREATE INDEX idx_teachers_teacher_id ON teachers(teacher_id);

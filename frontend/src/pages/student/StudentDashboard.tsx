@@ -115,138 +115,138 @@ function DashboardOverview() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard
-          title="Attendance Rate"
-          value={`${dashboardData.attendance_rate?.toFixed(1) || 0}%`}
-          icon={<CheckCircle className="h-6 w-6" />}
-          color="green"
-        />
-        <StatCard
-          title="Current PC Used"
-          value={dashboardData.currently_logged_in ? (dashboardData.current_pc_number || 'Logged In') : 'Not Logged In'}
-          icon={<LogIn className="h-6 w-6" />}
-          color={dashboardData.currently_logged_in ? 'blue' : 'indigo'}
-        />
-        <StatCard
-          title="Enrolled Classes"
-          value={dashboardData.enrolled_classes || 0}
-          icon={<Library className="h-6 w-6" />}
-          color="purple"
-        />
-      </div>
-
-      {/* Last Login Information */}
-      {lastLogin && (
-        <Card>
-          <CardHeader title="Account Information" />
-          <CardBody>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <InfoCard
-                icon={<Clock className="h-6 w-6" />}
-                label="Last Login"
-                value={lastLogin.login_time ? new Date(lastLogin.login_time).toLocaleString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  hour12: true
-                }) : 'N/A'}
-                iconColor="blue"
-              />
-              <InfoCard
-                icon={<MapPin className="h-6 w-6" />}
-                label="Last PC Used"
-                value={lastLogin.pc_number || 'Unknown'}
-                iconColor="purple"
-              />
-            </div>
-          </CardBody>
-        </Card>
-      )}
-
-      {/* Attendance Summary */}
-      <Card>
-        <CardHeader title="Attendance Summary" />
-        <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+    <div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+        <div className="md:col-span-2 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <StatCard
-              title="Present"
-              value={presentCount}
+              title="Attendance Rate"
+              value={`${dashboardData.attendance_rate?.toFixed(1) || 0}%`}
               icon={<CheckCircle className="h-6 w-6" />}
               color="green"
             />
             <StatCard
-              title="Absent"
-              value={absentCount}
-              icon={<XCircle className="h-6 w-6" />}
-              color="red"
+              title="Current PC Used"
+              value={dashboardData.currently_logged_in ? (dashboardData.current_pc_number || 'Logged In') : 'Not Logged In'}
+              icon={<LogIn className="h-6 w-6" />}
+              color={dashboardData.currently_logged_in ? 'blue' : 'indigo'}
+            />
+            <StatCard
+              title="Enrolled Classes"
+              value={dashboardData.enrolled_classes || 0}
+              icon={<Library className="h-6 w-6" />}
+              color="purple"
             />
           </div>
 
-          {/* Total Records */}
-          <div className="pt-6 border-t border-gray-200">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-600">Total Records</span>
-              <span className="text-lg font-semibold text-gray-900">{totalAttendance}</span>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
-
-      <Card>
-        <CardHeader title="Attendance Today" />
-        <CardBody>
-          {openSessions.length > 0 ? (
-            <div className="space-y-3">
-              {openSessions.map((session) => (
-                <div key={session.session_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{session.subject_code} - {session.subject_name}</p>
-                    <p className="text-xs text-gray-500">{session.session_name || 'Attendance Session'} • EDP: {session.edp_code || '-'}</p>
-                  </div>
-                  <Button
-                    onClick={() => handleTimeIn(session.session_id)}
-                    variant="primary"
-                    size="sm"
-                    disabled={timingInSession === session.session_id}
-                  >
-                    {timingInSession === session.session_id ? 'Submitting...' : 'Time In'}
-                  </Button>
+          {lastLogin && (
+            <Card>
+              <CardHeader title="Account Information" />
+              <CardBody>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <InfoCard
+                    icon={<Clock className="h-6 w-6" />}
+                    label="Last Login"
+                    value={lastLogin.login_time ? new Date(lastLogin.login_time).toLocaleString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true
+                    }) : 'N/A'}
+                    iconColor="blue"
+                  />
+                  <InfoCard
+                    icon={<MapPin className="h-6 w-6" />}
+                    label="Last PC Used"
+                    value={lastLogin.pc_number || 'Unknown'}
+                    iconColor="purple"
+                  />
                 </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">No open attendance sessions for your classes today.</p>
+              </CardBody>
+            </Card>
           )}
-        </CardBody>
-      </Card>
 
-      <Card>
-        <CardHeader title="Notifications" />
-        <CardBody>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center">
-                <Bell className="h-5 w-5 text-primary-600 mr-3" />
-                <span className="text-sm text-gray-700">Welcome back. Dashboard has been refreshed.</span>
+          <Card>
+            <CardHeader title="Attendance Summary" />
+            <CardBody>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <StatCard
+                  title="Present"
+                  value={presentCount}
+                  icon={<CheckCircle className="h-6 w-6" />}
+                  color="green"
+                />
+                <StatCard
+                  title="Absent"
+                  value={absentCount}
+                  icon={<XCircle className="h-6 w-6" />}
+                  color="red"
+                />
               </div>
-              <span className="text-xs text-gray-500">Now</span>
+
+              <div className="pt-6 border-t border-gray-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-600">Total Records</span>
+                  <span className="text-lg font-semibold text-gray-900">{totalAttendance}</span>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader title="Attendance Today" />
+            <CardBody>
+              {openSessions.length > 0 ? (
+                <div className="space-y-3">
+                  {openSessions.map((session) => (
+                    <div key={session.session_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{session.subject_code} - {session.subject_name}</p>
+                        <p className="text-xs text-gray-500">{session.session_name || 'Attendance Session'} • EDP: {session.edp_code || '-'}</p>
+                      </div>
+                      <Button
+                        onClick={() => handleTimeIn(session.session_id)}
+                        variant="primary"
+                        size="sm"
+                        disabled={timingInSession === session.session_id}
+                      >
+                        {timingInSession === session.session_id ? 'Submitting...' : 'Time In'}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">No open attendance sessions for your classes today.</p>
+              )}
+            </CardBody>
+          </Card>
+        </div>
+
+        <Card className="h-fit">
+          <CardHeader title="Notifications" />
+          <CardBody>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center">
+                  <Bell className="h-5 w-5 text-primary-600 mr-3" />
+                  <span className="text-sm text-gray-700">Welcome back. Dashboard has been refreshed.</span>
+                </div>
+                <span className="text-xs text-gray-500">Now</span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <span className="text-sm text-gray-700">{dashboardData.currently_logged_in ? `You are currently logged in at PC ${dashboardData.current_pc_number || ''}.` : 'You are currently logged out.'}</span>
+                <span className="text-xs text-gray-500">Today</span>
+              </div>
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <span className="text-sm text-gray-700">{absentCount > 0 ? `You have ${absentCount} absent record(s). Please monitor attendance.` : 'No absences recorded so far.'}</span>
+                <span className="text-xs text-gray-500">This Term</span>
+              </div>
             </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <span className="text-sm text-gray-700">{dashboardData.currently_logged_in ? `You are currently logged in at PC ${dashboardData.current_pc_number || ''}.` : 'You are currently logged out.'}</span>
-              <span className="text-xs text-gray-500">Today</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <span className="text-sm text-gray-700">{absentCount > 0 ? `You have ${absentCount} absent record(s). Please monitor attendance.` : 'No absences recorded so far.'}</span>
-              <span className="text-xs text-gray-500">This Term</span>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
+          </CardBody>
+        </Card>
+      </div>
     </div>
   );
 }

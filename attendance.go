@@ -228,6 +228,134 @@ func (a *App) UpdateAttendanceRecord(classID, studentUserID int, date, status, r
 	return nil
 }
 
+func (a *App) GetSessionAttendance(sessionID int, teacherUserID int) ([]Attendance, error) {
+	if err := a.checkDB(); err != nil {
+		return nil, err
+	}
+
+	today := time.Now().Format("2006-01-02")
+
+	query := `
+		SELECT
+			a.class_id,
+			a.student_id,
+			CONVERT(VARCHAR(10), a.attendance_date, 23) as date,
+			stu.student_id,
+			stu.first_name,
+			stu.middle_name,
+			stu.last_name,
+			subj.subject_code,
+			subj.description as subject_name,
+			a.status,
+			a.remarks,
+			COALESCE(a.is_archived, 0) as is_archived,
+			sess.status as session_status
+		FROM attendance a
+		JOIN attendance_sessions sess ON a.session_id = sess.session_id
+		JOIN students stu ON a.student_id = stu.id
+		JOIN classes c ON a.class_id = c.class_id
+		JOIN subjects subj ON c.subject_code = subj.subject_code
+		WHERE a.session_id = ? AND c.teacher_id = ?
+		ORDER BY stu.last_name, stu.first_name
+	`
+
+	rows, err := a.db.Query(query, sessionID, teacherUserID)
+	if err != nil {
+		log.Printf("Failed to query session attendance: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var attendances []Attendance
+	for rows.Next() {
+		var att Attendance
+		var middleName, remarks, status sql.NullString
+		var isArchived bool
+		var sessionStatus string
+
+		err := rows.Scan(
+			&att.ClassID, &att.StudentUserID, &att.Date,
+			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
+			&att.SubjectCode, &att.SubjectName,
+			&status, &remarks, &isArchived, &sessionStatus,
+		)
+		if err != nil {
+			log.Printf("Failed to scan session attendance row: %v", err)
+			continue
+		}
+
+		if middleName.Valid {
+			att.MiddleName = &middleName.String
+		}
+		if remarks.Valid {
+			att.Remarks = &remarks.String
+		}
+		if status.Valid {
+			att.Status = status.String
+		} else {
+			att.Status = "absent"
+		}
+		att.IsArchived = isArchived
+		att.IsEditable = (att.Date == today) && !isArchived && sessionStatus == "open"
+
+		attendances = append(attendances, att)
+	}
+
+	return attendances, nil
+}
+
+func (a *App) UpdateSessionAttendanceRecord(sessionID, studentUserID, teacherUserID int, status, remarks string) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	validStatuses := map[string]bool{"absent": true, "present": true, "late": true}
+	if !validStatuses[status] {
+		return fmt.Errorf("invalid status: %s. Must be 'absent', 'present', or 'late'", status)
+	}
+
+	var classID int
+	var attendanceDate string
+	var sessionStatus string
+	err := a.db.QueryRow(`
+		SELECT s.class_id, CONVERT(VARCHAR(10), s.attendance_date, 23), s.status
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
+		WHERE s.session_id = ? AND c.teacher_id = ?
+	`, sessionID, teacherUserID).Scan(&classID, &attendanceDate, &sessionStatus)
+	if err != nil {
+		return fmt.Errorf("attendance session not found or not authorized")
+	}
+
+	today := time.Now().Format("2006-01-02")
+	if attendanceDate != today {
+		return fmt.Errorf("attendance can only be edited on the same day. Date %s is read-only", attendanceDate)
+	}
+	if sessionStatus != "open" {
+		return fmt.Errorf("attendance session is already saved")
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE attendance
+		SET status = ?, remarks = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE session_id = ?
+			AND class_id = ?
+			AND student_id = ?
+			AND attendance_date = ?
+			AND COALESCE(is_archived, 0) = 0
+	`, status, nullString(remarks), sessionID, classID, studentUserID, attendanceDate)
+	if err != nil {
+		return err
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("attendance record not found")
+	}
+
+	return nil
+}
+
 // ExportAttendanceCSV exports attendance to CSV for a specific class
 func (a *App) ExportAttendanceCSV(classID int) (string, error) {
 	if err := a.checkDB(); err != nil {
@@ -589,13 +717,26 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return nil, fmt.Errorf("failed to initialize attendance sessions table: %w", err)
+	}
 
 	today := time.Now().Format("2006-01-02")
 
 	query := `
+		WITH latest_sessions AS (
+			SELECT
+				s.class_id,
+				s.attendance_date,
+				MAX(s.session_id) AS latest_session_id
+			FROM attendance_sessions s
+			JOIN classes c ON s.class_id = c.class_id
+			WHERE c.teacher_id = ?
+			GROUP BY s.class_id, s.attendance_date
+		)
 		SELECT
-			a.class_id,
-			CONVERT(VARCHAR(10), a.attendance_date, 23) AS date,
+			ls.class_id,
+			CONVERT(VARCHAR(10), ls.attendance_date, 23) AS date,
 			subj.subject_code,
 			subj.description AS subject_name,
 			c.edp_code,
@@ -605,14 +746,14 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
 			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count,
 			COALESCE(MAX(CAST(a.is_archived AS INT)), 0) AS is_archived
-		FROM attendance a
-		JOIN classes c ON a.class_id = c.class_id
+		FROM latest_sessions ls
+		JOIN classes c ON ls.class_id = c.class_id
 		JOIN subjects subj ON c.subject_code = subj.subject_code
-		WHERE c.teacher_id = ?
-		  AND COALESCE(a.is_archived, 0) = 0
-		  AND COALESCE(c.is_archived, 0) = 0
-		GROUP BY a.class_id, a.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
-		ORDER BY a.attendance_date DESC, subj.subject_code
+		LEFT JOIN attendance a ON a.session_id = ls.latest_session_id
+		WHERE COALESCE(c.is_archived, 0) = 0
+		  AND (a.session_id IS NULL OR COALESCE(a.is_archived, 0) = 0)
+		GROUP BY ls.class_id, ls.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
+		ORDER BY ls.attendance_date DESC, subj.subject_code
 	`
 
 	rows, err := a.db.Query(query, teacherUserID)
@@ -710,6 +851,90 @@ func (a *App) ensureAttendanceSessionsTable() error {
 	`
 
 	_, err := a.db.Exec(query)
+	if err != nil {
+		return err
+	}
+
+	migrateAttendanceQuery := `
+		IF OBJECT_ID('attendance', 'U') IS NOT NULL
+			AND COL_LENGTH('attendance', 'session_id') IS NULL
+		BEGIN
+			ALTER TABLE attendance ADD session_id INT NULL
+		END
+
+		IF OBJECT_ID('attendance', 'U') IS NOT NULL
+			AND EXISTS (
+				SELECT 1
+				FROM attendance a
+				WHERE a.session_id IS NULL
+			)
+		BEGIN
+			UPDATE a
+			SET a.session_id = s.latest_session_id
+			FROM attendance a
+			JOIN (
+				SELECT class_id, attendance_date, MAX(session_id) AS latest_session_id
+				FROM attendance_sessions
+				GROUP BY class_id, attendance_date
+			) s
+				ON a.class_id = s.class_id
+				AND a.attendance_date = s.attendance_date
+			WHERE a.session_id IS NULL
+		END
+
+		DECLARE @dropUniqueAttendanceSql NVARCHAR(MAX);
+		SELECT TOP 1 @dropUniqueAttendanceSql = 'ALTER TABLE attendance DROP CONSTRAINT [' + kc.name + ']'
+		FROM sys.key_constraints kc
+		WHERE kc.parent_object_id = OBJECT_ID('attendance')
+			AND kc.[type] = 'UQ'
+			AND EXISTS (
+				SELECT 1
+				FROM sys.index_columns ic
+				JOIN sys.columns col ON ic.object_id = col.object_id AND ic.column_id = col.column_id
+				WHERE ic.object_id = kc.parent_object_id
+					AND ic.index_id = kc.unique_index_id
+					AND col.name IN ('class_id', 'student_id', 'attendance_date')
+			)
+			AND NOT EXISTS (
+				SELECT 1
+				FROM sys.index_columns ic
+				JOIN sys.columns col ON ic.object_id = col.object_id AND ic.column_id = col.column_id
+				WHERE ic.object_id = kc.parent_object_id
+					AND ic.index_id = kc.unique_index_id
+					AND col.name = 'session_id'
+			);
+		IF @dropUniqueAttendanceSql IS NOT NULL
+		BEGIN
+			EXEC sp_executesql @dropUniqueAttendanceSql;
+		END
+
+		IF OBJECT_ID('attendance', 'U') IS NOT NULL
+			AND NOT EXISTS (
+				SELECT 1
+				FROM sys.key_constraints
+				WHERE name = 'UQ_attendance_class_student_date_session'
+					AND [type] = 'UQ'
+					AND parent_object_id = OBJECT_ID('attendance')
+			)
+		BEGIN
+			ALTER TABLE attendance
+			ADD CONSTRAINT UQ_attendance_class_student_date_session UNIQUE (class_id, student_id, attendance_date, session_id)
+		END
+
+		IF OBJECT_ID('attendance', 'U') IS NOT NULL
+			AND NOT EXISTS (
+				SELECT 1
+				FROM sys.indexes
+				WHERE name = 'IX_attendance_class_date_session_student'
+					AND object_id = OBJECT_ID('attendance')
+			)
+		BEGIN
+			CREATE INDEX IX_attendance_class_date_session_student
+			ON attendance (class_id, attendance_date, session_id, student_id)
+		END
+	`
+
+	_, err = a.db.Exec(migrateAttendanceQuery)
 	return err
 }
 
@@ -744,6 +969,39 @@ func (a *App) ensureAttendanceRowsForClassDate(classID int, date string) error {
 	return err
 }
 
+func (a *App) ensureAttendanceRowsForSession(sessionID, classID int, date string) error {
+	query := `
+		INSERT INTO attendance (class_id, student_id, attendance_date, session_id, status, remarks, is_archived, created_at)
+		SELECT
+			cl.class_id,
+			cl.student_id,
+			?,
+			?,
+			'absent',
+			NULL,
+			0,
+			CURRENT_TIMESTAMP
+		FROM classlist cl
+		JOIN classes c ON cl.class_id = c.class_id
+		WHERE cl.class_id = ?
+			AND cl.status = 'active'
+			AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
+			AND c.is_active = 1
+			AND COALESCE(c.is_archived, 0) = 0
+			AND NOT EXISTS (
+				SELECT 1
+				FROM attendance a
+				WHERE a.class_id = cl.class_id
+					AND a.student_id = cl.student_id
+					AND a.attendance_date = ?
+					AND a.session_id = ?
+			)
+	`
+
+	_, err := a.db.Exec(query, date, sessionID, classID, date, sessionID)
+	return err
+}
+
 func (a *App) getAttendanceSessionByID(sessionID int) (*AttendanceSession, error) {
 	query := `
 		SELECT
@@ -764,7 +1022,7 @@ func (a *App) getAttendanceSessionByID(sessionID int) (*AttendanceSession, error
 		FROM attendance_sessions s
 		JOIN classes c ON s.class_id = c.class_id
 		JOIN subjects subj ON c.subject_code = subj.subject_code
-		LEFT JOIN attendance a ON a.class_id = s.class_id AND a.attendance_date = s.attendance_date
+		LEFT JOIN attendance a ON a.session_id = s.session_id
 		WHERE s.session_id = ?
 		GROUP BY s.session_id, s.class_id, s.attendance_date, s.session_name, s.status, s.late_threshold_minutes,
 			s.opened_at, s.closed_at, subj.subject_code, subj.description, c.edp_code
@@ -831,11 +1089,7 @@ func (a *App) CreateAttendanceSession(classID int, date, sessionName string, tea
 	}
 
 	if strings.TrimSpace(sessionName) == "" {
-		sessionName = fmt.Sprintf("Attendance %s", date)
-	}
-
-	if err := a.ensureAttendanceRowsForClassDate(classID, date); err != nil {
-		return nil, fmt.Errorf("failed to prepare attendance rows: %w", err)
+		sessionName = fmt.Sprintf("Attendance %s %s", date, time.Now().Format("15:04:05"))
 	}
 
 	var openSessionID int
@@ -846,6 +1100,9 @@ func (a *App) CreateAttendanceSession(classID int, date, sessionName string, tea
 		ORDER BY session_id DESC
 	`, classID, date).Scan(&openSessionID)
 	if err == nil {
+		if ensureErr := a.ensureAttendanceRowsForSession(openSessionID, classID, date); ensureErr != nil {
+			return nil, fmt.Errorf("failed to prepare attendance rows: %w", ensureErr)
+		}
 		return a.getAttendanceSessionByID(openSessionID)
 	}
 	if err != sql.ErrNoRows {
@@ -873,6 +1130,10 @@ func (a *App) CreateAttendanceSession(classID int, date, sessionName string, tea
 	`, classID, date, sessionName, nullInt(lateThresholdMinutes), teacherUserID).Scan(&newSessionID)
 	if err != nil {
 		return nil, err
+	}
+
+	if err := a.ensureAttendanceRowsForSession(newSessionID, classID, date); err != nil {
+		return nil, fmt.Errorf("failed to prepare attendance rows: %w", err)
 	}
 
 	return a.getAttendanceSessionByID(newSessionID)
@@ -905,7 +1166,7 @@ func (a *App) GetTeacherAttendanceSessions(teacherUserID int) ([]AttendanceSessi
 		FROM attendance_sessions s
 		JOIN classes c ON s.class_id = c.class_id
 		JOIN subjects subj ON c.subject_code = subj.subject_code
-		LEFT JOIN attendance a ON a.class_id = s.class_id AND a.attendance_date = s.attendance_date
+		LEFT JOIN attendance a ON a.session_id = s.session_id
 		WHERE c.teacher_id = ?
 		GROUP BY s.session_id, s.class_id, s.attendance_date, s.session_name, s.status, s.late_threshold_minutes,
 			s.opened_at, s.closed_at, subj.subject_code, subj.description, c.edp_code
@@ -994,7 +1255,7 @@ func (a *App) OpenAttendanceSession(sessionID int, teacherUserID int) error {
 	return nil
 }
 
-func (a *App) CloseAttendanceSession(sessionID int, teacherUserID int) error {
+func (a *App) SaveAttendanceSession(sessionID int, teacherUserID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
@@ -1086,7 +1347,7 @@ func (a *App) GetStudentOpenAttendanceSessions(studentUserID int) ([]AttendanceS
 		JOIN classes c ON s.class_id = c.class_id
 		JOIN classlist cl ON cl.class_id = c.class_id
 		JOIN subjects subj ON c.subject_code = subj.subject_code
-		LEFT JOIN attendance a ON a.class_id = s.class_id AND a.attendance_date = s.attendance_date
+		LEFT JOIN attendance a ON a.session_id = s.session_id
 		WHERE cl.student_id = ?
 			AND cl.status = 'active'
 			AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
@@ -1191,7 +1452,7 @@ func (a *App) StudentTimeIn(sessionID int, studentUserID int) error {
 		return fmt.Errorf("student must be logged in to time in")
 	}
 
-	if err := a.ensureAttendanceRowsForClassDate(classID, attendanceDate); err != nil {
+	if err := a.ensureAttendanceRowsForSession(sessionID, classID, attendanceDate); err != nil {
 		return err
 	}
 
@@ -1206,8 +1467,8 @@ func (a *App) StudentTimeIn(sessionID int, studentUserID int) error {
 	result, err := a.db.Exec(`
 		UPDATE attendance
 		SET status = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE class_id = ? AND student_id = ? AND attendance_date = ? AND COALESCE(is_archived, 0) = 0
-	`, finalStatus, classID, studentUserID, attendanceDate)
+		WHERE class_id = ? AND student_id = ? AND attendance_date = ? AND session_id = ? AND COALESCE(is_archived, 0) = 0
+	`, finalStatus, classID, studentUserID, attendanceDate, sessionID)
 	if err != nil {
 		return err
 	}

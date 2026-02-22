@@ -26,8 +26,6 @@ export function ChangePassword(arg1:string,arg2:string,arg3:string):Promise<void
 
 export function CheckAttendanceExists(arg1:number,arg2:string):Promise<boolean>;
 
-export function CloseAttendanceSession(arg1:number,arg2:number):Promise<void>;
-
 export function CloseClass(arg1:number):Promise<void>;
 
 export function CreateAttendanceSession(arg1:number,arg2:string,arg3:string,arg4:number,arg5:number):Promise<main.AttendanceSession>;
@@ -166,6 +164,8 @@ export function GetProfilePhotoURL(arg1:number):Promise<string>;
 
 export function GetRecentAttendance(arg1:Array<number>,arg2:number):Promise<Array<main.Attendance>>;
 
+export function GetSessionAttendance(arg1:number,arg2:number):Promise<Array<main.Attendance>>;
+
 export function GetStudentArchivedClasses(arg1:number):Promise<Array<main.CourseClass>>;
 
 export function GetStudentClasses(arg1:number):Promise<Array<main.CourseClass>>;
@@ -234,6 +234,8 @@ export function RenameAttendanceSession(arg1:number,arg2:string,arg3:number):Pro
 
 export function ReopenClass(arg1:number):Promise<void>;
 
+export function SaveAttendanceSession(arg1:number,arg2:number):Promise<void>;
+
 export function SaveEquipmentFeedback(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string):Promise<void>;
 
 export function SaveProfilePhoto(arg1:number,arg2:string):Promise<void>;
@@ -275,6 +277,8 @@ export function UpdateAttendanceRecord(arg1:number,arg2:number,arg3:string,arg4:
 export function UpdateClass(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:boolean):Promise<void>;
 
 export function UpdateDepartment(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<void>;
+
+export function UpdateSessionAttendanceRecord(arg1:number,arg2:number,arg3:number,arg4:string,arg5:string):Promise<void>;
 
 export function UpdateUser(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string):Promise<void>;
 

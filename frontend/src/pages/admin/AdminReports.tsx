@@ -7,8 +7,6 @@ import {
   X,
   SlidersHorizontal,
   Archive,
-  CheckSquare,
-  AlertCircle,
   Trash2
 } from 'lucide-react';
 import {
@@ -98,7 +96,7 @@ function Reports() {
     successMessage: string
   ) => {
     if (reportIDs.length === 0) {
-      showToast('error', 'No matching equipment reports to archive');
+      showToast('error', 'No reports to archive.');
       return;
     }
 
@@ -112,7 +110,7 @@ function Reports() {
       ids,
       'equipment reports',
       `${ids.length} selected report${ids.length === 1 ? '' : 's'}`,
-      `Archived ${ids.length} equipment report${ids.length === 1 ? '' : 's'} successfully`
+      `${ids.length} report${ids.length === 1 ? '' : 's'} archived.`
     );
   };
 
@@ -451,14 +449,7 @@ function Reports() {
             ? 'bg-green-50 border-green-200 text-green-800' 
             : 'bg-red-50 border-red-200 text-red-800'
         } animate-slideIn`}>
-          <div className="flex items-center gap-3">
-            {toast.type === 'success' ? (
-              <CheckSquare className="h-5 w-5" />
-            ) : (
-              <AlertCircle className="h-5 w-5" />
-            )}
-            <span className="font-medium">{toast.message}</span>
-          </div>
+          <span className="font-medium">{toast.message}</span>
         </div>
       )}
 

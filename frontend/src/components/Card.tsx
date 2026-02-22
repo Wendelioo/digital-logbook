@@ -122,22 +122,22 @@ export const StatCard: React.FC<StatCardProps> = ({
   };
 
   return (
-    <Card className={className}>
-      <CardBody>
-        <div className="flex items-center">
+    <Card className={`h-full min-w-0 ${className}`}>
+      <CardBody className="p-4 md:p-5">
+        <div className="flex items-start gap-3 min-w-0">
           {icon && (
             <div className="flex-shrink-0">
-              <div className={`${colorClasses[color]} rounded-lg p-3`}>
+              <div className={`${colorClasses[color]} rounded-lg p-2.5 md:p-3`}>
                 {icon}
               </div>
             </div>
           )}
-          <div className={`${icon ? 'ml-5' : ''} flex-1`}>
-            <dt className="text-xs font-medium text-gray-600 uppercase tracking-wide truncate">
+          <div className="min-w-0 flex-1">
+            <dt className="text-[11px] sm:text-xs font-medium text-gray-600 uppercase tracking-wide leading-tight [overflow-wrap:anywhere]">
               {title}
             </dt>
-            <dd className="mt-1 flex items-baseline">
-              <span className="text-2xl font-semibold text-gray-900">
+            <dd className="mt-1 flex items-end gap-2 flex-wrap min-w-0">
+              <span className="text-xl md:text-2xl font-semibold text-gray-900 leading-tight [overflow-wrap:anywhere]">
                 {value}
               </span>
               {trend && (

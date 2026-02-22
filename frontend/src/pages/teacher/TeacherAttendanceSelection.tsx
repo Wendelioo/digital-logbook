@@ -9,7 +9,6 @@ import {
   Trash2,
   Eye,
   Lock,
-  Unlock,
   X,
 } from 'lucide-react';
 import {
@@ -50,6 +49,7 @@ interface AttendanceSession {
   attendance_date: string;
   session_name: string;
   status: 'open' | 'closed';
+  opened_at?: string;
   subject_code: string;
   subject_name: string;
   edp_code: string;
@@ -135,7 +135,7 @@ function AttendanceClassSelection() {
     loadAttendanceSheets();
   }, [user?.id, refreshKey]);
 
-  // Load attendance sessions for open/close/rename actions
+  // Load attendance sessions for view/save/rename actions
   useEffect(() => {
     const loadSessions = async () => {
       if (!user?.id) return;
@@ -165,7 +165,7 @@ function AttendanceClassSelection() {
     setCurrentPage(1);
   }, [searchTerm, attendanceSheets]);
 
-  // Create/open attendance session for a class today
+  // Create/load attendance session for a class today
   const handleTakeAttendance = async (classId: number) => {
     setOpeningAttendance(classId);
     setNotice(null);
@@ -190,9 +190,9 @@ function AttendanceClassSelection() {
       if (!hasOpenTodaySession && hasClosedTodaySession) {
         setNotice({ type: 'success', text: 'New attendance session created for this class today.' });
       } else if (hasOpenTodaySession) {
-        setNotice({ type: 'success', text: 'Current open attendance session loaded.' });
+        setNotice({ type: 'success', text: 'Current active attendance session loaded.' });
       } else {
-        setNotice({ type: 'success', text: 'Attendance sheet is open and ready for editing.' });
+        setNotice({ type: 'success', text: 'Attendance sheet is active and ready for editing.' });
       }
 
       // Keep existing behavior to open the sheet view.
@@ -204,8 +204,8 @@ function AttendanceClassSelection() {
         navigate(`/teacher/attendance/${classId}?date=${today}`);
       }
     } catch (error) {
-      console.error('Failed to open attendance:', error);
-      setNotice({ type: 'error', text: 'Failed to create/open attendance session. Please try again.' });
+      console.error('Failed to start attendance:', error);
+      setNotice({ type: 'error', text: 'Failed to create attendance session. Please try again.' });
     } finally {
       setOpeningAttendance(null);
       setShowAddModal(false);
@@ -213,19 +213,16 @@ function AttendanceClassSelection() {
     }
   };
 
-  const handleToggleSession = async (session: AttendanceSession, nextStatus: 'open' | 'closed') => {
+  const handleSaveSession = async (session: AttendanceSession) => {
     setSessionBusyId(session.session_id);
     setNotice(null);
     try {
-      if (nextStatus === 'closed') {
-        await (window as any).go.main.App.CloseAttendanceSession(session.session_id, user?.id || 0);
-      } else {
-        await (window as any).go.main.App.OpenAttendanceSession(session.session_id, user?.id || 0);
-      }
+      await (window as any).go.main.App.SaveAttendanceSession(session.session_id, user?.id || 0);
+      setNotice({ type: 'success', text: 'Attendance saved successfully.' });
       setRefreshKey(prev => prev + 1);
     } catch (error) {
-      console.error('Failed to update session status:', error);
-      setNotice({ type: 'error', text: 'Failed to update attendance session status.' });
+      console.error('Failed to save session:', error);
+      setNotice({ type: 'error', text: 'Failed to save attendance session.' });
     } finally {
       setSessionBusyId(null);
     }
@@ -308,10 +305,14 @@ function AttendanceClassSelection() {
     session => session.attendance_date === today && session.status === 'open'
   );
   const sessionStatusByKey = new Map<string, 'open' | 'closed'>();
+  const latestSessionIdByKey = new Map<string, number>();
   attendanceSessions.forEach((session) => {
     const key = `${session.class_id}-${session.attendance_date}`;
     if (!sessionStatusByKey.has(key)) {
       sessionStatusByKey.set(key, session.status);
+    }
+    if (!latestSessionIdByKey.has(key)) {
+      latestSessionIdByKey.set(key, session.session_id);
     }
   });
 
@@ -366,10 +367,13 @@ function AttendanceClassSelection() {
                 <div>
                   <p className="text-sm font-medium text-gray-900">{session.session_name || `${session.subject_code} Attendance`}</p>
                   <p className="text-xs text-gray-500">{session.subject_code} • P:{session.present_count} A:{session.absent_count} L:{session.late_count}</p>
+                  {session.opened_at && (
+                    <p className="text-[11px] text-gray-400">Generated: {new Date(session.opened_at.replace(' ', 'T')).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
-                    onClick={() => navigate(`/teacher/attendance/${session.class_id}?date=${session.attendance_date}`)}
+                    onClick={() => navigate(`/teacher/attendance/${session.class_id}?date=${session.attendance_date}&sessionId=${session.session_id}`)}
                     variant="outline"
                     size="sm"
                     disabled={sessionBusyId === session.session_id}
@@ -384,25 +388,16 @@ function AttendanceClassSelection() {
                     icon={<Edit className="h-3 w-3" />}
                     title="Rename Session"
                   />
-                  {session.status === 'open' ? (
-                    <Button
-                      onClick={() => handleToggleSession(session, 'closed')}
-                      variant="outline"
-                      size="sm"
-                      disabled={sessionBusyId === session.session_id}
-                      icon={<Lock className="h-3 w-3" />}
-                      title="Close Session"
-                    />
-                  ) : (
-                    <Button
-                      onClick={() => handleToggleSession(session, 'open')}
-                      variant="outline"
-                      size="sm"
-                      disabled={sessionBusyId === session.session_id}
-                      icon={<Unlock className="h-3 w-3" />}
-                      title="Reopen Session"
-                    />
-                  )}
+                  <Button
+                    onClick={() => handleSaveSession(session)}
+                    variant="primary"
+                    size="sm"
+                    disabled={sessionBusyId === session.session_id}
+                    icon={<Lock className="h-3 w-3" />}
+                    title="Save Attendance"
+                  >
+                    Save
+                  </Button>
                 </div>
               </div>
             ))}
@@ -469,7 +464,9 @@ function AttendanceClassSelection() {
               {currentSheets.length > 0 ? (
                 currentSheets.map((sheet) => {
                   const isToday = sheet.date === today;
-                  const sessionStatus = sessionStatusByKey.get(`${sheet.class_id}-${sheet.date}`);
+                  const sheetKey = `${sheet.class_id}-${sheet.date}`;
+                  const sessionStatus = sessionStatusByKey.get(sheetKey);
+                  const latestSessionId = latestSessionIdByKey.get(sheetKey);
                   const canArchive = !isToday || sessionStatus === 'closed';
 
                   return (
@@ -494,14 +491,18 @@ function AttendanceClassSelection() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center justify-center gap-2">
                           <Button
-                            onClick={() => navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}`)}
+                            onClick={() => navigate(
+                              latestSessionId
+                                ? `/teacher/attendance/${sheet.class_id}?date=${sheet.date}&sessionId=${latestSessionId}`
+                                : `/teacher/attendance/${sheet.class_id}?date=${sheet.date}`
+                            )}
                             variant="outline"
                             size="sm"
                             className="text-gray-600 bg-gray-50 hover:bg-gray-100"
                             icon={<Eye className="h-3 w-3" />}
                             title="View Attendance"
                           />
-                          {/* Archive button - past dates, or today's saved/closed session */}
+                          {/* Archive button - past dates, or today's saved session */}
                           {canArchive && (
                             <Button
                               onClick={() => handleArchiveClick(sheet)}
