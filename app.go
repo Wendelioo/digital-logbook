@@ -47,19 +47,19 @@ func (a *App) startup(ctx context.Context) {
 		if err == nil {
 			break
 		}
-		log.Printf("? Database connection attempt %d/%d failed: %v", i, maxRetries, err)
+		log.Printf("Database connection attempt %d/%d failed: %v", i, maxRetries, err)
 		if i < maxRetries {
-			log.Printf("? Retrying in %d seconds...", i*2)
+			log.Printf("Retrying in %d seconds...", i*2)
 			time.Sleep(time.Duration(i*2) * time.Second)
 		}
 	}
 
 	if err != nil {
-		log.Println("??  All database connection attempts failed - will auto-reconnect on next request")
-		log.Println("?? To fix: Check SQL Server is running, TCP/IP is enabled, and credentials are correct")
+		log.Println("All database connection attempts failed - will auto-reconnect on next request")
+		log.Println("To fix: Check SQL Server is running, TCP/IP is enabled, and credentials are correct")
 	} else {
 		a.db = db
-		log.Println("? Database connected successfully")
+		log.Println("Database connected successfully")
 	}
 
 	// If kiosk mode is on, force lock the screen on startup
@@ -70,7 +70,7 @@ func (a *App) startup(ctx context.Context) {
 			time.Sleep(500 * time.Millisecond)
 			wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
 			wailsRuntime.WindowFullscreen(a.ctx)
-			log.Println("🔒 Kiosk mode: Screen locked on startup")
+			log.Println("Kiosk mode: Screen locked on startup")
 		}()
 	}
 }
@@ -90,7 +90,7 @@ func (a *App) UnlockScreen() {
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, false)
 	wailsRuntime.WindowSetSize(a.ctx, 1000, 700)
 	wailsRuntime.WindowCenter(a.ctx)
-	log.Println("🔓 Screen unlocked - app is now a normal window")
+	log.Println("Screen unlocked - app is now a normal window")
 }
 
 // LockScreen is called after logout.
@@ -103,7 +103,7 @@ func (a *App) LockScreen() {
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
 	wailsRuntime.WindowMaximise(a.ctx)
 	wailsRuntime.WindowFullscreen(a.ctx)
-	log.Println("🔒 Screen locked - waiting for next user to login")
+	log.Println("Screen locked - waiting for next user to login")
 }
 
 // IsKioskMode returns whether kiosk mode is enabled (for frontend to know)
@@ -128,7 +128,7 @@ type User struct {
 	StudentID      *string `json:"student_id"`
 	Email          *string `json:"email"`
 	ContactNumber  *string `json:"contact_number"`
-	PhotoURL       *string `json:"photo_url"`  // Base64 data URL for frontend display
+	PhotoURL       *string `json:"photo_url"` // Base64 data URL for frontend display
 	DepartmentCode *string `json:"department_code"`
 	Created        string  `json:"created"`
 	LoginLogID     int     `json:"login_log_id"` // Track the login session
@@ -195,7 +195,7 @@ type ClassStudent struct {
 	Gender        *string `json:"gender,omitempty"`
 	Email         *string `json:"email,omitempty"`
 	ContactNumber *string `json:"contact_number,omitempty"`
-	PhotoURL      *string `json:"photo_url,omitempty"`  // Base64 data URL for frontend display
+	PhotoURL      *string `json:"photo_url,omitempty"` // Base64 data URL for frontend display
 	ClassID       *int    `json:"class_id,omitempty"`
 	IsEnrolled    bool    `json:"is_enrolled"`
 }
@@ -316,25 +316,25 @@ type Subject struct {
 
 // CourseClass represents a class/section
 type CourseClass struct {
-	ID                    int     `json:"id"`
-	ClassID               int     `json:"class_id"`
-	SubjectCode           string  `json:"subject_code"`
-	SubjectName           string  `json:"subject_name"`
-	DescriptiveTitle      *string `json:"descriptive_title,omitempty"`
-	EdpCode               *string `json:"edp_code,omitempty"`
-	Section               *string `json:"section,omitempty"`
-	Schedule              *string `json:"schedule,omitempty"`
-	Room                  *string `json:"room,omitempty"`
-	SchoolYear            *string `json:"school_year,omitempty"`
-	Semester              *string `json:"semester,omitempty"`
-	TeacherUserID         int     `json:"teacher_user_id"`
-	TeacherName           *string `json:"teacher_name,omitempty"`
-	StudentCount          int     `json:"student_count"`
-	EnrolledCount         int     `json:"enrolled_count"`
-	IsActive              bool    `json:"is_active"`
-	IsArchived            bool    `json:"is_archived"`
-	CreatedByUserID       *int    `json:"created_by_user_id,omitempty"`
-	CreatedAt             string  `json:"created_at"`
+	ID                   int     `json:"id"`
+	ClassID              int     `json:"class_id"`
+	SubjectCode          string  `json:"subject_code"`
+	SubjectName          string  `json:"subject_name"`
+	DescriptiveTitle     *string `json:"descriptive_title,omitempty"`
+	EdpCode              *string `json:"edp_code,omitempty"`
+	Section              *string `json:"section,omitempty"`
+	Schedule             *string `json:"schedule,omitempty"`
+	Room                 *string `json:"room,omitempty"`
+	SchoolYear           *string `json:"school_year,omitempty"`
+	Semester             *string `json:"semester,omitempty"`
+	TeacherUserID        int     `json:"teacher_user_id"`
+	TeacherName          *string `json:"teacher_name,omitempty"`
+	StudentCount         int     `json:"student_count"`
+	EnrolledCount        int     `json:"enrolled_count"`
+	IsActive             bool    `json:"is_active"`
+	IsArchived           bool    `json:"is_archived"`
+	CreatedByUserID      *int    `json:"created_by_user_id,omitempty"`
+	CreatedAt            string  `json:"created_at"`
 	LatestAttendanceDate *string `json:"latest_attendance_date,omitempty"`
 	ClassStatus          string  `json:"class_status"`
 }

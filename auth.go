@@ -15,7 +15,7 @@ import (
 // Login authenticates a user
 func (a *App) Login(username, password string) (*User, error) {
 	if err := a.checkDB(); err != nil {
-		log.Printf("❌ LOGIN ERROR: Database not connected")
+		log.Printf("LOGIN ERROR: Database not connected")
 		return nil, fmt.Errorf("database connection failed - please check database configuration")
 	}
 
@@ -28,10 +28,10 @@ func (a *App) Login(username, password string) (*User, error) {
 	err := a.db.QueryRow(query, username).Scan(&user.ID, &user.Name, &user.Password, &user.Role, &accountStatus, &isActive, &createdAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			log.Printf("❌ LOGIN ERROR: User '%s' not found", username)
+			log.Printf("LOGIN ERROR: User '%s' not found", username)
 			return nil, fmt.Errorf("invalid credentials")
 		}
-		log.Printf("❌ LOGIN ERROR: Database query failed for user '%s': %v", username, err)
+		log.Printf("LOGIN ERROR: Database query failed for user '%s': %v", username, err)
 		return nil, err
 	}
 
@@ -69,16 +69,13 @@ func (a *App) Login(username, password string) (*User, error) {
 	// Create login log entry
 	logID, err := a.createLoginLog(user.ID, hostname)
 	if err != nil {
-		log.Printf("❌ Failed to create login log for user %d (username: %s): %v", user.ID, username, err)
+		log.Printf("Failed to create login log for user %d (username: %s): %v", user.ID, username, err)
 	} else {
 		user.LoginLogID = logID
-		log.Printf("✅ Login logged - ID: %d, User: %s (ID: %d), Role: %s, PC: %s", logID, username, user.ID, user.Role, hostname)
+		log.Printf("Login logged - ID: %d, User: %s (ID: %d), Role: %s, PC: %s", logID, username, user.ID, user.Role, hostname)
 	}
 
-	// Auto-record attendance for students
-	if user.Role == "student" || user.Role == "working_student" {
-		go a.autoRecordAttendanceOnLogin(user.ID)
-	}
+	// Attendance is now session-based (teacher opens session, student taps Time In).
 
 	log.Printf("User login successful: %s (role: %s, pc: %s)", username, user.Role, hostname)
 	return &user, nil
@@ -215,5 +212,3 @@ func (a *App) createLoginLog(userID int, pcNumber string) (int, error) {
 	}
 	return logID, nil
 }
-
-

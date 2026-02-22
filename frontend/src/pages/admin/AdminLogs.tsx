@@ -4,6 +4,8 @@ import Table from '../../components/Table';
 import AdminArchiveModal from '../../components/AdminArchiveModal';
 import { Badge } from '../../components/Badge';
 import {
+  Search,
+  X,
   CheckSquare,
   AlertCircle,
   Archive,
@@ -30,27 +32,23 @@ function ViewLogs() {
   // UI states
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
   
   // Toast notification
   const [toast, setToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
   // Archive confirmation modal
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
-  const [logToArchive, setLogToArchive] = useState<LoginLog | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<{
+    logIDs: number[];
+    itemType: string;
+    itemDescription: string;
+    successMessage: string;
+  } | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
-
-  // Dropdown menu state
-  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = () => setOpenMenuId(null);
-    if (openMenuId !== null) {
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
-    }
-  }, [openMenuId]);
+  const [archiveModalTab, setArchiveModalTab] = useState<'archived-logs' | 'reports'>('archived-logs');
+  const [selectedLogIDs, setSelectedLogIDs] = useState<Set<number>>(new Set());
 
   // Load all logs on mount
   useEffect(() => {
@@ -78,22 +76,44 @@ function ViewLogs() {
     }
   };
 
-  const handleArchiveClick = (log: LoginLog) => {
-    setLogToArchive(log);
+  const openArchiveConfirmation = (
+    logIDs: number[],
+    itemType: string,
+    itemDescription: string,
+    successMessage: string
+  ) => {
+    if (logIDs.length === 0) {
+      showToast('error', 'No matching log entries to archive');
+      return;
+    }
+
+    setArchiveTarget({ logIDs, itemType, itemDescription, successMessage });
     setShowArchiveConfirm(true);
-    setOpenMenuId(null);
+  };
+
+  const handleArchiveSelected = () => {
+    const ids = Array.from(selectedLogIDs);
+    openArchiveConfirmation(
+      ids,
+      'log entries',
+      `${ids.length} selected entr${ids.length === 1 ? 'y' : 'ies'}`,
+      `Archived ${ids.length} log entr${ids.length === 1 ? 'y' : 'ies'} successfully`
+    );
   };
 
   const confirmArchive = async () => {
-    if (!logToArchive || !user) return;
+    if (!archiveTarget || !user) return;
     
     setArchiving(true);
     try {
-      await ArchiveSelectedLogs([logToArchive.id], user.id);
-      showToast('success', `Log entry for ${logToArchive.user_name} archived successfully!`);
+      await ArchiveSelectedLogs(archiveTarget.logIDs, user.id);
+      showToast('success', archiveTarget.successMessage);
       setShowArchiveConfirm(false);
-      setLogToArchive(null);
-      loadLogs();
+      setArchiveTarget(null);
+      setSelectedLogIDs(new Set());
+      await loadLogs();
+      setArchiveModalTab('archived-logs');
+      setShowArchiveModal(true);
     } catch (error) {
       console.error('Failed to archive log:', error);
       showToast('error', 'Failed to archive log entry');
@@ -131,6 +151,44 @@ function ViewLogs() {
     return `${hours}h ${minutes}m`;
   };
 
+  const clearSearch = () => setSearchQuery('');
+
+  const filteredLogs = logs.filter((log) => {
+    const searchLower = searchQuery.toLowerCase();
+    if (!searchLower) return true;
+
+    return (
+      log.user_name?.toLowerCase().includes(searchLower) ||
+      log.user_id_number?.toLowerCase().includes(searchLower) ||
+      log.user_type?.toLowerCase().includes(searchLower) ||
+      (log.pc_number || '').toLowerCase().includes(searchLower)
+    );
+  });
+
+  const filteredLogIDs = filteredLogs.map((log) => log.id);
+  const allFilteredSelected = filteredLogIDs.length > 0 && filteredLogIDs.every((id) => selectedLogIDs.has(id));
+  const someFilteredSelected = filteredLogIDs.some((id) => selectedLogIDs.has(id)) && !allFilteredSelected;
+
+  const toggleSelectAllFiltered = () => {
+    const next = new Set(selectedLogIDs);
+    if (allFilteredSelected) {
+      filteredLogIDs.forEach((id) => next.delete(id));
+    } else {
+      filteredLogIDs.forEach((id) => next.add(id));
+    }
+    setSelectedLogIDs(next);
+  };
+
+  const toggleSelectLog = (id: number) => {
+    const next = new Set(selectedLogIDs);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedLogIDs(next);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -140,10 +198,10 @@ function ViewLogs() {
   }
 
   // Pagination
-  const totalPages = Math.ceil(logs.length / itemsPerPage);
+  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const paginatedLogs = logs.slice(startIndex, endIndex);
+  const paginatedLogs = filteredLogs.slice(startIndex, endIndex);
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-8">
@@ -167,13 +225,71 @@ function ViewLogs() {
 
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900">Log Entries</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold text-gray-900">Log Entries</h1>
+          {selectedLogIDs.size > 0 && (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-primary-100 text-primary-700">
+              {selectedLogIDs.size} selected
+            </span>
+          )}
+        </div>
         <Button
           onClick={() => setShowArchiveModal(true)}
           variant="outline"
           icon={<Trash2 className="h-4 w-4" />}
         >
-          Archive
+          Archived Logs
+        </Button>
+      </div>
+
+      {/* Search Toolbar */}
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        <div className="flex flex-wrap gap-3 items-start">
+          <div className="w-64 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            />
+            {searchQuery && (
+              <button
+                onClick={clearSearch}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={allFilteredSelected}
+            ref={(input) => {
+              if (input) input.indeterminate = someFilteredSelected;
+            }}
+            onChange={toggleSelectAllFiltered}
+            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
+          />
+          <span className="text-sm font-medium text-gray-700">Select all visible</span>
+          {selectedLogIDs.size > 0 && (
+            <span className="text-xs text-gray-500">{selectedLogIDs.size} selected</span>
+          )}
+        </div>
+
+        <Button
+          onClick={handleArchiveSelected}
+          variant="outline"
+          size="sm"
+          icon={<Archive className="h-4 w-4" />}
+          disabled={selectedLogIDs.size === 0 || archiving}
+        >
+          Archive Selected
         </Button>
       </div>
 
@@ -191,6 +307,19 @@ function ViewLogs() {
       <div>
         <Table
           columns={[
+            {
+              key: 'select',
+              label: 'Select',
+              width: '90px',
+              render: (log: LoginLog) => (
+                <input
+                  type="checkbox"
+                  checked={selectedLogIDs.has(log.id)}
+                  onChange={() => toggleSelectLog(log.id)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
+                />
+              )
+            },
             {
               key: 'user_name',
               label: 'Name',
@@ -250,29 +379,16 @@ function ViewLogs() {
                   {calculateDuration(log.login_time, log.logout_time)}
                 </span>
               )
-            },
-            {
-              key: 'actions',
-              label: 'Actions',
-              render: (log: LoginLog) => (
-                <button
-                  onClick={() => handleArchiveClick(log)}
-                  className="p-1 hover:bg-gray-100 rounded transition-colors"
-                  title="Archive Entry"
-                >
-                  <Archive className="h-5 w-5 text-gray-600" />
-                </button>
-              )
             }
           ]}
           data={paginatedLogs}
           loading={loading}
           emptyMessage="No login activity recorded"
         />
-        {logs.length > 0 && totalPages > 1 && (
+        {filteredLogs.length > 0 && totalPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
             <div className="text-sm text-gray-600">
-              Showing {startIndex + 1} to {Math.min(endIndex, logs.length)} of {logs.length} entries
+              Showing {startIndex + 1} to {Math.min(endIndex, filteredLogs.length)} of {filteredLogs.length} entries
             </div>
             <div className="flex gap-2">
               <Button
@@ -307,24 +423,24 @@ function ViewLogs() {
       </div>
 
       {/* Archive Confirmation Modal */}
-      {showArchiveConfirm && logToArchive && (
+      {showArchiveConfirm && archiveTarget && (
         <ArchiveConfirmationModal
           isOpen={showArchiveConfirm}
           onClose={() => {
             setShowArchiveConfirm(false);
-            setLogToArchive(null);
+            setArchiveTarget(null);
           }}
           onConfirm={confirmArchive}
           loading={archiving}
-          itemType="log entry"
-          itemDescription={`${logToArchive.user_name} (${logToArchive.user_id_number}) - ${formatTime(logToArchive.login_time)}`}
+          itemType={archiveTarget.itemType}
+          itemDescription={archiveTarget.itemDescription}
         />
       )}
 
       <AdminArchiveModal
         isOpen={showArchiveModal}
         onClose={() => setShowArchiveModal(false)}
-        initialTab="archived-logs"
+        initialTab={archiveModalTab}
       />
     </div>
   );

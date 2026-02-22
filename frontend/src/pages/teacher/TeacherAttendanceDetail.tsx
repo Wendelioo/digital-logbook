@@ -13,7 +13,6 @@ import {
   OpenClassAttendance,
   GetClassAttendance,
   UpdateAttendanceRecord,
-  ExportAttendanceCSV,
   ArchiveAttendanceSheet,
   GetClassByID,
 } from '../../../wailsjs/go/main/App';
@@ -35,21 +34,87 @@ function AttendanceManagementDetail() {
   const [error, setError] = useState<string>('');
   const [hasSelectedDate, setHasSelectedDate] = useState(!!initialDate);
   const [archiving, setArchiving] = useState(false);
+  const [savingAttendance, setSavingAttendance] = useState(false);
+  const [sessionId, setSessionId] = useState<number | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<'open' | 'closed' | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<{[key: string]: boolean}>({});
   const [exportingAttendance, setExportingAttendance] = useState(false);
+  const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Computed: is the selected date today?
   const today = new Date().toISOString().split('T')[0];
-  const isEditable = selectedDate === today && attendanceRecords.length > 0 && !attendanceRecords[0]?.is_archived;
+  const isEditable = selectedDate === today && attendanceRecords.length > 0 && !attendanceRecords[0]?.is_archived && sessionStatus !== 'closed';
+
+  const loadSessionMeta = async (classId: number, date: string) => {
+    if (!user?.id) {
+      setSessionId(null);
+      setSessionStatus(null);
+      return;
+    }
+
+    try {
+      const sessions = await (window as any).go.main.App.GetTeacherAttendanceSessions(user.id);
+      const routeSessionId = Number(searchParams.get('sessionId') || '');
+      const hasRouteSessionId = !Number.isNaN(routeSessionId) && routeSessionId > 0;
+
+      let matched = null;
+      if (hasRouteSessionId) {
+        matched = (sessions || []).find((session: any) => session.session_id === routeSessionId && session.class_id === classId && session.attendance_date === date);
+      }
+
+      if (!matched) {
+        const sameClassDate = (sessions || []).filter((session: any) => session.class_id === classId && session.attendance_date === date);
+        matched = sameClassDate.find((session: any) => session.status === 'open') || sameClassDate[0];
+      }
+
+      if (matched) {
+        setSessionId(matched.session_id);
+        setSessionStatus(matched.status);
+      } else {
+        setSessionId(null);
+        setSessionStatus(null);
+      }
+    } catch (err) {
+      console.error('Failed to load session metadata:', err);
+      setSessionId(null);
+      setSessionStatus(null);
+    }
+  };
+
+  const handleSaveAttendance = async () => {
+    if (!sessionId || !user?.id) {
+      setNotice({ type: 'error', text: 'No active attendance session found to save.' });
+      return;
+    }
+
+    setSavingAttendance(true);
+    setNotice(null);
+    try {
+      await (window as any).go.main.App.CloseAttendanceSession(sessionId, user.id);
+      setSessionStatus('closed');
+      setNotice({ type: 'success', text: 'Attendance saved successfully.' });
+    } catch (error) {
+      console.error('Failed to save attendance:', error);
+      setNotice({ type: 'error', text: 'Failed to save attendance. Please try again.' });
+    } finally {
+      setSavingAttendance(false);
+    }
+  };
 
   const handleExportAttendance = async (classId: number) => {
+    if (!selectedDate) {
+      setNotice({ type: 'error', text: 'Select a date before exporting attendance.' });
+      return;
+    }
+
     setExportingAttendance(true);
+    setNotice(null);
     try {
-      const filePath = await ExportAttendanceCSV(classId);
-      alert(`Attendance exported successfully!\nFile saved to: ${filePath}`);
+      const filePath = await (window as any).go.main.App.ExportAttendanceCSVByDate(classId, selectedDate);
+      setNotice({ type: 'success', text: `Attendance exported successfully. File saved to: ${filePath}` });
     } catch (error) {
       console.error('Failed to export attendance:', error);
-      alert('Failed to export attendance. Please try again.');
+      setNotice({ type: 'error', text: 'Failed to export attendance. Please try again.' });
     } finally {
       setExportingAttendance(false);
     }
@@ -58,12 +123,13 @@ function AttendanceManagementDetail() {
   const handleStatusChange = async (record: Attendance, newStatus: string) => {
     // Enforce same-day only editing
     if (!isEditable) {
-      alert('Attendance can only be edited on the same day.');
+      setNotice({ type: 'error', text: 'Attendance can only be edited on the same day.' });
       return;
     }
 
     const key = `${record.class_id}-${record.student_user_id}-${record.date}`;
     setUpdatingStatus(prev => ({ ...prev, [key]: true }));
+    setNotice(null);
     
     try {
       await UpdateAttendanceRecord(
@@ -86,7 +152,10 @@ function AttendanceManagementDetail() {
       );
     } catch (error) {
       console.error('Failed to update attendance:', error);
-      alert('Failed to update attendance. ' + (error instanceof Error ? error.message : 'Please try again.'));
+      setNotice({
+        type: 'error',
+        text: 'Failed to update attendance. ' + (error instanceof Error ? error.message : 'Please try again.'),
+      });
     } finally {
       setUpdatingStatus(prev => ({ ...prev, [key]: false }));
     }
@@ -146,10 +215,13 @@ function AttendanceManagementDetail() {
         records = await GetClassAttendance(selectedClass.class_id, selectedDate);
       }
       setAttendanceRecords(records || []);
+      await loadSessionMeta(selectedClass.class_id, selectedDate);
     } catch (error) {
       console.error('Failed to load attendance:', error);
       setError('Unable to load attendance records. Please try again.');
       setAttendanceRecords([]);
+      setSessionId(null);
+      setSessionStatus(null);
     } finally {
       setLoadingAttendance(false);
     }
@@ -173,17 +245,21 @@ function AttendanceManagementDetail() {
     
     // Cannot archive today's attendance
     if (selectedDate === today) {
-      alert("Cannot archive today's attendance. Only past attendance can be archived.");
+      setNotice({ type: 'error', text: "Cannot archive today's attendance. Only past attendance can be archived." });
       return;
     }
 
     setArchiving(true);
+    setNotice(null);
     try {
       await ArchiveAttendanceSheet(selectedClass.class_id, selectedDate);
       navigate('/teacher/attendance', { replace: true });
     } catch (error) {
       console.error('Failed to archive attendance:', error);
-      alert('Failed to archive attendance. ' + (error instanceof Error ? error.message : 'Please try again.'));
+      setNotice({
+        type: 'error',
+        text: 'Failed to archive attendance. ' + (error instanceof Error ? error.message : 'Please try again.'),
+      });
     } finally {
       setArchiving(false);
     }
@@ -222,6 +298,12 @@ function AttendanceManagementDetail() {
           </div>
         )}
 
+        {notice && (
+          <div className={`mb-6 px-4 py-3 rounded-md max-w-7xl mx-auto border ${notice.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+            {notice.text}
+          </div>
+        )}
+
         {loading && (
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
@@ -241,7 +323,7 @@ function AttendanceManagementDetail() {
             <div className="text-center py-8">
               <Calendar className="mx-auto h-12 w-12 text-gray-300 mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No Attendance Selected</h3>
-              <p className="text-sm text-gray-500 mb-4">Use the "Add Attendance" buttons on the Attendance Management page to create attendance for today.</p>
+              <p className="text-sm text-gray-500 mb-4">Attendance is synced from active classlist and student logins. Use "Take Attendance" on Attendance Management if you need to open or adjust today's sheet.</p>
               <Button
                 onClick={handleCancelClick}
                 variant="outline"
@@ -276,7 +358,7 @@ function AttendanceManagementDetail() {
             {!isEditable && attendanceRecords.length > 0 && !attendanceRecords[0].is_archived && selectedDate !== today && (
               <div className="mb-4 bg-gray-50 border border-gray-200 rounded-md px-4 py-2 flex items-center gap-2">
                 <Lock className="h-4 w-4 text-gray-500" />
-                <span className="text-sm font-medium text-gray-600">Past attendance is read-only. Only today's attendance can be edited.</span>
+                <span className="text-sm font-medium text-gray-600">Past attendance is read only. Only today's attendance can be edited.</span>
               </div>
             )}
 
@@ -297,7 +379,7 @@ function AttendanceManagementDetail() {
                   )}
                   {!isEditable && attendanceRecords.length > 0 && !attendanceRecords[0].is_archived && (
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                      READ-ONLY
+                      READ ONLY
                     </span>
                   )}
                 </div>
@@ -307,16 +389,29 @@ function AttendanceManagementDetail() {
               </div>
               {/* Export and Archive actions */}
               <div className="flex justify-end gap-2">
-                <Button
-                  onClick={() => handleExportAttendance(selectedClass.class_id)}
-                  variant="outline"
-                  size="sm"
-                  icon={<Download className="h-4 w-4" />}
-                  disabled={exportingAttendance}
-                  title="Export to CSV"
-                >
-                  Export CSV
-                </Button>
+                {selectedDate === today && sessionStatus === 'open' && attendanceRecords.length > 0 && !attendanceRecords[0].is_archived && (
+                  <Button
+                    onClick={handleSaveAttendance}
+                    variant="primary"
+                    size="sm"
+                    disabled={savingAttendance}
+                    title="Save attendance"
+                  >
+                    {savingAttendance ? 'Saving...' : 'Save Attendance'}
+                  </Button>
+                )}
+                {attendanceRecords.length > 0 && attendanceRecords[0].is_archived && (
+                  <Button
+                    onClick={() => handleExportAttendance(selectedClass.class_id)}
+                    variant="outline"
+                    size="sm"
+                    icon={<Download className="h-4 w-4" />}
+                    disabled={exportingAttendance}
+                    title="Export to CSV"
+                  >
+                    Export CSV
+                  </Button>
+                )}
                 {/* Archive button - only for past dates */}
                 {selectedDate !== today && attendanceRecords.length > 0 && !attendanceRecords[0].is_archived && (
                   <Button
@@ -347,7 +442,7 @@ function AttendanceManagementDetail() {
                     {/* Class Information Header */}
                     <thead>
                       <tr>
-                        <th colSpan={5} className="px-4 py-2 text-left border-b-2 border-gray-900">
+                        <th colSpan={4} className="px-4 py-2 text-left border-b-2 border-gray-900">
                           <div className="text-gray-900 font-bold text-sm tracking-wide">CLASS INFORMATION</div>
                         </th>
                       </tr>
@@ -355,25 +450,27 @@ function AttendanceManagementDetail() {
                     <tbody className="bg-white text-sm">
                       <tr>
                         <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '90px' }}>Subject:</td>
-                        <td className="px-3 py-2 text-gray-900" colSpan={2}>{selectedClass.subject_code} - {selectedClass.subject_name}</td>
+                        <td className="px-3 py-2 text-gray-900">{selectedClass.subject_code} - {selectedClass.subject_name}</td>
                         <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '80px' }}>Schedule:</td>
-                        <td className="px-3 py-2 text-gray-900" colSpan={3}>{selectedClass.schedule || '—'}</td>
+                        <td className="px-3 py-2 text-gray-900">{selectedClass.schedule || '—'}</td>
                       </tr>
                       <tr>
                         <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">Instructor:</td>
-                        <td className="px-3 py-2 text-gray-900" colSpan={2}>{selectedClass.teacher_name || '—'}</td>
+                        <td className="px-3 py-2 text-gray-900">{selectedClass.teacher_name || '—'}</td>
                         <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">Room:</td>
-                        <td className="px-3 py-2 text-gray-900" colSpan={3}>{selectedClass.room || '—'}</td>
+                        <td className="px-3 py-2 text-gray-900">{selectedClass.room || '—'}</td>
                       </tr>
                     </tbody>
 
                     {/* Attendance List Header */}
                     <thead>
                       <tr>
-                        <th colSpan={5} className="px-4 py-3 text-left border-b-2 border-gray-900">
+                        <th colSpan={4} className="px-4 py-3 text-left border-b-2 border-gray-900">
                           <div className="flex items-center justify-between">
                             <span className="text-gray-900 font-bold text-sm tracking-wide">DAILY ATTENDANCE RECORD</span>
-                            <span className="text-xs text-gray-600">Total Students: {attendanceRecords.length}</span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-gray-600">Total Students: {attendanceRecords.length}</span>
+                            </div>
                           </div>
                         </th>
                       </tr>
@@ -382,7 +479,6 @@ function AttendanceManagementDetail() {
                         <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '100px' }}>Student ID</th>
                         <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '180px' }}>Student Name</th>
                         <th className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '160px' }}>Status</th>
-                        <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '150px' }}>Remarks</th>
                       </tr>
                     </thead>
 
@@ -405,65 +501,26 @@ function AttendanceManagementDetail() {
                                 {record.last_name}, {record.first_name} {record.middle_name ? record.middle_name.charAt(0) + '.' : ''}
                               </td>
                               <td className="px-3 py-1.5">
-                                <div className="flex gap-3 justify-center items-center">
-                                  {/* Present Checkbox */}
-                                  <label 
-                                    className={`flex items-center gap-1 ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}`}
-                                    title={!isEditable ? "Read-only" : "Present"}
+                                <div className="flex justify-center">
+                                  <select
+                                    value={record.status || 'absent'}
+                                    onChange={(e) => !isDisabled && handleStatusChange(record, e.target.value)}
+                                    disabled={isDisabled}
+                                    className={`px-2 py-1 border border-gray-300 rounded text-xs font-medium ${isDisabled ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white text-gray-800'}`}
+                                    title={!isEditable ? 'Read-only' : 'Set attendance status'}
                                   >
-                                    <input
-                                      type="checkbox"
-                                      checked={record.status === 'present'}
-                                      onChange={() => !isDisabled && handleStatusChange(record, 'present')}
-                                      disabled={isDisabled}
-                                      className="attendance-checkbox checkbox-green"
-                                      style={{ color: '#16a34a' }}
-                                    />
-                                    <span className="text-xs font-medium text-green-700">P</span>
-                                  </label>
-
-                                  {/* Absent Checkbox */}
-                                  <label 
-                                    className={`flex items-center gap-1 ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}`}
-                                    title={!isEditable ? "Read-only" : "Absent"}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={record.status === 'absent'}
-                                      onChange={() => !isDisabled && handleStatusChange(record, 'absent')}
-                                      disabled={isDisabled}
-                                      className="attendance-checkbox checkbox-red"
-                                      style={{ color: '#dc2626' }}
-                                    />
-                                    <span className="text-xs font-medium text-red-700">A</span>
-                                  </label>
-
-                                  {/* Late Checkbox */}
-                                  <label 
-                                    className={`flex items-center gap-1 ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}`}
-                                    title={!isEditable ? "Read-only" : "Late"}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={record.status === 'late'}
-                                      onChange={() => !isDisabled && handleStatusChange(record, 'late')}
-                                      disabled={isDisabled}
-                                      className="attendance-checkbox checkbox-yellow"
-                                      style={{ color: '#ca8a04' }}
-                                    />
-                                    <span className="text-xs font-medium text-yellow-700">L</span>
-                                  </label>
+                                    <option value="present">Present</option>
+                                    <option value="late">Late</option>
+                                    <option value="absent">Absent</option>
+                                  </select>
                                 </div>
-                              </td>
-                              <td className="px-3 py-1.5 text-gray-700">
-                                {record.remarks || '—'}
                               </td>
                             </tr>
                           );
                         })
                       ) : (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center">
+                          <td colSpan={4} className="px-4 py-8 text-center">
                             <ClipboardList className="mx-auto h-8 w-8 text-gray-300 mb-2" />
                             <p className="text-sm text-gray-500">No students enrolled in this class yet.</p>
                             <p className="text-xs text-gray-400 mt-1">Students will appear here once they are enrolled.</p>
@@ -475,7 +532,7 @@ function AttendanceManagementDetail() {
                     {/* Summary Footer */}
                     <tfoot>
                       <tr className="border-t-2 border-gray-900">
-                        <td colSpan={5} className="px-4 py-3">
+                        <td colSpan={4} className="px-4 py-3">
                           <div className="flex justify-between items-center text-xs">
                             <div className="flex gap-4 font-medium">
                               <span className="text-green-700">

@@ -9,6 +9,7 @@ import {
   Calendar,
   Library,
   Bell,
+  ClipboardCheck,
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
@@ -20,6 +21,7 @@ function DashboardOverview() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [classes, setClasses] = useState<Class[]>([]);
+  const [openSessionsToday, setOpenSessionsToday] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
 
@@ -40,6 +42,19 @@ function DashboardOverview() {
         if (classesData) {
           setClasses(classesData);
         }
+
+        try {
+          const sessions = await (window as any).go.main.App.GetTeacherAttendanceSessions(user.id);
+          const today = new Date().toISOString().split('T')[0];
+          const openToday = (sessions || []).filter((session: any) =>
+            session.attendance_date === today && session.status === 'open'
+          ).length;
+          setOpenSessionsToday(openToday);
+        } catch (sessionErr) {
+          console.error('Failed to load attendance sessions:', sessionErr);
+          setOpenSessionsToday(0);
+        }
+
         setError('');
       } catch (error) {
         console.error('Failed to load teacher classes:', error);
@@ -139,19 +154,39 @@ function DashboardOverview() {
               <span className="text-xs text-gray-500">Now</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <span className="text-sm text-gray-700">{activeClasses > 0 ? `${activeClasses} active class(es) ready for attendance.` : 'No active classes assigned yet.'}</span>
+              <span className="text-sm text-gray-700">{activeClasses > 0 ? `${activeClasses} active class(es) with automated attendance enabled.` : 'No active classes assigned yet.'}</span>
               <span className="text-xs text-gray-500">Today</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <span className="text-sm text-gray-700">{totalStudents > 0 ? `${totalStudents} enrolled student(s) across your classes.` : 'No enrolled students found yet.'}</span>
+              <span className="text-sm text-gray-700">{openSessionsToday > 0 ? `${openSessionsToday} attendance session(s) currently open.` : 'No open attendance sessions right now.'}</span>
+              <span className="text-xs text-gray-500">Sessions</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-700">{totalStudents > 0 ? `${totalStudents} enrolled student(s); review attendance to validate exceptions.` : 'No enrolled students found yet.'}</span>
               <span className="text-xs text-gray-500">Today</span>
+            </div>
+            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <span className="text-sm text-gray-700">Attendance is synced from active classlist and student Time In submissions during open sessions. You can still update today's attendance when needed.</span>
+              <span className="text-xs text-gray-500">Info</span>
             </div>
           </div>
         </CardBody>
       </Card>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Link
+          to="attendance"
+          className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:shadow-md transition-all duration-200"
+        >
+          <div className="flex-shrink-0 w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-500 transition-colors duration-200">
+            <ClipboardCheck className="h-6 w-6 text-indigo-600 group-hover:text-white transition-colors duration-200" />
+          </div>
+          <div className="ml-4 flex-1">
+            <h3 className="text-base font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">Take Attendance</h3>
+            <p className="text-sm text-gray-500 mt-0.5">Check and update today's attendance</p>
+          </div>
+        </Link>
         <Link
           to="login-history"
           className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all duration-200"

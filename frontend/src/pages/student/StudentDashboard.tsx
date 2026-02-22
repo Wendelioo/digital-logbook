@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardBody, StatCard, InfoCard } from '../../components/Card';
+import Button from '../../components/Button';
 import {
   Clock,
   CheckCircle,
@@ -17,6 +18,17 @@ import { useAuth } from '../../contexts/AuthContext';
 import { main } from '../../../wailsjs/go/models';
 import { StudentDashboardData, LoginLog } from './types';
 
+interface AttendanceSession {
+  session_id: number;
+  class_id: number;
+  attendance_date: string;
+  session_name: string;
+  status: 'open' | 'closed';
+  subject_code: string;
+  subject_name: string;
+  edp_code: string;
+}
+
 function DashboardOverview() {
   const { user } = useAuth();
   const [dashboardData, setDashboardData] = useState<StudentDashboardData>(new main.StudentDashboard({
@@ -24,6 +36,8 @@ function DashboardOverview() {
     today_log: undefined
   }));
   const [lastLogin, setLastLogin] = useState<LoginLog | null>(null);
+  const [openSessions, setOpenSessions] = useState<AttendanceSession[]>([]);
+  const [timingInSession, setTimingInSession] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -46,6 +60,13 @@ function DashboardOverview() {
           }
         } catch (error) {
           console.error('Failed to load last login:', error);
+        }
+
+        try {
+          const sessions = await (window as any).go.main.App.GetStudentOpenAttendanceSessions(user.id);
+          setOpenSessions(sessions || []);
+        } catch (error) {
+          console.error('Failed to load open attendance sessions:', error);
         }
       } catch (error) {
         console.error('Failed to load student dashboard:', error);
@@ -76,6 +97,22 @@ function DashboardOverview() {
   const absentCount = (dashboardData.attendance || []).filter(a => a.status === 'Absent').length;
   const seatInCount = (dashboardData.attendance || []).filter(a => a.status === 'Seat-in').length;
   const totalAttendance = dashboardData.attendance?.length || 0;
+
+  const handleTimeIn = async (sessionId: number) => {
+    if (!user?.id) return;
+
+    setTimingInSession(sessionId);
+    try {
+      await (window as any).go.main.App.StudentTimeIn(sessionId, user.id);
+      const sessions = await (window as any).go.main.App.GetStudentOpenAttendanceSessions(user.id);
+      setOpenSessions(sessions || []);
+    } catch (error: any) {
+      console.error('Failed to time in:', error);
+      alert(error?.message || 'Failed to time in. Please try again.');
+    } finally {
+      setTimingInSession(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -157,6 +194,34 @@ function DashboardOverview() {
               <span className="text-lg font-semibold text-gray-900">{totalAttendance}</span>
             </div>
           </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader title="Attendance Today" />
+        <CardBody>
+          {openSessions.length > 0 ? (
+            <div className="space-y-3">
+              {openSessions.map((session) => (
+                <div key={session.session_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{session.subject_code} - {session.subject_name}</p>
+                    <p className="text-xs text-gray-500">{session.session_name || 'Attendance Session'} • EDP: {session.edp_code || '-'}</p>
+                  </div>
+                  <Button
+                    onClick={() => handleTimeIn(session.session_id)}
+                    variant="primary"
+                    size="sm"
+                    disabled={timingInSession === session.session_id}
+                  >
+                    {timingInSession === session.session_id ? 'Submitting...' : 'Time In'}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">No open attendance sessions for your classes today.</p>
+          )}
         </CardBody>
       </Card>
 

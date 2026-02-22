@@ -113,7 +113,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
         feedbackData.additionalComments || ''
       );
       
-      console.log('✓ Feedback saved successfully');
+      console.log('Feedback saved successfully');
     } catch (error) {
       console.error('Failed to save feedback:', error);
       alert('Failed to save feedback. You will still be logged out.');

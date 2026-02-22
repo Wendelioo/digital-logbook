@@ -133,7 +133,7 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 	`
 	_, err = a.db.Exec(query, classID, studentID)
 	if err != nil {
-		log.Printf("⚠ Failed to enroll student %d in class %d: %v", studentID, classID, err)
+		log.Printf("Failed to enroll student %d in class %d: %v", studentID, classID, err)
 		return err
 	}
 
@@ -156,13 +156,13 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 		`
 		_, err = a.db.Exec(insertQuery, classID, studentID, today)
 		if err != nil {
-			log.Printf("⚠ Warning: Failed to auto-insert attendance for late joiner student %d: %v", studentID, err)
+			log.Printf("Warning: Failed to auto-insert attendance for late joiner student %d: %v", studentID, err)
 		} else {
-			log.Printf("✓ Auto-inserted attendance for late joiner: student=%d, class=%d, date=%s", studentID, classID, today)
+			log.Printf("Auto-inserted attendance for late joiner: student=%d, class=%d, date=%s", studentID, classID, today)
 		}
 	}
 
-	log.Printf("✓ Student %d enrolled in class %d", studentID, classID)
+	log.Printf("Student %d enrolled in class %d", studentID, classID)
 	return nil
 }
 
@@ -209,7 +209,7 @@ func (a *App) EnrollMultipleStudents(studentIDs []int, classID int, enrolledBy i
 	for _, studentID := range studentIDs {
 		_, err = stmt.Exec(classID, studentID)
 		if err != nil {
-			log.Printf("⚠ Failed to enroll student %d: %v", studentID, err)
+			log.Printf("Failed to enroll student %d: %v", studentID, err)
 			return err
 		}
 	}
@@ -218,7 +218,7 @@ func (a *App) EnrollMultipleStudents(studentIDs []int, classID int, enrolledBy i
 		return err
 	}
 
-	log.Printf("✓ Enrolled %d students in class %d", len(studentIDs), classID)
+	log.Printf("Enrolled %d students in class %d", len(studentIDs), classID)
 	return nil
 }
 
@@ -235,11 +235,11 @@ func (a *App) UnenrollStudentFromClass(classlistID int) error {
 	query := `UPDATE classlist SET status = 'dropped' WHERE class_id = ?`
 	_, err := a.db.Exec(query, classlistID)
 	if err != nil {
-		log.Printf("⚠ Failed to unenroll student (class_id=%d): %v", classlistID, err)
+		log.Printf("Failed to unenroll student (class_id=%d): %v", classlistID, err)
 		return err
 	}
 
-	log.Printf("✓ Student unenrolled (class_id=%d)", classlistID)
+	log.Printf("Student unenrolled (class_id=%d)", classlistID)
 	return nil
 }
 
@@ -252,11 +252,11 @@ func (a *App) UnenrollStudentFromClassByIDs(studentID int, classID int) error {
 	query := `UPDATE classlist SET status = 'dropped' WHERE student_id = ? AND class_id = ?`
 	_, err := a.db.Exec(query, studentID, classID)
 	if err != nil {
-		log.Printf("⚠ Failed to unenroll student %d from class %d: %v", studentID, classID, err)
+		log.Printf("Failed to unenroll student %d from class %d: %v", studentID, classID, err)
 		return err
 	}
 
-	log.Printf("✓ Student %d unenrolled from class %d", studentID, classID)
+	log.Printf("Student %d unenrolled from class %d", studentID, classID)
 	return nil
 }
 
@@ -403,7 +403,7 @@ func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error)
 		return 0, fmt.Errorf("failed to enroll student: %v", err)
 	}
 
-	log.Printf("✓ Student %d joined class %d via EDP code %s", studentUserID, classID, edpCode)
+	log.Printf("Student %d joined class %d via EDP code %s", studentUserID, classID, edpCode)
 	return classID, nil
 }
 
@@ -422,7 +422,7 @@ func (a *App) ArchiveStudentEnrollment(studentUserID int, classID int) error {
 		studentUserID, classID,
 	)
 	if err != nil {
-		log.Printf("⚠ Failed to archive student enrollment: %v", err)
+		log.Printf("Failed to archive student enrollment: %v", err)
 		return err
 	}
 
@@ -431,7 +431,7 @@ func (a *App) ArchiveStudentEnrollment(studentUserID int, classID int) error {
 		return fmt.Errorf("enrollment not found")
 	}
 
-	log.Printf("✓ Archived enrollment for student_id=%d in class_id=%d", studentUserID, classID)
+	log.Printf("Archived enrollment for student_id=%d in class_id=%d", studentUserID, classID)
 	return nil
 }
 
@@ -446,7 +446,7 @@ func (a *App) UnarchiveStudentEnrollment(studentUserID int, classID int) error {
 		studentUserID, classID,
 	)
 	if err != nil {
-		log.Printf("⚠ Failed to unarchive student enrollment: %v", err)
+		log.Printf("Failed to unarchive student enrollment: %v", err)
 		return err
 	}
 
@@ -455,7 +455,7 @@ func (a *App) UnarchiveStudentEnrollment(studentUserID int, classID int) error {
 		return fmt.Errorf("enrollment not found")
 	}
 
-	log.Printf("✓ Unarchived enrollment for student_id=%d in class_id=%d", studentUserID, classID)
+	log.Printf("Unarchived enrollment for student_id=%d in class_id=%d", studentUserID, classID)
 	return nil
 }
 
@@ -481,7 +481,7 @@ func (a *App) SetStudentEnrollmentStatus(studentUserID int, classID int, status 
 		status, studentUserID, classID,
 	)
 	if err != nil {
-		log.Printf("⚠ Failed to update enrollment status: %v", err)
+		log.Printf("Failed to update enrollment status: %v", err)
 		return err
 	}
 
@@ -490,7 +490,7 @@ func (a *App) SetStudentEnrollmentStatus(studentUserID int, classID int, status 
 		return fmt.Errorf("enrollment not found")
 	}
 
-	log.Printf("✓ Updated enrollment status: student_id=%d, class_id=%d, status=%s", studentUserID, classID, status)
+	log.Printf("Updated enrollment status: student_id=%d, class_id=%d, status=%s", studentUserID, classID, status)
 	return nil
 }
 
@@ -521,12 +521,12 @@ func (a *App) MarkAllEnrollmentsCompleted(classID int) error {
 		classID,
 	)
 	if err != nil {
-		log.Printf("⚠ Failed to mark all enrollments completed: %v", err)
+		log.Printf("Failed to mark all enrollments completed: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
-	log.Printf("✓ Marked all enrollments completed for class_id=%d, affected=%d", classID, rowsAffected)
+	log.Printf("Marked all enrollments completed for class_id=%d, affected=%d", classID, rowsAffected)
 	return nil
 }
 
@@ -612,7 +612,7 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 	`
 	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName)
 	if err != nil {
-		log.Printf("⚠ Failed to get class info for export: %v", err)
+		log.Printf("Failed to get class info for export: %v", err)
 		subjectCode = fmt.Sprintf("class_%d", classID)
 		subjectName = "Unknown Subject"
 	}
@@ -702,6 +702,6 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 		})
 	}
 
-	log.Printf("✓ Classlist exported to CSV: %s (%d students)", filename, len(students))
+	log.Printf("Classlist exported to CSV: %s (%d students)", filename, len(students))
 	return filename, nil
 }

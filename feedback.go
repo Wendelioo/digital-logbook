@@ -196,7 +196,7 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 	// Get the hostname (PC number) of this device
 	hostname, err := os.Hostname()
 	if err != nil {
-		log.Printf("? Failed to get hostname: %v", err)
+		log.Printf("Failed to get hostname: %v", err)
 		hostname = "Unknown"
 	}
 	pcNumber := hostname
@@ -273,7 +273,7 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 		return fmt.Errorf("failed to save feedback: %w", err)
 	}
 
-	log.Printf("? Equipment feedback saved for user %d", userID)
+	log.Printf("Equipment feedback saved for user %d", userID)
 	return nil
 }
 
@@ -362,7 +362,7 @@ func (a *App) ForwardFeedbackToAdmin(feedbackID int, workingStudentID int, notes
 
 	result, err := a.db.Exec(query, workingStudentID, nullString(notes), feedbackID)
 	if err != nil {
-		log.Printf("? Failed to forward feedback %d: %v", feedbackID, err)
+		log.Printf("Failed to forward feedback %d: %v", feedbackID, err)
 		return fmt.Errorf("failed to forward feedback: %w", err)
 	}
 
@@ -375,7 +375,7 @@ func (a *App) ForwardFeedbackToAdmin(feedbackID int, workingStudentID int, notes
 		return fmt.Errorf("feedback not found or already forwarded")
 	}
 
-	log.Printf("? Feedback %d forwarded to admin by working student %d", feedbackID, workingStudentID)
+	log.Printf("Feedback %d forwarded to admin by working student %d", feedbackID, workingStudentID)
 	return nil
 }
 
@@ -413,7 +413,7 @@ func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID
 
 	result, err := a.db.Exec(query, args...)
 	if err != nil {
-		log.Printf("? Failed to forward multiple feedback: %v", err)
+		log.Printf("Failed to forward multiple feedback: %v", err)
 		return 0, fmt.Errorf("failed to forward feedback: %w", err)
 	}
 
@@ -426,7 +426,7 @@ func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID
 		return 0, fmt.Errorf("no feedback items were forwarded (may already be forwarded or not found)")
 	}
 
-	log.Printf("? %d feedback items forwarded to admin by working student %d", rowsAffected, workingStudentID)
+	log.Printf("%d feedback items forwarded to admin by working student %d", rowsAffected, workingStudentID)
 	return int(rowsAffected), nil
 }
 
@@ -561,7 +561,7 @@ func (a *App) GetArchivedFeedbackSheets() ([]ArchivedFeedbackSheet, error) {
 
 	rows, err := a.db.Query(query)
 	if err != nil {
-		log.Printf("? Failed to query archived feedback sheets: %v", err)
+		log.Printf("Failed to query archived feedback sheets: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -575,7 +575,7 @@ func (a *App) GetArchivedFeedbackSheets() ([]ArchivedFeedbackSheet, error) {
 			&sheet.UniquePCs, &sheet.UniqueStudents,
 		)
 		if err != nil {
-			log.Printf("? Failed to scan archived feedback sheet: %v", err)
+			log.Printf("Failed to scan archived feedback sheet: %v", err)
 			continue
 		}
 		sheets = append(sheets, sheet)
@@ -698,7 +698,7 @@ func (a *App) ArchiveFeedbackByDate(date string, adminUserID int) (int, error) {
 		SET is_archived = 1, 
 		    archived_at = GETDATE(), 
 		    archived_by_user_id = ?
-		WHERE CAST(date_submitted AS DATE) = ? AND status = 'forwarded' AND (is_archived = 0 OR archived IS NULL)`
+		WHERE CAST(date_submitted AS DATE) = ? AND status = 'forwarded' AND (is_archived = 0 OR is_archived IS NULL)`
 
 	result, err := a.db.Exec(query, adminUserID, date)
 	if err != nil {
@@ -711,7 +711,7 @@ func (a *App) ArchiveFeedbackByDate(date string, adminUserID int) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("? %d feedback archived for date %s by admin %d", rowsAffected, date, adminUserID)
+	log.Printf("%d feedback archived for date %s by admin %d", rowsAffected, date, adminUserID)
 	return int(rowsAffected), nil
 }
 
@@ -738,7 +738,7 @@ func (a *App) UnarchiveFeedbackSheet(date string) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("? %d feedback unarchived for date %s", rowsAffected, date)
+	log.Printf("%d feedback unarchived for date %s", rowsAffected, date)
 	return int(rowsAffected), nil
 }
 
@@ -751,7 +751,7 @@ func (a *App) GetFeedbackDates() ([]string, error) {
 	query := `
 		SELECT DISTINCT CAST(date_submitted AS DATE) as feedback_date
 		FROM feedback
-		WHERE status = 'forwarded' AND (is_archived = 0 OR archived IS NULL)
+		WHERE status = 'forwarded' AND (is_archived = 0 OR is_archived IS NULL)
 		ORDER BY feedback_date DESC
 	`
 
@@ -873,7 +873,6 @@ func (a *App) ExportArchivedFeedbackSheetPDF(date string) (string, error) {
 	err = pdf.OutputFileAndClose(filename)
 	return filename, err
 }
-
 
 // Legacy function kept for backwards compatibility - returns all archived feedback
 func (a *App) GetArchivedFeedback() ([]Feedback, error) {
@@ -1015,7 +1014,7 @@ func (a *App) ArchiveFeedback(feedbackIDs []int, adminUserID int) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("? %d feedback items archived by admin %d", rowsAffected, adminUserID)
+	log.Printf("%d feedback items archived by admin %d", rowsAffected, adminUserID)
 	return int(rowsAffected), nil
 }
 
@@ -1055,7 +1054,7 @@ func (a *App) UnarchiveFeedback(feedbackIDs []int) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("? %d feedback items unarchived", rowsAffected)
+	log.Printf("%d feedback items unarchived", rowsAffected)
 	return int(rowsAffected), nil
 }
 

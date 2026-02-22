@@ -6,9 +6,6 @@ import {
   Search,
   X,
   SlidersHorizontal,
-  Eye,
-  FileText,
-  MoreVertical,
   Archive,
   CheckSquare,
   AlertCircle,
@@ -16,7 +13,7 @@ import {
 } from 'lucide-react';
 import {
   GetFeedback,
-  ArchiveFeedbackByDate
+  ArchiveFeedback
 } from '../../../wailsjs/go/main/App';
 import ArchiveConfirmationModal from '../../components/ArchiveConfirmationModal';
 import { useAuth } from '../../contexts/AuthContext';
@@ -39,28 +36,21 @@ function Reports() {
   // Date filter only
   const [dateFilter, setDateFilter] = useState('');
 
-  // Modal state
-  const [selectedReport, setSelectedReport] = useState<Feedback | null>(null);
-  const [showReportModal, setShowReportModal] = useState(false);
-
   // Archive functionality
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
-  const [reportToArchive, setReportToArchive] = useState<Feedback | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<{
+    reportIDs: number[];
+    itemType: string;
+    itemDescription: string;
+    successMessage: string;
+  } | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
-  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [archiveModalTab, setArchiveModalTab] = useState<'archived-logs' | 'reports'>('reports');
+  const [selectedReportIDs, setSelectedReportIDs] = useState<Set<number>>(new Set());
 
   // Toast
   const [toast, setToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = () => setOpenMenuId(null);
-    if (openMenuId !== null) {
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
-    }
-  }, [openMenuId]);
 
   useEffect(() => {
     loadReports();
@@ -101,22 +91,44 @@ function Reports() {
     setTimeout(() => setToast(null), 5000);
   };
 
-  const handleArchiveClick = (report: Feedback) => {
-    setReportToArchive(report);
+  const openArchiveConfirmation = (
+    reportIDs: number[],
+    itemType: string,
+    itemDescription: string,
+    successMessage: string
+  ) => {
+    if (reportIDs.length === 0) {
+      showToast('error', 'No matching equipment reports to archive');
+      return;
+    }
+
+    setArchiveTarget({ reportIDs, itemType, itemDescription, successMessage });
     setShowArchiveConfirm(true);
-    setOpenMenuId(null);
+  };
+
+  const handleArchiveSelected = () => {
+    const ids = Array.from(selectedReportIDs);
+    openArchiveConfirmation(
+      ids,
+      'equipment reports',
+      `${ids.length} selected report${ids.length === 1 ? '' : 's'}`,
+      `Archived ${ids.length} equipment report${ids.length === 1 ? '' : 's'} successfully`
+    );
   };
 
   const confirmArchive = async () => {
-    if (!reportToArchive || !user) return;
+    if (!archiveTarget || !user) return;
     
     setArchiving(true);
     try {
-      await ArchiveFeedbackByDate(reportToArchive.date_submitted.split('T')[0], user.id);
-      showToast('success', `Equipment report for ${reportToArchive.student_name} archived successfully!`);
+      await ArchiveFeedback(archiveTarget.reportIDs, user.id);
+      showToast('success', archiveTarget.successMessage);
       setShowArchiveConfirm(false);
-      setReportToArchive(null);
-      loadReports();
+      setArchiveTarget(null);
+      setSelectedReportIDs(new Set());
+      await loadReports();
+      setArchiveModalTab('reports');
+      setShowArchiveModal(true);
     } catch (error) {
       console.error('Failed to archive report:', error);
       showToast('error', 'Failed to archive equipment report');
@@ -148,6 +160,30 @@ function Reports() {
   const reportsEndIndex = reportsStartIndex + reportsPerPage;
   const paginatedReports = filteredReports.slice(reportsStartIndex, reportsEndIndex);
 
+  const filteredReportIDs = filteredReports.map((report) => report.id);
+  const allFilteredSelected = filteredReportIDs.length > 0 && filteredReportIDs.every((id) => selectedReportIDs.has(id));
+  const someFilteredSelected = filteredReportIDs.some((id) => selectedReportIDs.has(id)) && !allFilteredSelected;
+
+  const toggleSelectAllFiltered = () => {
+    const next = new Set(selectedReportIDs);
+    if (allFilteredSelected) {
+      filteredReportIDs.forEach((id) => next.delete(id));
+    } else {
+      filteredReportIDs.forEach((id) => next.add(id));
+    }
+    setSelectedReportIDs(next);
+  };
+
+  const toggleSelectReport = (id: number) => {
+    const next = new Set(selectedReportIDs);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedReportIDs(next);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -161,21 +197,27 @@ function Reports() {
       {/* Header Section */}
       <div className="mb-6">
         <div className="flex justify-between items-start mb-6">
-          <div>
+          <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
+            {selectedReportIDs.size > 0 && (
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-primary-100 text-primary-700">
+                {selectedReportIDs.size} selected
+              </span>
+            )}
           </div>
           <Button
             onClick={() => setShowArchiveModal(true)}
             variant="outline"
             icon={<Trash2 className="h-4 w-4" />}
           >
-            Archive
+            Archived Reports
           </Button>
         </div>
 
-        {/* Search Bar and Filter Button */}
-        <div className="flex gap-3">
-          <div className="w-64 relative">
+        {/* Search Toolbar */}
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <div className="flex flex-wrap gap-3 items-start">
+            <div className="w-64 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
               type="text"
@@ -191,8 +233,9 @@ function Reports() {
                 <X className="h-5 w-5" />
               </button>
             )}
-          </div>
-          <div className="relative">
+            </div>
+
+            <div className="relative">
             <button
               onClick={() => setShowFilters(!showFilters)}
               className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${showFilters
@@ -233,16 +276,46 @@ function Reports() {
                 </div>
               </div>
             )}
+            </div>
+
+            {(searchQuery || dateFilter) && (
+              <button
+                onClick={clearFilters}
+                className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Clear All
+              </button>
+            )}
           </div>
-          {(searchQuery || dateFilter) && (
-            <button
-              onClick={clearFilters}
-              className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Clear All
-            </button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-white p-4 flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={allFilteredSelected}
+            ref={(input) => {
+              if (input) input.indeterminate = someFilteredSelected;
+            }}
+            onChange={toggleSelectAllFiltered}
+            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
+          />
+          <span className="text-sm font-medium text-gray-700">Select all visible</span>
+          {selectedReportIDs.size > 0 && (
+            <span className="text-xs text-gray-500">{selectedReportIDs.size} selected</span>
           )}
         </div>
+
+        <Button
+          onClick={handleArchiveSelected}
+          variant="outline"
+          size="sm"
+          icon={<Archive className="h-4 w-4" />}
+          disabled={selectedReportIDs.size === 0 || archiving}
+        >
+          Archive Selected
+        </Button>
       </div>
 
       {/* Error Message */}
@@ -263,6 +336,19 @@ function Reports() {
       <div>
         <Table
           columns={[
+            {
+              key: 'select',
+              label: 'Select',
+              width: '90px',
+              render: (report: Feedback) => (
+                <input
+                  type="checkbox"
+                  checked={selectedReportIDs.has(report.id)}
+                  onChange={() => toggleSelectReport(report.id)}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
+                />
+              )
+            },
             {
               key: 'student_id_str',
               label: 'Student ID',
@@ -313,48 +399,6 @@ function Reports() {
                       })}
                     </span>
                   )}
-                </div>
-              )
-            },
-            {
-              key: 'actions',
-              label: 'Actions',
-              render: (report: Feedback) => (
-                <div className="flex items-center gap-2">
-                  <Button
-                    onClick={() => {
-                      setSelectedReport(report);
-                      setShowReportModal(true);
-                    }}
-                    variant="outline"
-                    size="sm"
-                    icon={<Eye className="h-4 w-4" />}
-                  />
-                  <div className="relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOpenMenuId(openMenuId === report.id ? null : report.id);
-                      }}
-                      className="p-1 hover:bg-gray-100 rounded transition-colors"
-                      title="More options"
-                    >
-                      <MoreVertical className="h-5 w-5 text-gray-600" />
-                    </button>
-                    
-                    {/* Dropdown Menu */}
-                    {openMenuId === report.id && (
-                      <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                        <button
-                          onClick={() => handleArchiveClick(report)}
-                          className="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-2 text-gray-700 hover:text-gray-900 border-b border-gray-100 last:border-b-0"
-                        >
-                          <Archive className="h-4 w-4" />
-                          Archive Report
-                        </button>
-                      </div>
-                    )}
-                  </div>
                 </div>
               )
             }
@@ -419,199 +463,24 @@ function Reports() {
       )}
 
       {/* Archive Confirmation Modal */}
-      {showArchiveConfirm && reportToArchive && (
+      {showArchiveConfirm && archiveTarget && (
         <ArchiveConfirmationModal
           isOpen={showArchiveConfirm}
           onClose={() => {
             setShowArchiveConfirm(false);
-            setReportToArchive(null);
+            setArchiveTarget(null);
           }}
           onConfirm={confirmArchive}
           loading={archiving}
-          itemType="equipment report"
-          itemDescription={`${reportToArchive.student_name} (${reportToArchive.student_id_str}) - ${reportToArchive.pc_number}`}
+          itemType={archiveTarget.itemType}
+          itemDescription={archiveTarget.itemDescription}
         />
-      )}
-
-      {/* Report Details Modal */}
-      {showReportModal && selectedReport && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowReportModal(false);
-            }
-          }}
-        >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 relative max-h-[90vh] overflow-y-auto">
-            <button
-              type="button"
-              onClick={() => setShowReportModal(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold transition-colors z-10"
-            >
-              ×
-            </button>
-
-            <div className="p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <FileText className="h-6 w-6 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-900">
-                    Equipment Report Details
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-1">Full report submitted by student</p>
-                </div>
-              </div>
-
-              {/* Report Information */}
-              <div className="space-y-6">
-                {/* Student Information */}
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Student Information</h4>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-600">Name:</span>
-                      <p className="font-medium text-gray-900">{selectedReport.student_name}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Student ID:</span>
-                      <p className="font-medium text-gray-900">{selectedReport.student_id_str}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">PC Number:</span>
-                      <p className="font-medium text-gray-900">{selectedReport.pc_number}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Date Submitted:</span>
-                      <p className="font-medium text-gray-900">
-                        {selectedReport.date_submitted ? new Date(selectedReport.date_submitted).toLocaleString('en-US', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        }) : '-'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Equipment Conditions */}
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Equipment Conditions</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                      <span className="text-xs text-gray-600 block mb-2">Equipment</span>
-                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${selectedReport.equipment_condition === 'Good'
-                        ? 'bg-green-100 text-green-800'
-                        : selectedReport.equipment_condition === 'Minor Issue'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                        }`}>
-                        {selectedReport.equipment_condition}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-xs text-gray-600 block mb-2">Monitor</span>
-                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${selectedReport.monitor_condition === 'Good'
-                        ? 'bg-green-100 text-green-800'
-                        : selectedReport.monitor_condition === 'Minor Issue'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                        }`}>
-                        {selectedReport.monitor_condition}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-xs text-gray-600 block mb-2">Keyboard</span>
-                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${selectedReport.keyboard_condition === 'Good'
-                        ? 'bg-green-100 text-green-800'
-                        : selectedReport.keyboard_condition === 'Minor Issue'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                        }`}>
-                        {selectedReport.keyboard_condition}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-xs text-gray-600 block mb-2">Mouse</span>
-                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${selectedReport.mouse_condition === 'Good'
-                        ? 'bg-green-100 text-green-800'
-                        : selectedReport.mouse_condition === 'Minor Issue'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                        }`}>
-                        {selectedReport.mouse_condition}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Student Comments */}
-                {selectedReport.comments && (
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Student Comments</h4>
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedReport.comments}</p>
-                  </div>
-                )}
-
-                {/* Working Student Notes */}
-                {selectedReport.working_student_notes && (
-                  <div className="bg-yellow-50 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Working Student Notes</h4>
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap italic">{selectedReport.working_student_notes}</p>
-                  </div>
-                )}
-
-                {/* Forwarding Information */}
-                {selectedReport.forwarded_by_name && (
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Forwarding Information</h4>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-600">Forwarded By:</span>
-                        <p className="font-medium text-gray-900">{selectedReport.forwarded_by_name}</p>
-                      </div>
-                      {selectedReport.forwarded_at && (
-                        <div>
-                          <span className="text-gray-600">Forwarded At:</span>
-                          <p className="font-medium text-gray-900">
-                            {new Date(selectedReport.forwarded_at).toLocaleString('en-US', {
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Close Button */}
-              <div className="mt-6 flex justify-end">
-                <Button
-                  type="button"
-                  onClick={() => setShowReportModal(false)}
-                  variant="outline"
-                >
-                  Close
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
 
       <AdminArchiveModal
         isOpen={showArchiveModal}
         onClose={() => setShowArchiveModal(false)}
-        initialTab="reports"
+        initialTab={archiveModalTab}
       />
     </div>
   );

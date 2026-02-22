@@ -71,10 +71,10 @@ func (a *App) CreateSubject(code, name string, teacherUserID int, description st
 	`
 	_, err := a.db.Exec(query, code, nullString(name))
 	if err != nil {
-		log.Printf("⚠ Failed to create/update subject: %v", err)
+		log.Printf("Failed to create/update subject: %v", err)
 		return err
 	}
-	log.Printf("✓ Subject created/updated: %s - %s", code, name)
+	log.Printf("Subject created/updated: %s - %s", code, name)
 	return nil
 }
 
@@ -88,7 +88,7 @@ func (a *App) GetAllClasses() ([]CourseClass, error) {
 		return nil, err
 	}
 
-	log.Printf("🔍 GetAllClasses: Starting query...")
+	log.Printf("GetAllClasses: Starting query...")
 
 	query := `
 		SELECT 
@@ -110,12 +110,12 @@ func (a *App) GetAllClasses() ([]CourseClass, error) {
 	`
 	rows, err := a.db.Query(query)
 	if err != nil {
-		log.Printf("❌ GetAllClasses: Query failed: %v", err)
+		log.Printf("GetAllClasses: Query failed: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
 
-	log.Printf("🔍 GetAllClasses: Query executed successfully, processing rows...")
+	log.Printf("GetAllClasses: Query executed successfully, processing rows...")
 	var classes []CourseClass
 	for rows.Next() {
 		var class CourseClass
@@ -155,7 +155,7 @@ func (a *App) GetAllClasses() ([]CourseClass, error) {
 		classes = append(classes, class)
 	}
 
-	log.Printf("✅ GetAllClasses: Successfully retrieved %d classes", len(classes))
+	log.Printf("GetAllClasses: Successfully retrieved %d classes", len(classes))
 	return classes, nil
 }
 
@@ -266,7 +266,7 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 		return nil, fmt.Errorf("teacher not found for user ID %d: %v", userID, err)
 	}
 
-	log.Printf("🔍 GetTeacherClassesWithAttendance: userID=%d, teacherID=%d", userID, teacherID)
+	log.Printf("GetTeacherClassesWithAttendance: userID=%d, teacherID=%d", userID, teacherID)
 
 	query := `
 		SELECT 
@@ -293,7 +293,7 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 	`
 	rows, err := a.db.Query(query, teacherID)
 	if err != nil {
-		log.Printf("⚠ Query error: %v", err)
+		log.Printf("Query error: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -312,7 +312,7 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 			&class.EnrolledCount, &class.IsActive, &createdBy, &latestDate,
 		)
 		if err != nil {
-			log.Printf("⚠ Failed to scan class row: %v", err)
+			log.Printf("Failed to scan class row: %v", err)
 			continue
 		}
 		if subjectName.Valid {
@@ -351,7 +351,7 @@ func (a *App) GetTeacherClassesWithAttendance(userID int) ([]CourseClass, error)
 		classes = append(classes, class)
 	}
 
-	log.Printf("✓ GetTeacherClassesWithAttendance: Found %d classes with attendance", len(classes))
+	log.Printf("GetTeacherClassesWithAttendance: Found %d classes with attendance", len(classes))
 	return classes, nil
 }
 
@@ -534,12 +534,12 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 			// Class with this EDP code exists
 			if !isArchived && isActive {
 				// Class is active and not archived - this is a duplicate
-				log.Printf("⚠ Class with EDP code %s already exists and is active (class_id=%d)", edpCode, existingClassID)
+				log.Printf("Class with EDP code %s already exists and is active (class_id=%d)", edpCode, existingClassID)
 				return 0, fmt.Errorf("a class with EDP code '%s' already exists", edpCode)
 			}
 
 			// Class exists but is archived or inactive - reactivate and update it
-			log.Printf("ℹ Reactivating archived/inactive class with EDP code %s (class_id=%d)", edpCode, existingClassID)
+			log.Printf("Reactivating archived/inactive class with EDP code %s (class_id=%d)", edpCode, existingClassID)
 
 			updateQuery := `
 				UPDATE classes 
@@ -564,11 +564,11 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 				existingClassID,
 			)
 			if err != nil {
-				log.Printf("⚠ Failed to reactivate class: %v", err)
+				log.Printf("Failed to reactivate class: %v", err)
 				return 0, err
 			}
 
-			log.Printf("✓ Class reactivated: class_id=%d, edp_code=%s", existingClassID, edpCode)
+			log.Printf("Class reactivated: class_id=%d, edp_code=%s", existingClassID, edpCode)
 			return existingClassID, nil
 		}
 		// If error is sql.ErrNoRows, class doesn't exist, proceed with creation
@@ -599,11 +599,11 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 		createdByValue,
 	).Scan(&classID)
 	if err != nil {
-		log.Printf("⚠ Failed to create class: %v", err)
+		log.Printf("Failed to create class: %v", err)
 		return 0, err
 	}
 
-	log.Printf("✓ Class created: class_id=%d, subject_code=%s, teacher_id=%d", classID, subjectCode, teacherUserID)
+	log.Printf("Class created: class_id=%d, subject_code=%s, teacher_id=%d", classID, subjectCode, teacherUserID)
 	return int(classID), nil
 }
 
@@ -626,11 +626,11 @@ func (a *App) UpdateClass(classID int, schedule, room, section, semester, school
 		isActive, classID,
 	)
 	if err != nil {
-		log.Printf("⚠ Failed to update class: %v", err)
+		log.Printf("Failed to update class: %v", err)
 		return err
 	}
 
-	log.Printf("✓ Class updated: class_id=%d", classID)
+	log.Printf("Class updated: class_id=%d", classID)
 	return nil
 }
 
@@ -661,11 +661,11 @@ func (a *App) CloseClass(classID int) error {
 	query := `UPDATE classes SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`
 	_, err = a.db.Exec(query, classID)
 	if err != nil {
-		log.Printf("⚠ Failed to close class: %v", err)
+		log.Printf("Failed to close class: %v", err)
 		return err
 	}
 
-	log.Printf("✓ Class closed: class_id=%d", classID)
+	log.Printf("Class closed: class_id=%d", classID)
 	return nil
 }
 
@@ -692,11 +692,11 @@ func (a *App) ReopenClass(classID int) error {
 	query := `UPDATE classes SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`
 	_, err = a.db.Exec(query, classID)
 	if err != nil {
-		log.Printf("⚠ Failed to reopen class: %v", err)
+		log.Printf("Failed to reopen class: %v", err)
 		return err
 	}
 
-	log.Printf("✓ Class reopened: class_id=%d", classID)
+	log.Printf("Class reopened: class_id=%d", classID)
 	return nil
 }
 
@@ -818,7 +818,7 @@ func (a *App) GetClassByID(classID int) (*CourseClass, error) {
 		return nil, fmt.Errorf("class not found")
 	}
 	if err != nil {
-		log.Printf("⚠ Failed to get class by ID: %v", err)
+		log.Printf("Failed to get class by ID: %v", err)
 		return nil, err
 	}
 
@@ -851,7 +851,7 @@ func (a *App) GetClassByID(classID int) (*CourseClass, error) {
 		class.CreatedByUserID = &createdByInt
 	}
 
-	log.Printf("✓ Retrieved class: ID=%d, Subject=%s, Active=%t, Archived=%t", class.ClassID, class.SubjectCode, class.IsActive, class.IsArchived)
+	log.Printf("Retrieved class: ID=%d, Subject=%s, Active=%t, Archived=%t", class.ClassID, class.SubjectCode, class.IsActive, class.IsArchived)
 	return &class, nil
 }
 
@@ -1007,12 +1007,12 @@ func (a *App) SetClassActiveStatus(classID int, isActive bool) error {
 
 	result, err := a.db.Exec(query, isActive, classID)
 	if err != nil {
-		log.Printf("⚠ Failed to update class active status: %v", err)
+		log.Printf("Failed to update class active status: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
-	log.Printf("✓ Updated class active status: class_id=%d, is_active=%v, affected=%d", classID, isActive, rowsAffected)
+	log.Printf("Updated class active status: class_id=%d, is_active=%v, affected=%d", classID, isActive, rowsAffected)
 	return nil
 }
 

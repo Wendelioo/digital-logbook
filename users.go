@@ -422,7 +422,7 @@ func (a *App) insertRoleSpecificProfile(userID int64, role, firstName, middleNam
 		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), 0)
 	case "working_student":
 		query = `INSERT INTO students (id, student_id, first_name, middle_name, last_name, email, contact_number, is_working_student) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-		log.Printf("?? Inserting working student - id: %d, student_id: %s, name: %s %s, email: %s", userID, studentID, firstName, lastName, email)
+		log.Printf("Inserting working student - id: %d, student_id: %s, name: %s %s, email: %s", userID, studentID, firstName, lastName, email)
 		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), 1)
 	}
 
@@ -516,10 +516,10 @@ func (a *App) processBulkRecords(records [][]string) (map[string]interface{}, er
 		if err != nil {
 			errorCount++
 			errors = append(errors, fmt.Sprintf("Row %d (%s): %v", rowNum, studentCode, err))
-			log.Printf("? Failed to create student at row %d: %v", rowNum, err)
+			log.Printf("Failed to create student at row %d: %v", rowNum, err)
 		} else {
 			successCount++
-			log.Printf("? Created student: %s %s (Code: %s)", firstName, lastName, studentCode)
+			log.Printf("Created student: %s %s (Code: %s)", firstName, lastName, studentCode)
 		}
 	}
 
@@ -581,10 +581,10 @@ func (a *App) processBulkRecordsSimple(records [][]string) (map[string]interface
 		if err != nil {
 			errorCount++
 			errors = append(errors, fmt.Sprintf("Row %d (%s): %v", rowNum, studentCode, err))
-			log.Printf("? Failed to create student at row %d: %v", rowNum, err)
+			log.Printf("Failed to create student at row %d: %v", rowNum, err)
 		} else {
 			successCount++
-			log.Printf("? Created student: %s %s (Code: %s)", firstName, lastName, studentCode)
+			log.Printf("Created student: %s %s (Code: %s)", firstName, lastName, studentCode)
 		}
 	}
 
@@ -853,11 +853,11 @@ func (a *App) DeleteUserProfilePhoto(userID int) error {
 
 // ArchivedStudent represents a student that has been archived (graduated)
 type ArchivedStudent struct {
-	UserID              int       `json:"user_id"`
-	StudentID           string    `json:"student_id"`
-	FirstName           string    `json:"first_name"`
-	MiddleName          *string   `json:"middle_name"`
-	LastName            string    `json:"last_name"`
+	UserID              int     `json:"user_id"`
+	StudentID           string  `json:"student_id"`
+	FirstName           string  `json:"first_name"`
+	MiddleName          *string `json:"middle_name"`
+	LastName            string  `json:"last_name"`
 	Email               *string `json:"email"`
 	ContactNumber       *string `json:"contact_number"`
 	ArchivedAt          string  `json:"archived_at"`
@@ -993,11 +993,11 @@ func (a *App) GetArchivedStudents() ([]ArchivedStudent, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan archived student: %w", err)
 		}
-		
+
 		// Format time fields as strings
 		student.ArchivedAt = archivedAt.Format("2006-01-02 15:04:05")
 		student.DeletionScheduledAt = deletionScheduledAt.Format("2006-01-02 15:04:05")
-		
+
 		students = append(students, student)
 	}
 

@@ -210,6 +210,44 @@ export namespace main {
 	        this.is_editable = source["is_editable"];
 	    }
 	}
+	export class AttendanceSession {
+	    session_id: number;
+	    class_id: number;
+	    attendance_date: string;
+	    session_name: string;
+	    status: string;
+	    late_threshold_minutes?: number;
+	    opened_at?: string;
+	    closed_at?: string;
+	    subject_code: string;
+	    subject_name: string;
+	    edp_code: string;
+	    present_count: number;
+	    absent_count: number;
+	    late_count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AttendanceSession(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.session_id = source["session_id"];
+	        this.class_id = source["class_id"];
+	        this.attendance_date = source["attendance_date"];
+	        this.session_name = source["session_name"];
+	        this.status = source["status"];
+	        this.late_threshold_minutes = source["late_threshold_minutes"];
+	        this.opened_at = source["opened_at"];
+	        this.closed_at = source["closed_at"];
+	        this.subject_code = source["subject_code"];
+	        this.subject_name = source["subject_name"];
+	        this.edp_code = source["edp_code"];
+	        this.present_count = source["present_count"];
+	        this.absent_count = source["absent_count"];
+	        this.late_count = source["late_count"];
+	    }
+	}
 	export class AttendanceSheetSummary {
 	    class_id: number;
 	    date: string;

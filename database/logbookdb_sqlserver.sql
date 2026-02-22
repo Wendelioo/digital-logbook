@@ -35,6 +35,7 @@ CREATE TABLE users (
     password NVARCHAR(255) NOT NULL,
     user_type NVARCHAR(20) NOT NULL CHECK (user_type IN ('admin', 'teacher', 'student', 'working_student')),
     account_status NVARCHAR(20) DEFAULT 'active' CHECK (account_status IN ('pending', 'active', 'suspended', 'rejected')),
+    account_lock BIT DEFAULT 0,
     is_active BIT DEFAULT 1,
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME DEFAULT GETDATE()
@@ -142,6 +143,7 @@ CREATE TABLE classes (
     teacher_id INT NOT NULL,
     edp_code NVARCHAR(50) UNIQUE,
     descriptive_title NVARCHAR(255),
+    section NVARCHAR(50),
     schedule NVARCHAR(100),
     room NVARCHAR(50),
     semester NVARCHAR(20),

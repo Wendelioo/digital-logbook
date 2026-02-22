@@ -47,12 +47,12 @@ func main() {
 		OnBeforeClose: func(ctx context.Context) (prevent bool) {
 			if app.screenLocked {
 				// When screen is locked (user not logged in), prevent closing
-				log.Println("🔒 Screen locked: Window close attempt blocked - user must login first")
+				log.Println("Screen locked: Window close attempt blocked - user must login first")
 				return true
 			}
 			// When user is logged in, also prevent closing (they should logout properly)
 			if app.kioskMode {
-				log.Println("🔒 Kiosk mode: Please logout through the app")
+				log.Println("Kiosk mode: Please logout through the app")
 				return true
 			}
 			return false
