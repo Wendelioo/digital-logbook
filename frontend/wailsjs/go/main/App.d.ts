@@ -62,6 +62,10 @@ export function EnrollMultipleStudents(arg1:Array<number>,arg2:number,arg3:numbe
 
 export function EnrollStudentInClass(arg1:number,arg2:number,arg3:number):Promise<void>;
 
+export function ExportArchivedAttendanceCSVByDate(arg1:number,arg2:string,arg3:number):Promise<string>;
+
+export function ExportArchivedAttendancePDFByDate(arg1:number,arg2:string,arg3:number):Promise<string>;
+
 export function ExportArchivedFeedbackCSV():Promise<string>;
 
 export function ExportArchivedFeedbackPDF():Promise<string>;
@@ -82,7 +86,11 @@ export function ExportAttendanceCSV(arg1:number):Promise<string>;
 
 export function ExportAttendanceCSVByDate(arg1:number,arg2:string):Promise<string>;
 
+export function ExportAttendancePDFByDate(arg1:number,arg2:string):Promise<string>;
+
 export function ExportClasslistCSV(arg1:number):Promise<string>;
+
+export function ExportClasslistPDF(arg1:number):Promise<string>;
 
 export function ExportFeedbackCSV():Promise<string>;
 

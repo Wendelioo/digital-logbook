@@ -258,6 +258,9 @@ function ClassManagementDetail() {
     );
   }
 
+  const archiveState = location.state as { fromArchiveModal?: boolean; returnToArchiveTab?: 'attendance' | 'classes' } | null;
+  const isFromArchivedClasslistView = archiveState?.fromArchiveModal && archiveState.returnToArchiveTab === 'classes';
+
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
       <div className="min-h-screen p-4 md:p-8">
@@ -272,8 +275,7 @@ function ClassManagementDetail() {
           {/* Close Button - Inside Sheet */}
           <button
             onClick={() => {
-              const state = location.state as { fromArchiveModal?: boolean; returnToArchiveTab?: 'attendance' | 'classes' } | null;
-              if (state?.fromArchiveModal && state.returnToArchiveTab === 'classes') {
+              if (isFromArchivedClasslistView) {
                 navigate('/teacher/class-management', {
                   replace: true,
                   state: { openArchiveModal: true, archiveTab: 'classes' },
@@ -307,7 +309,7 @@ function ClassManagementDetail() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
               </Button>
-              {classInfo.is_archived && (
+              {classInfo.is_archived && !isFromArchivedClasslistView && (
                 <Button
                   onClick={() => handleExportClasslist(classInfo.class_id)}
                   variant="outline"

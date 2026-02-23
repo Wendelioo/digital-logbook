@@ -161,58 +161,8 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false }: Attendance
         const filePath = await ExportClasslistCSV(cls.class_id);
         alert(`Archived classlist exported successfully.\nFile saved to: ${filePath}`);
       } else {
-        const printable = `
-          <html>
-            <head>
-              <title>Archived Classlist</title>
-              <style>
-                body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
-                h1 { font-size: 18px; margin-bottom: 6px; }
-                p { margin: 4px 0; }
-                .meta { color: #4b5563; font-size: 12px; margin-bottom: 16px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
-                th { background: #f9fafb; }
-              </style>
-            </head>
-            <body>
-              <h1>Archived Classlist</h1>
-              <p><strong>Subject:</strong> ${cls.subject_code || ''} - ${cls.subject_name || ''}</p>
-              <p><strong>Schedule:</strong> ${cls.schedule || '-'}</p>
-              <p><strong>School Year:</strong> ${cls.school_year || '-'}</p>
-              <p><strong>Semester:</strong> ${cls.semester || '-'}</p>
-              <p class="meta">Status: Archived</p>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Field</th>
-                    <th>Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr><td>EDP Code</td><td>${cls.edp_code || '-'}</td></tr>
-                  <tr><td>Subject Code</td><td>${cls.subject_code || '-'}</td></tr>
-                  <tr><td>Subject Name</td><td>${cls.subject_name || '-'}</td></tr>
-                  <tr><td>Schedule</td><td>${cls.schedule || '-'}</td></tr>
-                  <tr><td>School Year</td><td>${cls.school_year || '-'}</td></tr>
-                  <tr><td>Semester</td><td>${cls.semester || '-'}</td></tr>
-                </tbody>
-              </table>
-            </body>
-          </html>
-        `;
-
-        const printWindow = window.open('', '_blank', 'width=900,height=700');
-        if (!printWindow) {
-          throw new Error('Popup blocked');
-        }
-        printWindow.document.open();
-        printWindow.document.write(printable);
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => {
-          printWindow.print();
-        }, 300);
+        const filePath = await (window as any).go.main.App.ExportClasslistPDF(cls.class_id);
+        alert(`Archived classlist PDF exported successfully.\nFile saved to: ${filePath}`);
       }
     } catch (error) {
       console.error('Failed to download archived classlist:', error);
@@ -230,62 +180,13 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false }: Attendance
     setDownloadingAttendance(key);
     setDownloadMenuKey(null);
     try {
+      const sessionId = Number(sheet.session_id) || 0;
       if (format === 'csv') {
-        await (window as any).go.main.App.ExportAttendanceCSVByDate(sheet.class_id, sheet.date);
-        alert('Archived attendance CSV exported successfully.');
+        const filePath = await (window as any).go.main.App.ExportArchivedAttendanceCSVByDate(sheet.class_id, sheet.date, sessionId);
+        alert(`Archived attendance sheet exported successfully.\nFile saved to: ${filePath}`);
       } else {
-        const printable = `
-          <html>
-            <head>
-              <title>Archived Attendance Sheet</title>
-              <style>
-                body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
-                h1 { font-size: 18px; margin-bottom: 6px; }
-                p { margin: 4px 0; }
-                .meta { color: #4b5563; font-size: 12px; margin-bottom: 16px; }
-                table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-                th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
-                th { background: #f9fafb; }
-              </style>
-            </head>
-            <body>
-              <h1>Archived Attendance Sheet</h1>
-              <p><strong>Subject:</strong> ${sheet.subject_code || ''} - ${sheet.subject_name || ''}</p>
-              <p><strong>Date:</strong> ${new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</p>
-              <p class="meta">Status: Archived</p>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Present</th>
-                    <th>Absent</th>
-                    <th>Late</th>
-                    <th>Total Students</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>${sheet.present_count ?? 0}</td>
-                    <td>${sheet.absent_count ?? 0}</td>
-                    <td>${sheet.late_count ?? 0}</td>
-                    <td>${sheet.student_count ?? 0}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </body>
-          </html>
-        `;
-
-        const printWindow = window.open('', '_blank', 'width=900,height=700');
-        if (!printWindow) {
-          throw new Error('Popup blocked');
-        }
-        printWindow.document.open();
-        printWindow.document.write(printable);
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => {
-          printWindow.print();
-        }, 300);
+        const filePath = await (window as any).go.main.App.ExportArchivedAttendancePDFByDate(sheet.class_id, sheet.date, sessionId);
+        alert(`Archived attendance sheet exported successfully.\nFile saved to: ${filePath}`);
       }
     } catch (error) {
       console.error('Failed to download archived attendance:', error);
@@ -442,7 +343,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false }: Attendance
                                 <Download className="h-4 w-4" />
                               </button>
                               {downloadMenuKey === getSheetKey(sheet) && (
-                                <div className="absolute right-0 mt-1 z-20 w-28 rounded-md border border-gray-200 bg-white shadow-lg">
+                                <div className="absolute right-0 bottom-full mb-1 z-20 w-28 rounded-md border border-gray-200 bg-white shadow-lg">
                                   <button
                                     onClick={() => handleDownloadArchivedAttendance(sheet, 'csv')}
                                     className="block w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
@@ -634,7 +535,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false }: Attendance
                                 <Download className="h-4 w-4" />
                               </button>
                               {classDownloadMenuKey === `class-${cls.class_id}` && (
-                                <div className="absolute right-0 mt-1 z-20 w-28 rounded-md border border-gray-200 bg-white shadow-lg">
+                                <div className="absolute right-0 bottom-full mb-1 z-20 w-28 rounded-md border border-gray-200 bg-white shadow-lg">
                                   <button
                                     onClick={() => handleDownloadArchivedClasslist(cls, 'csv')}
                                     className="block w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"

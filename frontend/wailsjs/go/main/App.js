@@ -122,6 +122,14 @@ export function EnrollStudentInClass(arg1, arg2, arg3) {
   return window['go']['main']['App']['EnrollStudentInClass'](arg1, arg2, arg3);
 }
 
+export function ExportArchivedAttendanceCSVByDate(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ExportArchivedAttendanceCSVByDate'](arg1, arg2, arg3);
+}
+
+export function ExportArchivedAttendancePDFByDate(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ExportArchivedAttendancePDFByDate'](arg1, arg2, arg3);
+}
+
 export function ExportArchivedFeedbackCSV() {
   return window['go']['main']['App']['ExportArchivedFeedbackCSV']();
 }
@@ -162,8 +170,16 @@ export function ExportAttendanceCSVByDate(arg1, arg2) {
   return window['go']['main']['App']['ExportAttendanceCSVByDate'](arg1, arg2);
 }
 
+export function ExportAttendancePDFByDate(arg1, arg2) {
+  return window['go']['main']['App']['ExportAttendancePDFByDate'](arg1, arg2);
+}
+
 export function ExportClasslistCSV(arg1) {
   return window['go']['main']['App']['ExportClasslistCSV'](arg1);
+}
+
+export function ExportClasslistPDF(arg1) {
+  return window['go']['main']['App']['ExportClasslistPDF'](arg1);
 }
 
 export function ExportFeedbackCSV() {

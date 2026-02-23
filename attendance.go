@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/jung-kurt/gofpdf"
 )
 
 // ==============================================================================
@@ -455,9 +457,30 @@ func (a *App) ExportAttendanceCSVByDate(classID int, date string) (string, error
 		return "", fmt.Errorf("invalid date format: %w", err)
 	}
 
+	var subjectCode string
+	var subjectName, schedule, room, teacherName sql.NullString
+	classQuery := `
+		SELECT
+			c.subject_code,
+			s.description,
+			c.schedule,
+			c.room,
+			(t.last_name + ', ' + t.first_name) as teacher_name
+		FROM classes c
+		JOIN subjects s ON c.subject_code = s.subject_code
+		LEFT JOIN teachers t ON c.teacher_id = t.id
+		WHERE c.class_id = ?
+	`
+	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName)
+	if err != nil {
+		log.Printf("Failed to get class info for attendance CSV export: %v", err)
+		subjectCode = fmt.Sprintf("CLASS %d", classID)
+		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
+	}
+
 	query := `
 		SELECT 
-			a.class_id, a.student_id, CONVERT(VARCHAR(10), a.attendance_date, 23) as date, a.status, a.remarks,
+			a.class_id, a.student_id, CONVERT(VARCHAR(10), a.attendance_date, 23) as date, a.status,
 			stu.student_id, stu.first_name, stu.middle_name, stu.last_name,
 			c.subject_code, s.description as subject_name
 		FROM attendance a
@@ -468,6 +491,357 @@ func (a *App) ExportAttendanceCSVByDate(classID int, date string) (string, error
 		ORDER BY stu.last_name, stu.first_name
 	`
 	rows, err := a.db.Query(query, classID, date)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var attendances []Attendance
+	for rows.Next() {
+		var att Attendance
+		var middleName sql.NullString
+		err := rows.Scan(
+			&att.ClassID, &att.StudentUserID, &att.Date, &att.Status,
+			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
+			&att.SubjectCode, &att.SubjectName,
+		)
+		if err != nil {
+			continue
+		}
+
+		if middleName.Valid {
+			att.MiddleName = &middleName.String
+		}
+
+		attendances = append(attendances, att)
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("attendance_%d_%s_%s.csv", classID, date, time.Now().Format("150405")))
+
+	file, err := os.Create(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	subjectNameValue := "—"
+	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
+		subjectNameValue = subjectName.String
+	}
+	scheduleValue := "—"
+	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
+		scheduleValue = schedule.String
+	}
+	roomValue := "—"
+	if room.Valid && strings.TrimSpace(room.String) != "" {
+		roomValue = room.String
+	}
+	teacherValue := "—"
+	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
+		teacherValue = teacherName.String
+	}
+
+	displayDate := date
+	if parsedDate, parseErr := time.Parse("2006-01-02", date); parseErr == nil {
+		displayDate = parsedDate.Format("January 2, 2006")
+	}
+
+	writer.Write([]string{"ATTENDANCE SHEET"})
+	writer.Write([]string{displayDate})
+	writer.Write([]string{""})
+	writer.Write([]string{"CLASS INFORMATION"})
+	writer.Write([]string{"Subject", fmt.Sprintf("%s - %s", subjectCode, subjectNameValue), "Schedule", scheduleValue})
+	writer.Write([]string{"Instructor", teacherValue, "Room", roomValue})
+	writer.Write([]string{""})
+	writer.Write([]string{"DAILY ATTENDANCE RECORD"})
+	writer.Write([]string{"Total Students", fmt.Sprintf("%d", len(attendances))})
+	writer.Write([]string{"No.", "Student ID", "Student Name", "Status"})
+
+	presentCount := 0
+	lateCount := 0
+	absentCount := 0
+
+	for index, att := range attendances {
+		middleName := ""
+		if att.MiddleName != nil {
+			middleName = strings.TrimSpace(*att.MiddleName)
+		}
+
+		middleInitial := ""
+		if middleName != "" {
+			middleInitial = fmt.Sprintf(" %s.", strings.ToUpper(string(middleName[0])))
+		}
+		fullName := fmt.Sprintf("%s, %s%s", att.LastName, att.FirstName, middleInitial)
+		status := strings.ToLower(strings.TrimSpace(att.Status))
+		switch status {
+		case "present":
+			presentCount++
+		case "late":
+			lateCount++
+		default:
+			absentCount++
+		}
+
+		writer.Write([]string{
+			fmt.Sprintf("%d", index+1),
+			att.StudentCode,
+			fullName,
+			strings.Title(status),
+		})
+	}
+
+	writer.Write([]string{""})
+	writer.Write([]string{"SUMMARY"})
+	writer.Write([]string{"Present", fmt.Sprintf("%d", presentCount)})
+	writer.Write([]string{"Late", fmt.Sprintf("%d", lateCount)})
+	writer.Write([]string{"Absent", fmt.Sprintf("%d", absentCount)})
+	writer.Write([]string{"Total", fmt.Sprintf("%d", len(attendances))})
+
+	log.Printf("Attendance exported to CSV by date: class=%d, date=%s, file=%s", classID, date, filename)
+	return filename, nil
+}
+
+// ExportAttendancePDFByDate exports attendance to PDF for a specific class and date.
+func (a *App) ExportAttendancePDFByDate(classID int, date string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return "", fmt.Errorf("invalid date format: %w", err)
+	}
+
+	var subjectCode string
+	var subjectName, schedule, room, teacherName sql.NullString
+	classQuery := `
+		SELECT
+			c.subject_code,
+			s.description,
+			c.schedule,
+			c.room,
+			(t.last_name + ', ' + t.first_name) as teacher_name
+		FROM classes c
+		JOIN subjects s ON c.subject_code = s.subject_code
+		LEFT JOIN teachers t ON c.teacher_id = t.id
+		WHERE c.class_id = ?
+	`
+	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName)
+	if err != nil {
+		log.Printf("Failed to get class info for attendance PDF export: %v", err)
+		subjectCode = fmt.Sprintf("CLASS %d", classID)
+		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
+	}
+
+	query := `
+		SELECT 
+			a.class_id, a.student_id, CONVERT(VARCHAR(10), a.attendance_date, 23) as date, a.status,
+			stu.student_id, stu.first_name, stu.middle_name, stu.last_name,
+			c.subject_code, s.description as subject_name
+		FROM attendance a
+		JOIN students stu ON a.student_id = stu.id
+		JOIN classes c ON a.class_id = c.class_id
+		JOIN subjects s ON c.subject_code = s.subject_code
+		WHERE a.class_id = ? AND a.attendance_date = ?
+		ORDER BY stu.last_name, stu.first_name
+	`
+	rows, err := a.db.Query(query, classID, date)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var attendances []Attendance
+	for rows.Next() {
+		var att Attendance
+		var middleName sql.NullString
+		err := rows.Scan(
+			&att.ClassID, &att.StudentUserID, &att.Date, &att.Status,
+			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
+			&att.SubjectCode, &att.SubjectName,
+		)
+		if err != nil {
+			continue
+		}
+
+		if middleName.Valid {
+			att.MiddleName = &middleName.String
+		}
+
+		attendances = append(attendances, att)
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("attendance_%d_%s_%s.pdf", classID, date, time.Now().Format("150405")))
+
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.SetMargins(10, 10, 10)
+	pdf.SetAutoPageBreak(true, 10)
+	pdf.AddPage()
+
+	subjectNameValue := "—"
+	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
+		subjectNameValue = subjectName.String
+	}
+	scheduleValue := "—"
+	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
+		scheduleValue = schedule.String
+	}
+	roomValue := "—"
+	if room.Valid && strings.TrimSpace(room.String) != "" {
+		roomValue = room.String
+	}
+	teacherValue := "—"
+	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
+		teacherValue = teacherName.String
+	}
+
+	displayDate := date
+	if parsedDate, parseErr := time.Parse("2006-01-02", date); parseErr == nil {
+		displayDate = parsedDate.Format("January 2, 2006")
+	}
+
+	pdf.SetFont("Arial", "B", 14)
+	pdf.Cell(0, 8, "Attendance Sheet")
+	pdf.Ln(9)
+	pdf.SetFont("Arial", "", 10)
+	pdf.Cell(0, 6, displayDate)
+	pdf.Ln(6)
+	pdf.SetFont("Arial", "B", 10)
+	pdf.Cell(0, 6, "CLASS INFORMATION")
+	pdf.Ln(7)
+	pdf.SetFont("Arial", "", 10)
+	pdf.CellFormat(25, 6, "Subject:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(90, 6, fmt.Sprintf("%s - %s", subjectCode, subjectNameValue), "", 0, "L", false, 0, "")
+	pdf.CellFormat(20, 6, "Schedule:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(55, 6, scheduleValue, "", 1, "L", false, 0, "")
+	pdf.CellFormat(25, 6, "Instructor:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(90, 6, teacherValue, "", 0, "L", false, 0, "")
+	pdf.CellFormat(20, 6, "Room:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(55, 6, roomValue, "", 1, "L", false, 0, "")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "B", 10)
+	pdf.CellFormat(120, 6, "DAILY ATTENDANCE RECORD", "", 0, "L", false, 0, "")
+	pdf.CellFormat(70, 6, fmt.Sprintf("Total Students: %d", len(attendances)), "", 1, "R", false, 0, "")
+	pdf.Ln(1)
+
+	pdf.SetFont("Arial", "B", 9)
+	pdf.CellFormat(12, 7, "#", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(32, 7, "Student ID", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(106, 7, "Student Name", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(40, 7, "Status", "1", 1, "C", false, 0, "")
+
+	pdf.SetFont("Arial", "", 9)
+	presentCount := 0
+	lateCount := 0
+	absentCount := 0
+	for index, att := range attendances {
+		middleInitial := ""
+		if att.MiddleName != nil && *att.MiddleName != "" {
+			middleInitial = fmt.Sprintf(" %s.", strings.ToUpper(string((*att.MiddleName)[0])))
+		}
+		fullName := fmt.Sprintf("%s, %s%s", att.LastName, att.FirstName, middleInitial)
+		status := strings.ToLower(strings.TrimSpace(att.Status))
+		switch status {
+		case "present":
+			presentCount++
+		case "late":
+			lateCount++
+		default:
+			absentCount++
+		}
+
+		pdf.CellFormat(12, 7, fmt.Sprintf("%d", index+1), "1", 0, "C", false, 0, "")
+		pdf.CellFormat(32, 7, att.StudentCode, "1", 0, "L", false, 0, "")
+		pdf.CellFormat(106, 7, fullName, "1", 0, "L", false, 0, "")
+		pdf.CellFormat(40, 7, strings.Title(status), "1", 1, "C", false, 0, "")
+	}
+
+	pdf.Ln(3)
+	pdf.SetFont("Arial", "B", 9)
+	pdf.CellFormat(190, 6, "SUMMARY", "", 1, "L", false, 0, "")
+	pdf.SetFont("Arial", "", 9)
+	pdf.CellFormat(40, 6, fmt.Sprintf("Present: %d", presentCount), "", 0, "L", false, 0, "")
+	pdf.CellFormat(40, 6, fmt.Sprintf("Late: %d", lateCount), "", 0, "L", false, 0, "")
+	pdf.CellFormat(40, 6, fmt.Sprintf("Absent: %d", absentCount), "", 0, "L", false, 0, "")
+	pdf.CellFormat(70, 6, fmt.Sprintf("Total: %d", len(attendances)), "", 1, "R", false, 0, "")
+
+	if err := pdf.OutputFileAndClose(filename); err != nil {
+		return "", err
+	}
+
+	log.Printf("Attendance exported to PDF by date: class=%d, date=%s, file=%s", classID, date, filename)
+	return filename, nil
+}
+
+// ExportArchivedAttendanceCSVByDate exports only archived attendance records for a specific class/date/session.
+func (a *App) ExportArchivedAttendanceCSVByDate(classID int, date string, sessionID int) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+
+	if sessionID <= 0 {
+		return "", fmt.Errorf("invalid archived attendance session")
+	}
+
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return "", fmt.Errorf("invalid date format: %w", err)
+	}
+
+	var subjectCode string
+	var subjectName, schedule, room, teacherName sql.NullString
+	classQuery := `
+		SELECT
+			c.subject_code,
+			s.description,
+			c.schedule,
+			c.room,
+			(t.last_name + ', ' + t.first_name) as teacher_name
+		FROM classes c
+		JOIN subjects s ON c.subject_code = s.subject_code
+		LEFT JOIN teachers t ON c.teacher_id = t.id
+		WHERE c.class_id = ?
+	`
+	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName)
+	if err != nil {
+		log.Printf("Failed to get class info for archived attendance CSV export: %v", err)
+		subjectCode = fmt.Sprintf("CLASS %d", classID)
+		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
+	}
+
+	query := `
+		WITH ranked_attendance AS (
+			SELECT 
+				a.class_id, a.student_id, CONVERT(VARCHAR(10), a.attendance_date, 23) as date, a.status, a.remarks,
+				stu.student_id AS student_code, stu.first_name, stu.middle_name, stu.last_name,
+				c.subject_code, s.description as subject_name,
+				ROW_NUMBER() OVER (
+					PARTITION BY a.student_id
+					ORDER BY a.updated_at DESC, a.created_at DESC, a.id DESC
+				) AS rn
+			FROM attendance a
+			JOIN students stu ON a.student_id = stu.id
+			JOIN classes c ON a.class_id = c.class_id
+			JOIN subjects s ON c.subject_code = s.subject_code
+			WHERE a.class_id = ?
+			  AND a.attendance_date = ?
+			  AND a.session_id = ?
+			  AND COALESCE(a.is_archived, 0) = 1
+		)
+		SELECT
+			class_id, student_id, date, status, remarks,
+			student_code, first_name, middle_name, last_name,
+			subject_code, subject_name
+		FROM ranked_attendance
+		WHERE rn = 1
+		ORDER BY last_name, first_name
+	`
+	args := []interface{}{classID, date, sessionID}
+
+	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		return "", err
 	}
@@ -497,7 +871,7 @@ func (a *App) ExportAttendanceCSVByDate(classID int, date string) (string, error
 	}
 
 	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("attendance_%d_%s_%s.csv", classID, date, time.Now().Format("150405")))
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("archived_attendance_%d_%s_%s.csv", classID, date, time.Now().Format("150405")))
 
 	file, err := os.Create(filename)
 	if err != nil {
@@ -508,31 +882,276 @@ func (a *App) ExportAttendanceCSVByDate(classID int, date string) (string, error
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	writer.Write([]string{"Date", "Student ID", "First Name", "Middle Name", "Last Name", "Subject", "Status", "Remarks"})
+	subjectNameValue := "—"
+	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
+		subjectNameValue = subjectName.String
+	}
+	scheduleValue := "—"
+	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
+		scheduleValue = schedule.String
+	}
+	roomValue := "—"
+	if room.Valid && strings.TrimSpace(room.String) != "" {
+		roomValue = room.String
+	}
+	teacherValue := "—"
+	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
+		teacherValue = teacherName.String
+	}
 
-	for _, att := range attendances {
+	displayDate := date
+	if parsedDate, parseErr := time.Parse("2006-01-02", date); parseErr == nil {
+		displayDate = parsedDate.Format("January 2, 2006")
+	}
+
+	writer.Write([]string{"ATTENDANCE SHEET"})
+	writer.Write([]string{displayDate})
+	writer.Write([]string{""})
+	writer.Write([]string{"CLASS INFORMATION"})
+	writer.Write([]string{"Subject", fmt.Sprintf("%s - %s", subjectCode, subjectNameValue), "Schedule", scheduleValue})
+	writer.Write([]string{"Instructor", teacherValue, "Room", roomValue})
+	writer.Write([]string{""})
+	writer.Write([]string{"DAILY ATTENDANCE RECORD"})
+	writer.Write([]string{"Total Students", fmt.Sprintf("%d", len(attendances))})
+	writer.Write([]string{"No.", "Student ID", "Student Name", "Status"})
+
+	presentCount := 0
+	lateCount := 0
+	absentCount := 0
+
+	for index, att := range attendances {
 		middleName := ""
 		if att.MiddleName != nil {
-			middleName = *att.MiddleName
+			middleName = strings.TrimSpace(*att.MiddleName)
 		}
-		remarks := ""
-		if att.Remarks != nil {
-			remarks = *att.Remarks
+
+		middleInitial := ""
+		if middleName != "" {
+			middleInitial = fmt.Sprintf(" %s.", strings.ToUpper(string(middleName[0])))
+		}
+		fullName := fmt.Sprintf("%s, %s%s", att.LastName, att.FirstName, middleInitial)
+		status := strings.ToLower(strings.TrimSpace(att.Status))
+		switch status {
+		case "present":
+			presentCount++
+		case "late":
+			lateCount++
+		default:
+			absentCount++
 		}
 
 		writer.Write([]string{
-			att.Date,
+			fmt.Sprintf("%d", index+1),
 			att.StudentCode,
-			att.FirstName,
-			middleName,
-			att.LastName,
-			fmt.Sprintf("%s - %s", att.SubjectCode, att.SubjectName),
-			att.Status,
-			remarks,
+			fullName,
+			strings.Title(status),
 		})
 	}
 
-	log.Printf("Attendance exported to CSV by date: class=%d, date=%s, file=%s", classID, date, filename)
+	writer.Write([]string{""})
+	writer.Write([]string{"SUMMARY"})
+	writer.Write([]string{"Present", fmt.Sprintf("%d", presentCount)})
+	writer.Write([]string{"Late", fmt.Sprintf("%d", lateCount)})
+	writer.Write([]string{"Absent", fmt.Sprintf("%d", absentCount)})
+	writer.Write([]string{"Total", fmt.Sprintf("%d", len(attendances))})
+
+	log.Printf("Archived attendance exported to CSV by date: class=%d, date=%s, session=%d, file=%s", classID, date, sessionID, filename)
+	return filename, nil
+}
+
+// ExportArchivedAttendancePDFByDate exports only archived attendance records for a specific class/date/session.
+func (a *App) ExportArchivedAttendancePDFByDate(classID int, date string, sessionID int) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+
+	if sessionID <= 0 {
+		return "", fmt.Errorf("invalid archived attendance session")
+	}
+
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return "", fmt.Errorf("invalid date format: %w", err)
+	}
+
+	var subjectCode string
+	var subjectName, schedule, room, teacherName sql.NullString
+	classQuery := `
+		SELECT
+			c.subject_code,
+			s.description,
+			c.schedule,
+			c.room,
+			(t.last_name + ', ' + t.first_name) as teacher_name
+		FROM classes c
+		JOIN subjects s ON c.subject_code = s.subject_code
+		LEFT JOIN teachers t ON c.teacher_id = t.id
+		WHERE c.class_id = ?
+	`
+	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName)
+	if err != nil {
+		log.Printf("Failed to get class info for archived attendance PDF export: %v", err)
+		subjectCode = fmt.Sprintf("CLASS %d", classID)
+		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
+	}
+
+	query := `
+		WITH ranked_attendance AS (
+			SELECT 
+				a.class_id, a.student_id, CONVERT(VARCHAR(10), a.attendance_date, 23) as date, a.status, a.remarks,
+				stu.student_id AS student_code, stu.first_name, stu.middle_name, stu.last_name,
+				c.subject_code, s.description as subject_name,
+				ROW_NUMBER() OVER (
+					PARTITION BY a.student_id
+					ORDER BY a.updated_at DESC, a.created_at DESC, a.id DESC
+				) AS rn
+			FROM attendance a
+			JOIN students stu ON a.student_id = stu.id
+			JOIN classes c ON a.class_id = c.class_id
+			JOIN subjects s ON c.subject_code = s.subject_code
+			WHERE a.class_id = ?
+			  AND a.attendance_date = ?
+			  AND a.session_id = ?
+			  AND COALESCE(a.is_archived, 0) = 1
+		)
+		SELECT
+			class_id, student_id, date, status, remarks,
+			student_code, first_name, middle_name, last_name,
+			subject_code, subject_name
+		FROM ranked_attendance
+		WHERE rn = 1
+		ORDER BY last_name, first_name
+	`
+	args := []interface{}{classID, date, sessionID}
+
+	rows, err := a.db.Query(query, args...)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var attendances []Attendance
+	for rows.Next() {
+		var att Attendance
+		var remarks, middleName sql.NullString
+		err := rows.Scan(
+			&att.ClassID, &att.StudentUserID, &att.Date, &att.Status, &remarks,
+			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
+			&att.SubjectCode, &att.SubjectName,
+		)
+		if err != nil {
+			continue
+		}
+
+		if remarks.Valid {
+			att.Remarks = &remarks.String
+		}
+		if middleName.Valid {
+			att.MiddleName = &middleName.String
+		}
+
+		attendances = append(attendances, att)
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("archived_attendance_%d_%s_%s.pdf", classID, date, time.Now().Format("150405")))
+
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.SetMargins(10, 10, 10)
+	pdf.SetAutoPageBreak(true, 10)
+	pdf.AddPage()
+
+	subjectNameValue := "—"
+	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
+		subjectNameValue = subjectName.String
+	}
+	scheduleValue := "—"
+	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
+		scheduleValue = schedule.String
+	}
+	roomValue := "—"
+	if room.Valid && strings.TrimSpace(room.String) != "" {
+		roomValue = room.String
+	}
+	teacherValue := "—"
+	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
+		teacherValue = teacherName.String
+	}
+
+	displayDate := date
+	if parsedDate, parseErr := time.Parse("2006-01-02", date); parseErr == nil {
+		displayDate = parsedDate.Format("January 2, 2006")
+	}
+
+	pdf.SetFont("Arial", "B", 14)
+	pdf.Cell(0, 8, "Attendance Sheet")
+	pdf.Ln(9)
+	pdf.SetFont("Arial", "", 10)
+	pdf.Cell(0, 6, displayDate)
+	pdf.Ln(6)
+	pdf.SetFont("Arial", "B", 10)
+	pdf.Cell(0, 6, "CLASS INFORMATION")
+	pdf.Ln(7)
+	pdf.SetFont("Arial", "", 10)
+	pdf.CellFormat(25, 6, "Subject:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(90, 6, fmt.Sprintf("%s - %s", subjectCode, subjectNameValue), "", 0, "L", false, 0, "")
+	pdf.CellFormat(20, 6, "Schedule:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(55, 6, scheduleValue, "", 1, "L", false, 0, "")
+	pdf.CellFormat(25, 6, "Instructor:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(90, 6, teacherValue, "", 0, "L", false, 0, "")
+	pdf.CellFormat(20, 6, "Room:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(55, 6, roomValue, "", 1, "L", false, 0, "")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "B", 10)
+	pdf.CellFormat(120, 6, "DAILY ATTENDANCE RECORD", "", 0, "L", false, 0, "")
+	pdf.CellFormat(70, 6, fmt.Sprintf("Total Students: %d", len(attendances)), "", 1, "R", false, 0, "")
+	pdf.Ln(1)
+
+	pdf.SetFont("Arial", "B", 9)
+	pdf.CellFormat(12, 7, "#", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(32, 7, "Student ID", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(106, 7, "Student Name", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(40, 7, "Status", "1", 1, "C", false, 0, "")
+
+	pdf.SetFont("Arial", "", 9)
+	presentCount := 0
+	lateCount := 0
+	absentCount := 0
+	for index, att := range attendances {
+		middleInitial := ""
+		if att.MiddleName != nil && *att.MiddleName != "" {
+			middleInitial = fmt.Sprintf(" %s.", strings.ToUpper(string((*att.MiddleName)[0])))
+		}
+		fullName := fmt.Sprintf("%s, %s%s", att.LastName, att.FirstName, middleInitial)
+		status := strings.ToLower(strings.TrimSpace(att.Status))
+		switch status {
+		case "present":
+			presentCount++
+		case "late":
+			lateCount++
+		default:
+			absentCount++
+		}
+
+		pdf.CellFormat(12, 7, fmt.Sprintf("%d", index+1), "1", 0, "C", false, 0, "")
+		pdf.CellFormat(32, 7, att.StudentCode, "1", 0, "L", false, 0, "")
+		pdf.CellFormat(106, 7, fullName, "1", 0, "L", false, 0, "")
+		pdf.CellFormat(40, 7, strings.Title(status), "1", 1, "C", false, 0, "")
+	}
+
+	pdf.Ln(3)
+	pdf.SetFont("Arial", "B", 9)
+	pdf.CellFormat(190, 6, "SUMMARY", "", 1, "L", false, 0, "")
+	pdf.SetFont("Arial", "", 9)
+	pdf.CellFormat(40, 6, fmt.Sprintf("Present: %d", presentCount), "", 0, "L", false, 0, "")
+	pdf.CellFormat(40, 6, fmt.Sprintf("Late: %d", lateCount), "", 0, "L", false, 0, "")
+	pdf.CellFormat(40, 6, fmt.Sprintf("Absent: %d", absentCount), "", 0, "L", false, 0, "")
+	pdf.CellFormat(70, 6, fmt.Sprintf("Total: %d", len(attendances)), "", 1, "R", false, 0, "")
+
+	if err := pdf.OutputFileAndClose(filename); err != nil {
+		return "", err
+	}
+
+	log.Printf("Archived attendance exported to PDF by date: class=%d, date=%s, session=%d, file=%s", classID, date, sessionID, filename)
 	return filename, nil
 }
 
@@ -723,55 +1342,32 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 	}
 
 	query := `
-		SELECT *
-		FROM (
-			SELECT
-				s.session_id,
-				s.class_id,
-				CONVERT(VARCHAR(10), s.attendance_date, 23) AS date,
-				subj.subject_code,
-				subj.description AS subject_name,
-				c.edp_code,
-				c.schedule,
-				COUNT(a.student_id) AS student_count,
-				SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
-				SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
-				SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count
-			FROM attendance_sessions s
-			JOIN classes c ON s.class_id = c.class_id
-			JOIN subjects subj ON c.subject_code = subj.subject_code
-			LEFT JOIN attendance a ON a.session_id = s.session_id AND COALESCE(a.is_archived, 0) = 1
-			WHERE c.teacher_id = ?
-			  AND (COALESCE(s.is_archived, 0) = 1 OR a.session_id IS NOT NULL)
-			GROUP BY s.session_id, s.class_id, s.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
-
-			UNION ALL
-
-			SELECT
-				0 AS session_id,
-				a.class_id,
-				CONVERT(VARCHAR(10), a.attendance_date, 23) AS date,
-				subj.subject_code,
-				subj.description AS subject_name,
-				c.edp_code,
-				c.schedule,
-				COUNT(a.student_id) AS student_count,
-				SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
-				SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
-				SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count
-			FROM attendance a
-			JOIN classes c ON a.class_id = c.class_id
-			JOIN subjects subj ON c.subject_code = subj.subject_code
-			LEFT JOIN attendance_sessions s ON s.session_id = a.session_id
-			WHERE c.teacher_id = ?
-			  AND COALESCE(a.is_archived, 0) = 1
-			  AND (a.session_id IS NULL OR s.session_id IS NULL)
-			GROUP BY a.class_id, a.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
-		) archived_union
-		ORDER BY archived_union.date DESC, archived_union.session_id DESC, archived_union.subject_code
+		SELECT
+			s.session_id,
+			s.class_id,
+			CONVERT(VARCHAR(10), s.attendance_date, 23) AS date,
+			subj.subject_code,
+			subj.description AS subject_name,
+			c.edp_code,
+			c.schedule,
+			COUNT(a.student_id) AS student_count,
+			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
+			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
+			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
+		JOIN subjects subj ON c.subject_code = subj.subject_code
+		LEFT JOIN attendance a ON a.session_id = s.session_id AND COALESCE(a.is_archived, 0) = 1
+		WHERE c.teacher_id = ?
+		  AND (
+			COALESCE(s.is_archived, 0) = 1
+			OR a.session_id IS NOT NULL
+		  )
+		GROUP BY s.session_id, s.class_id, s.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
+		ORDER BY s.attendance_date DESC, s.session_id DESC, subj.subject_code
 	`
 
-	rows, err := a.db.Query(query, teacherUserID, teacherUserID)
+	rows, err := a.db.Query(query, teacherUserID)
 	if err != nil {
 		log.Printf("Failed to query archived attendance sheets: %v", err)
 		return nil, err

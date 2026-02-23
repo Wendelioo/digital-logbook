@@ -487,7 +487,7 @@ func (a *App) ExportFeedbackPDF() (string, error) {
 		return "", err
 	}
 
-	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.AddPage()
 	pdf.SetFont("Arial", "B", 16)
 	pdf.Cell(0, 10, "Equipment Feedback Report")
@@ -834,7 +834,7 @@ func (a *App) ExportArchivedFeedbackSheetPDF(date string) (string, error) {
 		return "", fmt.Errorf("no archived feedback for date %s", date)
 	}
 
-	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.AddPage()
 	pdf.SetFont("Arial", "B", 16)
 	pdf.Cell(0, 10, fmt.Sprintf("Equipment Feedback Report - %s", date))
@@ -1129,7 +1129,7 @@ func (a *App) ExportArchivedFeedbackPDF() (string, error) {
 		return "", fmt.Errorf("no archived feedback to export")
 	}
 
-	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.AddPage()
 	pdf.SetFont("Arial", "B", 16)
 	pdf.Cell(0, 10, "Archived Equipment Feedback Report")

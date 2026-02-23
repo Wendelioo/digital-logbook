@@ -673,7 +673,7 @@ func (a *App) ExportLogsPDF() (string, error) {
 		return "", err
 	}
 
-	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.AddPage()
 	pdf.SetFont("Arial", "B", 16)
 	pdf.Cell(0, 10, "Login Logs Report")
@@ -1011,7 +1011,7 @@ func (a *App) ExportArchivedLogSheetPDF(date string) (string, error) {
 		return "", fmt.Errorf("no archived logs for date %s", date)
 	}
 
-	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.AddPage()
 	pdf.SetFont("Arial", "B", 16)
 	pdf.Cell(0, 10, fmt.Sprintf("Login Logs Report - %s", date))
@@ -1165,7 +1165,7 @@ func (a *App) ExportArchivedLogsPDF() (string, error) {
 		return "", fmt.Errorf("no archived logs to export")
 	}
 
-	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.AddPage()
 	pdf.SetFont("Arial", "B", 16)
 	pdf.Cell(0, 10, "Archived Login Logs Report")
