@@ -178,7 +178,7 @@ function Table<T extends Record<string, any>>({
                   key={index}
                   className={`
                     ${striped && index % 2 === 0 ? 'bg-white' : striped ? 'bg-gray-50/50' : 'bg-white'}
-                    ${hoverable ? 'hover:bg-primary-50/50 transition-colors' : ''}
+                    ${hoverable ? 'hover:bg-gray-50 transition-colors' : ''}
                     ${onRowClick ? 'cursor-pointer' : ''}
                     border-b border-gray-100 last:border-b-0
                   `}

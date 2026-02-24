@@ -116,7 +116,7 @@ func (a *App) GetAllClasses() ([]CourseClass, error) {
 	defer rows.Close()
 
 	log.Printf("GetAllClasses: Query executed successfully, processing rows...")
-	var classes []CourseClass
+	classes := make([]CourseClass, 0)
 	for rows.Next() {
 		var class CourseClass
 		var descriptiveTitle, edpCode, schedule, room, semester, schoolYear sql.NullString
@@ -429,6 +429,9 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
+	if err := a.ensureStudentArchivedClassesTable(); err != nil {
+		return nil, err
+	}
 
 	query := `
 		SELECT 
@@ -439,6 +442,7 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 			c.is_active, c.created_by_user_id, c.created_at
 		FROM classlist cl
 		JOIN classes c ON cl.class_id = c.class_id
+		LEFT JOIN student_archived_classes sac ON sac.student_id = cl.student_id AND sac.class_id = cl.class_id
 		LEFT JOIN subjects s ON c.subject_code = s.subject_code
 		LEFT JOIN teachers t ON c.teacher_id = t.id
 		LEFT JOIN (
@@ -447,7 +451,11 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 			WHERE status = 'active'
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE cl.student_id = ? AND cl.status = 'active' AND c.is_active = 1 AND cl.is_archived = 0
+		WHERE cl.student_id = ?
+		  AND cl.status = 'active'
+		  AND c.is_active = 1
+		  AND COALESCE(c.is_archived, 0) = 0
+		  AND sac.class_id IS NULL
 		ORDER BY c.subject_code
 	`
 	rows, err := a.db.Query(query, studentUserID)
@@ -734,7 +742,13 @@ func (a *App) GetClassStudents(classID int) ([]ClasslistEntry, error) {
 		JOIN students stu ON cl.student_id = stu.id
 		JOIN classes c ON cl.class_id = c.class_id
 		JOIN subjects sub ON c.subject_code = sub.subject_code
-		WHERE cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
+		WHERE cl.class_id = ? 
+		  AND cl.status = 'active'
+		  AND (
+			COALESCE(c.is_archived, 0) = 1
+			OR cl.is_archived = 0
+			OR cl.is_archived IS NULL
+		  )
 		ORDER BY stu.last_name, stu.first_name
 	`
 
@@ -744,7 +758,7 @@ func (a *App) GetClassStudents(classID int) ([]ClasslistEntry, error) {
 	}
 	defer rows.Close()
 
-	var students []ClasslistEntry
+	students := make([]ClasslistEntry, 0)
 	for rows.Next() {
 		var student ClasslistEntry
 		var middleName, email, contactNumber, course sql.NullString

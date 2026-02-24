@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardBody, StatCard } from '../../components/Card';
 import {
@@ -11,11 +11,11 @@ import {
   BarChart3,
   AlertCircle,
   UserCheck,
-  Bell
 } from 'lucide-react';
 import {
   GetAdminDashboard
 } from '../../../wailsjs/go/main/App';
+import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
 import { DashboardStats } from './types';
 
 const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
@@ -36,12 +36,53 @@ function DashboardOverview() {
     pending_feedback: 0
   });
   const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState<DashboardNotificationItem[]>([]);
+  const previousStatsRef = useRef<DashboardStats | null>(null);
+
+  const pushNotification = (message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
+    setNotifications((prev) => [
+      {
+        id: `${Date.now()}-${Math.random()}`,
+        message,
+        createdAt: Date.now(),
+        tone,
+      },
+      ...prev,
+    ].slice(0, 10));
+  };
 
   useEffect(() => {
     const loadStats = async () => {
       try {
         const data = await GetAdminDashboard();
         setStats(data);
+
+        const previous = previousStatsRef.current;
+        if (!previous) {
+          pushNotification('Admin dashboard is connected and receiving live updates.', 'success');
+        } else {
+          if (data.locked_accounts !== previous.locked_accounts) {
+            if (data.locked_accounts > previous.locked_accounts) {
+              pushNotification(`${data.locked_accounts} locked account(s) now require review.`, 'warning');
+            } else {
+              pushNotification('Locked account count decreased after review.', 'success');
+            }
+          }
+
+          if (data.pending_feedback !== previous.pending_feedback) {
+            if (data.pending_feedback > previous.pending_feedback) {
+              pushNotification(`${data.pending_feedback} feedback report(s) are pending action.`, 'warning');
+            } else {
+              pushNotification('Pending feedback queue has been reduced.', 'success');
+            }
+          }
+
+          if (data.active_users_now !== previous.active_users_now) {
+            pushNotification(`Active users changed to ${data.active_users_now}.`, 'info');
+          }
+        }
+
+        previousStatsRef.current = data;
       } catch (error) {
         console.error('Failed to load dashboard stats:', error);
       } finally {
@@ -51,7 +92,7 @@ function DashboardOverview() {
 
     loadStats();
 
-    const refreshInterval = setInterval(loadStats, 1000);
+    const refreshInterval = setInterval(loadStats, 10000);
     window.addEventListener('focus', loadStats);
     window.addEventListener(AUTH_STATUS_CHANGED_EVENT, loadStats);
 
@@ -228,23 +269,10 @@ function DashboardOverview() {
         <Card className="h-fit">
           <CardHeader title="Notifications" />
           <CardBody>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center">
-                  <Bell className="h-5 w-5 text-primary-600 mr-3" />
-                  <span className="text-sm text-gray-700">System overview has been refreshed.</span>
-                </div>
-                <span className="text-xs text-gray-500">Now</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="text-sm text-gray-700">{stats.locked_accounts > 0 ? `${stats.locked_accounts} locked account(s) need review.` : 'No locked accounts right now.'}</span>
-                <span className="text-xs text-gray-500">Today</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="text-sm text-gray-700">{stats.pending_feedback > 0 ? `${stats.pending_feedback} feedback report(s) are pending action.` : 'No pending feedback reports.'}</span>
-                <span className="text-xs text-gray-500">Today</span>
-              </div>
-            </div>
+            <DashboardNotifications
+              items={notifications}
+              emptyMessage="No new admin alerts."
+            />
           </CardBody>
         </Card>
       </div>

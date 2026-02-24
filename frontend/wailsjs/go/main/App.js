@@ -46,6 +46,10 @@ export function ArchiveStudentEnrollment(arg1, arg2) {
   return window['go']['main']['App']['ArchiveStudentEnrollment'](arg1, arg2);
 }
 
+export function ArchiveUser(arg1) {
+  return window['go']['main']['App']['ArchiveUser'](arg1);
+}
+
 export function ChangePassword(arg1, arg2, arg3) {
   return window['go']['main']['App']['ChangePassword'](arg1, arg2, arg3);
 }
@@ -56,6 +60,10 @@ export function CheckAttendanceExists(arg1, arg2) {
 
 export function CloseClass(arg1) {
   return window['go']['main']['App']['CloseClass'](arg1);
+}
+
+export function CloseSessionsForCurrentHost() {
+  return window['go']['main']['App']['CloseSessionsForCurrentHost']();
 }
 
 export function CreateAttendanceSession(arg1, arg2, arg3, arg4, arg5) {
@@ -274,6 +282,10 @@ export function GetArchivedStudents() {
   return window['go']['main']['App']['GetArchivedStudents']();
 }
 
+export function GetArchivedUsers() {
+  return window['go']['main']['App']['GetArchivedUsers']();
+}
+
 export function GetAvailableSections() {
   return window['go']['main']['App']['GetAvailableSections']();
 }
@@ -486,6 +498,10 @@ export function ReopenClass(arg1) {
   return window['go']['main']['App']['ReopenClass'](arg1);
 }
 
+export function ResetPasswordByRole(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ResetPasswordByRole'](arg1, arg2, arg3);
+}
+
 export function SaveAttendanceSession(arg1, arg2) {
   return window['go']['main']['App']['SaveAttendanceSession'](arg1, arg2);
 }
@@ -518,6 +534,14 @@ export function SubmitRegistration(arg1) {
   return window['go']['main']['App']['SubmitRegistration'](arg1);
 }
 
+export function TouchSession(arg1) {
+  return window['go']['main']['App']['TouchSession'](arg1);
+}
+
+export function UnarchiveAttendanceSession(arg1, arg2) {
+  return window['go']['main']['App']['UnarchiveAttendanceSession'](arg1, arg2);
+}
+
 export function UnarchiveAttendanceSheet(arg1, arg2) {
   return window['go']['main']['App']['UnarchiveAttendanceSheet'](arg1, arg2);
 }
@@ -548,6 +572,10 @@ export function UnarchiveStudent(arg1) {
 
 export function UnarchiveStudentEnrollment(arg1, arg2) {
   return window['go']['main']['App']['UnarchiveStudentEnrollment'](arg1, arg2);
+}
+
+export function UnarchiveUser(arg1) {
+  return window['go']['main']['App']['UnarchiveUser'](arg1);
 }
 
 export function UnenrollStudentFromClass(arg1) {

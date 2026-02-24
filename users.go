@@ -33,7 +33,7 @@ func (a *App) GetUsers() ([]User, error) {
 			a.email, a.contact_number, NULL as department_code
 		FROM users u
 		JOIN admins a ON u.id = a.id
-		WHERE u.user_type = 'admin'
+		WHERE u.user_type = 'admin' AND u.is_active = 1 AND u.account_status <> 'suspended'
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
@@ -42,7 +42,7 @@ func (a *App) GetUsers() ([]User, error) {
 			t.email, t.contact_number, t.department_code
 		FROM users u
 		JOIN teachers t ON u.id = t.id
-		WHERE u.user_type IN ('teacher')
+		WHERE u.user_type IN ('teacher') AND u.is_active = 1 AND u.account_status <> 'suspended'
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
@@ -51,7 +51,7 @@ func (a *App) GetUsers() ([]User, error) {
 			s.email, s.contact_number, NULL as department_code
 		FROM users u
 		JOIN students s ON u.id = s.id
-		WHERE u.user_type IN ('student', 'working_student')
+		WHERE u.user_type IN ('student', 'working_student') AND u.is_active = 1 AND u.account_status <> 'suspended'
 		ORDER BY created_at DESC
 	`
 	rows, err := a.db.Query(query)
@@ -77,7 +77,7 @@ func (a *App) GetUsersByType(userType string) ([]User, error) {
 			a.email, a.contact_number, NULL as department_code
 		FROM users u
 		JOIN admins a ON u.id = a.id
-		WHERE u.user_type = 'admin' AND u.user_type = ?
+		WHERE u.user_type = 'admin' AND u.user_type = ? AND u.is_active = 1 AND u.account_status <> 'suspended'
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
@@ -86,7 +86,7 @@ func (a *App) GetUsersByType(userType string) ([]User, error) {
 			t.email, t.contact_number, t.department_code
 		FROM users u
 		JOIN teachers t ON u.id = t.id
-		WHERE u.user_type = 'teacher' AND u.user_type = ?
+		WHERE u.user_type = 'teacher' AND u.user_type = ? AND u.is_active = 1 AND u.account_status <> 'suspended'
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
@@ -95,7 +95,7 @@ func (a *App) GetUsersByType(userType string) ([]User, error) {
 			s.email, s.contact_number, NULL as department_code
 		FROM users u
 		JOIN students s ON u.id = s.id
-		WHERE u.user_type IN ('student', 'working_student') AND u.user_type = ?
+		WHERE u.user_type IN ('student', 'working_student') AND u.user_type = ? AND u.is_active = 1 AND u.account_status <> 'suspended'
 		ORDER BY created_at DESC
 	`
 	rows, err := a.db.Query(query, userType, userType, userType)
@@ -121,7 +121,7 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 			a.email, a.contact_number, NULL as department_code
 		FROM users u
 		JOIN admins a ON u.id = a.id
-		WHERE u.user_type = 'admin' AND (
+		WHERE u.user_type = 'admin' AND u.is_active = 1 AND u.account_status <> 'suspended' AND (
 			u.username LIKE ? OR
 			a.first_name LIKE ? OR
 			a.last_name LIKE ? OR
@@ -137,7 +137,7 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 			t.email, t.contact_number, t.department_code
 		FROM users u
 		JOIN teachers t ON u.id = t.id
-		WHERE u.user_type = 'teacher' AND (
+		WHERE u.user_type = 'teacher' AND u.is_active = 1 AND u.account_status <> 'suspended' AND (
 			u.username LIKE ? OR
 			t.first_name LIKE ? OR
 			t.last_name LIKE ? OR
@@ -153,7 +153,7 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 			s.email, s.contact_number, NULL as department_code
 		FROM users u
 		JOIN students s ON u.id = s.id
-		WHERE u.user_type IN ('student', 'working_student') AND (
+		WHERE u.user_type IN ('student', 'working_student') AND u.is_active = 1 AND u.account_status <> 'suspended' AND (
 			u.username LIKE ? OR
 			s.first_name LIKE ? OR
 			s.last_name LIKE ? OR
@@ -273,6 +273,108 @@ func (a *App) DeleteUser(id int) error {
 	query := `DELETE FROM users WHERE id = ?`
 	_, err := a.db.Exec(query, id)
 	return err
+}
+
+// ArchiveUser archives a user account (teachers cannot be archived)
+func (a *App) ArchiveUser(id int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	var userType string
+	err := a.db.QueryRow(`SELECT user_type FROM users WHERE id = ?`, id).Scan(&userType)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("user not found")
+		}
+		return err
+	}
+
+	if userType == "teacher" {
+		return fmt.Errorf("teacher accounts cannot be archived; delete the account instead")
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE users
+		SET account_status = 'suspended', is_active = 0, updated_at = GETDATE()
+		WHERE id = ? AND (is_active = 1 OR account_status <> 'suspended')
+	`, id)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("user is already archived or not eligible for archiving")
+	}
+
+	return nil
+}
+
+// UnarchiveUser restores an archived user account back to active state
+func (a *App) UnarchiveUser(id int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE users
+		SET account_status = 'active', is_active = 1, updated_at = GETDATE()
+		WHERE id = ? AND (is_active = 0 OR account_status = 'suspended')
+	`, id)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("user is not archived")
+	}
+
+	return nil
+}
+
+// GetArchivedUsers returns archived accounts for admin review
+func (a *App) GetArchivedUsers() ([]User, error) {
+	if err := a.checkDB(); err != nil {
+		return nil, err
+	}
+
+	query := `
+		SELECT 
+			u.id, u.username, u.user_type, u.updated_at,
+			a.first_name, a.middle_name, a.last_name,
+			a.admin_id, NULL as student_id,
+			a.email, a.contact_number, NULL as department_code
+		FROM users u
+		JOIN admins a ON u.id = a.id
+		WHERE (u.is_active = 0 OR u.account_status = 'suspended')
+		UNION ALL
+		SELECT 
+			u.id, u.username, u.user_type, u.updated_at,
+			s.first_name, s.middle_name, s.last_name,
+			NULL as admin_id, s.student_id,
+			s.email, s.contact_number, NULL as department_code
+		FROM users u
+		JOIN students s ON u.id = s.id
+		WHERE u.user_type IN ('student', 'working_student')
+		  AND (u.is_active = 0 OR u.account_status = 'suspended')
+		ORDER BY updated_at DESC
+	`
+
+	rows, err := a.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return a.scanUsers(rows)
 }
 
 // ==============================================================================

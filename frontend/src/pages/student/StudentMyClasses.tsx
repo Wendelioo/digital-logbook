@@ -84,10 +84,11 @@ function MyClasses() {
     setLoadingClasslist(true);
     try {
       const students = await GetClassStudents(classInfo.class_id);
-      setClasslistStudents(students);
+      setClasslistStudents(Array.isArray(students) ? students : []);
     } catch (error) {
       console.error('Failed to load classlist:', error);
       alert('Failed to load classlist. Please try again.');
+      setClasslistStudents([]);
     } finally {
       setLoadingClasslist(false);
     }
@@ -108,7 +109,7 @@ function MyClasses() {
     if (!user) return;
     
     const confirmArchive = window.confirm(
-      `Are you sure you want to archive "${classInfo.subject_code}"? This will move it to your Archived Classes.`
+	  `Hide "${classInfo.subject_code}" from My Classes? You can restore it later from Archived Classes.`
     );
     
     if (!confirmArchive) return;
@@ -118,7 +119,7 @@ function MyClasses() {
       await loadClasses(); // Refresh the list
     } catch (error) {
       console.error('Failed to archive class:', error);
-      alert('Failed to archive class. Please try again.');
+      alert(`Failed to archive class. ${error instanceof Error ? error.message : 'Please try again.'}`);
     }
   };
 
@@ -217,7 +218,7 @@ function MyClasses() {
               variant="outline"
               icon={<Trash2 className="h-4 w-4" />}
             >
-              Archive
+			  Hidden/Archived
             </Button>
             <Button
               onClick={() => {

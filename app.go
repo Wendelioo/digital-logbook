@@ -60,6 +60,12 @@ func (a *App) startup(ctx context.Context) {
 	} else {
 		a.db = db
 		log.Println("Database connected successfully")
+		if err := a.ensureSessionHeartbeatTable(); err != nil {
+			log.Printf("Failed to ensure session heartbeat table: %v", err)
+		}
+		if err := a.closeStaleSessions(); err != nil {
+			log.Printf("Failed to close stale sessions on startup: %v", err)
+		}
 	}
 
 	// If kiosk mode is on, force lock the screen on startup
@@ -72,6 +78,12 @@ func (a *App) startup(ctx context.Context) {
 			wailsRuntime.WindowFullscreen(a.ctx)
 			log.Println("Kiosk mode: Screen locked on startup")
 		}()
+	}
+}
+
+func (a *App) shutdown(ctx context.Context) {
+	if err := a.CloseSessionsForCurrentHost(); err != nil {
+		log.Printf("Failed to close sessions on app shutdown: %v", err)
 	}
 }
 
@@ -228,6 +240,10 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 		return dashboard, err
 	}
 
+	if err := a.closeStaleSessions(); err != nil {
+		log.Printf("Failed to close stale sessions in admin dashboard: %v", err)
+	}
+
 	// Count students
 	a.db.QueryRow(`SELECT COUNT(*) FROM students`).Scan(&dashboard.TotalStudents)
 
@@ -241,28 +257,53 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE login_time >= DATEADD(HOUR, -24, GETDATE())`).Scan(&dashboard.RecentLogins)
 
 	// Count active users now (logged in today without logout, distinct per user)
-	a.db.QueryRow(`SELECT COUNT(DISTINCT user_id) FROM log_entries WHERE logout_time IS NULL AND CAST(login_time AS DATE) = CAST(GETDATE() AS DATE)`).Scan(&dashboard.ActiveUsersNow)
+	a.db.QueryRow(`
+		SELECT COUNT(DISTINCT ll.user_id)
+		FROM log_entries ll
+		WHERE ll.logout_time IS NULL
+			AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE)
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = ll.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
+	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.ActiveUsersNow)
 
 	// Count students currently logged in (JOIN with users to get role)
 	a.db.QueryRow(`
 		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
 		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'student'
-	`).Scan(&dashboard.StudentsLoggedIn)
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = ll.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
+	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.StudentsLoggedIn)
 
 	// Count teachers currently logged in
 	a.db.QueryRow(`
 		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
 		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'teacher'
-	`).Scan(&dashboard.TeachersLoggedIn)
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = ll.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
+	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.TeachersLoggedIn)
 
 	// Count working students currently logged in
 	a.db.QueryRow(`
 		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
 		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'working_student'
-	`).Scan(&dashboard.WorkingStudentsLoggedIn)
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = ll.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
+	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.WorkingStudentsLoggedIn)
 
 	// Count today's logins
 	a.db.QueryRow(`
@@ -509,6 +550,10 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 		return dashboard, err
 	}
 
+	if err := a.closeStaleSessions(); err != nil {
+		log.Printf("Failed to close stale sessions in student dashboard: %v", err)
+	}
+
 	// Get all attendance records for this student
 	query := `
 		SELECT 
@@ -580,8 +625,13 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 		SELECT COUNT(*), pc_number 
 		FROM log_entries 
 		WHERE user_id = ? AND logout_time IS NULL
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = log_entries.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
 		GROUP BY pc_number
-	`, userID).Scan(&loggedIn, &pcNumber)
+	`, userID, sessionHeartbeatTimeoutSeconds).Scan(&loggedIn, &pcNumber)
 	if err == nil && loggedIn > 0 {
 		dashboard.CurrentlyLoggedIn = true
 		if pcNumber.Valid {
@@ -620,6 +670,10 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 		return dashboard, err
 	}
 
+	if err := a.closeStaleSessions(); err != nil {
+		log.Printf("Failed to close stale sessions in working student dashboard: %v", err)
+	}
+
 	// Count students
 	a.db.QueryRow(`SELECT COUNT(*) FROM students`).Scan(&dashboard.StudentsRegistered)
 
@@ -641,9 +695,17 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 
 	// Count students currently logged in
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM log_entries 
-		WHERE logout_time IS NULL AND user_type = 'student'
-	`).Scan(&dashboard.ActiveStudentsNow)
+		SELECT COUNT(DISTINCT ll.user_id)
+		FROM log_entries ll
+		INNER JOIN users u ON ll.user_id = u.id
+		WHERE ll.logout_time IS NULL
+			AND u.user_type = 'student'
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = ll.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
+	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.ActiveStudentsNow)
 
 	return dashboard, nil
 }

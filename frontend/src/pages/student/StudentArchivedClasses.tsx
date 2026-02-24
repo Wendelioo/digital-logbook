@@ -65,10 +65,11 @@ function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
     setLoadingClasslist(true);
     try {
       const students = await GetClassStudents(classInfo.class_id);
-      setClasslistStudents(students);
+      setClasslistStudents(Array.isArray(students) ? students : []);
     } catch (error) {
       console.error('Failed to load classlist:', error);
       alert('Failed to load classlist. Please try again.');
+      setClasslistStudents([]);
     } finally {
       setLoadingClasslist(false);
     }
@@ -82,18 +83,18 @@ function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
   const handleUnarchiveClass = async (classInfo: CourseClass) => {
     if (!user) return;
     
-    const confirmUnarchive = window.confirm(
+    const confirmRestore = window.confirm(
       `Are you sure you want to restore "${classInfo.subject_code}" to My Classes?`
     );
     
-    if (!confirmUnarchive) return;
+    if (!confirmRestore) return;
     
     try {
       await UnarchiveStudentEnrollment(user.id, classInfo.class_id);
       await loadArchivedClasses(); // Refresh the list
     } catch (error) {
-      console.error('Failed to unarchive class:', error);
-      alert('Failed to restore class. Please try again.');
+      console.error('Failed to restore class:', error);
+      alert(`Failed to restore class. ${error instanceof Error ? error.message : 'Please try again.'}`);
     }
   };
 
@@ -138,7 +139,10 @@ function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
         groupMap.set(key, group);
         groups.push(group);
       }
-      groupMap.get(key)!.classes.push(cls);
+      const group = groupMap.get(key);
+      if (group) {
+        group.classes.push(cls);
+      }
     });
 
     return groups;
@@ -174,14 +178,14 @@ function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Archive className="h-6 w-6 text-gray-600" />
-              <h2 className="text-2xl font-bold text-gray-900">Archived Classes</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Archived/Hidden Classes</h2>
             </div>
             <div className="text-sm text-gray-500">
-              {archivedClasses.length} archived {archivedClasses.length === 1 ? 'class' : 'classes'}
+              {archivedClasses.length} {archivedClasses.length === 1 ? 'class' : 'classes'}
             </div>
           </div>
           <p className="mt-1 text-sm text-gray-600">
-            View your previously enrolled classes organized by semester.
+            Teacher-archived classes are read-only. Hidden classes can be restored to My Classes.
           </p>
         </div>
       )}
@@ -312,18 +316,24 @@ function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
                               <div className="flex items-center gap-2">
                                 <button
                                   onClick={() => handleViewClasslist(cls)}
-                                  className="text-blue-600 hover:text-blue-800 transition-colors p-1"
+                                  className="h-9 w-9 inline-flex items-center justify-center text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
                                   title="View Class List"
                                 >
-                                  <Eye className="h-5 w-5" />
+                                  <Eye className="h-4 w-4" />
                                 </button>
-                                <button
-                                  onClick={() => handleUnarchiveClass(cls)}
-                                  className="text-green-600 hover:text-green-800 transition-colors p-1"
-                                  title="Restore to My Classes"
-                                >
-                                  <ArchiveRestore className="h-5 w-5" />
-                                </button>
+                                {cls.is_archived ? (
+                                  <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600" title="Archived by teacher">
+                                    Teacher Archived
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleUnarchiveClass(cls)}
+                                    className="h-9 w-9 inline-flex items-center justify-center text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors"
+                                    title="Restore to My Classes"
+                                  >
+                                    <ArchiveRestore className="h-4 w-4" />
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -349,7 +359,7 @@ function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
               </button>
             </>
           ) : (
-            <p className="text-gray-500 font-medium">No archived classes.</p>
+            <p className="text-gray-500 font-medium">No hidden or archived classes.</p>
           )}
         </div>
       )}

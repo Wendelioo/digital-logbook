@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardBody } from './Card';
 import Button from './Button';
 import { Badge } from './Badge';
-import { ChevronRight, ChevronDown, RotateCcw, Calendar, Eye } from 'lucide-react';
+import { ChevronRight, ChevronDown, ArchiveRestore, Calendar, Eye } from 'lucide-react';
 
 interface Feedback {
   id: number;
@@ -142,9 +142,9 @@ const ArchivedReportsView: React.FC<ArchivedReportsViewProps> = ({
         {selectedReports.size > 0 ? (
           <div className="flex gap-3">
             <Button
-              variant="secondary"
+              variant="success"
               onClick={handleRestore}
-              icon={<RotateCcw className="h-4 w-4" />}
+              icon={<ArchiveRestore className="h-4 w-4" />}
             >
               Restore ({selectedReports.size})
             </Button>

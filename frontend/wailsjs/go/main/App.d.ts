@@ -24,11 +24,15 @@ export function ArchiveStudent(arg1:number):Promise<void>;
 
 export function ArchiveStudentEnrollment(arg1:number,arg2:number):Promise<void>;
 
+export function ArchiveUser(arg1:number):Promise<void>;
+
 export function ChangePassword(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function CheckAttendanceExists(arg1:number,arg2:string):Promise<boolean>;
 
 export function CloseClass(arg1:number):Promise<void>;
+
+export function CloseSessionsForCurrentHost():Promise<void>;
 
 export function CreateAttendanceSession(arg1:number,arg2:string,arg3:string,arg4:number,arg5:number):Promise<main.AttendanceSession>;
 
@@ -138,6 +142,8 @@ export function GetArchivedLogsByDate(arg1:string):Promise<Array<main.LoginLog>>
 
 export function GetArchivedStudents():Promise<Array<main.ArchivedStudent>>;
 
+export function GetArchivedUsers():Promise<Array<main.User>>;
+
 export function GetAvailableSections():Promise<Array<string>>;
 
 export function GetAvailableStudents(arg1:number):Promise<Array<main.ClassStudent>>;
@@ -244,6 +250,8 @@ export function RenameAttendanceSession(arg1:number,arg2:string,arg3:number):Pro
 
 export function ReopenClass(arg1:number):Promise<void>;
 
+export function ResetPasswordByRole(arg1:number,arg2:number,arg3:string):Promise<void>;
+
 export function SaveAttendanceSession(arg1:number,arg2:number):Promise<void>;
 
 export function SaveEquipmentFeedback(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string):Promise<void>;
@@ -260,6 +268,10 @@ export function StudentTimeIn(arg1:number,arg2:number):Promise<void>;
 
 export function SubmitRegistration(arg1:main.RegistrationRequest):Promise<void>;
 
+export function TouchSession(arg1:number):Promise<void>;
+
+export function UnarchiveAttendanceSession(arg1:number,arg2:number):Promise<void>;
+
 export function UnarchiveAttendanceSheet(arg1:number,arg2:string):Promise<void>;
 
 export function UnarchiveClass(arg1:number):Promise<void>;
@@ -275,6 +287,8 @@ export function UnarchiveLogs(arg1:Array<number>):Promise<void>;
 export function UnarchiveStudent(arg1:number):Promise<void>;
 
 export function UnarchiveStudentEnrollment(arg1:number,arg2:number):Promise<void>;
+
+export function UnarchiveUser(arg1:number):Promise<void>;
 
 export function UnenrollStudentFromClass(arg1:number):Promise<void>;
 

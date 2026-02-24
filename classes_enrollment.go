@@ -365,6 +365,9 @@ func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error)
 	if err := a.checkDB(); err != nil {
 		return 0, err
 	}
+	if err := a.ensureStudentArchivedClassesTable(); err != nil {
+		return 0, err
+	}
 
 	// Validate student ID
 	if studentUserID <= 0 {
@@ -390,9 +393,13 @@ func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error)
 	// Check if student is already enrolled in any of these classes
 	for _, class := range classes {
 		var exists int
-		checkQuery := `SELECT 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = 0 OR is_archived IS NULL)`
+		checkQuery := `SELECT 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active'`
 		err := a.db.QueryRow(checkQuery, class.ClassID, studentUserID).Scan(&exists)
 		if err == nil {
+			_, _ = a.db.Exec(
+				"DELETE FROM student_archived_classes WHERE student_id = ? AND class_id = ?",
+				studentUserID, class.ClassID,
+			)
 			// Already enrolled
 			return class.ClassID, nil
 		}
@@ -413,27 +420,122 @@ func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error)
 // ENROLLMENT ARCHIVING
 // ==============================================================================
 
+func (a *App) ensureStudentArchivedClassesTable() error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	createQuery := `
+		IF OBJECT_ID('student_archived_classes', 'U') IS NULL
+		BEGIN
+			CREATE TABLE student_archived_classes (
+				student_id INT NOT NULL,
+				class_id INT NOT NULL,
+				archived_at DATETIME NOT NULL DEFAULT GETDATE(),
+				updated_at DATETIME NOT NULL DEFAULT GETDATE(),
+				CONSTRAINT PK_student_archived_classes PRIMARY KEY (student_id, class_id),
+				CONSTRAINT FK_student_archived_classes_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+				CONSTRAINT FK_student_archived_classes_class FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE
+			)
+		END
+	`
+
+	if _, err := a.db.Exec(createQuery); err != nil {
+		return err
+	}
+
+	// Compatibility migration: if old table name exists, copy data once.
+	_, _ = a.db.Exec(`
+		IF OBJECT_ID('student_hidden_classes', 'U') IS NOT NULL
+		BEGIN
+			INSERT INTO student_archived_classes (student_id, class_id, archived_at, updated_at)
+			SELECT sh.student_id, sh.class_id, GETDATE(), GETDATE()
+			FROM student_hidden_classes sh
+			LEFT JOIN student_archived_classes sac ON sac.student_id = sh.student_id AND sac.class_id = sh.class_id
+			WHERE sac.student_id IS NULL
+		END
+	`)
+
+	// Legacy migration: old student personal archives were stored in classlist.is_archived.
+	// Move only ACTIVE (non-globally-archived) classes to personal archive table.
+	_, _ = a.db.Exec(`
+		INSERT INTO student_archived_classes (student_id, class_id, archived_at, updated_at)
+		SELECT cl.student_id, cl.class_id, GETDATE(), GETDATE()
+		FROM classlist cl
+		INNER JOIN classes c ON c.class_id = cl.class_id
+		LEFT JOIN student_archived_classes sac ON sac.student_id = cl.student_id AND sac.class_id = cl.class_id
+		WHERE cl.status = 'active'
+			AND COALESCE(cl.is_archived, 0) = 1
+			AND COALESCE(c.is_archived, 0) = 0
+			AND sac.student_id IS NULL
+	`)
+
+	_, _ = a.db.Exec(`
+		UPDATE cl
+		SET cl.is_archived = 0,
+			cl.updated_at = CURRENT_TIMESTAMP
+		FROM classlist cl
+		INNER JOIN classes c ON c.class_id = cl.class_id
+		WHERE cl.status = 'active'
+			AND COALESCE(cl.is_archived, 0) = 1
+			AND COALESCE(c.is_archived, 0) = 0
+	`)
+
+	return nil
+}
+
 // ArchiveStudentEnrollment archives a student's enrollment in a specific class
 func (a *App) ArchiveStudentEnrollment(studentUserID int, classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
+	if err := a.ensureStudentArchivedClassesTable(); err != nil {
+		return err
+	}
+
+	var enrollmentExists int
+	err := a.db.QueryRow(
+		`SELECT COUNT(*) FROM classlist WHERE student_id = ? AND class_id = ? AND status = 'active'`,
+		studentUserID, classID,
+	).Scan(&enrollmentExists)
+	if err != nil {
+		return err
+	}
+	if enrollmentExists == 0 {
+		return fmt.Errorf("enrollment not found")
+	}
+
+	var classArchived bool
+	err = a.db.QueryRow(`SELECT COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&classArchived)
+	if err != nil {
+		return fmt.Errorf("class not found")
+	}
+	if classArchived {
+		return fmt.Errorf("class is already archived by teacher")
+	}
 
 	result, err := a.db.Exec(
-		"UPDATE classlist SET is_archived = 1 WHERE student_id = ? AND class_id = ?",
+		`MERGE student_archived_classes AS target
+		 USING (SELECT ? AS student_id, ? AS class_id) AS source
+		 ON target.student_id = source.student_id AND target.class_id = source.class_id
+		 WHEN MATCHED THEN
+		 	UPDATE SET updated_at = GETDATE()
+		 WHEN NOT MATCHED THEN
+		 	INSERT (student_id, class_id, archived_at, updated_at)
+		 	VALUES (source.student_id, source.class_id, GETDATE(), GETDATE());`,
 		studentUserID, classID,
 	)
 	if err != nil {
-		log.Printf("Failed to archive student enrollment: %v", err)
+		log.Printf("Failed to hide student class: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected == 0 {
-		return fmt.Errorf("enrollment not found")
+		return fmt.Errorf("failed to hide class")
 	}
 
-	log.Printf("Archived enrollment for student_id=%d in class_id=%d", studentUserID, classID)
+	log.Printf("Student hid class from My Classes: student_id=%d class_id=%d", studentUserID, classID)
 	return nil
 }
 
@@ -442,22 +544,31 @@ func (a *App) UnarchiveStudentEnrollment(studentUserID int, classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
+	if err := a.ensureStudentArchivedClassesTable(); err != nil {
+		return err
+	}
+
+	var classArchived bool
+	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&classArchived)
+	if err == nil && classArchived {
+		return fmt.Errorf("class is archived by teacher and cannot be restored to My Classes")
+	}
 
 	result, err := a.db.Exec(
-		"UPDATE classlist SET is_archived = 0 WHERE student_id = ? AND class_id = ?",
+		"DELETE FROM student_archived_classes WHERE student_id = ? AND class_id = ?",
 		studentUserID, classID,
 	)
 	if err != nil {
-		log.Printf("Failed to unarchive student enrollment: %v", err)
+		log.Printf("Failed to restore hidden student class: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected == 0 {
-		return fmt.Errorf("enrollment not found")
+		return fmt.Errorf("class is not in your archived list")
 	}
 
-	log.Printf("Unarchived enrollment for student_id=%d in class_id=%d", studentUserID, classID)
+	log.Printf("Student restored class to My Classes: student_id=%d class_id=%d", studentUserID, classID)
 	return nil
 }
 

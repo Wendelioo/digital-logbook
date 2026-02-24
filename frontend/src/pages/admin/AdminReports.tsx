@@ -85,6 +85,24 @@ function Reports() {
     setDateFilter('');
   };
 
+  const parseWorkingStudentMeta = (notes?: string) => {
+    if (!notes) {
+      return {
+        verification: 'N/A',
+        recommendation: 'N/A'
+      };
+    }
+
+    const lines = notes.split('\n').map((line) => line.trim());
+    const verificationLine = lines.find((line) => line.toLowerCase().startsWith('verification:'));
+    const recommendationLine = lines.find((line) => line.toLowerCase().startsWith('recommendation:'));
+
+    return {
+      verification: verificationLine ? verificationLine.replace(/^verification:\s*/i, '').trim() || 'N/A' : 'N/A',
+      recommendation: recommendationLine ? recommendationLine.replace(/^recommendation:\s*/i, '').trim() || 'N/A' : 'N/A'
+    };
+  };
+
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 5000);
@@ -383,6 +401,40 @@ function Reports() {
                   }) : 'N/A'}
                 </span>
               )
+            },
+            {
+              key: 'verification',
+              label: 'Verification',
+              render: (report: Feedback) => {
+                const meta = parseWorkingStudentMeta(report.working_student_notes);
+                const normalized = meta.verification.toLowerCase();
+
+                let badgeClass = 'bg-gray-100 text-gray-700';
+                if (normalized.includes('confirmed')) {
+                  badgeClass = 'bg-green-100 text-green-700';
+                }
+                if (normalized.includes('not confirmed')) {
+                  badgeClass = 'bg-red-100 text-red-700';
+                }
+
+                return (
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${badgeClass}`}>
+                    {meta.verification}
+                  </span>
+                );
+              }
+            },
+            {
+              key: 'recommendation',
+              label: 'Recommendation',
+              render: (report: Feedback) => {
+                const meta = parseWorkingStudentMeta(report.working_student_notes);
+                return (
+                  <span className="text-sm text-gray-700">
+                    {meta.recommendation}
+                  </span>
+                );
+              }
             },
             {
               key: 'forwarded_by_name',

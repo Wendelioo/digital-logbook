@@ -13,8 +13,12 @@ GO
 ================================ */
 IF OBJECT_ID('registration_approvals', 'U') IS NOT NULL DROP TABLE registration_approvals;
 IF OBJECT_ID('feedback', 'U') IS NOT NULL DROP TABLE feedback;
+IF OBJECT_ID('user_session_heartbeats', 'U') IS NOT NULL DROP TABLE user_session_heartbeats;
 IF OBJECT_ID('log_entries', 'U') IS NOT NULL DROP TABLE log_entries;
 IF OBJECT_ID('attendance', 'U') IS NOT NULL DROP TABLE attendance;
+IF OBJECT_ID('student_archived_classes', 'U') IS NOT NULL DROP TABLE student_archived_classes;
+-- Backward compatibility: old name used in previous build
+IF OBJECT_ID('student_hidden_classes', 'U') IS NOT NULL DROP TABLE student_hidden_classes;
 IF OBJECT_ID('classlist', 'U') IS NOT NULL DROP TABLE classlist;
 IF OBJECT_ID('classes', 'U') IS NOT NULL DROP TABLE classes;
 IF OBJECT_ID('subjects', 'U') IS NOT NULL DROP TABLE subjects;
@@ -177,6 +181,21 @@ CREATE TABLE classlist (
 GO
 
 /* ================================
+   STUDENT ARCHIVED CLASSES (PERSONAL)
+   This is per-student only. Teacher archive is in classes.is_archived.
+================================ */
+CREATE TABLE student_archived_classes (
+    student_id INT NOT NULL,
+    class_id INT NOT NULL,
+    archived_at DATETIME NOT NULL DEFAULT GETDATE(),
+    updated_at DATETIME NOT NULL DEFAULT GETDATE(),
+    PRIMARY KEY (student_id, class_id),
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE
+);
+GO
+
+/* ================================
    ATTENDANCE
 ================================ */
 CREATE TABLE attendance (
@@ -234,6 +253,18 @@ CREATE TABLE log_entries (
 GO
 
 /* ================================
+    USER SESSION HEARTBEATS
+================================ */
+CREATE TABLE user_session_heartbeats (
+     user_id INT NOT NULL PRIMARY KEY,
+     last_seen DATETIME NOT NULL DEFAULT GETDATE(),
+     created_at DATETIME NOT NULL DEFAULT GETDATE(),
+     updated_at DATETIME NOT NULL DEFAULT GETDATE(),
+     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+GO
+
+/* ================================
    FEEDBACK
 ================================ */
 CREATE TABLE feedback (
@@ -287,6 +318,8 @@ CREATE INDEX idx_users_user_type ON users(user_type);
 CREATE INDEX idx_log_entries_user_id ON log_entries(user_id);
 CREATE INDEX idx_log_entries_login_time ON log_entries(login_time);
 CREATE INDEX idx_log_entries_is_archived ON log_entries(is_archived);
+CREATE INDEX idx_user_session_heartbeats_last_seen ON user_session_heartbeats(last_seen);
+CREATE INDEX idx_student_archived_classes_class_id ON student_archived_classes(class_id);
 CREATE INDEX idx_feedback_student_id ON feedback(student_id);
 CREATE INDEX idx_feedback_is_archived ON feedback(is_archived);
 CREATE INDEX idx_attendance_date ON attendance(attendance_date);

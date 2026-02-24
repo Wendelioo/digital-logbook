@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardHeader, CardBody, StatCard, InfoCard } from '../../components/Card';
 import Button from '../../components/Button';
 import {
@@ -8,7 +8,6 @@ import {
   LogIn,
   MapPin,
   Library,
-  Bell,
 } from 'lucide-react';
 import {
   GetStudentDashboard,
@@ -16,6 +15,7 @@ import {
 } from '../../../wailsjs/go/main/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { main } from '../../../wailsjs/go/models';
+import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
 import { StudentDashboardData, LoginLog } from './types';
 
 interface AttendanceSession {
@@ -39,6 +39,20 @@ function DashboardOverview() {
   const [openSessions, setOpenSessions] = useState<AttendanceSession[]>([]);
   const [timingInSession, setTimingInSession] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState<DashboardNotificationItem[]>([]);
+  const previousMetricsRef = useRef<{ absentCount: number; openSessions: number; currentlyLoggedIn: boolean } | null>(null);
+
+  const pushNotification = (message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
+    setNotifications((prev) => [
+      {
+        id: `${Date.now()}-${Math.random()}`,
+        message,
+        createdAt: Date.now(),
+        tone,
+      },
+      ...prev,
+    ].slice(0, 10));
+  };
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -62,12 +76,50 @@ function DashboardOverview() {
           console.error('Failed to load last login:', error);
         }
 
+        let sessions: AttendanceSession[] = [];
         try {
-          const sessions = await (window as any).go.main.App.GetStudentOpenAttendanceSessions(user.id);
-          setOpenSessions(sessions || []);
+          const fetchedSessions = await (window as any).go.main.App.GetStudentOpenAttendanceSessions(user.id);
+          const normalizedSessions = fetchedSessions || [];
+          setOpenSessions(normalizedSessions);
+          sessions = normalizedSessions;
         } catch (error) {
           console.error('Failed to load open attendance sessions:', error);
         }
+
+        const nextAbsentCount = (data.attendance || []).filter(a => a.status === 'Absent').length;
+        const nextOpenSessions = sessions.length;
+        const nextCurrentlyLoggedIn = !!data.currently_logged_in;
+        const previous = previousMetricsRef.current;
+
+        if (!previous) {
+          pushNotification('Student dashboard is connected and receiving live updates.', 'success');
+        } else {
+          if (nextOpenSessions !== previous.openSessions) {
+            if (nextOpenSessions > previous.openSessions) {
+              pushNotification(`${nextOpenSessions} attendance session(s) are open for your classes.`, 'warning');
+            } else {
+              pushNotification('One or more attendance sessions have closed.', 'info');
+            }
+          }
+
+          if (nextAbsentCount !== previous.absentCount) {
+            if (nextAbsentCount > previous.absentCount) {
+              pushNotification(`Absence count increased to ${nextAbsentCount}.`, 'warning');
+            } else {
+              pushNotification('Absence count has improved.', 'success');
+            }
+          }
+
+          if (nextCurrentlyLoggedIn !== previous.currentlyLoggedIn) {
+            pushNotification(nextCurrentlyLoggedIn ? 'Your account is now logged in on a lab PC.' : 'Your account is now logged out.', 'info');
+          }
+        }
+
+        previousMetricsRef.current = {
+          absentCount: nextAbsentCount,
+          openSessions: nextOpenSessions,
+          currentlyLoggedIn: nextCurrentlyLoggedIn,
+        };
       } catch (error) {
         console.error('Failed to load student dashboard:', error);
       } finally {
@@ -227,23 +279,10 @@ function DashboardOverview() {
         <Card className="h-fit">
           <CardHeader title="Notifications" />
           <CardBody>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center">
-                  <Bell className="h-5 w-5 text-primary-600 mr-3" />
-                  <span className="text-sm text-gray-700">Welcome back. Dashboard has been refreshed.</span>
-                </div>
-                <span className="text-xs text-gray-500">Now</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="text-sm text-gray-700">{dashboardData.currently_logged_in ? `You are currently logged in at PC ${dashboardData.current_pc_number || ''}.` : 'You are currently logged out.'}</span>
-                <span className="text-xs text-gray-500">Today</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="text-sm text-gray-700">{absentCount > 0 ? `You have ${absentCount} absent record(s). Please monitor attendance.` : 'No absences recorded so far.'}</span>
-                <span className="text-xs text-gray-500">This Term</span>
-              </div>
-            </div>
+            <DashboardNotifications
+              items={notifications}
+              emptyMessage="No new attendance notifications."
+            />
           </CardBody>
         </Card>
       </div>

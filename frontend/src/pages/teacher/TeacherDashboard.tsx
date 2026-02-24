@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { StatCard } from '../../components/Card';
 import { Card, CardHeader, CardBody } from '../../components/Card';
@@ -8,14 +8,16 @@ import {
   Clock,
   Calendar,
   Library,
-  Bell,
   ClipboardCheck,
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
 } from '../../../wailsjs/go/main/App';
 import { useAuth } from '../../contexts/AuthContext';
+import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
 import { Class } from './types';
+
+const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
 
 function DashboardOverview() {
   const { user } = useAuth();
@@ -24,6 +26,20 @@ function DashboardOverview() {
   const [openSessionsToday, setOpenSessionsToday] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [notifications, setNotifications] = useState<DashboardNotificationItem[]>([]);
+  const previousMetricsRef = useRef<{ activeClasses: number; totalStudents: number; openSessionsToday: number } | null>(null);
+
+  const pushNotification = (message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
+    setNotifications((prev) => [
+      {
+        id: `${Date.now()}-${Math.random()}`,
+        message,
+        createdAt: Date.now(),
+        tone,
+      },
+      ...prev,
+    ].slice(0, 10));
+  };
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -38,22 +54,53 @@ function DashboardOverview() {
         console.log('Loading classes for teacher ID:', user.id);
         const classesData = await GetTeacherClassesByUserID(user.id);
         console.log('Classes data received:', classesData);
+        const nextClasses = classesData || [];
+        setClasses(nextClasses);
 
-        if (classesData) {
-          setClasses(classesData);
-        }
-
+        let nextOpenSessionsToday = 0;
         try {
           const sessions = await (window as any).go.main.App.GetTeacherAttendanceSessions(user.id);
           const today = new Date().toISOString().split('T')[0];
           const openToday = (sessions || []).filter((session: any) =>
             session.attendance_date === today && session.status === 'open'
           ).length;
+          nextOpenSessionsToday = openToday;
           setOpenSessionsToday(openToday);
         } catch (sessionErr) {
           console.error('Failed to load attendance sessions:', sessionErr);
+          nextOpenSessionsToday = 0;
           setOpenSessionsToday(0);
         }
+
+        const nextActiveClasses = nextClasses.filter(cls => cls.is_active).length;
+        const nextTotalStudents = nextClasses.reduce((sum, cls) => sum + cls.enrolled_count, 0);
+        const previous = previousMetricsRef.current;
+
+        if (!previous) {
+          pushNotification('Teacher dashboard is connected and receiving live updates.', 'success');
+        } else {
+          if (nextOpenSessionsToday !== previous.openSessionsToday) {
+            if (nextOpenSessionsToday > previous.openSessionsToday) {
+              pushNotification(`${nextOpenSessionsToday} attendance session(s) are now open.`, 'warning');
+            } else {
+              pushNotification('Open attendance sessions were closed or completed.', 'success');
+            }
+          }
+
+          if (nextActiveClasses !== previous.activeClasses) {
+            pushNotification(`Active classes changed to ${nextActiveClasses}.`, 'info');
+          }
+
+          if (nextTotalStudents !== previous.totalStudents) {
+            pushNotification(`Enrolled students updated to ${nextTotalStudents}.`, 'info');
+          }
+        }
+
+        previousMetricsRef.current = {
+          activeClasses: nextActiveClasses,
+          totalStudents: nextTotalStudents,
+          openSessionsToday: nextOpenSessionsToday,
+        };
 
         setError('');
       } catch (error) {
@@ -65,7 +112,16 @@ function DashboardOverview() {
     };
 
     const timer = setTimeout(loadDashboard, 100);
-    return () => clearTimeout(timer);
+    const refreshInterval = setInterval(loadDashboard, 15000);
+    window.addEventListener('focus', loadDashboard);
+    window.addEventListener(AUTH_STATUS_CHANGED_EVENT, loadDashboard);
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(refreshInterval);
+      window.removeEventListener('focus', loadDashboard);
+      window.removeEventListener(AUTH_STATUS_CHANGED_EVENT, loadDashboard);
+    };
   }, [user?.id]);
 
   const totalStudents = classes.reduce((sum, cls) => sum + cls.enrolled_count, 0);
@@ -188,31 +244,10 @@ function DashboardOverview() {
         <Card className="h-fit">
           <CardHeader title="Notifications" />
           <CardBody>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center">
-                  <Bell className="h-5 w-5 text-primary-600 mr-3" />
-                  <span className="text-sm text-gray-700">Your dashboard data is up to date.</span>
-                </div>
-                <span className="text-xs text-gray-500">Now</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="text-sm text-gray-700">{activeClasses > 0 ? `${activeClasses} active class(es) with automated attendance enabled.` : 'No active classes assigned yet.'}</span>
-                <span className="text-xs text-gray-500">Today</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="text-sm text-gray-700">{openSessionsToday > 0 ? `${openSessionsToday} attendance session(s) currently open.` : 'No open attendance sessions right now.'}</span>
-                <span className="text-xs text-gray-500">Sessions</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="text-sm text-gray-700">{totalStudents > 0 ? `${totalStudents} enrolled student(s); review attendance to validate exceptions.` : 'No enrolled students found yet.'}</span>
-                <span className="text-xs text-gray-500">Today</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="text-sm text-gray-700">Attendance is synced from active classlist and student Time In submissions during open sessions. You can still update today's attendance when needed.</span>
-                <span className="text-xs text-gray-500">Info</span>
-              </div>
-            </div>
+            <DashboardNotifications
+              items={notifications}
+              emptyMessage="No new class or attendance updates."
+            />
           </CardBody>
         </Card>
       </div>

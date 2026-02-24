@@ -3,12 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Button from '../../components/Button';
 import {
   Eye,
-  Archive,
+  ArchiveRestore,
   Download,
 } from 'lucide-react';
 import {
   ExportClasslistCSV,
   GetArchivedAttendanceSheets,
+  UnarchiveAttendanceSession,
   UnarchiveAttendanceSheet,
   GetArchivedClasses,
   UnarchiveClass,
@@ -21,9 +22,10 @@ export type AttendanceArchiveTab = 'attendance' | 'classes';
 interface AttendanceArchiveProps {
   initialTab?: AttendanceArchiveTab;
   hideHeader?: boolean;
+  onClassUnarchived?: () => void;
 }
 
-function TeacherAttendanceArchive({ initialTab, hideHeader = false }: AttendanceArchiveProps) {
+function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarchived }: AttendanceArchiveProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -132,10 +134,14 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false }: Attendance
     const key = sessionId ? `${classId}-${date}-${sessionId}` : `${classId}-${date}`;
     setUnarchivingAttendance(key);
     try {
-      await UnarchiveAttendanceSheet(classId, date);
+      if (sessionId && user?.id) {
+        await UnarchiveAttendanceSession(sessionId, user.id);
+      } else {
+        await UnarchiveAttendanceSheet(classId, date);
+      }
       await loadArchivedSheets();
     } catch (error) {
-      console.error('Failed to unarchive:', error);
+      console.error('Failed to restore:', error);
     } finally {
       setUnarchivingAttendance(null);
     }
@@ -146,8 +152,9 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false }: Attendance
     try {
       await UnarchiveClass(classId);
       await loadArchivedClassesList();
+      onClassUnarchived?.();
     } catch (error) {
-      console.error('Failed to unarchive class:', error);
+      console.error('Failed to restore class:', error);
     } finally {
       setUnarchivingClass(null);
     }
@@ -336,7 +343,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false }: Attendance
                                   const key = getSheetKey(sheet);
                                   setDownloadMenuKey((current) => (current === key ? null : key));
                                 }}
-                                className="p-2 text-emerald-600 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
+                                className="h-9 w-9 inline-flex items-center justify-center text-emerald-600 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
                                 disabled={downloadingAttendance === getSheetKey(sheet)}
                                 title="Download"
                               >
@@ -368,18 +375,18 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false }: Attendance
                                   },
                                 });
                               }}
-                              className="p-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
+                              className="h-9 w-9 inline-flex items-center justify-center text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
                               title="View"
                             >
                               <Eye className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleUnarchiveAttendance(sheet.class_id, sheet.date, sheet.session_id)}
-                              className="p-2 text-orange-600 hover:text-orange-900 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
+                              className="h-9 w-9 inline-flex items-center justify-center text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
                               disabled={unarchivingAttendance === (sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`)}
-                              title="Unarchive"
+                              title="Restore"
                             >
-                              <Archive className="h-4 w-4" />
+                              <ArchiveRestore className="h-4 w-4" />
                             </button>
                           </div>
                         </td>
@@ -528,7 +535,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false }: Attendance
                                   const key = `class-${cls.class_id}`;
                                   setClassDownloadMenuKey((current) => (current === key ? null : key));
                                 }}
-                                className="p-2 text-emerald-600 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
+                                className="h-9 w-9 inline-flex items-center justify-center text-emerald-600 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
                                 disabled={downloadingClasslist === cls.class_id}
                                 title="Download"
                               >
@@ -558,18 +565,18 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false }: Attendance
                                   returnToArchiveTab: 'classes',
                                 },
                               })}
-                              className="p-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
+                              className="h-9 w-9 inline-flex items-center justify-center text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
                               title="View"
                             >
                               <Eye className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleUnarchiveClass(cls.class_id)}
-                              className="p-2 text-orange-600 hover:text-orange-900 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
+                              className="h-9 w-9 inline-flex items-center justify-center text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
                               disabled={unarchivingClass === cls.class_id}
-                              title="Unarchive"
+                              title="Restore"
                             >
-                              <Archive className="h-4 w-4" />
+                              <ArchiveRestore className="h-4 w-4" />
                             </button>
                           </div>
                         </td>

@@ -12,10 +12,10 @@ function WorkingStudentArchivedStudentsModal({ isOpen, onClose }: WorkingStudent
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Student Archive Management"
+      title="Archived Students"
       size="2xl"
     >
-      <ArchivedStudentsManagement hideHeader />
+      <ArchivedStudentsManagement hideHeader archivedOnly />
     </Modal>
   );
 }

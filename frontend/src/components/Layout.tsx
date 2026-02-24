@@ -12,6 +12,7 @@ import {
   UserCircle,
   Menu,
   X as XIcon,
+  AlertCircle,
 } from 'lucide-react';
 import LogoutFeedbackModal from './LogoutFeedbackModal';
 
@@ -38,6 +39,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackMode, setFeedbackMode] = useState<'logout' | 'manual'>('logout');
   const [activeTab, setActiveTab] = useState<'profile' | 'password'>('profile');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>(user?.photo_url || '');
@@ -86,6 +88,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const handleLogoutConfirm = () => {
     // User confirmed logout, now show feedback modal
     setShowLogoutConfirmModal(false);
+    setFeedbackMode('logout');
     setShowFeedbackModal(true);
   };
 
@@ -97,25 +100,98 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const handleFeedbackSubmit = async (feedbackData: any) => {
     try {
       if (!user) return;
+
+      const reportContextDetails = feedbackMode === 'manual'
+        ? [
+            `Report Context: ${feedbackData.reportingContext === 'other_pc' ? 'Another PC' : 'Current PC'}`,
+            `Reported By: ${feedbackData.reportedBy === 'classmate' ? 'Classmate' : 'Self'}`,
+            `Target PC Number: ${feedbackData.targetPCNumber || 'N/A'}`,
+            `Urgency: ${feedbackData.severity || 'normal'}`,
+            `Affected Student ID: ${feedbackData.affectedStudentID || 'N/A'}`,
+            `Issue Category: ${feedbackData.issueCategory || 'computer'}`,
+          ]
+        : [];
+
+      const additionalComments = [
+        ...reportContextDetails,
+        feedbackData.additionalComments ? `Additional: ${feedbackData.additionalComments}` : ''
+      ].filter(Boolean).join('\n');
+
+      let computerStatus = feedbackData.computer?.status || 'yes';
+      let computerIssue = feedbackData.computer?.issue || '';
+      let mouseStatus = feedbackData.mouse?.status || 'yes';
+      let mouseIssue = feedbackData.mouse?.issue || '';
+      let keyboardStatus = feedbackData.keyboard?.status || 'yes';
+      let keyboardIssue = feedbackData.keyboard?.issue || '';
+      let monitorStatus = feedbackData.monitor?.status || 'yes';
+      let monitorIssue = feedbackData.monitor?.issue || '';
+
+      if (feedbackMode === 'manual') {
+        const issueDescription = feedbackData.issueDescription || '';
+
+        computerStatus = 'yes';
+        computerIssue = '';
+        mouseStatus = 'yes';
+        mouseIssue = '';
+        keyboardStatus = 'yes';
+        keyboardIssue = '';
+        monitorStatus = 'yes';
+        monitorIssue = '';
+
+        switch (feedbackData.issueCategory) {
+          case 'mouse':
+            mouseStatus = 'no';
+            mouseIssue = issueDescription;
+            break;
+          case 'keyboard':
+            keyboardStatus = 'no';
+            keyboardIssue = issueDescription;
+            break;
+          case 'monitor':
+            monitorStatus = 'no';
+            monitorIssue = issueDescription;
+            break;
+          case 'other':
+            computerStatus = 'no';
+            computerIssue = `General issue: ${issueDescription}`;
+            break;
+          case 'computer':
+          default:
+            computerStatus = 'no';
+            computerIssue = issueDescription;
+            break;
+        }
+      }
       
       // Call the backend function to save feedback
       await SaveEquipmentFeedback(
         user.id,
         user.name,
-        feedbackData.computer.status,
-        feedbackData.computer.issue || '',
-        feedbackData.mouse.status,
-        feedbackData.mouse.issue || '',
-        feedbackData.keyboard.status,
-        feedbackData.keyboard.issue || '',
-        feedbackData.monitor.status,
-        feedbackData.monitor.issue || '',
-        feedbackData.additionalComments || ''
+        computerStatus,
+        computerIssue,
+        mouseStatus,
+        mouseIssue,
+        keyboardStatus,
+        keyboardIssue,
+        monitorStatus,
+        monitorIssue,
+        additionalComments
       );
       
       console.log('Feedback saved successfully');
+
+      if (feedbackMode === 'manual') {
+        setShowFeedbackModal(false);
+        alert('Issue report submitted successfully. The working student will review it first.');
+        return;
+      }
     } catch (error) {
       console.error('Failed to save feedback:', error);
+      if (feedbackMode === 'manual') {
+        alert('Failed to submit issue report. Please try again.');
+        return;
+      }
+
       alert('Failed to save feedback. You will still be logged out.');
     }
     
@@ -126,6 +202,11 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
   const handleFeedbackCancel = () => {
     setShowFeedbackModal(false);
+  };
+
+  const handleOpenQuickReport = () => {
+    setFeedbackMode('manual');
+    setShowFeedbackModal(true);
   };
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -404,7 +485,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   }, []);
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-slate-50">
       {/* SIDEBAR OVERLAY BACKDROP */}
       {!sidebarCollapsed && (
         <div
@@ -415,7 +496,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
       {/* LEFT SIDEBAR - YouTube Style (overlay) */}
       <aside 
-        className={`fixed left-0 top-0 bottom-0 bg-white flex flex-col transition-transform duration-300 ease-in-out z-40 w-[240px] shadow-xl ${
+        className={`fixed left-0 top-0 bottom-0 bg-white/95 backdrop-blur-sm border-r border-gray-200 flex flex-col transition-transform duration-300 ease-in-out z-40 w-[240px] shadow-xl ${
           sidebarCollapsed ? '-translate-x-full' : 'translate-x-0'
         }`}
       >
@@ -471,7 +552,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                         }}
                             className={`group w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-colors ${
                           isChildActive
-                                ? 'bg-gray-100 text-gray-900 font-semibold'
+                              ? 'bg-primary-50 text-primary-700 font-semibold border border-primary-100'
                             : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                         }`}
                         title={item.name}
@@ -505,7 +586,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                                 to={child.href}
                                 className={`flex items-center px-3 py-2 rounded-xl text-sm transition-colors ${
                                   child.current
-                                    ? 'bg-gray-100 text-gray-900 font-semibold'
+                                    ? 'bg-primary-50 text-primary-700 font-semibold border border-primary-100'
                                     : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                                 }`}
                                 title={child.name}
@@ -530,7 +611,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                       to={item.href}
                       className={`flex items-center px-3 py-2 rounded-xl text-sm transition-colors ${
                         item.current
-                          ? 'bg-gray-100 text-gray-900 font-semibold'
+                          ? 'bg-primary-50 text-primary-700 font-semibold border border-primary-100'
                           : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                       }`}
                       title={item.name}
@@ -633,7 +714,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col h-screen">
         {/* TOP HEADER */}
-        <header className="flex-shrink-0 h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-4">
+        <header className="flex-shrink-0 h-16 bg-white/90 backdrop-blur-sm border-b border-gray-200 flex items-center px-4 md:px-6 gap-4 shadow-sm">
           {/* Hamburger - always visible in header when sidebar is closed */}
           <button
             onClick={() => setSidebarCollapsed(false)}
@@ -644,22 +725,30 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
           </button>
           <div className="flex-1">
             {title && (
-              <div>
-                <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
+              <div className="section-highlight py-2 bg-gradient-to-r from-primary-50 to-white border-primary-100">
+                <h1 className="section-highlight-title">{title}</h1>
                 {subtitle && (
-                  <p className="text-sm text-gray-500">{subtitle}</p>
+                  <p className="section-highlight-subtitle">{subtitle}</p>
                 )}
               </div>
             )}
           </div>
           <div className="flex items-center gap-3">
-            {/* Additional header actions can go here */}
+            {user?.role === 'student' && (
+              <button
+                onClick={handleOpenQuickReport}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border border-danger-200 text-danger-700 bg-danger-50 hover:bg-danger-100 transition-colors"
+              >
+                <AlertCircle className="w-4 h-4" />
+                Report Issue Now
+              </button>
+            )}
           </div>
         </header>
 
         {/* PAGE CONTENT */}
-        <main className="flex-1 overflow-y-auto bg-gray-50">
-          <div className="p-6">
+        <main className="flex-1 overflow-y-auto bg-slate-50">
+          <div className="p-4 md:p-6">
             {children}
           </div>
         </main>
@@ -1029,6 +1118,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
         <LogoutFeedbackModal
           onSubmit={handleFeedbackSubmit}
           onClose={handleFeedbackCancel}
+          mode={feedbackMode}
         />
       )}
     </div>

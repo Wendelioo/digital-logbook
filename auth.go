@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -75,6 +76,10 @@ func (a *App) Login(username, password string) (*User, error) {
 		log.Printf("Login logged - ID: %d, User: %s (ID: %d), Role: %s, PC: %s", logID, username, user.ID, user.Role, hostname)
 	}
 
+	if err := a.TouchSession(user.ID); err != nil {
+		log.Printf("Failed to initialize session heartbeat for user %d: %v", user.ID, err)
+	}
+
 	// Attendance is now session-based (teacher opens session, student taps Time In).
 
 	log.Printf("User login successful: %s (role: %s, pc: %s)", username, user.Role, hostname)
@@ -85,6 +90,10 @@ func (a *App) Login(username, password string) (*User, error) {
 func (a *App) Logout(userID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
+	}
+
+	if err := a.closeStaleSessions(); err != nil {
+		log.Printf("Failed to close stale sessions before logout: %v", err)
 	}
 
 	query := `UPDATE log_entries 
@@ -107,6 +116,10 @@ func (a *App) Logout(userID int) error {
 		log.Printf("No active login log found to update for user %d", userID)
 	} else {
 		log.Printf("User logout successful: user_id=%d (rows affected: %d)", userID, rowsAffected)
+	}
+
+	if err := a.clearSessionHeartbeat(userID); err != nil {
+		log.Printf("Failed to clear session heartbeat for user %d: %v", userID, err)
 	}
 
 	return nil
@@ -141,6 +154,69 @@ func (a *App) ChangePassword(username, oldPassword, newPassword string) error {
 	}
 
 	log.Printf("Password changed successfully for user: %s", username)
+	return nil
+}
+
+// ResetPasswordByRole allows privileged users to reset another user's password.
+// Policy:
+// - admin can reset student, working_student, teacher passwords
+// - working_student can reset student passwords only
+// - admin passwords are excluded from in-app reset and require manual recovery
+func (a *App) ResetPasswordByRole(requesterUserID, targetUserID int, newPassword string) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	newPassword = strings.TrimSpace(newPassword)
+	if newPassword == "" {
+		return fmt.Errorf("new password is required")
+	}
+	if len(newPassword) < 6 {
+		return fmt.Errorf("new password must be at least 6 characters long")
+	}
+
+	if requesterUserID == targetUserID {
+		return fmt.Errorf("use change password for your own account")
+	}
+
+	var requesterRole string
+	if err := a.db.QueryRow(`SELECT user_type FROM users WHERE id = ?`, requesterUserID).Scan(&requesterRole); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("requester account not found")
+		}
+		return fmt.Errorf("failed to validate requester: %w", err)
+	}
+
+	var targetRole string
+	if err := a.db.QueryRow(`SELECT user_type FROM users WHERE id = ?`, targetUserID).Scan(&targetRole); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("target account not found")
+		}
+		return fmt.Errorf("failed to validate target user: %w", err)
+	}
+
+	if targetRole == "admin" {
+		return fmt.Errorf("admin password reset requires manual recovery")
+	}
+
+	isAllowed := false
+	switch requesterRole {
+	case "admin":
+		isAllowed = targetRole == "student" || targetRole == "working_student" || targetRole == "teacher"
+	case "working_student":
+		isAllowed = targetRole == "student"
+	}
+
+	if !isAllowed {
+		return fmt.Errorf("you are not allowed to reset this account type")
+	}
+
+	if _, err := a.db.Exec(`UPDATE users SET password = ? WHERE id = ?`, newPassword, targetUserID); err != nil {
+		log.Printf("Failed password reset requester=%d target=%d: %v", requesterUserID, targetUserID, err)
+		return fmt.Errorf("failed to reset password: %w", err)
+	}
+
+	log.Printf("Password reset successful requester=%d (%s) target=%d (%s)", requesterUserID, requesterRole, targetUserID, targetRole)
 	return nil
 }
 

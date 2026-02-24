@@ -19,14 +19,15 @@ import { User, ArchivedStudent } from './types';
 
 interface ArchivedStudentsManagementProps {
   hideHeader?: boolean;
+  archivedOnly?: boolean;
 }
 
-function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsManagementProps) {
+function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }: ArchivedStudentsManagementProps) {
   const { user } = useAuth();
   const [activeStudents, setActiveStudents] = useState<User[]>([]);
   const [archivedStudents, setArchivedStudents] = useState<ArchivedStudent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTab, setSelectedTab] = useState<'active' | 'archived'>('active');
+  const [selectedTab, setSelectedTab] = useState<'active' | 'archived'>(archivedOnly ? 'archived' : 'active');
   const [searchTerm, setSearchTerm] = useState('');
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
@@ -41,12 +42,12 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
   const loadData = async () => {
     setLoading(true);
     try {
-      if (selectedTab === 'active') {
-        const data = await GetActiveStudentsForArchiving();
-        setActiveStudents(data || []);
-      } else {
+      if (archivedOnly || selectedTab === 'archived') {
         const data = await GetArchivedStudents();
         setArchivedStudents(data || []);
+      } else {
+        const data = await GetActiveStudentsForArchiving();
+        setActiveStudents(data || []);
       }
     } catch (error) {
       console.error('Failed to load students:', error);
@@ -58,7 +59,7 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
 
   useEffect(() => {
     loadData();
-  }, [selectedTab]);
+  }, [selectedTab, archivedOnly]);
 
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
@@ -158,33 +159,34 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setSelectedTab('active')}
-            className={`${
-              selectedTab === 'active'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
-          >
-            <Users className="h-4 w-4" />
-            Active Students
-          </button>
-          <button
-            onClick={() => setSelectedTab('archived')}
-            className={`${
-              selectedTab === 'archived'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
-          >
-            <Archive className="h-4 w-4" />
-            Archived Students ({archivedStudents.length})
-          </button>
-        </nav>
-      </div>
+      {!archivedOnly && (
+        <div className="border-b border-gray-200 mb-6">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setSelectedTab('active')}
+              className={`${
+                selectedTab === 'active'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+            >
+              <Users className="h-4 w-4" />
+              Active Students
+            </button>
+            <button
+              onClick={() => setSelectedTab('archived')}
+              className={`${
+                selectedTab === 'archived'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+            >
+              <Archive className="h-4 w-4" />
+              Archived Students ({archivedStudents.length})
+            </button>
+          </nav>
+        </div>
+      )}
 
       {/* Actions Bar */}
       <div className="mb-6 flex items-center justify-between">
@@ -200,15 +202,7 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </div>
-        {selectedTab === 'archived' && (
-          <Button
-            variant="danger"
-            onClick={handleDeleteExpired}
-            icon={<Trash2 className="h-4 w-4" />}
-          >
-            Delete Expired Accounts
-          </Button>
-        )}
+        {(archivedOnly || selectedTab === 'archived') && null}
       </div>
 
       {/* Content */}
@@ -219,25 +213,25 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
       ) : (
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
-          {selectedTab === 'active' ? (
+          {!archivedOnly && selectedTab === 'active' ? (
             // Active Students Table
             filteredActiveStudents.length > 0 ? (
               <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-                <thead className="bg-blue-600 sticky top-0 z-10">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Student Number
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
                       Full Name
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
                       Email
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Contact
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Actions
                     </th>
                   </tr>
@@ -283,24 +277,24 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
             // Archived Students Table
             filteredArchivedStudents.length > 0 ? (
               <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-                <thead className="bg-gray-600 sticky top-0 z-10">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Student Number
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
                       Full Name
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Archived Date
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Deletion Date
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
                       Days Left
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Actions
                     </th>
                   </tr>
@@ -335,14 +329,14 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
                         <Button
                           variant="success"
                           size="sm"
+                          className="h-9 w-9 px-0 py-0"
                           onClick={() => {
                             setStudentToUnarchive(student);
                             setShowUnarchiveModal(true);
                           }}
                           icon={<ArchiveRestore className="h-4 w-4" />}
-                        >
-                          Restore
-                        </Button>
+                          title="Restore"
+                        />
                       </td>
                     </tr>
                   ))}
@@ -398,7 +392,7 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
         </div>
       )}
 
-      {/* Unarchive Confirmation Modal */}
+      {/* Restore Confirmation Modal */}
       {showUnarchiveModal && studentToUnarchive && (
         <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
@@ -431,7 +425,7 @@ function ArchivedStudentsManagement({ hideHeader = false }: ArchivedStudentsMana
                 onClick={handleUnarchiveStudent}
                 icon={<ArchiveRestore className="h-4 w-4" />}
               >
-                Restore Account
+                Restore
               </Button>
             </div>
           </div>

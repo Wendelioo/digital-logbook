@@ -346,10 +346,27 @@ func (a *App) GetPendingFeedback() ([]Feedback, error) {
 	return feedbacks, nil
 }
 
+func hasVerificationDecision(notes string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(notes))
+	if normalized == "" {
+		return false
+	}
+
+	if !strings.Contains(normalized, "verification:") {
+		return false
+	}
+
+	return strings.Contains(normalized, "confirmed") || strings.Contains(normalized, "not confirmed") || strings.Contains(normalized, "not_confirmed")
+}
+
 // ForwardFeedbackToAdmin forwards feedback from working student to admin
 func (a *App) ForwardFeedbackToAdmin(feedbackID int, workingStudentID int, notes string) error {
 	if err := a.checkDB(); err != nil {
 		return err
+	}
+
+	if !hasVerificationDecision(notes) {
+		return fmt.Errorf("verification decision is required before forwarding")
 	}
 
 	// Update feedback to forwarded status
@@ -383,6 +400,10 @@ func (a *App) ForwardFeedbackToAdmin(feedbackID int, workingStudentID int, notes
 func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID int, notes string) (int, error) {
 	if err := a.checkDB(); err != nil {
 		return 0, err
+	}
+
+	if !hasVerificationDecision(notes) {
+		return 0, fmt.Errorf("verification decision is required before forwarding")
 	}
 
 	if len(feedbackIDs) == 0 {

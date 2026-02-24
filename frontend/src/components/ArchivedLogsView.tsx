@@ -3,7 +3,7 @@ import { Card, CardHeader, CardBody } from './Card';
 import Table from './Table';
 import Button from './Button';
 import { Badge } from './Badge';
-import { ChevronRight, ChevronDown, RotateCcw, Trash2, Download, Calendar, Eye } from 'lucide-react';
+import { ChevronRight, ChevronDown, ArchiveRestore, Trash2, Download, Calendar, Eye } from 'lucide-react';
 
 interface LoginLog {
   id: number;
@@ -170,9 +170,9 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
         {selectedLogs.size > 0 ? (
           <div className="flex gap-3">
             <Button
-              variant="secondary"
+              variant="success"
               onClick={handleRestore}
-              icon={<RotateCcw className="h-4 w-4" />}
+              icon={<ArchiveRestore className="h-4 w-4" />}
             >
               Restore ({selectedLogs.size})
             </Button>

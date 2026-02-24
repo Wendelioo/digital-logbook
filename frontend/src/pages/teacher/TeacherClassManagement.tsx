@@ -478,8 +478,12 @@ function ClassManagement() {
 
       <TeacherStoredArchiveModal
         isOpen={showArchiveModal}
-        onClose={() => setShowArchiveModal(false)}
+        onClose={() => {
+          setShowArchiveModal(false);
+          loadClasses();
+        }}
         initialTab="classes"
+        onClassUnarchived={loadClasses}
       />
     </div>
   );

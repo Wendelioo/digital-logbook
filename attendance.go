@@ -1320,6 +1320,58 @@ func (a *App) UnarchiveAttendanceSheet(classID int, date string) error {
 	return nil
 }
 
+// UnarchiveAttendanceSession removes the archived flag from one specific attendance session.
+// This is used when there are multiple sessions on the same class/date and only one should be restored.
+func (a *App) UnarchiveAttendanceSession(sessionID int, teacherUserID int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return fmt.Errorf("failed to initialize attendance sessions table: %w", err)
+	}
+
+	var classID int
+	var attendanceDate string
+	err := a.db.QueryRow(`
+		SELECT s.class_id, CONVERT(VARCHAR(10), s.attendance_date, 23) AS attendance_date
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
+		WHERE s.session_id = ? AND c.teacher_id = ?
+	`, sessionID, teacherUserID).Scan(&classID, &attendanceDate)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("session not found or not authorized")
+	}
+	if err != nil {
+		return err
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE attendance
+		SET is_archived = 0,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE session_id = ?
+	`, sessionID)
+	if err != nil {
+		log.Printf("Failed to unarchive attendance records by session: %v", err)
+		return err
+	}
+
+	_, sessionUnarchiveErr := a.db.Exec(`
+		UPDATE attendance_sessions
+		SET is_archived = 0,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE session_id = ?
+	`, sessionID)
+	if sessionUnarchiveErr != nil {
+		log.Printf("Warning: failed to unarchive attendance session flag: session_id=%d err=%v", sessionID, sessionUnarchiveErr)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("Unarchived attendance session: session_id=%d, class_id=%d, date=%s, records=%d", sessionID, classID, attendanceDate, rowsAffected)
+	return nil
+}
+
 // ArchivedAttendanceSheet represents a summary of an archived attendance sheet
 type ArchivedAttendanceSheet struct {
 	SessionID    int    `json:"session_id"`
@@ -2141,6 +2193,10 @@ func (a *App) StudentTimeIn(sessionID int, studentUserID int) error {
 		return err
 	}
 
+	if err := a.closeStaleSessions(); err != nil {
+		log.Printf("Failed to close stale sessions before student time-in: %v", err)
+	}
+
 	var classID int
 	var attendanceDate string
 	var status string
@@ -2170,8 +2226,17 @@ func (a *App) StudentTimeIn(sessionID int, studentUserID int) error {
 
 	var activeLogin int
 	err = a.db.QueryRow(`
-		SELECT TOP 1 1 FROM log_entries WHERE user_id = ? AND logout_time IS NULL ORDER BY login_time DESC
-	`, studentUserID).Scan(&activeLogin)
+		SELECT TOP 1 1
+		FROM log_entries le
+		WHERE le.user_id = ?
+			AND le.logout_time IS NULL
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = le.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
+		ORDER BY le.login_time DESC
+	`, studentUserID, sessionHeartbeatTimeoutSeconds).Scan(&activeLogin)
 	if err != nil {
 		return fmt.Errorf("student must be logged in to time in")
 	}

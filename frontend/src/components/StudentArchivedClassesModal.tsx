@@ -12,7 +12,7 @@ function StudentArchivedClassesModal({ isOpen, onClose }: StudentArchivedClasses
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Archived Classes"
+      title="Hidden/Archived Classes"
       size="2xl"
     >
       <ArchivedClasses hideHeader />
