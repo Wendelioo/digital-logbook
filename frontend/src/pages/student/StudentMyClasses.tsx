@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
+import StudentArchivedClassesModal from '../../components/StudentArchivedClassesModal';
 import {
   X,
   Plus,
   Loader2,
   Users,
-  Library,
   Eye,
   Archive,
+  ArchiveRestore,
 } from 'lucide-react';
 import {
   GetStudentClasses,
@@ -20,6 +22,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { CourseClass, ClasslistEntry } from './types';
 
 function MyClasses() {
+  const location = useLocation();
   const { user } = useAuth();
   const [classes, setClasses] = useState<CourseClass[]>([]);
   const [filteredClasses, setFilteredClasses] = useState<CourseClass[]>([]);
@@ -36,6 +39,7 @@ function MyClasses() {
   const [searchTerm, setSearchTerm] = useState('');
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
 
   useEffect(() => {
     loadClasses();
@@ -79,10 +83,11 @@ function MyClasses() {
     setLoadingClasslist(true);
     try {
       const students = await GetClassStudents(classInfo.class_id);
-      setClasslistStudents(students);
+      setClasslistStudents(Array.isArray(students) ? students : []);
     } catch (error) {
       console.error('Failed to load classlist:', error);
       alert('Failed to load classlist. Please try again.');
+      setClasslistStudents([]);
     } finally {
       setLoadingClasslist(false);
     }
@@ -101,19 +106,13 @@ function MyClasses() {
 
   const handleArchiveClass = async (classInfo: CourseClass) => {
     if (!user) return;
-    
-    const confirmArchive = window.confirm(
-      `Are you sure you want to archive "${classInfo.subject_code}"? This will move it to your Archived Classes.`
-    );
-    
-    if (!confirmArchive) return;
-    
+
     try {
       await ArchiveStudentEnrollment(user.id, classInfo.class_id);
       await loadClasses(); // Refresh the list
     } catch (error) {
       console.error('Failed to archive class:', error);
-      alert('Failed to archive class. Please try again.');
+      alert(`Failed to archive class. ${error instanceof Error ? error.message : 'Please try again.'}`);
     }
   };
 
@@ -200,25 +199,35 @@ function MyClasses() {
   const currentClasses = filteredClasses.slice(startIndex, endIndex);
   const startEntry = filteredClasses.length > 0 ? startIndex + 1 : 0;
   const endEntry = Math.min(endIndex, filteredClasses.length);
-
   return (
     <div className="flex flex-col">
       {/* Header Section */}
       <div className="flex-shrink-0 mb-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-2xl font-bold text-gray-900">My Classes</h2>
-          <Button
-            onClick={() => {
-              setShowJoinForm(true);
-              setEdpCode('');
-              setJoinError('');
-              setJoinSuccess('');
-            }}
-            variant="primary"
-            icon={<Plus className="h-4 w-4" />}
-          >
-            Join Class
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              onClick={() => setShowArchiveModal(true)}
+              variant="outline"
+              size="sm"
+              icon={<ArchiveRestore className="h-4 w-4" />}
+            >
+              Archive
+            </Button>
+            <Button
+              onClick={() => {
+                setShowJoinForm(true);
+                setEdpCode('');
+                setJoinError('');
+                setJoinSuccess('');
+              }}
+              variant="primary"
+              size="sm"
+              icon={<Plus className="h-4 w-4" />}
+            >
+              Join Class
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -227,6 +236,12 @@ function MyClasses() {
           {error}
         </div>
       )}
+
+      <StudentArchivedClassesModal
+        isOpen={showArchiveModal}
+        onClose={() => setShowArchiveModal(false)}
+        onClassRestored={loadClasses}
+      />
 
       {/* Controls Section */}
       <div className="flex-shrink-0 mb-4">
@@ -356,9 +371,9 @@ function MyClasses() {
 
       {/* Table Section */}
       {currentClasses.length > 0 ? (
-        <div className="flex-1 overflow-x-auto">
+        <div className="flex-1">
           <div className="bg-white shadow rounded-lg overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="w-full table-fixed divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -390,22 +405,22 @@ function MyClasses() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {currentClasses.map((cls) => (
                   <tr key={cls.class_id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-gray-900 break-words">
                       {cls.edp_code || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-gray-900 break-words">
                       {cls.subject_code || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-gray-900 break-words">
                       {cls.descriptive_title || cls.subject_name || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-gray-900 break-words">
                       {cls.teacher_name || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-gray-900 break-words">
                       {cls.schedule || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-gray-900 break-words">
                       {cls.room || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
@@ -413,7 +428,7 @@ function MyClasses() {
                         {cls.enrolled_count || 0}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <td className="px-6 py-4 text-sm font-medium">
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleViewClasslist(cls)}
@@ -488,7 +503,6 @@ function MyClasses() {
             </>
           ) : (
             <div className="bg-white shadow rounded-lg p-12 text-center">
-              <Library className="mx-auto h-12 w-12 text-gray-400 mb-4" />
               <p className="text-gray-500 font-medium">No classes enrolled</p>
             </div>
           )}

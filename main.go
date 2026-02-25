@@ -44,16 +44,21 @@ func main() {
 		},
 		BackgroundColour: &options.RGBA{R: 248, G: 250, B: 252, A: 1},
 		OnStartup:        app.startup,
+		OnShutdown:       app.shutdown,
 		OnBeforeClose: func(ctx context.Context) (prevent bool) {
 			if app.screenLocked {
 				// When screen is locked (user not logged in), prevent closing
-				log.Println("🔒 Screen locked: Window close attempt blocked - user must login first")
+				log.Println("Screen locked: Window close attempt blocked - user must login first")
 				return true
 			}
 			// When user is logged in, also prevent closing (they should logout properly)
 			if app.kioskMode {
-				log.Println("🔒 Kiosk mode: Please logout through the app")
+				log.Println("Kiosk mode: Please logout through the app")
 				return true
+			}
+
+			if err := app.CloseSessionsForCurrentHost(); err != nil {
+				log.Printf("Failed to close sessions before window close: %v", err)
 			}
 			return false
 		},

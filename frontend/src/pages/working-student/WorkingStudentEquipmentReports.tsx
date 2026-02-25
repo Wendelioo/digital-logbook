@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import {
   Eye,
@@ -20,6 +20,7 @@ import { Feedback } from './types';
 function EquipmentReports() {
   const { user } = useAuth();
   const [feedbackList, setFeedbackList] = useState<Feedback[]>([]);
+  const [reportFilter, setReportFilter] = useState<'all' | 'issue_now' | 'logout_feedback'>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
@@ -27,6 +28,8 @@ function EquipmentReports() {
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [showBatchForwardModal, setShowBatchForwardModal] = useState(false);
   const [forwardNotes, setForwardNotes] = useState('');
+  const [verificationDecision, setVerificationDecision] = useState<'confirmed' | 'not_confirmed' | ''>('');
+  const [recommendation, setRecommendation] = useState('');
   const [forwarding, setForwarding] = useState(false);
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
@@ -61,22 +64,103 @@ function EquipmentReports() {
     setTimeout(() => setNotification(null), 5000);
   };
 
+  const isIssueNowReport = (feedback: Feedback) => {
+    return (feedback.comments || '').includes('Report Context:');
+  };
+
+  const parseIssueNowDetails = (comments?: string) => {
+    const raw = comments || '';
+    const tokens = raw.split(/[\n;]+/).map((token) => token.trim()).filter(Boolean);
+
+    const getValue = (label: string) => {
+      const match = tokens.find((token) => token.toLowerCase().startsWith(`${label.toLowerCase()}:`));
+      return match ? match.substring(match.indexOf(':') + 1).trim() : '';
+    };
+
+    const issueCategory = getValue('Issue Category');
+    const reportContext = getValue('Report Context');
+    const reportedBy = getValue('Reported By');
+    const urgency = getValue('Urgency');
+    const targetPCNumber = getValue('Target PC Number');
+    const affectedStudentID = getValue('Affected Student ID');
+
+    const issueDetailToken = tokens.find((token) =>
+      /^(Computer|Monitor|Keyboard|Mouse):/i.test(token),
+    );
+    const issueDescription = issueDetailToken
+      ? issueDetailToken.substring(issueDetailToken.indexOf(':') + 1).trim()
+      : '';
+
+    const additional = getValue('Additional');
+
+    return {
+      issueCategory,
+      reportContext,
+      reportedBy,
+      urgency,
+      targetPCNumber,
+      affectedStudentID,
+      issueDescription,
+      additional,
+    };
+  };
+
+  const issueNowReports = feedbackList.filter((feedback) => isIssueNowReport(feedback));
+  const logoutFeedbackReports = feedbackList.filter((feedback) => !isIssueNowReport(feedback));
+
+  const visibleFeedbackList = reportFilter === 'issue_now'
+    ? issueNowReports
+    : reportFilter === 'logout_feedback'
+    ? logoutFeedbackReports
+    : feedbackList;
+
+  const selectedReportIsIssueNow = selectedReportForDetails ? isIssueNowReport(selectedReportForDetails) : false;
+  const selectedIssueNowDetails = selectedReportForDetails ? parseIssueNowDetails(selectedReportForDetails.comments) : null;
+
+  const buildForwardNotes = () => {
+    const decisionLabel = verificationDecision === 'confirmed'
+      ? 'Confirmed issue'
+      : 'Not confirmed';
+
+    const parts: string[] = [
+      `Verification: ${decisionLabel}`,
+      `Recommendation: ${recommendation.trim() || 'N/A'}`,
+    ];
+
+    const trimmedForwardNotes = forwardNotes.trim();
+    if (trimmedForwardNotes) {
+      parts.push(`Working Student Notes: ${trimmedForwardNotes}`);
+    }
+
+    return parts.join('\n');
+  };
+
   const handleForwardClick = (feedback: Feedback) => {
     setSelectedFeedback(feedback);
     setForwardNotes('');
+    setVerificationDecision('');
+    setRecommendation('');
     setShowForwardModal(true);
   };
 
   const handleForwardSubmit = async () => {
     if (!selectedFeedback || !user) return;
 
+    if (!verificationDecision) {
+      showNotification('error', 'Please confirm whether the report is true before forwarding.');
+      return;
+    }
+
     setForwarding(true);
     try {
-      await ForwardFeedbackToAdmin(selectedFeedback.id, user.id, forwardNotes);
+      const compiledNotes = buildForwardNotes();
+      await ForwardFeedbackToAdmin(selectedFeedback.id, user.id, compiledNotes);
       showNotification('success', 'Feedback forwarded to admin successfully!');
       setShowForwardModal(false);
       setSelectedFeedback(null);
       setForwardNotes('');
+      setVerificationDecision('');
+      setRecommendation('');
       await loadPendingFeedback(); // Refresh the list
     } catch (error) {
       console.error('Failed to forward feedback:', error);
@@ -92,20 +176,30 @@ function EquipmentReports() {
       return;
     }
     setForwardNotes('');
+    setVerificationDecision('');
+    setRecommendation('');
     setShowBatchForwardModal(true);
   };
 
   const handleBatchForwardSubmit = async () => {
     if (selectedFeedbackIds.size === 0 || !user) return;
 
+    if (!verificationDecision) {
+      showNotification('error', 'Please confirm whether the selected reports are true before forwarding.');
+      return;
+    }
+
     setForwarding(true);
     try {
       const feedbackIdsArray = Array.from(selectedFeedbackIds);
-      const count = await ForwardMultipleFeedbackToAdmin(feedbackIdsArray, user.id, forwardNotes);
+      const compiledNotes = buildForwardNotes();
+      const count = await ForwardMultipleFeedbackToAdmin(feedbackIdsArray, user.id, compiledNotes);
       showNotification('success', `Successfully forwarded ${count} report${count !== 1 ? 's' : ''} to admin!`);
       setShowBatchForwardModal(false);
       setSelectedFeedbackIds(new Set());
       setForwardNotes('');
+      setVerificationDecision('');
+      setRecommendation('');
       await loadPendingFeedback(); // Refresh the list
     } catch (error) {
       console.error('Failed to forward feedback:', error);
@@ -117,9 +211,13 @@ function EquipmentReports() {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedFeedbackIds(new Set(feedbackList.map(f => f.id)));
+      const selectedIds = new Set(selectedFeedbackIds);
+      visibleFeedbackList.forEach((feedback) => selectedIds.add(feedback.id));
+      setSelectedFeedbackIds(selectedIds);
     } else {
-      setSelectedFeedbackIds(new Set());
+      const selectedIds = new Set(selectedFeedbackIds);
+      visibleFeedbackList.forEach((feedback) => selectedIds.delete(feedback.id));
+      setSelectedFeedbackIds(selectedIds);
     }
   };
 
@@ -207,9 +305,45 @@ function EquipmentReports() {
         </div>
       )}
 
-      {feedbackList.length === 0 ? (
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setReportFilter('all')}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+            reportFilter === 'all'
+              ? 'bg-blue-100 text-blue-700 border-blue-200'
+              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          All ({feedbackList.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setReportFilter('issue_now')}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+            reportFilter === 'issue_now'
+              ? 'bg-orange-100 text-orange-700 border-orange-200'
+              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          Report Issue Now ({issueNowReports.length})
+        </button>
+        <button
+          type="button"
+          onClick={() => setReportFilter('logout_feedback')}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+            reportFilter === 'logout_feedback'
+              ? 'bg-green-100 text-green-700 border-green-200'
+              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          Logout Feedback ({logoutFeedbackReports.length})
+        </button>
+      </div>
+
+      {visibleFeedbackList.length === 0 ? (
         <div className="bg-white shadow rounded-lg p-12 text-center">
-          <p className="text-gray-500 font-medium">No reports available</p>
+          <p className="text-gray-500 font-medium">No reports available for this section</p>
         </div>
       ) : (
         <div className="bg-white shadow rounded-lg overflow-hidden">
@@ -241,18 +375,21 @@ function EquipmentReports() {
           <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
             <div className="max-h-[70vh] overflow-y-auto">
               <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-                <thead className="bg-gradient-to-r from-gray-50 to-gray-100 sticky top-0 z-10">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider" style={{ minWidth: '50px' }}>
                       <input
                         type="checkbox"
-                        checked={selectedFeedbackIds.size === feedbackList.length && feedbackList.length > 0}
+                        checked={visibleFeedbackList.length > 0 && visibleFeedbackList.every((feedback) => selectedFeedbackIds.has(feedback.id))}
                         onChange={(e) => handleSelectAll(e.target.checked)}
                         className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                       />
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
                       Student ID
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '130px' }}>
+                      Report Type
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '180px' }}>
                       Full Name
@@ -269,7 +406,7 @@ function EquipmentReports() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {feedbackList.map((feedback) => (
+                  {visibleFeedbackList.map((feedback) => (
                     <tr key={feedback.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-4 whitespace-nowrap">
                         <input
@@ -283,6 +420,17 @@ function EquipmentReports() {
                         <div className="text-sm text-gray-700">
                           {feedback.student_id_str}
                         </div>
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap">
+                        {isIssueNowReport(feedback) ? (
+                          <span className="px-2.5 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-semibold">
+                            Report Issue Now
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">
+                            Logout Feedback
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-4 text-sm font-medium text-gray-900" style={{ wordBreak: 'break-word' }}>
                         {feedback.student_name}
@@ -332,7 +480,7 @@ function EquipmentReports() {
           </div>
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
             <div className="text-sm text-gray-600">
-              Showing <span className="font-semibold text-gray-900">{feedbackList.length}</span> pending report{feedbackList.length !== 1 ? 's' : ''}
+              Showing <span className="font-semibold text-gray-900">{visibleFeedbackList.length}</span> pending report{visibleFeedbackList.length !== 1 ? 's' : ''}
             </div>
           </div>
         </div>
@@ -440,10 +588,50 @@ function EquipmentReports() {
                 )}
               </div>
 
-              {/* Notes Input */}
+              {/* Verification & Recommendation */}
               <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Verification Result <span className="text-red-500">*</span>
+                </label>
+                <div className="space-y-2 mb-4">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      name="verification"
+                      value="confirmed"
+                      checked={verificationDecision === 'confirmed'}
+                      onChange={() => setVerificationDecision('confirmed')}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                    />
+                    Confirmed issue (true)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      name="verification"
+                      value="not_confirmed"
+                      checked={verificationDecision === 'not_confirmed'}
+                      onChange={() => setVerificationDecision('not_confirmed')}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                    />
+                    Not confirmed (not true)
+                  </label>
+                </div>
+
+                <label htmlFor="recommendation" className="block text-sm font-medium text-gray-700 mb-2">
+                  Recommendation (Optional)
+                </label>
+                <textarea
+                  id="recommendation"
+                  rows={3}
+                  value={recommendation}
+                  onChange={(e) => setRecommendation(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
+                  placeholder="Suggest a fix or next action for admin..."
+                />
+
                 <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-2">
-                  Add Notes (Optional)
+                  Additional Notes (Optional)
                 </label>
                 <textarea
                   id="notes"
@@ -523,10 +711,50 @@ function EquipmentReports() {
                 </div>
               </div>
 
-              {/* Notes Input */}
+              {/* Verification & Recommendation */}
               <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Verification Result for Selected Reports <span className="text-red-500">*</span>
+                </label>
+                <div className="space-y-2 mb-4">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      name="batch-verification"
+                      value="confirmed"
+                      checked={verificationDecision === 'confirmed'}
+                      onChange={() => setVerificationDecision('confirmed')}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                    />
+                    Confirmed issue (true)
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="radio"
+                      name="batch-verification"
+                      value="not_confirmed"
+                      checked={verificationDecision === 'not_confirmed'}
+                      onChange={() => setVerificationDecision('not_confirmed')}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                    />
+                    Not confirmed (not true)
+                  </label>
+                </div>
+
+                <label htmlFor="batch-recommendation" className="block text-sm font-medium text-gray-700 mb-2">
+                  Recommendation (Optional)
+                </label>
+                <textarea
+                  id="batch-recommendation"
+                  rows={3}
+                  value={recommendation}
+                  onChange={(e) => setRecommendation(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
+                  placeholder="Suggest a fix or next action for admin (applies to all selected reports)..."
+                />
+
                 <label htmlFor="batch-notes" className="block text-sm font-medium text-gray-700 mb-2">
-                  Add Notes (Optional)
+                  Additional Notes (Optional)
                 </label>
                 <textarea
                   id="batch-notes"
@@ -587,9 +815,11 @@ function EquipmentReports() {
                 </div>
                 <div>
                   <h3 className="text-2xl font-bold text-gray-900">
-                    Equipment Report Details
+                      {selectedReportIsIssueNow ? 'Issue Report Details' : 'Equipment Report Details'}
                   </h3>
-                  <p className="text-sm text-gray-600 mt-1">Full report submitted by student</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {selectedReportIsIssueNow ? 'Immediate issue report submitted by student' : 'Logout equipment feedback submitted by student'}
+                    </p>
                 </div>
               </div>
 
@@ -626,67 +856,113 @@ function EquipmentReports() {
                   </div>
                 </div>
 
-                {/* Equipment Conditions */}
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Equipment Conditions</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                      <span className="text-xs text-gray-600 block mb-2">Equipment</span>
-                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${
-                        selectedReportForDetails.equipment_condition === 'Good' 
-                          ? 'bg-green-100 text-green-800' 
-                          : selectedReportForDetails.equipment_condition === 'Minor Issue' 
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {selectedReportForDetails.equipment_condition}
-                      </span>
+                {selectedReportIsIssueNow ? (
+                  <>
+                    <div className="bg-orange-50 rounded-lg p-4">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3">Issue Report Details</h4>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-600">Issue Category:</span>
+                          <p className="font-medium text-gray-900">{selectedIssueNowDetails?.issueCategory || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Urgency:</span>
+                          <p className="font-medium text-gray-900">{selectedIssueNowDetails?.urgency || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Report Context:</span>
+                          <p className="font-medium text-gray-900">{selectedIssueNowDetails?.reportContext || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Reported By:</span>
+                          <p className="font-medium text-gray-900">{selectedIssueNowDetails?.reportedBy || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Target PC Number:</span>
+                          <p className="font-medium text-gray-900">{selectedIssueNowDetails?.targetPCNumber || 'N/A'}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Affected Student ID:</span>
+                          <p className="font-medium text-gray-900">{selectedIssueNowDetails?.affectedStudentID || 'N/A'}</p>
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <span className="text-gray-600 text-sm">Issue Description:</span>
+                        <p className="text-sm font-medium text-gray-900 mt-1 whitespace-pre-wrap">
+                          {selectedIssueNowDetails?.issueDescription || 'N/A'}
+                        </p>
+                      </div>
+                      {selectedIssueNowDetails?.additional && (
+                        <div className="mt-3">
+                          <span className="text-gray-600 text-sm">Additional Note:</span>
+                          <p className="text-sm text-gray-900 mt-1 whitespace-pre-wrap">{selectedIssueNowDetails.additional}</p>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <span className="text-xs text-gray-600 block mb-2">Monitor</span>
-                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${
-                        selectedReportForDetails.monitor_condition === 'Good' 
-                          ? 'bg-green-100 text-green-800' 
-                          : selectedReportForDetails.monitor_condition === 'Minor Issue' 
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {selectedReportForDetails.monitor_condition}
-                      </span>
+                  </>
+                ) : (
+                  <>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3">Equipment Conditions</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <span className="text-xs text-gray-600 block mb-2">Equipment</span>
+                          <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${
+                            selectedReportForDetails.equipment_condition === 'Good'
+                              ? 'bg-green-100 text-green-800'
+                              : selectedReportForDetails.equipment_condition === 'Minor Issue'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {selectedReportForDetails.equipment_condition}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-gray-600 block mb-2">Monitor</span>
+                          <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${
+                            selectedReportForDetails.monitor_condition === 'Good'
+                              ? 'bg-green-100 text-green-800'
+                              : selectedReportForDetails.monitor_condition === 'Minor Issue'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {selectedReportForDetails.monitor_condition}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-gray-600 block mb-2">Keyboard</span>
+                          <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${
+                            selectedReportForDetails.keyboard_condition === 'Good'
+                              ? 'bg-green-100 text-green-800'
+                              : selectedReportForDetails.keyboard_condition === 'Minor Issue'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {selectedReportForDetails.keyboard_condition}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-gray-600 block mb-2">Mouse</span>
+                          <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${
+                            selectedReportForDetails.mouse_condition === 'Good'
+                              ? 'bg-green-100 text-green-800'
+                              : selectedReportForDetails.mouse_condition === 'Minor Issue'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {selectedReportForDetails.mouse_condition}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-xs text-gray-600 block mb-2">Keyboard</span>
-                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${
-                        selectedReportForDetails.keyboard_condition === 'Good' 
-                          ? 'bg-green-100 text-green-800' 
-                          : selectedReportForDetails.keyboard_condition === 'Minor Issue' 
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {selectedReportForDetails.keyboard_condition}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-xs text-gray-600 block mb-2">Mouse</span>
-                      <span className={`px-3 py-1.5 inline-flex text-sm font-semibold rounded-full ${
-                        selectedReportForDetails.mouse_condition === 'Good' 
-                          ? 'bg-green-100 text-green-800' 
-                          : selectedReportForDetails.mouse_condition === 'Minor Issue' 
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {selectedReportForDetails.mouse_condition}
-                      </span>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Student Comments */}
-                {selectedReportForDetails.comments && (
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Student Comments</h4>
-                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedReportForDetails.comments}</p>
-                  </div>
+                    {selectedReportForDetails.comments && (
+                      <div className="bg-blue-50 rounded-lg p-4">
+                        <h4 className="text-sm font-semibold text-gray-700 mb-2">Student Comments</h4>
+                        <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedReportForDetails.comments}</p>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

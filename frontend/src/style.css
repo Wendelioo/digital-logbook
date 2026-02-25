@@ -4,7 +4,7 @@
 
 /* ===== BASE STYLES ===== */
 html {
-    background-color: #fafaf9;
+    background: radial-gradient(circle at top left, #f3f6ff 0%, #fafaf9 38%, #f8fafc 100%);
     text-align: center;
     color: #2d2b2f;
     -webkit-font-smoothing: antialiased;
@@ -19,7 +19,7 @@ body {
     sans-serif;
     font-size: 14px;
     line-height: 1.5;
-    background-color: #fafaf9;
+    background: radial-gradient(circle at top left, #f3f6ff 0%, #fafaf9 38%, #f8fafc 100%);
 }
 
 #app {
@@ -31,13 +31,34 @@ body {
 @layer components {
     /* Card Styles */
     .card {
-        @apply bg-white rounded-xl shadow-soft border border-gray-200;
+        @apply bg-white/95 backdrop-blur-sm rounded-2xl shadow-soft border border-gray-200;
     }
     
     .card-hover {
-        @apply transition-all duration-200 hover:shadow-card hover:border-gray-300;
+        @apply transition-all duration-300 hover:shadow-card hover:border-gray-300 hover:-translate-y-0.5;
+    }
+
+    .surface-panel {
+        @apply bg-white/90 backdrop-blur-sm border border-gray-200 rounded-2xl shadow-soft;
+    }
+
+    .section-highlight {
+        @apply bg-gradient-to-r from-primary-50 to-white border border-primary-100 rounded-2xl px-5 py-4 shadow-soft;
+    }
+
+    .section-highlight-title {
+        @apply text-xl md:text-2xl font-semibold text-gray-900 tracking-tight;
+    }
+
+    .section-highlight-subtitle {
+        @apply text-sm text-gray-600 mt-1;
     }
     
+
+/* Global section heading polish for dashboard/content pages */
+main h2 {
+    letter-spacing: -0.01em;
+}
     /* Input Styles */
     .input {
         @apply w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm
@@ -469,4 +490,10 @@ body {
 .checkbox-blue:checked {
     background-color: #2563eb;
     border-color: #2563eb;
+}
+
+/* Hide native password reveal controls so only custom eye toggle is shown */
+.login-password-input::-ms-reveal,
+.login-password-input::-ms-clear {
+    display: none;
 }

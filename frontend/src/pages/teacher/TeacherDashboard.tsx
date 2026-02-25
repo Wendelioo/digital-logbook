@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { StatCard } from '../../components/Card';
 import { Card, CardHeader, CardBody } from '../../components/Card';
@@ -8,20 +8,38 @@ import {
   Clock,
   Calendar,
   Library,
-  Bell,
+  ClipboardCheck,
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
 } from '../../../wailsjs/go/main/App';
 import { useAuth } from '../../contexts/AuthContext';
+import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
 import { Class } from './types';
+
+const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
 
 function DashboardOverview() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [classes, setClasses] = useState<Class[]>([]);
+  const [openSessionsToday, setOpenSessionsToday] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [notifications, setNotifications] = useState<DashboardNotificationItem[]>([]);
+  const previousMetricsRef = useRef<{ activeClasses: number; totalStudents: number; openSessionsToday: number } | null>(null);
+
+  const pushNotification = (message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
+    setNotifications((prev) => [
+      {
+        id: `${Date.now()}-${Math.random()}`,
+        message,
+        createdAt: Date.now(),
+        tone,
+      },
+      ...prev,
+    ].slice(0, 10));
+  };
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -36,10 +54,54 @@ function DashboardOverview() {
         console.log('Loading classes for teacher ID:', user.id);
         const classesData = await GetTeacherClassesByUserID(user.id);
         console.log('Classes data received:', classesData);
+        const nextClasses = classesData || [];
+        setClasses(nextClasses);
 
-        if (classesData) {
-          setClasses(classesData);
+        let nextOpenSessionsToday = 0;
+        try {
+          const sessions = await (window as any).go.main.App.GetTeacherAttendanceSessions(user.id);
+          const today = new Date().toISOString().split('T')[0];
+          const openToday = (sessions || []).filter((session: any) =>
+            session.attendance_date === today && session.status === 'open'
+          ).length;
+          nextOpenSessionsToday = openToday;
+          setOpenSessionsToday(openToday);
+        } catch (sessionErr) {
+          console.error('Failed to load attendance sessions:', sessionErr);
+          nextOpenSessionsToday = 0;
+          setOpenSessionsToday(0);
         }
+
+        const nextActiveClasses = nextClasses.filter(cls => cls.is_active).length;
+        const nextTotalStudents = nextClasses.reduce((sum, cls) => sum + cls.enrolled_count, 0);
+        const previous = previousMetricsRef.current;
+
+        if (!previous) {
+          pushNotification('Teacher dashboard is connected and receiving live updates.', 'success');
+        } else {
+          if (nextOpenSessionsToday !== previous.openSessionsToday) {
+            if (nextOpenSessionsToday > previous.openSessionsToday) {
+              pushNotification(`${nextOpenSessionsToday} attendance session(s) are now open.`, 'warning');
+            } else {
+              pushNotification('Open attendance sessions were closed or completed.', 'success');
+            }
+          }
+
+          if (nextActiveClasses !== previous.activeClasses) {
+            pushNotification(`Active classes changed to ${nextActiveClasses}.`, 'info');
+          }
+
+          if (nextTotalStudents !== previous.totalStudents) {
+            pushNotification(`Enrolled students updated to ${nextTotalStudents}.`, 'info');
+          }
+        }
+
+        previousMetricsRef.current = {
+          activeClasses: nextActiveClasses,
+          totalStudents: nextTotalStudents,
+          openSessionsToday: nextOpenSessionsToday,
+        };
+
         setError('');
       } catch (error) {
         console.error('Failed to load teacher classes:', error);
@@ -50,7 +112,16 @@ function DashboardOverview() {
     };
 
     const timer = setTimeout(loadDashboard, 100);
-    return () => clearTimeout(timer);
+    const refreshInterval = setInterval(loadDashboard, 15000);
+    window.addEventListener('focus', loadDashboard);
+    window.addEventListener(AUTH_STATUS_CHANGED_EVENT, loadDashboard);
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(refreshInterval);
+      window.removeEventListener('focus', loadDashboard);
+      window.removeEventListener(AUTH_STATUS_CHANGED_EVENT, loadDashboard);
+    };
   }, [user?.id]);
 
   const totalStudents = classes.reduce((sum, cls) => sum + cls.enrolled_count, 0);
@@ -72,111 +143,120 @@ function DashboardOverview() {
         </div>
       )}
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <StatCard
-          title="Active Classes"
-          value={activeClasses}
-          icon={<Library className="h-6 w-6" />}
-          color="blue"
-        />
-        <StatCard
-          title="Total Students"
-          value={totalStudents}
-          icon={<Users className="h-6 w-6" />}
-          color="green"
-        />
-        <StatCard
-          title="Classes"
-          value={activeClasses}
-          icon={<Calendar className="h-6 w-6" />}
-          color="purple"
-        />
-      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
+        {/* Quick Stats */}
+        <div className="md:col-span-2 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <StatCard
+              title="Active Classes"
+              value={activeClasses}
+              icon={<Library className="h-6 w-6" />}
+              color="blue"
+            />
+            <StatCard
+              title="Total Students"
+              value={totalStudents}
+              icon={<Users className="h-6 w-6" />}
+              color="green"
+            />
+            <StatCard
+              title="Classes"
+              value={activeClasses}
+              icon={<Calendar className="h-6 w-6" />}
+              color="purple"
+            />
+          </div>
 
-      {/* List of Schedule */}
-      {activeClasses > 0 && (
-        <Card className="mb-8">
-          <CardHeader title="List of Schedule" />
-          <CardBody>
-            <div className="space-y-3">
-              {classes.filter(cls => cls.is_active).slice(0, 3).map(cls => (
+          {/* List of Schedule */}
+          {activeClasses > 0 && (
+            <Card>
+              <CardHeader title="List of Schedule" />
+              <CardBody>
+                <div className="space-y-3">
+                  {classes.filter(cls => cls.is_active).slice(0, 3).map(cls => (
+                    <Link
+                      key={cls.id}
+                      to={`classes/${cls.id}`}
+                      className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                          <BookOpen className="h-5 w-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{cls.subject_name}</h4>
+                          <p className="text-sm text-gray-500">
+                            {cls.section} • {cls.enrolled_count} students
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium text-gray-600">{cls.schedule || 'No schedule'}</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </CardBody>
+            </Card>
+          )}
+
+          {/* Quick Actions */}
+          <Card>
+            <CardHeader title="Quick Actions" />
+            <CardBody>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
                 <Link
-                  key={cls.id}
-                  to={`classes/${cls.id}`}
-                  className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                  to="attendance"
+                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:shadow-md transition-all duration-200"
                 >
-                  <div className="flex items-center space-x-4">
-                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <BookOpen className="h-5 w-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-gray-900">{cls.subject_name}</h4>
-                      <p className="text-sm text-gray-500">
-                        {cls.section} • {cls.enrolled_count} students
-                      </p>
-                    </div>
+                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-500 transition-colors duration-200">
+                    <ClipboardCheck className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-600 group-hover:text-white transition-colors duration-200" />
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-gray-600">{cls.schedule || 'No schedule'}</p>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-indigo-600 transition-colors">Take Attendance</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">Check and update today's attendance.</p>
                   </div>
                 </Link>
-              ))}
-            </div>
+                <Link
+                  to="login-history"
+                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all duration-200"
+                >
+                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-500 transition-colors duration-200">
+                    <Clock className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600 group-hover:text-white transition-colors duration-200" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">View Login History</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">Review your login and logout records.</p>
+                  </div>
+                </Link>
+                <Link
+                  to="classes"
+                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border-2 border-gray-200 rounded-lg hover:border-green-500 hover:shadow-md transition-all duration-200"
+                >
+                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-500 transition-colors duration-200">
+                    <Library className="h-5 w-5 sm:h-6 sm:w-6 text-green-600 group-hover:text-white transition-colors duration-200" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-green-600 transition-colors">Manage Classes</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">View and manage your classes.</p>
+                  </div>
+                </Link>
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+
+        <Card className="h-fit">
+          <CardHeader title="Notifications" />
+          <CardBody>
+            <DashboardNotifications
+              items={notifications}
+              emptyMessage="No new class or attendance updates."
+            />
           </CardBody>
         </Card>
-      )}
-
-      <Card className="mb-8">
-        <CardHeader title="Notifications" />
-        <CardBody>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center">
-                <Bell className="h-5 w-5 text-primary-600 mr-3" />
-                <span className="text-sm text-gray-700">Your dashboard data is up to date.</span>
-              </div>
-              <span className="text-xs text-gray-500">Now</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <span className="text-sm text-gray-700">{activeClasses > 0 ? `${activeClasses} active class(es) ready for attendance.` : 'No active classes assigned yet.'}</span>
-              <span className="text-xs text-gray-500">Today</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <span className="text-sm text-gray-700">{totalStudents > 0 ? `${totalStudents} enrolled student(s) across your classes.` : 'No enrolled students found yet.'}</span>
-              <span className="text-xs text-gray-500">Today</span>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Link
-          to="login-history"
-          className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all duration-200"
-        >
-          <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-500 transition-colors duration-200">
-            <Clock className="h-6 w-6 text-blue-600 group-hover:text-white transition-colors duration-200" />
-          </div>
-          <div className="ml-4 flex-1">
-            <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">View Login History</h3>
-            <p className="text-sm text-gray-500 mt-0.5">View your login and logout records</p>
-          </div>
-        </Link>
-        <Link
-          to="classes"
-          className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-green-500 hover:shadow-md transition-all duration-200"
-        >
-          <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-500 transition-colors duration-200">
-            <Library className="h-6 w-6 text-green-600 group-hover:text-white transition-colors duration-200" />
-          </div>
-          <div className="ml-4 flex-1">
-            <h3 className="text-base font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Manage Classes</h3>
-            <p className="text-sm text-gray-500 mt-0.5">View and manage your classes</p>
-          </div>
-        </Link>
       </div>
+
     </div>
   );
 }

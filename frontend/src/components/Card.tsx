@@ -43,7 +43,7 @@ export const CardHeader: React.FC<CardHeaderProps> = ({
   className = '' 
 }) => {
   return (
-    <div className={`px-6 py-4 border-b border-gray-200 ${className}`}>
+    <div className={`px-6 py-4 border-b border-gray-200/80 bg-gradient-to-r from-gray-50 to-white ${className}`}>
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-base font-semibold text-gray-900">{title}</h3>
@@ -84,7 +84,7 @@ interface CardFooterProps {
 
 export const CardFooter: React.FC<CardFooterProps> = ({ children, className = '' }) => {
   return (
-    <div className={`px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-xl ${className}`}>
+    <div className={`px-6 py-4 bg-gray-50/80 border-t border-gray-200 rounded-b-2xl ${className}`}>
       {children}
     </div>
   );
@@ -122,22 +122,22 @@ export const StatCard: React.FC<StatCardProps> = ({
   };
 
   return (
-    <Card className={className}>
-      <CardBody>
-        <div className="flex items-center">
+    <Card className={`h-full min-w-0 border-l-4 border-l-primary-200 ${className}`}>
+      <CardBody className="p-4 md:p-5">
+        <div className="flex items-start gap-3 min-w-0">
           {icon && (
             <div className="flex-shrink-0">
-              <div className={`${colorClasses[color]} rounded-lg p-3`}>
+              <div className={`${colorClasses[color]} rounded-lg p-2.5 md:p-3`}>
                 {icon}
               </div>
             </div>
           )}
-          <div className={`${icon ? 'ml-5' : ''} flex-1`}>
-            <dt className="text-xs font-medium text-gray-600 uppercase tracking-wide truncate">
+          <div className="min-w-0 flex-1">
+            <dt className="text-[11px] sm:text-xs font-medium text-gray-600 uppercase tracking-wide leading-tight [overflow-wrap:anywhere]">
               {title}
             </dt>
-            <dd className="mt-1 flex items-baseline">
-              <span className="text-2xl font-semibold text-gray-900">
+            <dd className="mt-1 flex items-end gap-2 flex-wrap min-w-0">
+              <span className="text-xl md:text-2xl font-semibold text-gray-900 leading-tight [overflow-wrap:anywhere]">
                 {value}
               </span>
               {trend && (

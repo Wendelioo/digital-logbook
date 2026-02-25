@@ -1,36 +1,67 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
+import TeacherStoredArchiveModal from '../../components/TeacherStoredArchiveModal';
 import {
   Edit,
   Archive,
   Eye,
+  Save,
   Plus,
   X,
+  Pause,
+  Play,
+  Square,
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
   GetActiveAttendanceSheets,
   OpenClassAttendance,
-  ArchiveAttendanceSheet,
 } from '../../../wailsjs/go/main/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class } from './types';
 
 // Attendance sheet summary from backend
 interface AttendanceSheet {
+  session_id?: number;
   class_id: number;
   date: string;
   subject_code: string;
   subject_name: string;
   edp_code: string;
   schedule: string;
+  status?: 'open' | 'closed';
+  opened_at?: string;
   student_count: number;
   present_count: number;
   absent_count: number;
   late_count: number;
   is_archived: boolean;
   is_editable: boolean;
+}
+
+interface AttendanceSession {
+  session_id: number;
+  class_id: number;
+  attendance_date: string;
+  session_name: string;
+  status: 'open' | 'closed';
+  class_duration_minutes?: number;
+  grace_period_minutes?: number;
+  opened_at?: string;
+  subject_code: string;
+  subject_name: string;
+  edp_code: string;
+  present_count: number;
+  absent_count: number;
+  late_count: number;
+}
+
+type TimerMode = 'running' | 'paused' | 'stopped';
+
+interface SessionTimerControl {
+  mode: TimerMode;
+  pausedAt?: number;
 }
 
 function AttendanceClassSelection() {
@@ -51,6 +82,75 @@ function AttendanceClassSelection() {
   // Modal state
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [attendanceSessions, setAttendanceSessions] = useState<AttendanceSession[]>([]);
+  const [sessionBusyId, setSessionBusyId] = useState<number | null>(null);
+  const [classDuration, setClassDuration] = useState('90');
+  const [gracePeriod, setGracePeriod] = useState('10');
+  const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
+  const [sessionTimerControls, setSessionTimerControls] = useState<Record<number, SessionTimerControl>>({});
+
+  const parseSessionDateTime = (value?: string): Date | null => {
+    if (!value) return null;
+    const parsed = new Date(value.replace(' ', 'T'));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const formatRemaining = (seconds: number): string => {
+    if (seconds <= 0) return '00:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const getSessionTimerControl = (sessionId: number): SessionTimerControl => {
+    return sessionTimerControls[sessionId] || { mode: 'running' };
+  };
+
+  const handleSessionTimerMode = (sessionId: number, mode: TimerMode) => {
+    setSessionTimerControls((prev) => {
+      const current = prev[sessionId] || { mode: 'running' as TimerMode };
+
+      if (mode === 'paused') {
+        const pausedAt = current.mode === 'paused' && typeof current.pausedAt === 'number'
+          ? current.pausedAt
+          : nowTimestamp;
+        return {
+          ...prev,
+          [sessionId]: { mode: 'paused', pausedAt },
+        };
+      }
+
+      if (mode === 'stopped') {
+        return {
+          ...prev,
+          [sessionId]: { mode: 'stopped' },
+        };
+      }
+
+      return {
+        ...prev,
+        [sessionId]: { mode: 'running' },
+      };
+    });
+  };
+
+  useEffect(() => {
+    const state = location.state as { openArchiveModal?: boolean; archiveTab?: 'attendance' | 'classes' } | null;
+    if (state?.openArchiveModal && state.archiveTab === 'attendance') {
+      setShowArchiveModal(true);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    const ticker = window.setInterval(() => {
+      setNowTimestamp(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(ticker);
+  }, []);
 
   // Load all teacher classes for the "Add Attendance" dropdown
   useEffect(() => {
@@ -81,8 +181,9 @@ function AttendanceClassSelection() {
       setLoading(true);
       try {
         const data = await GetActiveAttendanceSheets(user.id);
-        setAttendanceSheets(data || []);
-        setFilteredSheets(data || []);
+        const rows = (data || []) as unknown as AttendanceSheet[];
+        setAttendanceSheets(rows);
+        setFilteredSheets(rows);
         setError('');
       } catch (error) {
         console.error('Failed to load attendance sheets:', error);
@@ -93,6 +194,21 @@ function AttendanceClassSelection() {
     };
 
     loadAttendanceSheets();
+  }, [user?.id, refreshKey]);
+
+  // Load attendance sessions for view/save/rename actions
+  useEffect(() => {
+    const loadSessions = async () => {
+      if (!user?.id) return;
+      try {
+        const sessions = await (window as any).go.main.App.GetTeacherAttendanceSessions(user.id);
+        setAttendanceSessions(sessions || []);
+      } catch (err) {
+        console.error('Failed to load attendance sessions:', err);
+      }
+    };
+
+    loadSessions();
   }, [user?.id, refreshKey]);
 
   // Filter by search term
@@ -110,21 +226,104 @@ function AttendanceClassSelection() {
     setCurrentPage(1);
   }, [searchTerm, attendanceSheets]);
 
-  // Add attendance for a class - auto-creates attendance for today
+  // Create/load attendance session for a class today
   const handleTakeAttendance = async (classId: number) => {
     setOpeningAttendance(classId);
+    setNotice(null);
     try {
       const today = new Date().toISOString().split('T')[0];
-      // OpenClassAttendance auto-creates attendance if it doesn't exist
+      const hasOpenTodaySession = attendanceSessions.some(
+        (session) => session.class_id === classId && session.attendance_date === today && session.status === 'open'
+      );
+      const hasClosedTodaySession = attendanceSessions.some(
+        (session) => session.class_id === classId && session.attendance_date === today && session.status === 'closed'
+      );
+
+      const durationMinutes = Number(classDuration);
+      const graceMinutes = Number(gracePeriod);
+      const createdSession = await (window as any).go.main.App.CreateAttendanceSession(
+        classId,
+        today,
+        '',
+        user?.id || 0,
+        Number.isNaN(durationMinutes) ? 90 : durationMinutes,
+        Number.isNaN(graceMinutes) ? 10 : graceMinutes
+      );
+
+      if (!hasOpenTodaySession && hasClosedTodaySession) {
+        setNotice({ type: 'success', text: 'New attendance session created for this class today.' });
+      } else if (hasOpenTodaySession) {
+        setNotice({ type: 'success', text: 'Current active attendance session loaded.' });
+      } else {
+        setNotice({ type: 'success', text: 'Attendance sheet is active and ready for editing.' });
+      }
+
+      // Keep existing behavior to open the sheet view.
       await OpenClassAttendance(classId, today);
       // Navigate to the attendance detail page
-      navigate(`/teacher/attendance/${classId}?date=${today}`);
+      if (createdSession?.session_id) {
+        navigate(`/teacher/attendance/${classId}?date=${today}&sessionId=${createdSession.session_id}`);
+      } else {
+        navigate(`/teacher/attendance/${classId}?date=${today}`);
+      }
     } catch (error) {
-      console.error('Failed to open attendance:', error);
-      alert('Failed to open attendance. Please try again.');
+      console.error('Failed to start attendance:', error);
+      setNotice({ type: 'error', text: 'Failed to create attendance session. Please try again.' });
     } finally {
       setOpeningAttendance(null);
       setShowAddModal(false);
+      setRefreshKey(prev => prev + 1);
+    }
+  };
+
+  const handleSaveSession = async (session: AttendanceSession) => {
+    setSessionBusyId(session.session_id);
+    setNotice(null);
+    try {
+      await (window as any).go.main.App.SaveAttendanceSession(session.session_id, user?.id || 0);
+      setNotice({ type: 'success', text: 'Attendance saved successfully.' });
+      setRefreshKey(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to save session:', error);
+      setNotice({ type: 'error', text: 'Failed to save attendance session.' });
+    } finally {
+      setSessionBusyId(null);
+    }
+  };
+
+  const handleRenameSession = async (session: AttendanceSession) => {
+    const newName = window.prompt('Rename attendance session:', session.session_name || '');
+    if (!newName || !newName.trim()) return;
+
+    setSessionBusyId(session.session_id);
+    setNotice(null);
+    try {
+      await (window as any).go.main.App.RenameAttendanceSession(session.session_id, newName.trim(), user?.id || 0);
+      setRefreshKey(prev => prev + 1);
+    } catch (error) {
+      console.error('Failed to rename session:', error);
+      setNotice({ type: 'error', text: 'Failed to rename attendance session.' });
+    } finally {
+      setSessionBusyId(null);
+    }
+  };
+
+  const handleArchiveClick = async (sheet: AttendanceSheet) => {
+    setNotice(null);
+    try {
+      if (sheet.session_id) {
+        await (window as any).go.main.App.ArchiveAttendanceSession(sheet.session_id, user?.id || 0);
+      } else {
+        await (window as any).go.main.App.ArchiveAttendanceSheet(sheet.class_id, sheet.date);
+      }
+      setRefreshKey(prev => prev + 1);
+      setNotice({ type: 'success', text: 'Attendance archived successfully.' });
+    } catch (error) {
+      console.error('Failed to archive attendance:', error);
+      setNotice({
+        type: 'error',
+        text: 'Failed to archive attendance. ' + (error instanceof Error ? error.message : 'Please try again.'),
+      });
     }
   };
 
@@ -143,16 +342,47 @@ function AttendanceClassSelection() {
     );
   }
 
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredSheets.length / entriesPerPage);
-  const startIndex = (currentPage - 1) * entriesPerPage;
-  const endIndex = startIndex + entriesPerPage;
-  const currentSheets = filteredSheets.slice(startIndex, endIndex);
-  const startEntry = filteredSheets.length > 0 ? startIndex + 1 : 0;
-  const endEntry = Math.min(endIndex, filteredSheets.length);
-
   const today = new Date().toISOString().split('T')[0];
   const activeClasses = allTeacherClasses.filter(cls => cls.is_active);
+  const todaySessions = attendanceSessions
+    .filter((session) => session.attendance_date === today && session.status === 'open')
+    .sort((left, right) => right.session_id - left.session_id);
+
+  const tableSheets = filteredSheets.filter((sheet) => {
+    const matchedSession = sheet.session_id
+      ? attendanceSessions.find((session) => session.session_id === sheet.session_id)
+      : undefined;
+    const effectiveStatus = sheet.status || matchedSession?.status;
+    return effectiveStatus !== 'open';
+  });
+
+  // Calculate pagination
+  const totalPages = Math.ceil(tableSheets.length / entriesPerPage);
+  const startIndex = (currentPage - 1) * entriesPerPage;
+  const endIndex = startIndex + entriesPerPage;
+  const currentSheets = tableSheets.slice(startIndex, endIndex);
+  const startEntry = tableSheets.length > 0 ? startIndex + 1 : 0;
+  const endEntry = Math.min(endIndex, tableSheets.length);
+
+  const preferredSessionByKey = new Map<string, AttendanceSession>();
+  attendanceSessions.forEach((session) => {
+    const key = `${session.class_id}-${session.attendance_date}`;
+    const existing = preferredSessionByKey.get(key);
+
+    if (!existing) {
+      preferredSessionByKey.set(key, session);
+      return;
+    }
+
+    if (existing.status === 'closed' && session.status === 'open') {
+      preferredSessionByKey.set(key, session);
+      return;
+    }
+
+    if (existing.status === session.status && session.session_id > existing.session_id) {
+      preferredSessionByKey.set(key, session);
+    }
+  });
 
   return (
     <div className="flex flex-col">
@@ -160,14 +390,24 @@ function AttendanceClassSelection() {
       <div className="flex-shrink-0 mb-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-900">Attendance Management</h2>
-          <Button
-            onClick={() => setShowAddModal(true)}
-            variant="primary"
-            size="sm"
-            icon={<Plus className="h-4 w-4" />}
-          >
-            Add New
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setShowArchiveModal(true)}
+              variant="outline"
+              size="sm"
+              icon={<Archive className="h-4 w-4" />}
+            >
+              Archive
+            </Button>
+            <Button
+              onClick={() => setShowAddModal(true)}
+              variant="primary"
+              size="sm"
+              icon={<Plus className="h-4 w-4" />}
+            >
+              Attendance
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -176,6 +416,126 @@ function AttendanceClassSelection() {
           <p>{error}</p>
         </div>
       )}
+
+      {notice && (
+        <div className={`flex-shrink-0 mb-2 px-3 py-2 rounded-md text-sm border ${notice.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          <p>{notice.text}</p>
+        </div>
+      )}
+
+      {/* Attendance Sessions (Today) */}
+      <div className="flex-shrink-0 mb-3 bg-white border border-gray-200 rounded-lg p-3">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-gray-900">Active Attendance Sheet</h3>
+          <span className="text-xs text-gray-500">{todaySessions.length} session(s)</span>
+        </div>
+        {todaySessions.length > 0 ? (
+          <div className="space-y-2">
+            {todaySessions.map((session) => (
+              <div key={session.session_id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-md">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{session.session_name || `${session.subject_code} Attendance`}</p>
+                  <p className="text-xs text-gray-500">{session.subject_code} • P:{session.present_count} A:{session.absent_count} L:{session.late_count}</p>
+                  {(() => {
+                    const openedAt = parseSessionDateTime(session.opened_at);
+                    if (!openedAt) {
+                      return null;
+                    }
+
+                    const timerControl = getSessionTimerControl(session.session_id);
+                    const classMinutes = Math.max(0, session.class_duration_minutes || 0);
+                    const graceMinutes = Math.max(0, session.grace_period_minutes || 0);
+                    const classDeadline = new Date(openedAt.getTime() + classMinutes * 60 * 1000);
+                    const graceDeadline = new Date(openedAt.getTime() + graceMinutes * 60 * 1000);
+                    const attendanceDeadline = new Date(classDeadline.getTime() + graceMinutes * 60 * 1000);
+                    const effectiveNow = timerControl.mode === 'running'
+                      ? nowTimestamp
+                      : timerControl.mode === 'paused'
+                        ? (timerControl.pausedAt || nowTimestamp)
+                        : attendanceDeadline.getTime();
+                    const classRemaining = timerControl.mode === 'stopped'
+                      ? 0
+                      : Math.max(0, Math.floor((classDeadline.getTime() - effectiveNow) / 1000));
+                    const graceRemaining = timerControl.mode === 'stopped'
+                      ? 0
+                      : Math.max(0, Math.floor((graceDeadline.getTime() - effectiveNow) / 1000));
+
+                    return (
+                      <>
+                        <p className="text-[11px] text-gray-500">
+                          Class remaining: {formatRemaining(classRemaining)}
+                        </p>
+                        <p className="text-[11px] text-gray-500">
+                          Grace period remaining: {timerControl.mode === 'stopped'
+                            ? '00:00'
+                            : formatRemaining(graceRemaining)}
+                        </p>
+                      </>
+                    );
+                  })()}
+                  {session.opened_at && (
+                    <p className="text-[11px] text-gray-400">Generated: {new Date(session.opened_at.replace(' ', 'T')).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => handleSessionTimerMode(session.session_id, 'paused')}
+                    variant="outline"
+                    size="sm"
+                    disabled={getSessionTimerControl(session.session_id).mode === 'paused'}
+                    icon={<Pause className="h-3 w-3" />}
+                    title="Pause Timer"
+                  />
+                  <Button
+                    onClick={() => handleSessionTimerMode(session.session_id, 'running')}
+                    variant="outline"
+                    size="sm"
+                    disabled={getSessionTimerControl(session.session_id).mode === 'running'}
+                    icon={<Play className="h-3 w-3" />}
+                    title="Play Timer"
+                  />
+                  <Button
+                    onClick={() => handleSessionTimerMode(session.session_id, 'stopped')}
+                    variant="outline"
+                    size="sm"
+                    disabled={getSessionTimerControl(session.session_id).mode === 'stopped'}
+                    icon={<Square className="h-3 w-3" />}
+                    title="Stop Timer"
+                  />
+                  <Button
+                    onClick={() => navigate(`/teacher/attendance/${session.class_id}?date=${session.attendance_date}&sessionId=${session.session_id}`)}
+                    variant="outline"
+                    size="sm"
+                    disabled={sessionBusyId === session.session_id}
+                    icon={<Eye className="h-3 w-3" />}
+                    title="View Session"
+                  />
+                  <Button
+                    onClick={() => handleRenameSession(session)}
+                    variant="outline"
+                    size="sm"
+                    disabled={sessionBusyId === session.session_id}
+                    icon={<Edit className="h-3 w-3" />}
+                    title="Rename Session"
+                  />
+                  <Button
+                    onClick={() => handleSaveSession(session)}
+                    variant="primary"
+                    size="sm"
+                    disabled={sessionBusyId === session.session_id}
+                    icon={<Save className="h-3 w-3" />}
+                    title="Save Attendance"
+                  >
+                    Save
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">No sessions created for today yet. Click "Take Attendance" to create one.</p>
+        )}
+      </div>
 
       {/* Controls Section */}
       <div className="flex-shrink-0 mb-2">
@@ -203,7 +563,7 @@ function AttendanceClassSelection() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              placeholder=""
+              placeholder="Subject code, name, EDP, or date"
             />
           </div>
         </div>
@@ -216,23 +576,14 @@ function AttendanceClassSelection() {
             <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
-                  EDP Code
-                </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
-                  Subject
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '150px' }}>
-                  Schedule
+                  Class
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                   Date
                 </th>
                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                   Summary
-                </th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
-                  Status
                 </th>
                 <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
                   Action
@@ -243,23 +594,30 @@ function AttendanceClassSelection() {
               {currentSheets.length > 0 ? (
                 currentSheets.map((sheet) => {
                   const isToday = sheet.date === today;
+                  const sheetKey = `${sheet.class_id}-${sheet.date}`;
+                  const preferredSession = preferredSessionByKey.get(sheetKey);
+                  const preferredSessionId = preferredSession?.session_id;
+                  const sheetSessionId = sheet.session_id || preferredSessionId;
+                  const generatedAt = sheet.opened_at || preferredSession?.opened_at;
+                  const sessionStatus = sheet.status || preferredSession?.status;
+                  const canArchive = !isToday || sessionStatus === 'closed';
 
                   return (
                     <tr
-                      key={`${sheet.class_id}-${sheet.date}`}
+                      key={sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`}
                       className={`hover:bg-gray-50 transition-colors ${isToday ? 'bg-green-50' : ''}`}
                     >
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {sheet.edp_code || '-'}
-                      </td>
                       <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
-                        {sheet.subject_code} - {sheet.subject_name}
-                      </td>
-                      <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
-                        {sheet.schedule || '-'}
+                        <div className="font-medium">{sheet.subject_code} - {sheet.subject_name}</div>
+                        <div className="text-xs text-gray-500">EDP: {sheet.edp_code || '-'}</div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(sheet.date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                        <div>{new Date(sheet.date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                        {generatedAt && (
+                          <div className="text-[11px] text-gray-500">
+                            Generated: {new Date(generatedAt.replace(' ', 'T')).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
                         <div className="flex items-center justify-center gap-2 text-xs">
@@ -268,53 +626,24 @@ function AttendanceClassSelection() {
                           <span className="text-yellow-700 font-medium">L:{sheet.late_count}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                        {isToday ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            Editable
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                            Read-only
-                          </span>
-                        )}
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center justify-center gap-2">
-                          {isToday ? (
+                          <Button
+                            onClick={() => navigate(
+                              sheetSessionId
+                                ? `/teacher/attendance/${sheet.class_id}?date=${sheet.date}&sessionId=${sheetSessionId}`
+                                : `/teacher/attendance/${sheet.class_id}?date=${sheet.date}`
+                            )}
+                            variant="outline"
+                            size="sm"
+                            className="text-gray-600 bg-gray-50 hover:bg-gray-100"
+                            icon={<Eye className="h-3 w-3" />}
+                            title="View Attendance"
+                          />
+                          {/* Archive button - past dates, or today's saved session */}
+                          {canArchive && (
                             <Button
-                              onClick={() => navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}`)}
-                              variant="outline"
-                              size="sm"
-                              className="text-blue-600 bg-blue-50 hover:bg-blue-100"
-                              icon={<Edit className="h-3 w-3" />}
-                              title="Edit Attendance"
-                            />
-                          ) : (
-                            <Button
-                              onClick={() => navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}`)}
-                              variant="outline"
-                              size="sm"
-                              className="text-gray-600 bg-gray-50 hover:bg-gray-100"
-                              icon={<Eye className="h-3 w-3" />}
-                              title="View Attendance"
-                            />
-                          )}
-                          {/* Archive button - only for past dates (not today) */}
-                          {!isToday && (
-                            <Button
-                              onClick={async () => {
-                                if (window.confirm('Are you sure you want to archive this attendance? It will be moved to the Archive section.')) {
-                                  try {
-                                    await ArchiveAttendanceSheet(sheet.class_id, sheet.date);
-                                    setRefreshKey(prev => prev + 1);
-                                    alert('Attendance archived successfully!');
-                                  } catch (error) {
-                                    console.error('Failed to archive attendance:', error);
-                                    alert('Failed to archive attendance. ' + (error instanceof Error ? error.message : 'Please try again.'));
-                                  }
-                                }
-                              }}
+                              onClick={() => handleArchiveClick(sheet)}
                               variant="outline"
                               size="sm"
                               className="text-orange-600 hover:bg-orange-50"
@@ -329,7 +658,7 @@ function AttendanceClassSelection() {
                 })
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center">
+                  <td colSpan={4} className="px-6 py-12 text-center">
                     {searchTerm ? (
                       <>
                         <svg className="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -348,12 +677,9 @@ function AttendanceClassSelection() {
                       </>
                     ) : (
                       <>
-                        <svg className="mx-auto h-10 w-10 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                        </svg>
-                        <h3 className="text-sm font-medium text-gray-900">No attendance records yet</h3>
+                        <h3 className="text-sm font-medium text-gray-900">No attendance sheets exist yet</h3>
                         <p className="mt-1 text-xs text-gray-500">
-                          Click "Add New" to create attendance for your classes.
+                          No saved attendance sheets are available. Active sheets appear here only after you click Save.
                         </p>
                       </>
                     )}
@@ -367,10 +693,10 @@ function AttendanceClassSelection() {
       </div>
 
       {/* Pagination Section */}
-      {filteredSheets.length > 0 && (
+      {tableSheets.length > 0 && (
         <div className="flex-shrink-0 mt-2 flex items-center justify-between">
           <div className="text-xs text-gray-700">
-            Showing {startEntry} to {endEntry} of {filteredSheets.length} entries
+            Showing {startEntry} to {endEntry} of {tableSheets.length} entries
           </div>
           <div className="flex items-center gap-1">
             <Button
@@ -404,7 +730,7 @@ function AttendanceClassSelection() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="flex items-center justify-between px-6 py-4 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">Generate Attendance</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Take Attendance Today</h3>
               <button
                 onClick={() => {
                   setShowAddModal(false);
@@ -449,7 +775,26 @@ function AttendanceClassSelection() {
                   disabled
                   className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-600"
                 />
-                <p className="text-xs text-gray-500 mt-1">Attendance is generated for today's date.</p>
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Class Duration (minutes)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={classDuration}
+                  onChange={(e) => setClassDuration(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div className="mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Grace Period / Time Allocation (minutes)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={gracePeriod}
+                  onChange={(e) => setGracePeriod(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
               </div>
             </div>
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t bg-gray-50">
@@ -466,13 +811,21 @@ function AttendanceClassSelection() {
                 onClick={handleAddAttendanceSubmit}
                 variant="primary"
                 disabled={!selectedClassId || openingAttendance !== null}
+                icon={<Plus className="h-4 w-4" />}
               >
-                {openingAttendance ? 'Generating...' : 'Generate'}
+                {openingAttendance ? 'Loading...' : 'Attendance'}
               </Button>
             </div>
           </div>
         </div>
       )}
+
+      <TeacherStoredArchiveModal
+        isOpen={showArchiveModal}
+        onClose={() => setShowArchiveModal(false)}
+        initialTab="attendance"
+      />
+
     </div>
   );
 }

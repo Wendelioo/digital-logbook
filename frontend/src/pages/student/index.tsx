@@ -1,4 +1,3 @@
-import React from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import {
@@ -6,13 +5,14 @@ import {
   Clock,
   MessageSquare,
   Library,
-  Archive,
+  ClipboardCheck,
 } from 'lucide-react';
 import LoginHistory from '../../components/LoginHistory';
 import DashboardOverview from './StudentDashboard';
 import MyClasses from './StudentMyClasses';
 import ArchivedClasses from './StudentArchivedClasses';
 import FeedbackHistory from './StudentFeedbackHistory';
+import StudentAttendance from './StudentAttendance';
 
 function StudentDashboard() {
   const location = useLocation();
@@ -20,8 +20,8 @@ function StudentDashboard() {
   const navigationItems = [
     { name: 'Dashboard', href: '/student', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/student' },
     { name: 'My Classes', href: '/student/classes', icon: <Library className="h-5 w-5" />, current: location.pathname === '/student/classes' },
-    { name: 'Archived Classes', href: '/student/archived-classes', icon: <Archive className="h-5 w-5" />, current: location.pathname === '/student/archived-classes' },
-    { name: 'Login History', href: '/student/attendance', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/student/attendance' },
+    { name: 'Attendance', href: '/student/attendance', icon: <ClipboardCheck className="h-5 w-5" />, current: location.pathname === '/student/attendance' },
+    { name: 'Login History', href: '/student/login-history', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/student/login-history' },
     { name: 'Feedback History', href: '/student/feedback', icon: <MessageSquare className="h-5 w-5" />, current: location.pathname === '/student/feedback' },
   ];
 
@@ -31,7 +31,8 @@ function StudentDashboard() {
         <Route index element={<DashboardOverview />} />
         <Route path="classes" element={<MyClasses />} />
         <Route path="archived-classes" element={<ArchivedClasses />} />
-        <Route path="attendance" element={<LoginHistory useDropdownFilter={true} />} />
+        <Route path="attendance" element={<StudentAttendance />} />
+        <Route path="login-history" element={<LoginHistory useDropdownFilter={true} />} />
         <Route path="feedback" element={<FeedbackHistory />} />
       </Routes>
     </Layout>

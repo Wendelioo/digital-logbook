@@ -673,7 +673,7 @@ func (a *App) ExportLogsPDF() (string, error) {
 		return "", err
 	}
 
-	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.AddPage()
 	pdf.SetFont("Arial", "B", 16)
 	pdf.Cell(0, 10, "Login Logs Report")
@@ -753,7 +753,7 @@ func (a *App) GetArchivedLogSheets() ([]ArchivedLogSheet, error) {
 
 	rows, err := a.db.Query(query)
 	if err != nil {
-		log.Printf("? Failed to query archived log sheets: %v", err)
+		log.Printf("Failed to query archived log sheets: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -768,7 +768,7 @@ func (a *App) GetArchivedLogSheets() ([]ArchivedLogSheet, error) {
 			&sheet.UniquePCs,
 		)
 		if err != nil {
-			log.Printf("? Failed to scan archived log sheet: %v", err)
+			log.Printf("Failed to scan archived log sheet: %v", err)
 			continue
 		}
 		sheets = append(sheets, sheet)
@@ -874,7 +874,7 @@ func (a *App) ArchiveLogsByDate(date string, adminUserID int) (int, error) {
 		SET is_archived = 1, 
 		    archived_at = GETDATE(), 
 		    archived_by_user_id = ?
-		WHERE CAST(login_time AS DATE) = ? AND (is_archived = 0 OR archived IS NULL)`
+		WHERE CAST(login_time AS DATE) = ? AND (is_archived = 0 OR is_archived IS NULL)`
 
 	result, err := a.db.Exec(query, adminUserID, date)
 	if err != nil {
@@ -887,7 +887,7 @@ func (a *App) ArchiveLogsByDate(date string, adminUserID int) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("? %d log entries archived for date %s by admin %d", rowsAffected, date, adminUserID)
+	log.Printf("%d log entries archived for date %s by admin %d", rowsAffected, date, adminUserID)
 	return int(rowsAffected), nil
 }
 
@@ -914,7 +914,7 @@ func (a *App) UnarchiveLogSheet(date string) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("? %d login logs unarchived for date %s", rowsAffected, date)
+	log.Printf("%d login logs unarchived for date %s", rowsAffected, date)
 	return int(rowsAffected), nil
 }
 
@@ -927,7 +927,7 @@ func (a *App) GetLogDates() ([]string, error) {
 	query := `
 		SELECT DISTINCT CAST(login_time AS DATE) as log_date
 		FROM log_entries
-		WHERE is_archived = 0 OR archived IS NULL
+		WHERE is_archived = 0 OR is_archived IS NULL
 		ORDER BY log_date DESC
 	`
 
@@ -1011,7 +1011,7 @@ func (a *App) ExportArchivedLogSheetPDF(date string) (string, error) {
 		return "", fmt.Errorf("no archived logs for date %s", date)
 	}
 
-	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.AddPage()
 	pdf.SetFont("Arial", "B", 16)
 	pdf.Cell(0, 10, fmt.Sprintf("Login Logs Report - %s", date))
@@ -1099,7 +1099,7 @@ func (a *App) ArchiveLogs(logIDs []int, adminUserID int) (int, error) {
 		return 0, err
 	}
 
-	log.Printf("? %d login logs archived by admin %d", rowsAffected, adminUserID)
+	log.Printf("%d login logs archived by admin %d", rowsAffected, adminUserID)
 	return int(rowsAffected), nil
 }
 
@@ -1165,7 +1165,7 @@ func (a *App) ExportArchivedLogsPDF() (string, error) {
 		return "", fmt.Errorf("no archived logs to export")
 	}
 
-	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.AddPage()
 	pdf.SetFont("Arial", "B", 16)
 	pdf.Cell(0, 10, "Archived Login Logs Report")
@@ -1212,4 +1212,3 @@ func (a *App) ExportArchivedLogsPDF() (string, error) {
 	err = pdf.OutputFileAndClose(filename)
 	return filename, err
 }
-

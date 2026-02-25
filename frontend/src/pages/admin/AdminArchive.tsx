@@ -1,62 +1,59 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
 import Button from '../../components/Button';
-import ArchivedLogsView from '../../components/ArchivedLogsView';
-import ArchivedReportsView from '../../components/ArchivedReportsView';
+import Table from '../../components/Table';
+import { Badge } from '../../components/Badge';
 import {
-  Eye,
   Download,
-  RotateCcw,
+  Filter,
   Archive,
-  X
 } from 'lucide-react';
 import {
-  UnarchiveLogs,
   GetArchivedLogs,
   GetArchivedFeedback,
-  GetArchivedLogSheets,
-  GetArchivedFeedbackSheets,
-  GetArchivedLogsByDate,
-  GetArchivedFeedbackByDate,
-  UnarchiveLogSheet,
-  UnarchiveFeedbackSheet,
   ExportArchivedLogSheetCSV,
   ExportArchivedLogSheetPDF,
   ExportArchivedFeedbackSheetCSV,
   ExportArchivedFeedbackSheetPDF
 } from '../../../wailsjs/go/main/App';
-import { LoginLog, Feedback, ArchivedLogSheet, ArchivedFeedbackSheet } from './types';
+import { LoginLog, Feedback } from './types';
+
+export type ArchiveTab = 'archived-logs' | 'reports';
+
+interface ArchiveManagementProps {
+  initialTab?: ArchiveTab;
+  hideHeader?: boolean;
+}
 
 // Archive Management Component
-function ArchiveManagement() {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const tabParam = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<'archived-logs' | 'log-sheets' | 'reports'>(
-    tabParam === 'reports' ? 'reports' : 'archived-logs'
-  );
+function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }: ArchiveManagementProps) {
+  const [activeTab, setActiveTab] = useState<ArchiveTab>(initialTab);
   const [archivedLogs, setArchivedLogs] = useState<LoginLog[]>([]);
   const [archivedFeedback, setArchivedFeedback] = useState<Feedback[]>([]);
-  const [logSheets, setLogSheets] = useState<ArchivedLogSheet[]>([]);
-  const [feedbackSheets, setFeedbackSheets] = useState<ArchivedFeedbackSheet[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [processing, setProcessing] = useState(false);
+  const [rangeStartDate, setRangeStartDate] = useState('');
+  const [rangeEndDate, setRangeEndDate] = useState('');
+  const [appliedStartDate, setAppliedStartDate] = useState('');
+  const [appliedEndDate, setAppliedEndDate] = useState('');
+  const [rangeExporting, setRangeExporting] = useState(false);
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const filterDropdownRef = useRef<HTMLDivElement | null>(null);
+  const downloadDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const isScopedModal = hideHeader;
+  const allowReportsSection = !isScopedModal || initialTab === 'reports';
+  const allowLogsSection = !isScopedModal || initialTab !== 'reports';
 
   useEffect(() => {
-    // Sync activeTab with URL query parameter
-    const tab = searchParams.get('tab');
-    if (tab === 'reports') {
-      setActiveTab('reports');
-    } else {
-      setActiveTab('archived-logs');
+    if (isScopedModal) {
+      setActiveTab(allowReportsSection ? 'reports' : 'archived-logs');
+      return;
     }
-  }, [searchParams]);
 
-  // View modal state
-  const [viewingSheet, setViewingSheet] = useState<{ type: 'logs' | 'reports'; date: string } | null>(null);
-  const [viewData, setViewData] = useState<LoginLog[] | Feedback[]>([]);
-  const [loadingView, setLoadingView] = useState(false);
+    setActiveTab(initialTab);
+  }, [initialTab, isScopedModal, allowReportsSection]);
 
   // Pagination for logs
   const [logCurrentPage, setLogCurrentPage] = useState(1);
@@ -70,19 +67,40 @@ function ArchiveManagement() {
     loadArchivedData();
   }, []);
 
+  useEffect(() => {
+    if (!showFilterPanel && !showDownloadMenu) {
+      return;
+    }
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (
+        filterDropdownRef.current &&
+        !filterDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowFilterPanel(false);
+      }
+
+      if (
+        downloadDropdownRef.current &&
+        !downloadDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowDownloadMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [showFilterPanel, showDownloadMenu]);
+
   const loadArchivedData = async () => {
     setLoading(true);
     try {
-      const [logs, feedback, logSheets, feedbackSheets] = await Promise.all([
+      const [logs, feedback] = await Promise.all([
         GetArchivedLogs(),
-        GetArchivedFeedback(),
-        GetArchivedLogSheets(),
-        GetArchivedFeedbackSheets()
+        GetArchivedFeedback()
       ]);
       setArchivedLogs(logs || []);
       setArchivedFeedback(feedback || []);
-      setLogSheets(logSheets || []);
-      setFeedbackSheets(feedbackSheets || []);
       setError('');
     } catch (err) {
       console.error('Failed to load archived data:', err);
@@ -92,127 +110,189 @@ function ArchiveManagement() {
     }
   };
 
-  const handleRestoreLogs = async (logIDs: number[]) => {
-    setProcessing(true);
-    try {
-      await UnarchiveLogs(logIDs);
-      alert(`Successfully restored ${logIDs.length} log(s)`);
-      loadArchivedData();
-    } catch (err) {
-      console.error('Failed to restore logs:', err);
-      alert('Failed to restore logs');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleRestoreFeedback = async (feedbackIDs: number[]) => {
-    setProcessing(true);
-    try {
-      // Call backend to unarchive feedback by IDs
-      // Note: You may need to implement this in backend if not available
-      alert(`Successfully restored ${feedbackIDs.length} feedback report(s)`);
-      loadArchivedData();
-    } catch (err) {
-      console.error('Failed to restore feedback:', err);
-      alert('Failed to restore feedback');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  // View sheet details
-  const handleViewSheet = async (type: 'logs' | 'reports', date: string) => {
-    setViewingSheet({ type, date });
-    setLoadingView(true);
-    try {
-      if (type === 'logs') {
-        const data = await GetArchivedLogsByDate(date);
-        setViewData(data || []);
-      } else {
-        const data = await GetArchivedFeedbackByDate(date);
-        setViewData(data || []);
-      }
-    } catch (err) {
-      console.error('Failed to load sheet details:', err);
-      alert('Failed to load sheet details');
-    } finally {
-      setLoadingView(false);
-    }
-  };
-
-  // Unarchive sheet
-  const handleUnarchiveSheet = async (type: 'logs' | 'reports', date: string) => {
-    if (!confirm(`Are you sure you want to unarchive all ${type === 'logs' ? 'logs' : 'reports'} for ${date}?`)) {
-      return;
-    }
-
-    setProcessing(true);
-    try {
-      if (type === 'logs') {
-        await UnarchiveLogSheet(date);
-      } else {
-        await UnarchiveFeedbackSheet(date);
-      }
-      alert(`Successfully unarchived ${type} for ${date}`);
-      loadArchivedData();
-    } catch (err) {
-      console.error('Failed to unarchive sheet:', err);
-      alert('Failed to unarchive sheet');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  // Export handlers
-  const handleExportCSV = async (type: 'logs' | 'reports', date: string) => {
-    try {
-      let filename: string;
-      if (type === 'logs') {
-        filename = await ExportArchivedLogSheetCSV(date);
-      } else {
-        filename = await ExportArchivedFeedbackSheetCSV(date);
-      }
-      alert(`Exported to ${filename}`);
-    } catch (err: any) {
-      alert(err.message || 'Failed to export');
-    }
-  };
-
-  const handleExportPDF = async (type: 'logs' | 'reports', date: string) => {
-    try {
-      let filename: string;
-      if (type === 'logs') {
-        filename = await ExportArchivedLogSheetPDF(date);
-      } else {
-        filename = await ExportArchivedFeedbackSheetPDF(date);
-      }
-      alert(`Exported to ${filename}`);
-    } catch (err: any) {
-      alert(err.message || 'Failed to export');
-    }
-  };
-
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
-      weekday: 'long',
       year: 'numeric',
-      month: 'long',
+      month: 'short',
       day: 'numeric'
     });
   };
 
-  // Pagination calculations for log sheets
-  const logTotalPages = Math.ceil(logSheets.length / logItemsPerPage);
+  const normalizeDateOnly = (value?: string | null) => {
+    if (!value) return '';
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    const splitDate = trimmed.split(/[T\s]/)[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(splitDate)) {
+      return splitDate;
+    }
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+      return '';
+    }
+    return parsed.toISOString().slice(0, 10);
+  };
+
+  const toInputDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const applyRangePreset = (preset: 'today' | 'last7' | 'thisMonth') => {
+    const now = new Date();
+    const end = toInputDate(now);
+
+    if (preset === 'today') {
+      setRangeStartDate(end);
+      setRangeEndDate(end);
+      return;
+    }
+
+    if (preset === 'last7') {
+      const startDate = new Date(now);
+      startDate.setDate(now.getDate() - 6);
+      setRangeStartDate(toInputDate(startDate));
+      setRangeEndDate(end);
+      return;
+    }
+
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    setRangeStartDate(toInputDate(startOfMonth));
+    setRangeEndDate(end);
+  };
+
+  const handleExportRange = async (format: 'csv' | 'pdf') => {
+    const isLogsTab = activeTab === 'archived-logs';
+    const isReportsTab = activeTab === 'reports';
+
+    if (!isLogsTab && !isReportsTab) {
+      alert('Range export is available in Logs and Reports tabs only.');
+      return;
+    }
+
+    const exportStart = appliedStartDate || rangeStartDate;
+    const exportEnd = appliedEndDate || rangeEndDate;
+
+    if (!exportStart || !exportEnd) {
+      alert('Please apply a valid filter range before exporting.');
+      return;
+    }
+
+    if (exportStart > exportEnd) {
+      alert('Start date cannot be later than end date.');
+      return;
+    }
+
+    if (appliedStartDate !== exportStart || appliedEndDate !== exportEnd) {
+      setAppliedStartDate(exportStart);
+      setAppliedEndDate(exportEnd);
+      setLogCurrentPage(1);
+      setFeedbackCurrentPage(1);
+    }
+
+    const filteredSourceDates = isLogsTab
+      ? filteredLogRecords.map((record) => normalizeDateOnly(record.login_time))
+      : filteredReportRecords.map((record) => normalizeDateOnly(record.date_submitted));
+
+    const availableDates = Array.from(new Set(filteredSourceDates.filter(Boolean)))
+      .filter((date) => date >= exportStart && date <= exportEnd)
+      .sort((a, b) => a.localeCompare(b));
+
+    if (availableDates.length === 0) {
+      alert('No archived records found for the selected date range.');
+      return;
+    }
+
+    setRangeExporting(true);
+    try {
+      for (const date of availableDates) {
+        if (isLogsTab) {
+          if (format === 'csv') {
+            await ExportArchivedLogSheetCSV(date);
+          } else {
+            await ExportArchivedLogSheetPDF(date);
+          }
+        } else {
+          if (format === 'csv') {
+            await ExportArchivedFeedbackSheetCSV(date);
+          } else {
+            await ExportArchivedFeedbackSheetPDF(date);
+          }
+        }
+      }
+
+      alert(`Exported ${availableDates.length} date file(s) as ${format.toUpperCase()} for ${exportStart} to ${exportEnd}.`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to export selected date range.');
+    } finally {
+      setRangeExporting(false);
+    }
+  };
+
+  const handleApplyFilter = () => {
+    if (!rangeStartDate || !rangeEndDate) {
+      alert('Please select both start and end dates.');
+      return;
+    }
+
+    if (rangeStartDate > rangeEndDate) {
+      alert('Start date cannot be later than end date.');
+      return;
+    }
+
+    setAppliedStartDate(rangeStartDate);
+    setAppliedEndDate(rangeEndDate);
+    setLogCurrentPage(1);
+    setFeedbackCurrentPage(1);
+  };
+
+  const handleClearFilter = () => {
+    setRangeStartDate('');
+    setRangeEndDate('');
+    setAppliedStartDate('');
+    setAppliedEndDate('');
+    setLogCurrentPage(1);
+    setFeedbackCurrentPage(1);
+  };
+
+  const hasValidRangeFilter =
+    Boolean(rangeStartDate) &&
+    Boolean(rangeEndDate) &&
+    rangeStartDate <= rangeEndDate;
+
+  const hasActiveRangeFilter = Boolean(appliedStartDate) && Boolean(appliedEndDate);
+
+  const hasAnyRangeInput = Boolean(rangeStartDate) || Boolean(rangeEndDate);
+
+  const filteredLogRecords = hasActiveRangeFilter
+    ? archivedLogs.filter((record) => {
+        const recordDate = normalizeDateOnly(record.login_time);
+        return recordDate >= appliedStartDate && recordDate <= appliedEndDate;
+      })
+    : archivedLogs;
+
+  const filteredReportRecords = hasActiveRangeFilter
+    ? archivedFeedback.filter((record) => {
+        const recordDate = normalizeDateOnly(record.date_submitted);
+        return recordDate >= appliedStartDate && recordDate <= appliedEndDate;
+      })
+    : archivedFeedback;
+
+  // Pagination calculations for filtered log records
+  const logTotalPages = Math.ceil(filteredLogRecords.length / logItemsPerPage);
   const logStartIndex = (logCurrentPage - 1) * logItemsPerPage;
   const logEndIndex = logStartIndex + logItemsPerPage;
-  const paginatedLogSheets = logSheets.slice(logStartIndex, logEndIndex);
+  const paginatedLogRecords = filteredLogRecords.slice(logStartIndex, logEndIndex);
 
-  // Pagination calculations for feedback sheets
-  const feedbackTotalPages = Math.ceil(feedbackSheets.length / feedbackItemsPerPage);
+  // Pagination calculations for filtered report records
+  const feedbackTotalPages = Math.ceil(filteredReportRecords.length / feedbackItemsPerPage);
   const feedbackStartIndex = (feedbackCurrentPage - 1) * feedbackItemsPerPage;
   const feedbackEndIndex = feedbackStartIndex + feedbackItemsPerPage;
-  const paginatedFeedbackSheets = feedbackSheets.slice(feedbackStartIndex, feedbackEndIndex);
+  const paginatedReportRecords = filteredReportRecords.slice(feedbackStartIndex, feedbackEndIndex);
+
+  const isLogsTab = activeTab === 'archived-logs' && allowLogsSection;
 
   if (loading) {
     return (
@@ -223,12 +303,14 @@ function ArchiveManagement() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">
-          {activeTab === 'reports' ? 'Archived Feedback Reports' : 'Archived Log Entries'}
-        </h2>
-      </div>
+    <div className={`space-y-6 ${isScopedModal ? 'min-h-[620px]' : ''}`}>
+      {!hideHeader && (
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">
+            {activeTab === 'reports' ? 'Archived Feedback Reports' : 'Archived Log Entries'}
+          </h2>
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4 rounded">
@@ -236,71 +318,236 @@ function ArchiveManagement() {
         </div>
       )}
 
-      {/* Archived Logs View */}
-      {activeTab === 'archived-logs' && (
-        <ArchivedLogsView
-          archivedLogs={archivedLogs}
-          onRestore={handleRestoreLogs}
-          onView={(date) => handleViewSheet('logs', date)}
-          loading={processing}
-        />
+      {!isScopedModal && (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-2">
+          <div className={`grid grid-cols-1 ${allowLogsSection && allowReportsSection ? 'sm:grid-cols-2' : 'sm:grid-cols-1'} gap-2`}>
+            {allowLogsSection && (
+              <button
+                onClick={() => setActiveTab('archived-logs')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  isLogsTab
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Logs
+              </button>
+            )}
+            {allowReportsSection && (
+              <button
+                onClick={() => setActiveTab('reports')}
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'reports'
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                Reports
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
-      {/* Log Sheets */}
-      {activeTab === 'log-sheets' && (
-        <div className="flex-1 overflow-x-auto">
-          {logSheets.length > 0 ? (
+      {(isLogsTab || (activeTab === 'reports' && allowReportsSection)) && (
+        <div className="flex justify-end gap-2 flex-wrap">
+          <div className="relative" ref={filterDropdownRef}>
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Filter className="h-4 w-4" />}
+              onClick={() => {
+                setShowFilterPanel((prev) => !prev);
+                setShowDownloadMenu(false);
+              }}
+            >
+              Filter
+            </Button>
+
+            {showFilterPanel && (
+              <div className="absolute right-0 mt-2 w-max min-w-[360px] max-w-[90vw] rounded-xl border border-gray-200 bg-white p-4 shadow-xl z-30">
+                <div className="flex flex-col gap-4">
+                  <p className="text-xs text-gray-500">Apply a date range to filter visible records and exports.</p>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => applyRangePreset('today')}
+                      className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200"
+                    >
+                      Today
+                    </button>
+                    <button
+                      onClick={() => applyRangePreset('last7')}
+                      className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200"
+                    >
+                      Last 7 Days
+                    </button>
+                    <button
+                      onClick={() => applyRangePreset('thisMonth')}
+                      className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-lg hover:bg-gray-200"
+                    >
+                      This Month
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-nowrap">
+                    <input
+                      type="date"
+                      value={rangeStartDate}
+                      onChange={(e) => setRangeStartDate(e.target.value)}
+                      className="h-10 w-[150px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <span className="text-xs text-gray-500 font-semibold uppercase">to</span>
+                    <input
+                      type="date"
+                      value={rangeEndDate}
+                      onChange={(e) => setRangeEndDate(e.target.value)}
+                      className="h-10 w-[150px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+
+                  <div>
+                    {hasAnyRangeInput && !hasValidRangeFilter ? (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                        Enter a valid start and end date to apply range filtering.
+                      </p>
+                    ) : hasActiveRangeFilter ? (
+                      <p className="text-xs text-primary-700 bg-primary-50 border border-primary-200 rounded-md px-3 py-2">
+                        Active filter: {appliedStartDate} to {appliedEndDate}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-10 min-w-[110px]"
+                      onClick={handleApplyFilter}
+                    >
+                      Apply
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-10 min-w-[110px]"
+                      onClick={handleClearFilter}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="relative" ref={downloadDropdownRef}>
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Download className="h-4 w-4" />}
+              onClick={() => {
+                setShowDownloadMenu((prev) => !prev);
+                setShowFilterPanel(false);
+              }}
+              disabled={rangeExporting}
+            >
+              Download
+            </Button>
+
+            {showDownloadMenu && (
+              <div className="absolute right-0 mt-2 w-36 rounded-xl border border-gray-200 bg-white shadow-xl z-30 overflow-hidden">
+                <button
+                  onClick={async () => {
+                    setShowDownloadMenu(false);
+                    await handleExportRange('csv');
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Download CSV
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowDownloadMenu(false);
+                    await handleExportRange('pdf');
+                  }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Download PDF
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Logs */}
+      {isLogsTab && (
+        <div className={`flex-1 overflow-x-auto ${isScopedModal ? 'min-h-[460px]' : 'min-h-[380px]'}`}>
+          {filteredLogRecords.length > 0 ? (
             <>
               <div className="border-2 border-gray-300">
-                <table className="min-w-full border-collapse">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Date</th>
-                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Name</th>
-                      <th className="border border-gray-400 px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Summary</th>
-                      <th className="border border-gray-400 px-4 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider bg-gray-200">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white">
-                    {paginatedLogSheets.map((sheet) => (
-                    <tr key={sheet.date} className="hover:bg-gray-50">
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                      </td>
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                        <div className="font-medium">Login Logs - {formatDate(sheet.date)}</div>
-                        <div className="text-xs text-gray-500">{sheet.date}</div>
-                      </td>
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-sm text-gray-600">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                            {sheet.total_logins} Total Logins
-                          </span>
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                            {sheet.student_count} Students
-                          </span>
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                            {sheet.teacher_count} Teachers
-                          </span>
-                        </div>
-                        <div className="text-xs text-gray-400 mt-1">{sheet.unique_pcs} unique PCs</div>
-                      </td>
-                      <td className="border border-gray-400 px-4 py-3 whitespace-nowrap text-center text-sm font-medium">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleViewSheet('logs', sheet.date)}
-                            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-primary-600 hover:text-primary-700 border border-primary-300 rounded-lg hover:bg-primary-50"
-                            title="View Details"
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            View
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <Table
+                columns={[
+                  {
+                    key: 'date',
+                    label: 'Date',
+                    render: (record: LoginLog) => (
+                      <span className="text-sm text-gray-700">{formatDate(record.login_time)}</span>
+                    )
+                  },
+                  {
+                    key: 'user_name',
+                    label: 'Name',
+                    render: (record: LoginLog) => (
+                      <span className="font-medium text-gray-900">{record.user_name}</span>
+                    )
+                  },
+                  {
+                    key: 'user_id_number',
+                    label: 'ID Number',
+                    render: (record: LoginLog) => (
+                      <span className="text-gray-700">{record.user_id_number}</span>
+                    )
+                  },
+                  {
+                    key: 'user_type',
+                    label: 'User Type',
+                    render: (record: LoginLog) => (
+                      <Badge variant={
+                        record.user_type === 'admin' ? 'danger' :
+                        record.user_type === 'teacher' ? 'warning' :
+                        record.user_type === 'working_student' ? 'info' :
+                        'success'
+                      }>
+                        {record.user_type.replace('_', ' ')}
+                      </Badge>
+                    )
+                  },
+                  {
+                    key: 'pc_number',
+                    label: 'PC',
+                    render: (record: LoginLog) => (
+                      <span className="text-gray-700">{record.pc_number || 'N/A'}</span>
+                    )
+                  },
+                  {
+                    key: 'login_time',
+                    label: 'Login',
+                    render: (record: LoginLog) => (
+                      <span className="text-gray-700">{new Date(record.login_time.replace(' ', 'T')).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</span>
+                    )
+                  },
+                  {
+                    key: 'logout_time',
+                    label: 'Logout',
+                    render: (record: LoginLog) => (
+                      <span className="text-gray-700">{record.logout_time ? new Date(record.logout_time.replace(' ', 'T')).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) : 'Active'}</span>
+                    )
+                  }
+                ]}
+                data={paginatedLogRecords}
+                loading={processing}
+                emptyMessage="No archived log entries found"
+              />
             </div>
 
             {/* Pagination Controls for Log Sheets */}
@@ -353,204 +600,138 @@ function ArchiveManagement() {
           </>
           ) : (
             <div className="text-center py-12">
-              <Archive className="mx-auto h-12 w-12 text-gray-300" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No archived log sheets</h3>
-              <p className="mt-1 text-sm text-gray-500">Archive logs by date from the Log Entries page to see them here.</p>
+              <h3 className="text-sm font-medium text-gray-900">No archived logs found</h3>
+              <p className="mt-1 text-sm text-gray-500">Try adjusting the date range filter or clear it to show all records.</p>
             </div>
           )}
         </div>
       )}
 
-      {/* Equipment Reports */}
-      {activeTab === 'reports' && (
-        <ArchivedReportsView
-          archivedReports={archivedFeedback as any}
-          onRestore={handleRestoreFeedback}
-          onView={(date) => handleViewSheet('reports', date)}
-          loading={processing}
-        />
-      )}
+      {/* Reports */}
+      {activeTab === 'reports' && allowReportsSection && (
+        <div className={`flex-1 overflow-x-auto ${isScopedModal ? 'min-h-[460px]' : 'min-h-[380px]'}`}>
+          {filteredReportRecords.length > 0 ? (
+            <>
+              <Table
+                columns={[
+                  {
+                    key: 'date_submitted',
+                    label: 'Date',
+                    render: (record: Feedback) => (
+                      <span className="text-sm text-gray-700">{formatDate(record.date_submitted)}</span>
+                    )
+                  },
+                  {
+                    key: 'student_id_str',
+                    label: 'Student ID',
+                    render: (record: Feedback) => (
+                      <span className="text-gray-700">{record.student_id_str}</span>
+                    )
+                  },
+                  {
+                    key: 'student_name',
+                    label: 'Full Name',
+                    render: (record: Feedback) => (
+                      <span className="font-medium text-gray-900">{record.student_name}</span>
+                    )
+                  },
+                  {
+                    key: 'pc_number',
+                    label: 'PC',
+                    render: (record: Feedback) => (
+                      <span className="text-gray-700">{record.pc_number}</span>
+                    )
+                  },
+                  {
+                    key: 'equipment_condition',
+                    label: 'System',
+                    render: (record: Feedback) => (
+                      <span className="text-gray-700">{record.equipment_condition}</span>
+                    )
+                  },
+                  {
+                    key: 'monitor_condition',
+                    label: 'Monitor',
+                    render: (record: Feedback) => (
+                      <span className="text-gray-700">{record.monitor_condition}</span>
+                    )
+                  },
+                  {
+                    key: 'keyboard_condition',
+                    label: 'Keyboard',
+                    render: (record: Feedback) => (
+                      <span className="text-gray-700">{record.keyboard_condition}</span>
+                    )
+                  },
+                  {
+                    key: 'mouse_condition',
+                    label: 'Mouse',
+                    render: (record: Feedback) => (
+                      <span className="text-gray-700">{record.mouse_condition}</span>
+                    )
+                  }
+                ]}
+                data={paginatedReportRecords}
+                loading={processing}
+                emptyMessage="No archived reports found"
+              />
 
-      {/* View Sheet Modal - Bond Paper Style */}
-      {viewingSheet && (
-        <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
-          <div className="min-h-screen p-4 md:p-8">
-            {/* Bond Paper Container */}
-            <div className="bg-white max-w-5xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
-              {/* Close Button - Inside Sheet */}
-              <button
-                onClick={() => setViewingSheet(null)}
-                className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
-                title="Close"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              {feedbackTotalPages > 1 && (
+                <div className="mt-4 flex justify-center items-center gap-2">
+                  <button
+                    onClick={() => setFeedbackCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={feedbackCurrentPage === 1}
+                    className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
 
-              {/* Sheet Title and Controls */}
-              <div className="mb-6 pb-4 border-b border-gray-400">
-                <div className="text-center mb-4">
-                  <h2 className="text-xl font-bold text-gray-900 tracking-wide">
-                    {viewingSheet.type === 'logs' ? 'LOG ENTRIES' : 'EQUIPMENT REPORTS'}
-                  </h2>
-                  <p className="text-xs text-gray-600 mt-1">{formatDate(viewingSheet.date)}</p>
-                </div>
-                <div className="flex justify-end items-center gap-2">
-                  <button
-                    onClick={() => handleExportCSV(viewingSheet.type, viewingSheet.date)}
-                    className="px-3 py-1.5 text-sm font-medium text-gray-600 hover:text-gray-700 border border-gray-300 rounded hover:bg-gray-50 flex items-center gap-1"
-                  >
-                    <Download className="h-4 w-4" />
-                    CSV
-                  </button>
-                  <button
-                    onClick={() => handleExportPDF(viewingSheet.type, viewingSheet.date)}
-                    className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded flex items-center gap-1"
-                  >
-                    <Download className="h-4 w-4" />
-                    PDF
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleUnarchiveSheet(viewingSheet.type, viewingSheet.date);
-                      setViewingSheet(null);
-                    }}
-                    disabled={processing}
-                    className="px-3 py-1.5 text-sm font-medium text-amber-600 hover:text-amber-700 border border-amber-300 rounded hover:bg-amber-50 flex items-center gap-1"
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    Unarchive
-                  </button>
-                </div>
-              </div>
-
-              {/* Sheet Content */}
-              <div className="overflow-hidden">
-                {loadingView ? (
-                  <div className="flex items-center justify-center h-32">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: feedbackTotalPages }, (_, i) => i + 1).map((page) => {
+                      if (
+                        page === 1 ||
+                        page === feedbackTotalPages ||
+                        (page >= feedbackCurrentPage - 1 && page <= feedbackCurrentPage + 1)
+                      ) {
+                        return (
+                          <button
+                            key={page}
+                            onClick={() => setFeedbackCurrentPage(page)}
+                            className={`px-3 py-2 text-sm font-medium rounded-lg ${
+                              feedbackCurrentPage === page
+                                ? 'bg-primary-600 text-white'
+                                : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        );
+                      } else if (page === feedbackCurrentPage - 2 || page === feedbackCurrentPage + 2) {
+                        return <span key={page} className="px-2 text-gray-500">...</span>;
+                      }
+                      return null;
+                    })}
                   </div>
-                ) : viewingSheet.type === 'logs' ? (
-                  <>
-                    {/* Log Summary Header */}
-                    <table className="min-w-full" style={{ tableLayout: 'fixed' }}>
-                      <thead>
-                        <tr>
-                          <th colSpan={6} className="px-4 py-2 text-left border-b-2 border-gray-900">
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-900 font-bold text-sm tracking-wide">LOG ENTRIES</span>
-                              <span className="text-xs text-gray-600">Total: {(viewData as LoginLog[]).length} records</span>
-                            </div>
-                          </th>
-                        </tr>
-                        <tr className="bg-gray-100">
-                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '40px' }}>No.</th>
-                          <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>ID Number</th>
-                          <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase">Full Name</th>
-                          <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>User Type</th>
-                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '70px' }}>PC</th>
-                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '150px' }}>Time In / Out</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white text-xs">
-                        {(viewData as LoginLog[]).length > 0 ? (
-                          (viewData as LoginLog[]).map((log, index) => (
-                            <tr key={log.id} className="hover:bg-gray-50 border-b border-gray-100">
-                              <td className="px-2 py-1.5 text-center font-medium text-gray-900">{index + 1}</td>
-                              <td className="px-2 py-1.5 font-medium text-gray-900">{log.user_id_number}</td>
-                              <td className="px-2 py-1.5 text-gray-900">{log.user_name}</td>
-                              <td className="px-2 py-1.5">
-                                <span className="px-2 py-0.5 bg-primary-100 text-primary-800 rounded text-xs font-medium">
-                                  {log.user_type.replace('_', ' ')}
-                                </span>
-                              </td>
-                              <td className="px-2 py-1.5 text-center text-gray-700">{log.pc_number || '-'}</td>
-                              <td className="px-2 py-1.5 text-center text-gray-700">
-                                <div>{log.login_time ? new Date(log.login_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
-                                <div className="text-gray-400">{log.logout_time ? new Date(log.logout_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</div>
-                              </td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
-                              No log entries found for this date.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </>
-                ) : (
-                  <>
-                    {/* Equipment Report Table */}
-                    <table className="min-w-full" style={{ tableLayout: 'fixed' }}>
-                      <thead>
-                        <tr>
-                          <th colSpan={7} className="px-4 py-2 text-left border-b-2 border-gray-900">
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-900 font-bold text-sm tracking-wide">EQUIPMENT CONDITION REPORTS</span>
-                              <span className="text-xs text-gray-600">Total: {(viewData as Feedback[]).length} reports</span>
-                            </div>
-                          </th>
-                        </tr>
-                        <tr className="bg-gray-100">
-                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '40px' }}>No.</th>
-                          <th className="px-2 py-2 text-left text-xs font-bold text-gray-700 uppercase">Student</th>
-                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '60px' }}>PC</th>
-                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>System</th>
-                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Monitor</th>
-                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Keyboard</th>
-                          <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Mouse</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white text-xs">
-                        {(viewData as Feedback[]).length > 0 ? (
-                          (viewData as Feedback[]).map((report, index) => (
-                            <tr key={report.id} className="hover:bg-gray-50 border-b border-gray-100">
-                              <td className="px-2 py-1.5 text-center font-medium text-gray-900">{index + 1}</td>
-                              <td className="px-2 py-1.5">
-                                <div className="font-medium text-gray-900">{report.student_name}</div>
-                                <div className="text-gray-500">{report.student_id_str}</div>
-                              </td>
-                              <td className="px-2 py-1.5 text-center text-gray-700">{report.pc_number}</td>
-                              <td className="px-2 py-1.5 text-center">
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                  report.equipment_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                                }`}>{report.equipment_condition}</span>
-                              </td>
-                              <td className="px-2 py-1.5 text-center">
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                  report.monitor_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                                }`}>{report.monitor_condition}</span>
-                              </td>
-                              <td className="px-2 py-1.5 text-center">
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                  report.keyboard_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                                }`}>{report.keyboard_condition}</span>
-                              </td>
-                              <td className="px-2 py-1.5 text-center">
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                  report.mouse_condition === 'Good' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                                }`}>{report.mouse_condition}</span>
-                              </td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
-                              No equipment reports found for this date.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </>
-                )}
-              </div>
+
+                  <button
+                    onClick={() => setFeedbackCurrentPage(prev => Math.min(feedbackTotalPages, prev + 1))}
+                    disabled={feedbackCurrentPage === feedbackTotalPages}
+                    className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-center py-12">
+              <h3 className="text-sm font-medium text-gray-900">No archived reports found</h3>
+              <p className="mt-1 text-sm text-gray-500">Try adjusting the date range filter or clear it to show all records.</p>
             </div>
-          </div>
+          )}
         </div>
       )}
+
     </div>
   );
 }

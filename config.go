@@ -54,19 +54,19 @@ func LoadAppSettings() AppConfig {
 
 		var config AppConfig
 		if err := json.Unmarshal(data, &config); err != nil {
-			log.Printf("⚠️  Failed to parse kiosk settings from %s: %v", configPath, err)
+			log.Printf("Failed to parse kiosk settings from %s: %v", configPath, err)
 			continue
 		}
 
 		if config.KioskMode {
-			log.Printf("🔒 Kiosk mode is ENABLED (loaded from %s)", configPath)
+			log.Printf("Kiosk mode is ENABLED (loaded from %s)", configPath)
 		} else {
-			log.Printf("🔓 Kiosk mode is DISABLED (loaded from %s)", configPath)
+			log.Printf("Kiosk mode is DISABLED (loaded from %s)", configPath)
 		}
 		return config
 	}
 
-	log.Println("⚠️  No config.json found for kiosk settings - defaulting to kiosk_mode=false")
+	log.Println("No config.json found for kiosk settings - defaulting to kiosk_mode=false")
 	log.Printf("   Searched paths: %v", configPaths)
 	return defaultConfig
 }
@@ -85,28 +85,28 @@ func LoadDatabaseSettings() DBConfig {
 	// Try to get executable directory
 	exeDir, err := getExecutableDir()
 	if err != nil {
-		log.Printf("⚠️  Unable to determine executable directory: %v", err)
-		log.Println("📋 Using default configuration")
+		log.Printf("Unable to determine executable directory: %v", err)
+		log.Println("Using default configuration")
 		return getDefaultConfig()
 	}
 
 	// Path to config.json next to executable
 	configPath := filepath.Join(exeDir, "config.json")
-	log.Printf("📁 Looking for config file at: %s", configPath)
+	log.Printf("Looking for config file at: %s", configPath)
 
 	// Try to read config file
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		log.Printf("⚠️  Config file not found or unreadable: %v", err)
-		log.Println("📋 Using default configuration")
+		log.Printf("Config file not found or unreadable: %v", err)
+		log.Println("Using default configuration")
 		return getDefaultConfig()
 	}
 
 	// Parse JSON
 	var config DBConfig
 	if err := json.Unmarshal(data, &config); err != nil {
-		log.Printf("⚠️  Failed to parse config.json: %v", err)
-		log.Println("📋 Using default configuration")
+		log.Printf("Failed to parse config.json: %v", err)
+		log.Println("Using default configuration")
 		return getDefaultConfig()
 	}
 
@@ -127,7 +127,7 @@ func LoadDatabaseSettings() DBConfig {
 		config.Database = "logbookdb"
 	}
 
-	log.Println("✅ Configuration loaded successfully from config.json")
+	log.Println("Configuration loaded successfully from config.json")
 	return config
 }
 
@@ -146,7 +146,7 @@ func getDefaultConfig() DBConfig {
 func InitDatabase() (*sql.DB, error) {
 	config := LoadDatabaseSettings()
 
-	log.Printf("🔌 Attempting to connect to database:")
+	log.Printf("Attempting to connect to database:")
 	log.Printf("   Server: %s", config.Server)
 	log.Printf("   Port: %s", config.Port)
 	log.Printf("   Database: %s", config.Database)
@@ -165,14 +165,14 @@ func InitDatabase() (*sql.DB, error) {
 
 	db, err := sql.Open("mssql", dsn)
 	if err != nil {
-		log.Printf("❌ Failed to open database: %v", err)
+		log.Printf("Failed to open database: %v", err)
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	// Test the connection
 	if err := db.Ping(); err != nil {
-		log.Printf("❌ Failed to ping database: %v", err)
-		log.Printf("💡 Troubleshooting tips:")
+		log.Printf("Failed to ping database: %v", err)
+		log.Printf("Troubleshooting tips:")
 		log.Printf("   - Verify SQL Server is running on %s:%s", config.Server, config.Port)
 		log.Printf("   - Check firewall allows TCP port %s", config.Port)
 		log.Printf("   - Ensure SQL Server authentication is enabled")
@@ -181,6 +181,6 @@ func InitDatabase() (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	log.Println("✅ Database connection established successfully")
+	log.Println("Database connection established successfully")
 	return db, nil
 }

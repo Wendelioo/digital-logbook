@@ -50,15 +50,15 @@ const Button: React.FC<ButtonProps> = ({
   title,
   children,
 }) => {
-  const baseClasses = 'inline-flex items-center justify-center font-medium rounded-button transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none';
+  const baseClasses = 'inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none';
   
   const variantClasses = {
-    primary: 'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 focus:ring-primary-500 shadow-sm',
+    primary: 'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 focus:ring-primary-500 shadow-sm hover:shadow-md',
     secondary: 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 focus:ring-gray-400 border border-gray-300',
-    danger: 'bg-danger-600 text-white hover:bg-danger-700 active:bg-danger-800 focus:ring-danger-500 shadow-sm',
-    success: 'bg-success-600 text-white hover:bg-success-700 active:bg-success-800 focus:ring-success-500 shadow-sm',
-    warning: 'bg-warning-600 text-white hover:bg-warning-700 active:bg-warning-800 focus:ring-warning-500 shadow-sm',
-    outline: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 active:bg-gray-100 focus:ring-gray-400 shadow-sm',
+    danger: 'bg-danger-600 text-white hover:bg-danger-700 active:bg-danger-800 focus:ring-danger-500 shadow-sm hover:shadow-md',
+    success: 'bg-success-600 text-white hover:bg-success-700 active:bg-success-800 focus:ring-success-500 shadow-sm hover:shadow-md',
+    warning: 'bg-warning-600 text-white hover:bg-warning-700 active:bg-warning-800 focus:ring-warning-500 shadow-sm hover:shadow-md',
+    outline: 'bg-white/95 text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400 active:bg-gray-100 focus:ring-gray-400 shadow-sm',
     ghost: 'text-gray-700 hover:bg-gray-100 active:bg-gray-200 focus:ring-gray-300',
     link: 'text-primary-600 hover:text-primary-700 underline-offset-4 hover:underline focus:ring-primary-400',
   };
@@ -66,7 +66,7 @@ const Button: React.FC<ButtonProps> = ({
   const sizeClasses = {
     xs: 'px-2.5 py-1.5 text-xs gap-1.5',
     sm: 'px-3.5 py-2 text-sm gap-2',
-    md: 'px-4 py-2.5 text-sm gap-2',
+    md: 'px-4.5 py-2.5 text-sm gap-2',
     lg: 'px-5 py-3 text-base gap-2.5',
     xl: 'px-6 py-3.5 text-base gap-2.5',
   };

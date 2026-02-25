@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function ActivateClass(arg1:number):Promise<void>;
 
+export function ArchiveAttendanceSession(arg1:number,arg2:number):Promise<void>;
+
 export function ArchiveAttendanceSheet(arg1:number,arg2:string):Promise<void>;
 
 export function ArchiveClass(arg1:number):Promise<void>;
@@ -22,11 +24,17 @@ export function ArchiveStudent(arg1:number):Promise<void>;
 
 export function ArchiveStudentEnrollment(arg1:number,arg2:number):Promise<void>;
 
+export function ArchiveUser(arg1:number):Promise<void>;
+
 export function ChangePassword(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function CheckAttendanceExists(arg1:number,arg2:string):Promise<boolean>;
 
 export function CloseClass(arg1:number):Promise<void>;
+
+export function CloseSessionsForCurrentHost():Promise<void>;
+
+export function CreateAttendanceSession(arg1:number,arg2:string,arg3:string,arg4:number,arg5:number,arg6:number):Promise<main.AttendanceSession>;
 
 export function CreateClass(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:number):Promise<number>;
 
@@ -58,6 +66,10 @@ export function EnrollMultipleStudents(arg1:Array<number>,arg2:number,arg3:numbe
 
 export function EnrollStudentInClass(arg1:number,arg2:number,arg3:number):Promise<void>;
 
+export function ExportArchivedAttendanceCSVByDate(arg1:number,arg2:string,arg3:number):Promise<string>;
+
+export function ExportArchivedAttendancePDFByDate(arg1:number,arg2:string,arg3:number):Promise<string>;
+
 export function ExportArchivedFeedbackCSV():Promise<string>;
 
 export function ExportArchivedFeedbackPDF():Promise<string>;
@@ -74,9 +86,13 @@ export function ExportArchivedLogsCSV():Promise<string>;
 
 export function ExportArchivedLogsPDF():Promise<string>;
 
-export function ExportAttendanceCSV(arg1:number):Promise<string>;
+export function ExportAttendanceCSVByDate(arg1:number,arg2:string):Promise<string>;
+
+export function ExportAttendancePDFByDate(arg1:number,arg2:string):Promise<string>;
 
 export function ExportClasslistCSV(arg1:number):Promise<string>;
+
+export function ExportClasslistPDF(arg1:number):Promise<string>;
 
 export function ExportFeedbackCSV():Promise<string>;
 
@@ -124,6 +140,8 @@ export function GetArchivedLogsByDate(arg1:string):Promise<Array<main.LoginLog>>
 
 export function GetArchivedStudents():Promise<Array<main.ArchivedStudent>>;
 
+export function GetArchivedUsers():Promise<Array<main.User>>;
+
 export function GetAvailableSections():Promise<Array<string>>;
 
 export function GetAvailableStudents(arg1:number):Promise<Array<main.ClassStudent>>;
@@ -160,6 +178,8 @@ export function GetProfilePhotoURL(arg1:number):Promise<string>;
 
 export function GetRecentAttendance(arg1:Array<number>,arg2:number):Promise<Array<main.Attendance>>;
 
+export function GetSessionAttendance(arg1:number,arg2:number):Promise<Array<main.Attendance>>;
+
 export function GetStudentArchivedClasses(arg1:number):Promise<Array<main.CourseClass>>;
 
 export function GetStudentClasses(arg1:number):Promise<Array<main.CourseClass>>;
@@ -170,7 +190,11 @@ export function GetStudentFeedback(arg1:number):Promise<Array<main.Feedback>>;
 
 export function GetStudentLoginLogs(arg1:number):Promise<Array<main.LoginLog>>;
 
+export function GetStudentOpenAttendanceSessions(arg1:number):Promise<Array<main.AttendanceSession>>;
+
 export function GetSubjects():Promise<Array<main.Subject>>;
+
+export function GetTeacherAttendanceSessions(arg1:number):Promise<Array<main.AttendanceSession>>;
 
 export function GetTeacherClasses(arg1:number):Promise<Array<main.CourseClass>>;
 
@@ -210,19 +234,23 @@ export function MarkEnrollmentCompleted(arg1:number,arg2:number):Promise<void>;
 
 export function MarkEnrollmentDropped(arg1:number,arg2:number):Promise<void>;
 
+export function OpenAttendanceSession(arg1:number,arg2:number):Promise<void>;
+
 export function OpenClassAttendance(arg1:number,arg2:string):Promise<Array<main.Attendance>>;
 
 export function ProcessRegistration(arg1:main.ApprovalRequest):Promise<void>;
 
 export function ReactivateEnrollment(arg1:number,arg2:number):Promise<void>;
 
-export function RecordAttendance(arg1:number,arg2:number,arg3:string,arg4:string,arg5:number):Promise<void>;
-
-export function RecordStudentLogin(arg1:number,arg2:number):Promise<void>;
-
 export function RecordTimeoutLogout(arg1:number):Promise<void>;
 
+export function RenameAttendanceSession(arg1:number,arg2:string,arg3:number):Promise<void>;
+
 export function ReopenClass(arg1:number):Promise<void>;
+
+export function ResetPasswordByRole(arg1:number,arg2:number,arg3:string):Promise<void>;
+
+export function SaveAttendanceSession(arg1:number,arg2:number):Promise<void>;
 
 export function SaveEquipmentFeedback(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string):Promise<void>;
 
@@ -234,7 +262,13 @@ export function SetClassActiveStatus(arg1:number,arg2:boolean):Promise<void>;
 
 export function SetStudentEnrollmentStatus(arg1:number,arg2:number,arg3:string):Promise<void>;
 
+export function StudentTimeIn(arg1:number,arg2:number):Promise<void>;
+
 export function SubmitRegistration(arg1:main.RegistrationRequest):Promise<void>;
+
+export function TouchSession(arg1:number):Promise<void>;
+
+export function UnarchiveAttendanceSession(arg1:number,arg2:number):Promise<void>;
 
 export function UnarchiveAttendanceSheet(arg1:number,arg2:string):Promise<void>;
 
@@ -251,6 +285,8 @@ export function UnarchiveLogs(arg1:Array<number>):Promise<void>;
 export function UnarchiveStudent(arg1:number):Promise<void>;
 
 export function UnarchiveStudentEnrollment(arg1:number,arg2:number):Promise<void>;
+
+export function UnarchiveUser(arg1:number):Promise<void>;
 
 export function UnenrollStudentFromClass(arg1:number):Promise<void>;
 

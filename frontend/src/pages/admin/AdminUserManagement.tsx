@@ -15,7 +15,9 @@ import {
   Upload,
   User,
   Users,
-  Settings
+  Settings,
+  Archive,
+  ArchiveRestore
 } from 'lucide-react';
 import {
   GetUsers,
@@ -24,9 +26,14 @@ import {
   CreateUser,
   UpdateUser,
   DeleteUser,
-  GetDepartments
+  GetDepartments,
+  ArchiveUser,
+  GetArchivedUsers,
+  UnarchiveUser,
+  ResetPasswordByRole
 } from '../../../wailsjs/go/main/App';
 import { User as UserType, Department } from './types';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface ViewUserDetailsModalProps {
   user: UserType | null;
@@ -141,6 +148,7 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
 }
 
 function UserManagement() {
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -169,6 +177,9 @@ function UserManagement() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [showArchivedModal, setShowArchivedModal] = useState(false);
+  const [archivedUsers, setArchivedUsers] = useState<UserType[]>([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
 
   // Excel-like table state: sorting, filtering, selection, pagination
   type SortKey = 'name' | 'role' | 'created';
@@ -306,6 +317,21 @@ function UserManagement() {
     }
   };
 
+  const loadArchivedUsers = async () => {
+    setArchivedLoading(true);
+    try {
+      const data = await GetArchivedUsers();
+      setArchivedUsers(data || []);
+    } catch (error) {
+      console.error('Failed to load archived users:', error);
+      setArchivedUsers([]);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load archived accounts.';
+      showNotification('error', errorMessage);
+    } finally {
+      setArchivedLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -426,11 +452,80 @@ function UserManagement() {
         await DeleteUser(id);
         showNotification('success', 'User deleted successfully!');
         loadUsers();
+        if (showArchivedModal) {
+          loadArchivedUsers();
+        }
       } catch (error) {
         console.error('Failed to delete user:', error);
         const errorMessage = error instanceof Error ? error.message : 'Failed to delete user. Please try again.';
         showNotification('error', errorMessage);
       }
+    }
+  };
+
+  const handleArchive = async (user: UserType) => {
+    if (user.role === 'teacher') {
+      showNotification('error', 'Teacher accounts cannot be archived. Please delete the account instead.');
+      return;
+    }
+
+    try {
+      await ArchiveUser(user.id);
+      showNotification('success', 'User archived successfully!');
+      loadUsers();
+      if (showArchivedModal) {
+        loadArchivedUsers();
+      }
+    } catch (error) {
+      console.error('Failed to archive user:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to archive user. Please try again.';
+      showNotification('error', errorMessage);
+    }
+  };
+
+  const handleRestoreArchived = async (id: number) => {
+    try {
+      await UnarchiveUser(id);
+      showNotification('success', 'Archived account restored successfully!');
+      loadArchivedUsers();
+      loadUsers();
+    } catch (error) {
+      console.error('Failed to restore archived user:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to restore account. Please try again.';
+      showNotification('error', errorMessage);
+    }
+  };
+
+  const handleResetPassword = async (targetUser: UserType) => {
+    if (!currentUser) {
+      showNotification('error', 'Current session not found. Please login again.');
+      return;
+    }
+
+    const newPassword = window.prompt(`Set new password for ${targetUser.first_name || targetUser.name}:`);
+    if (newPassword === null) return;
+
+    const trimmedPassword = newPassword.trim();
+    if (!trimmedPassword) {
+      showNotification('error', 'New password is required.');
+      return;
+    }
+
+    const confirmPassword = window.prompt('Confirm new password:');
+    if (confirmPassword === null) return;
+
+    if (trimmedPassword !== confirmPassword.trim()) {
+      showNotification('error', 'Passwords do not match.');
+      return;
+    }
+
+    try {
+      await ResetPasswordByRole(currentUser.id, targetUser.id, trimmedPassword);
+      showNotification('success', 'Password reset successful.');
+    } catch (error) {
+      console.error('Failed to reset password:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to reset password.';
+      showNotification('error', errorMessage);
     }
   };
 
@@ -491,13 +586,25 @@ function UserManagement() {
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
-        <Button
-          onClick={() => setShowForm(true)}
-          variant="primary"
-          icon={<Plus className="h-4 w-4" />}
-        >
-          ADD NEW
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => {
+              setShowArchivedModal(true);
+              loadArchivedUsers();
+            }}
+            variant="outline"
+            icon={<Archive className="h-4 w-4" />}
+          >
+            Archive
+          </Button>
+          <Button
+            onClick={() => setShowForm(true)}
+            variant="primary"
+            icon={<Plus className="h-4 w-4" />}
+          >
+            ADD NEW
+          </Button>
+        </div>
       </div>
 
       {/* Notification */}
@@ -819,6 +926,65 @@ function UserManagement() {
         departmentName={undefined}
       />
 
+      <Modal
+        isOpen={showArchivedModal}
+        onClose={() => setShowArchivedModal(false)}
+        title="Archive"
+        size="2xl"
+      >
+        {archivedLoading ? (
+          <div className="flex items-center justify-center h-40">
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+          </div>
+        ) : archivedUsers.length === 0 ? (
+          <div className="px-6 py-12 text-center">
+            <p className="text-gray-500">No archived accounts found.</p>
+          </div>
+        ) : (
+          <div className="bg-white shadow rounded-lg overflow-hidden">
+            <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+              <thead className="bg-gray-50 sticky top-0 z-10">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>User ID</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '220px' }}>Full Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '130px' }}>Role</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '150px' }}>Archived Date</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '140px' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {archivedUsers.map((user) => (
+                  <tr key={user.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.employee_id || user.student_id || user.name || '-'}</td>
+                    <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
+                      {user.first_name && user.last_name
+                        ? `${user.last_name}, ${user.first_name}${user.middle_name ? ' ' + user.middle_name : ''}`
+                        : user.name}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{user.role.replace('_', ' ')}</td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{user.created || '-'}</td>
+                    <td className="px-4 py-4 whitespace-nowrap text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          onClick={() => handleRestoreArchived(user.id)}
+                          variant="success"
+                          size="sm"
+                          className="h-9 w-9 px-0 py-0"
+                          icon={<ArchiveRestore className="h-4 w-4" />}
+                          title="Restore"
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       <div className="mb-6 flex justify-between items-center">
         <div className="flex items-center gap-4">
           <div className="text-sm text-gray-600">
@@ -908,13 +1074,32 @@ function UserManagement() {
                       icon={<Edit className="h-3 w-3" />}
                       title="Edit"
                     />
-                    <Button
-                      onClick={() => handleDelete(user.id)}
-                      variant="danger"
-                      size="sm"
-                      icon={<Trash2 className="h-3 w-3" />}
-                      title="Delete"
-                    />
+                    {user.role !== 'admin' && (
+                      <Button
+                        onClick={() => handleResetPassword(user)}
+                        variant="outline"
+                        size="sm"
+                        icon={<Settings className="h-3 w-3" />}
+                        title="Reset Password"
+                      />
+                    )}
+                    {user.role === 'teacher' ? (
+                      <Button
+                        onClick={() => handleDelete(user.id)}
+                        variant="danger"
+                        size="sm"
+                        icon={<Trash2 className="h-3 w-3" />}
+                        title="Delete"
+                      />
+                    ) : (
+                      <Button
+                        onClick={() => handleArchive(user)}
+                        variant="outline"
+                        size="sm"
+                        icon={<Archive className="h-3 w-3" />}
+                        title="Archive"
+                      />
+                    )}
                   </div>
                 )
               }

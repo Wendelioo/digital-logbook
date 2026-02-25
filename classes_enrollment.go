@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/jung-kurt/gofpdf"
 )
 
 // ==============================================================================
@@ -25,10 +27,10 @@ func (a *App) GetAvailableStudents(classID int) ([]ClassStudent, error) {
 	query := `
 		SELECT 
 			s.id as id, s.student_id, s.first_name, s.middle_name, s.last_name,
-			EXISTS(
+			CASE WHEN EXISTS(
 				SELECT 1 FROM classlist cl 
 				WHERE cl.student_id = s.id AND cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
-			) as is_enrolled
+			) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END as is_enrolled
 		FROM students s
 		WHERE NOT EXISTS (
 			SELECT 1 FROM classlist cl 
@@ -69,10 +71,10 @@ func (a *App) GetAllStudentsForEnrollment(classID int) ([]ClassStudent, error) {
 	query := `
 		SELECT 
 			s.id as id, s.student_id, s.first_name, s.middle_name, s.last_name,
-			EXISTS(
+			CASE WHEN EXISTS(
 				SELECT 1 FROM classlist cl 
 				WHERE cl.student_id = s.id AND cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
-			) as is_enrolled
+			) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END as is_enrolled
 		FROM students s
 		ORDER BY last_name, first_name
 	`
@@ -133,7 +135,7 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 	`
 	_, err = a.db.Exec(query, classID, studentID)
 	if err != nil {
-		log.Printf("⚠ Failed to enroll student %d in class %d: %v", studentID, classID, err)
+		log.Printf("Failed to enroll student %d in class %d: %v", studentID, classID, err)
 		return err
 	}
 
@@ -156,13 +158,13 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 		`
 		_, err = a.db.Exec(insertQuery, classID, studentID, today)
 		if err != nil {
-			log.Printf("⚠ Warning: Failed to auto-insert attendance for late joiner student %d: %v", studentID, err)
+			log.Printf("Warning: Failed to auto-insert attendance for late joiner student %d: %v", studentID, err)
 		} else {
-			log.Printf("✓ Auto-inserted attendance for late joiner: student=%d, class=%d, date=%s", studentID, classID, today)
+			log.Printf("Auto-inserted attendance for late joiner: student=%d, class=%d, date=%s", studentID, classID, today)
 		}
 	}
 
-	log.Printf("✓ Student %d enrolled in class %d", studentID, classID)
+	log.Printf("Student %d enrolled in class %d", studentID, classID)
 	return nil
 }
 
@@ -209,7 +211,7 @@ func (a *App) EnrollMultipleStudents(studentIDs []int, classID int, enrolledBy i
 	for _, studentID := range studentIDs {
 		_, err = stmt.Exec(classID, studentID)
 		if err != nil {
-			log.Printf("⚠ Failed to enroll student %d: %v", studentID, err)
+			log.Printf("Failed to enroll student %d: %v", studentID, err)
 			return err
 		}
 	}
@@ -218,7 +220,7 @@ func (a *App) EnrollMultipleStudents(studentIDs []int, classID int, enrolledBy i
 		return err
 	}
 
-	log.Printf("✓ Enrolled %d students in class %d", len(studentIDs), classID)
+	log.Printf("Enrolled %d students in class %d", len(studentIDs), classID)
 	return nil
 }
 
@@ -235,11 +237,11 @@ func (a *App) UnenrollStudentFromClass(classlistID int) error {
 	query := `UPDATE classlist SET status = 'dropped' WHERE class_id = ?`
 	_, err := a.db.Exec(query, classlistID)
 	if err != nil {
-		log.Printf("⚠ Failed to unenroll student (class_id=%d): %v", classlistID, err)
+		log.Printf("Failed to unenroll student (class_id=%d): %v", classlistID, err)
 		return err
 	}
 
-	log.Printf("✓ Student unenrolled (class_id=%d)", classlistID)
+	log.Printf("Student unenrolled (class_id=%d)", classlistID)
 	return nil
 }
 
@@ -252,11 +254,11 @@ func (a *App) UnenrollStudentFromClassByIDs(studentID int, classID int) error {
 	query := `UPDATE classlist SET status = 'dropped' WHERE student_id = ? AND class_id = ?`
 	_, err := a.db.Exec(query, studentID, classID)
 	if err != nil {
-		log.Printf("⚠ Failed to unenroll student %d from class %d: %v", studentID, classID, err)
+		log.Printf("Failed to unenroll student %d from class %d: %v", studentID, classID, err)
 		return err
 	}
 
-	log.Printf("✓ Student %d unenrolled from class %d", studentID, classID)
+	log.Printf("Student %d unenrolled from class %d", studentID, classID)
 	return nil
 }
 
@@ -363,6 +365,9 @@ func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error)
 	if err := a.checkDB(); err != nil {
 		return 0, err
 	}
+	if err := a.ensureStudentArchivedClassesTable(); err != nil {
+		return 0, err
+	}
 
 	// Validate student ID
 	if studentUserID <= 0 {
@@ -388,9 +393,13 @@ func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error)
 	// Check if student is already enrolled in any of these classes
 	for _, class := range classes {
 		var exists int
-		checkQuery := `SELECT 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = 0 OR is_archived IS NULL)`
+		checkQuery := `SELECT 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active'`
 		err := a.db.QueryRow(checkQuery, class.ClassID, studentUserID).Scan(&exists)
 		if err == nil {
+			_, _ = a.db.Exec(
+				"DELETE FROM student_archived_classes WHERE student_id = ? AND class_id = ?",
+				studentUserID, class.ClassID,
+			)
 			// Already enrolled
 			return class.ClassID, nil
 		}
@@ -403,7 +412,7 @@ func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error)
 		return 0, fmt.Errorf("failed to enroll student: %v", err)
 	}
 
-	log.Printf("✓ Student %d joined class %d via EDP code %s", studentUserID, classID, edpCode)
+	log.Printf("Student %d joined class %d via EDP code %s", studentUserID, classID, edpCode)
 	return classID, nil
 }
 
@@ -411,27 +420,122 @@ func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error)
 // ENROLLMENT ARCHIVING
 // ==============================================================================
 
+func (a *App) ensureStudentArchivedClassesTable() error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	createQuery := `
+		IF OBJECT_ID('student_archived_classes', 'U') IS NULL
+		BEGIN
+			CREATE TABLE student_archived_classes (
+				student_id INT NOT NULL,
+				class_id INT NOT NULL,
+				archived_at DATETIME NOT NULL DEFAULT GETDATE(),
+				updated_at DATETIME NOT NULL DEFAULT GETDATE(),
+				CONSTRAINT PK_student_archived_classes PRIMARY KEY (student_id, class_id),
+				CONSTRAINT FK_student_archived_classes_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+				CONSTRAINT FK_student_archived_classes_class FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE
+			)
+		END
+	`
+
+	if _, err := a.db.Exec(createQuery); err != nil {
+		return err
+	}
+
+	// Compatibility migration: if old table name exists, copy data once.
+	_, _ = a.db.Exec(`
+		IF OBJECT_ID('student_hidden_classes', 'U') IS NOT NULL
+		BEGIN
+			INSERT INTO student_archived_classes (student_id, class_id, archived_at, updated_at)
+			SELECT sh.student_id, sh.class_id, GETDATE(), GETDATE()
+			FROM student_hidden_classes sh
+			LEFT JOIN student_archived_classes sac ON sac.student_id = sh.student_id AND sac.class_id = sh.class_id
+			WHERE sac.student_id IS NULL
+		END
+	`)
+
+	// Legacy migration: old student personal archives were stored in classlist.is_archived.
+	// Move only ACTIVE (non-globally-archived) classes to personal archive table.
+	_, _ = a.db.Exec(`
+		INSERT INTO student_archived_classes (student_id, class_id, archived_at, updated_at)
+		SELECT cl.student_id, cl.class_id, GETDATE(), GETDATE()
+		FROM classlist cl
+		INNER JOIN classes c ON c.class_id = cl.class_id
+		LEFT JOIN student_archived_classes sac ON sac.student_id = cl.student_id AND sac.class_id = cl.class_id
+		WHERE cl.status = 'active'
+			AND COALESCE(cl.is_archived, 0) = 1
+			AND COALESCE(c.is_archived, 0) = 0
+			AND sac.student_id IS NULL
+	`)
+
+	_, _ = a.db.Exec(`
+		UPDATE cl
+		SET cl.is_archived = 0,
+			cl.updated_at = CURRENT_TIMESTAMP
+		FROM classlist cl
+		INNER JOIN classes c ON c.class_id = cl.class_id
+		WHERE cl.status = 'active'
+			AND COALESCE(cl.is_archived, 0) = 1
+			AND COALESCE(c.is_archived, 0) = 0
+	`)
+
+	return nil
+}
+
 // ArchiveStudentEnrollment archives a student's enrollment in a specific class
 func (a *App) ArchiveStudentEnrollment(studentUserID int, classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
+	if err := a.ensureStudentArchivedClassesTable(); err != nil {
+		return err
+	}
+
+	var enrollmentExists int
+	err := a.db.QueryRow(
+		`SELECT COUNT(*) FROM classlist WHERE student_id = ? AND class_id = ? AND status = 'active'`,
+		studentUserID, classID,
+	).Scan(&enrollmentExists)
+	if err != nil {
+		return err
+	}
+	if enrollmentExists == 0 {
+		return fmt.Errorf("enrollment not found")
+	}
+
+	var classArchived bool
+	err = a.db.QueryRow(`SELECT COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&classArchived)
+	if err != nil {
+		return fmt.Errorf("class not found")
+	}
+	if classArchived {
+		return fmt.Errorf("class is already archived by teacher")
+	}
 
 	result, err := a.db.Exec(
-		"UPDATE classlist SET is_archived = 1 WHERE student_id = ? AND class_id = ?",
+		`MERGE student_archived_classes AS target
+		 USING (SELECT ? AS student_id, ? AS class_id) AS source
+		 ON target.student_id = source.student_id AND target.class_id = source.class_id
+		 WHEN MATCHED THEN
+		 	UPDATE SET updated_at = GETDATE()
+		 WHEN NOT MATCHED THEN
+		 	INSERT (student_id, class_id, archived_at, updated_at)
+		 	VALUES (source.student_id, source.class_id, GETDATE(), GETDATE());`,
 		studentUserID, classID,
 	)
 	if err != nil {
-		log.Printf("⚠ Failed to archive student enrollment: %v", err)
+		log.Printf("Failed to hide student class: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected == 0 {
-		return fmt.Errorf("enrollment not found")
+		return fmt.Errorf("failed to hide class")
 	}
 
-	log.Printf("✓ Archived enrollment for student_id=%d in class_id=%d", studentUserID, classID)
+	log.Printf("Student hid class from My Classes: student_id=%d class_id=%d", studentUserID, classID)
 	return nil
 }
 
@@ -440,22 +544,31 @@ func (a *App) UnarchiveStudentEnrollment(studentUserID int, classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
+	if err := a.ensureStudentArchivedClassesTable(); err != nil {
+		return err
+	}
+
+	var classArchived bool
+	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&classArchived)
+	if err == nil && classArchived {
+		return fmt.Errorf("class is archived by teacher and cannot be restored to My Classes")
+	}
 
 	result, err := a.db.Exec(
-		"UPDATE classlist SET is_archived = 0 WHERE student_id = ? AND class_id = ?",
+		"DELETE FROM student_archived_classes WHERE student_id = ? AND class_id = ?",
 		studentUserID, classID,
 	)
 	if err != nil {
-		log.Printf("⚠ Failed to unarchive student enrollment: %v", err)
+		log.Printf("Failed to restore hidden student class: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected == 0 {
-		return fmt.Errorf("enrollment not found")
+		return fmt.Errorf("class is not in your archived list")
 	}
 
-	log.Printf("✓ Unarchived enrollment for student_id=%d in class_id=%d", studentUserID, classID)
+	log.Printf("Student restored class to My Classes: student_id=%d class_id=%d", studentUserID, classID)
 	return nil
 }
 
@@ -481,7 +594,7 @@ func (a *App) SetStudentEnrollmentStatus(studentUserID int, classID int, status 
 		status, studentUserID, classID,
 	)
 	if err != nil {
-		log.Printf("⚠ Failed to update enrollment status: %v", err)
+		log.Printf("Failed to update enrollment status: %v", err)
 		return err
 	}
 
@@ -490,7 +603,7 @@ func (a *App) SetStudentEnrollmentStatus(studentUserID int, classID int, status 
 		return fmt.Errorf("enrollment not found")
 	}
 
-	log.Printf("✓ Updated enrollment status: student_id=%d, class_id=%d, status=%s", studentUserID, classID, status)
+	log.Printf("Updated enrollment status: student_id=%d, class_id=%d, status=%s", studentUserID, classID, status)
 	return nil
 }
 
@@ -521,12 +634,12 @@ func (a *App) MarkAllEnrollmentsCompleted(classID int) error {
 		classID,
 	)
 	if err != nil {
-		log.Printf("⚠ Failed to mark all enrollments completed: %v", err)
+		log.Printf("Failed to mark all enrollments completed: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
-	log.Printf("✓ Marked all enrollments completed for class_id=%d, affected=%d", classID, rowsAffected)
+	log.Printf("Marked all enrollments completed for class_id=%d, affected=%d", classID, rowsAffected)
 	return nil
 }
 
@@ -602,27 +715,33 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 		return "", err
 	}
 
-	// First get class info for the filename
-	var subjectCode, subjectName string
+	var subjectCode string
+	var subjectName, schedule, room, teacherName, semester, schoolYear sql.NullString
 	classQuery := `
-		SELECT c.subject_code, s.description
+		SELECT
+			c.subject_code,
+			s.description,
+			c.schedule,
+			c.room,
+			(t.last_name + ', ' + t.first_name) as teacher_name,
+			c.semester,
+			c.school_year
 		FROM classes c
 		JOIN subjects s ON c.subject_code = s.subject_code
+		LEFT JOIN teachers t ON c.teacher_id = t.id
 		WHERE c.class_id = ?
 	`
-	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName)
+	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName, &semester, &schoolYear)
 	if err != nil {
-		log.Printf("⚠ Failed to get class info for export: %v", err)
+		log.Printf("Failed to get class info for export: %v", err)
 		subjectCode = fmt.Sprintf("class_%d", classID)
-		subjectName = "Unknown Subject"
+		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
 	}
 
-	// Get all students including archived ones for the classlist
 	query := `
 		SELECT 
 			stu.student_id, stu.first_name, stu.middle_name, stu.last_name,
-			stu.email, stu.contact_number,
-			cl.status, cl.enrollment_date
+			stu.email, stu.contact_number
 		FROM classlist cl
 		JOIN students stu ON cl.student_id = stu.id
 		WHERE cl.class_id = ?
@@ -636,24 +755,21 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 	defer rows.Close()
 
 	type StudentRecord struct {
-		StudentID      string
-		FirstName      string
-		MiddleName     string
-		LastName       string
-		Email          string
-		ContactNumber  string
-		Status         string
-		EnrollmentDate string
+		StudentID     string
+		FirstName     string
+		MiddleName    string
+		LastName      string
+		Email         string
+		ContactNumber string
 	}
 
 	var students []StudentRecord
 	for rows.Next() {
 		var s StudentRecord
 		var middleName, email, contactNumber sql.NullString
-		var enrollmentDate time.Time
 		err := rows.Scan(
 			&s.StudentID, &s.FirstName, &middleName, &s.LastName,
-			&email, &contactNumber, &s.Status, &enrollmentDate,
+			&email, &contactNumber,
 		)
 		if err != nil {
 			continue
@@ -667,7 +783,6 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 		if contactNumber.Valid {
 			s.ContactNumber = contactNumber.String
 		}
-		s.EnrollmentDate = enrollmentDate.Format("2006-01-02")
 		students = append(students, s)
 	}
 
@@ -683,25 +798,247 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
 
-	// Write header with class info
-	writer.Write([]string{"Subject", fmt.Sprintf("%s - %s", subjectCode, subjectName)})
-	writer.Write([]string{""})
-	writer.Write([]string{"Student ID", "First Name", "Middle Name", "Last Name", "Email", "Contact Number", "Status", "Enrollment Date"})
+	subjectNameValue := "N/A"
+	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
+		subjectNameValue = subjectName.String
+	}
+	scheduleValue := "N/A"
+	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
+		scheduleValue = schedule.String
+	}
+	roomValue := "N/A"
+	if room.Valid && strings.TrimSpace(room.String) != "" {
+		roomValue = room.String
+	}
+	teacherValue := "N/A"
+	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
+		teacherValue = teacherName.String
+	}
+	semesterValue := "N/A"
+	if semester.Valid && strings.TrimSpace(semester.String) != "" {
+		semesterValue = semester.String
+	}
+	schoolYearValue := "N/A"
+	if schoolYear.Valid && strings.TrimSpace(schoolYear.String) != "" {
+		schoolYearValue = schoolYear.String
+	}
 
-	// Write student data
-	for _, s := range students {
+	writer.Write([]string{"CLASS LIST"})
+	writer.Write([]string{fmt.Sprintf("School Year %s • %s", schoolYearValue, semesterValue)})
+	writer.Write([]string{""})
+	writer.Write([]string{"CLASS INFORMATION"})
+	writer.Write([]string{"Subject Code", subjectCode, "Schedule", scheduleValue})
+	writer.Write([]string{"Subject Name", subjectNameValue, "Room", roomValue})
+	writer.Write([]string{"Instructor", teacherValue})
+	writer.Write([]string{""})
+	writer.Write([]string{"STUDENTS LIST"})
+	writer.Write([]string{"No.", "Student ID", "Name", "Email", "Contact"})
+
+	for index, s := range students {
+		middleInitial := ""
+		if strings.TrimSpace(s.MiddleName) != "" {
+			middleInitial = fmt.Sprintf(" %s.", strings.ToUpper(string(s.MiddleName[0])))
+		}
+		fullName := fmt.Sprintf("%s, %s%s", s.LastName, s.FirstName, middleInitial)
+		email := s.Email
+		if strings.TrimSpace(email) == "" {
+			email = "—"
+		}
+		contact := s.ContactNumber
+		if strings.TrimSpace(contact) == "" {
+			contact = "—"
+		}
+
 		writer.Write([]string{
+			fmt.Sprintf("%d", index+1),
 			s.StudentID,
-			s.FirstName,
-			s.MiddleName,
-			s.LastName,
-			s.Email,
-			s.ContactNumber,
-			s.Status,
-			s.EnrollmentDate,
+			fullName,
+			email,
+			contact,
 		})
 	}
 
-	log.Printf("✓ Classlist exported to CSV: %s (%d students)", filename, len(students))
+	log.Printf("Classlist exported to CSV: %s (%d students)", filename, len(students))
+	return filename, nil
+}
+
+// ExportClasslistPDF exports the classlist (enrolled students) for a class to PDF
+func (a *App) ExportClasslistPDF(classID int) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+
+	var subjectCode string
+	var subjectName, schedule, room, teacherName, semester, schoolYear sql.NullString
+	classQuery := `
+		SELECT
+			c.subject_code,
+			s.description,
+			c.schedule,
+			c.room,
+			(t.last_name + ', ' + t.first_name) as teacher_name,
+			c.semester,
+			c.school_year
+		FROM classes c
+		JOIN subjects s ON c.subject_code = s.subject_code
+		LEFT JOIN teachers t ON c.teacher_id = t.id
+		WHERE c.class_id = ?
+	`
+	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName, &semester, &schoolYear)
+	if err != nil {
+		log.Printf("Failed to get class info for PDF export: %v", err)
+		subjectCode = fmt.Sprintf("class_%d", classID)
+		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
+	}
+
+	query := `
+		SELECT 
+			stu.student_id, stu.first_name, stu.middle_name, stu.last_name,
+			stu.email, stu.contact_number
+		FROM classlist cl
+		JOIN students stu ON cl.student_id = stu.id
+		WHERE cl.class_id = ?
+		ORDER BY stu.last_name, stu.first_name
+	`
+
+	rows, err := a.db.Query(query, classID)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	type StudentRecord struct {
+		StudentID     string
+		FirstName     string
+		MiddleName    string
+		LastName      string
+		Email         string
+		ContactNumber string
+	}
+
+	var students []StudentRecord
+	for rows.Next() {
+		var s StudentRecord
+		var middleName, email, contactNumber sql.NullString
+		err := rows.Scan(
+			&s.StudentID, &s.FirstName, &middleName, &s.LastName,
+			&email, &contactNumber,
+		)
+		if err != nil {
+			continue
+		}
+		if middleName.Valid {
+			s.MiddleName = middleName.String
+		}
+		if email.Valid {
+			s.Email = email.String
+		}
+		if contactNumber.Valid {
+			s.ContactNumber = contactNumber.String
+		}
+		students = append(students, s)
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("classlist_%s_%s.pdf", subjectCode, time.Now().Format("20060102_150405")))
+
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.SetMargins(10, 10, 10)
+	pdf.SetAutoPageBreak(true, 10)
+	pdf.AddPage()
+
+	subjectNameValue := "N/A"
+	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
+		subjectNameValue = subjectName.String
+	}
+	scheduleValue := "N/A"
+	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
+		scheduleValue = schedule.String
+	}
+	roomValue := "N/A"
+	if room.Valid && strings.TrimSpace(room.String) != "" {
+		roomValue = room.String
+	}
+	teacherValue := "N/A"
+	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
+		teacherValue = teacherName.String
+	}
+	semesterValue := "N/A"
+	if semester.Valid && strings.TrimSpace(semester.String) != "" {
+		semesterValue = semester.String
+	}
+	schoolYearValue := "N/A"
+	if schoolYear.Valid && strings.TrimSpace(schoolYear.String) != "" {
+		schoolYearValue = schoolYear.String
+	}
+
+	truncate := func(value string, max int) string {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return "—"
+		}
+		runes := []rune(trimmed)
+		if len(runes) <= max {
+			return trimmed
+		}
+		if max <= 1 {
+			return string(runes[:max])
+		}
+		return string(runes[:max-1]) + "…"
+	}
+
+	pdf.SetFont("Arial", "B", 14)
+	pdf.Cell(0, 8, "CLASS LIST")
+	pdf.Ln(9)
+	pdf.SetFont("Arial", "", 10)
+	pdf.Cell(0, 6, fmt.Sprintf("School Year %s • %s", schoolYearValue, semesterValue))
+	pdf.Ln(6)
+	pdf.SetFont("Arial", "B", 10)
+	pdf.Cell(0, 6, "CLASS INFORMATION")
+	pdf.Ln(7)
+	pdf.SetFont("Arial", "", 10)
+	pdf.CellFormat(30, 6, "Subject Code:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(70, 6, subjectCode, "", 0, "L", false, 0, "")
+	pdf.CellFormat(25, 6, "Schedule:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(65, 6, scheduleValue, "", 1, "L", false, 0, "")
+	pdf.CellFormat(30, 6, "Subject Name:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(70, 6, subjectNameValue, "", 0, "L", false, 0, "")
+	pdf.CellFormat(25, 6, "Room:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(65, 6, roomValue, "", 1, "L", false, 0, "")
+	pdf.CellFormat(30, 6, "Instructor:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(160, 6, teacherValue, "", 1, "L", false, 0, "")
+	pdf.Ln(2)
+	pdf.SetFont("Arial", "B", 10)
+	pdf.CellFormat(120, 6, "STUDENTS LIST", "", 0, "L", false, 0, "")
+	pdf.CellFormat(70, 6, fmt.Sprintf("Total: %d", len(students)), "", 1, "R", false, 0, "")
+	pdf.Ln(1)
+
+	pdf.SetFont("Arial", "B", 9)
+	pdf.CellFormat(12, 7, "#", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(28, 7, "Student ID", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(60, 7, "Name", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(55, 7, "Email", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(35, 7, "Contact", "1", 1, "C", false, 0, "")
+
+	pdf.SetFont("Arial", "", 9)
+	for index, s := range students {
+		middleInitial := ""
+		if s.MiddleName != "" {
+			middleInitial = fmt.Sprintf(" %s.", strings.ToUpper(string(s.MiddleName[0])))
+		}
+		fullName := fmt.Sprintf("%s, %s%s", s.LastName, s.FirstName, middleInitial)
+
+		pdf.CellFormat(12, 7, fmt.Sprintf("%d", index+1), "1", 0, "C", false, 0, "")
+		pdf.CellFormat(28, 7, s.StudentID, "1", 0, "L", false, 0, "")
+		pdf.CellFormat(60, 7, truncate(fullName, 34), "1", 0, "L", false, 0, "")
+		pdf.CellFormat(55, 7, truncate(s.Email, 30), "1", 0, "L", false, 0, "")
+		pdf.CellFormat(35, 7, truncate(s.ContactNumber, 20), "1", 1, "L", false, 0, "")
+	}
+
+	if err := pdf.OutputFileAndClose(filename); err != nil {
+		return "", err
+	}
+
+	log.Printf("Classlist exported to PDF: %s (%d students)", filename, len(students))
 	return filename, nil
 }

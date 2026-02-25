@@ -1,7 +1,7 @@
-import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute, RoleRoute } from './components/ProtectedRoute';
+import AppErrorBoundary from './components/AppErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import Admin from './pages/admin';
 import Teacher from './pages/teacher';
@@ -11,7 +11,12 @@ import './style.css';
 
 function AppRoutes() {
   return (
-    <Router>
+    <Router
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true,
+      }}
+    >
       <div className="min-h-screen bg-gray-50">
         <Routes>
           <Route path="/login" element={<LoginPage />} />
@@ -70,9 +75,11 @@ function AppRoutes() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppRoutes />
-    </AuthProvider>
+    <AppErrorBoundary>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </AppErrorBoundary>
   );
 }
 

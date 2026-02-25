@@ -9,7 +9,34 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/jung-kurt/gofpdf"
 )
+
+func normalizeAttendanceRemark(status string, remarks sql.NullString) *string {
+	if remarks.Valid {
+		trimmedRemark := strings.TrimSpace(remarks.String)
+		placeholderTrimmed := strings.Trim(trimmedRemark, "-—–_")
+		if trimmedRemark != "" && strings.TrimSpace(placeholderTrimmed) != "" {
+			return &trimmedRemark
+		}
+	}
+
+	normalizedStatus := strings.ToLower(strings.TrimSpace(status))
+	switch normalizedStatus {
+	case "present", "seat-in", "seat in":
+		defaultRemark := "Present"
+		return &defaultRemark
+	case "late":
+		defaultRemark := "Late"
+		return &defaultRemark
+	case "absent":
+		defaultRemark := "Absent"
+		return &defaultRemark
+	default:
+		return nil
+	}
+}
 
 // ==============================================================================
 // ATTENDANCE MANAGEMENT
@@ -64,7 +91,7 @@ func (a *App) OpenClassAttendance(classID int, date string) ([]Attendance, error
 					cl.student_id,
 					?,
 					'absent',
-					NULL,
+					'Absent',
 					0,
 					CURRENT_TIMESTAMP
 				FROM classlist cl
@@ -76,10 +103,10 @@ func (a *App) OpenClassAttendance(classID int, date string) ([]Attendance, error
 			`
 			_, err = a.db.Exec(insertQuery, date, classID, date)
 			if err != nil {
-				log.Printf("⚠ Failed to auto-create attendance: %v", err)
+				log.Printf("Failed to auto-create attendance: %v", err)
 				return nil, fmt.Errorf("failed to create attendance: %w", err)
 			}
-			log.Printf("✓ Auto-created attendance for class %d on %s", classID, date)
+			log.Printf("Auto-created attendance for class %d on %s", classID, date)
 		}
 	}
 
@@ -91,6 +118,9 @@ func (a *App) OpenClassAttendance(classID int, date string) ([]Attendance, error
 // Adds is_editable field: true only if date == TODAY and class is not archived.
 func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error) {
 	if err := a.checkDB(); err != nil {
+		return nil, err
+	}
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
 		return nil, err
 	}
 
@@ -107,6 +137,21 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 			stu.last_name,
 			s.subject_code,
 			s.description as subject_name,
+			CASE
+				WHEN LOWER(LTRIM(RTRIM(ISNULL(a.status, '')))) IN ('present', 'late') THEN (
+					COALESCE(
+						CONVERT(VARCHAR(8), a.time_in_at, 108),
+						(
+							SELECT TOP 1 CONVERT(VARCHAR(8), le.login_time, 108)
+							FROM log_entries le
+							WHERE le.user_id = stu.id AND CAST(le.login_time AS DATE) = a.attendance_date
+							ORDER BY le.login_time ASC
+						),
+						CONVERT(VARCHAR(8), a.updated_at, 108)
+					)
+				)
+				ELSE NULL
+			END as time_in,
 			a.status,
 			a.remarks,
 			COALESCE(a.is_archived, 0) as is_archived
@@ -120,7 +165,7 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 
 	rows, err := a.db.Query(query, classID, date)
 	if err != nil {
-		log.Printf("⚠ Failed to query attendance: %v", err)
+		log.Printf("Failed to query attendance: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -128,30 +173,29 @@ func (a *App) GetClassAttendance(classID int, date string) ([]Attendance, error)
 	var attendances []Attendance
 	for rows.Next() {
 		var att Attendance
-		var middleName, remarks, status sql.NullString
+		var middleName, remarks, status, timeIn sql.NullString
 		var isArchived bool
 
 		err := rows.Scan(
 			&att.ClassID, &att.StudentUserID, &att.Date,
 			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
 			&att.SubjectCode, &att.SubjectName,
-			&status, &remarks, &isArchived,
+			&timeIn, &status, &remarks, &isArchived,
 		)
 		if err != nil {
-			log.Printf("⚠ Failed to scan attendance row: %v", err)
+			log.Printf("Failed to scan attendance row: %v", err)
 			continue
 		}
 
 		if middleName.Valid {
 			att.MiddleName = &middleName.String
 		}
-		if remarks.Valid {
-			att.Remarks = &remarks.String
-		}
 		if status.Valid {
-			att.Status = status.String
-		} else {
-			att.Status = "absent"
+			att.Status = strings.TrimSpace(status.String)
+		}
+		att.Remarks = normalizeAttendanceRemark(att.Status, remarks)
+		if timeIn.Valid {
+			att.TimeIn = &timeIn.String
 		}
 		att.IsArchived = isArchived
 		// CRITICAL: editable only if date is TODAY and not archived
@@ -185,154 +229,139 @@ func (a *App) UpdateAttendanceRecord(classID, studentUserID int, date, status, r
 		return err
 	}
 
-	// Enforce same-day edit rule
-	today := time.Now().Format("2006-01-02")
-	if date != today {
-		return fmt.Errorf("attendance can only be edited on the same day. Date %s is read-only", date)
-	}
-
-	// Verify the record is not archived
-	var isArchived bool
-	err := a.db.QueryRow(
-		`SELECT COALESCE(is_archived, 0) FROM attendance WHERE class_id = ? AND student_id = ? AND attendance_date = ?`,
-		classID, studentUserID, date,
-	).Scan(&isArchived)
-	if err != nil {
-		return fmt.Errorf("attendance record not found")
-	}
-	if isArchived {
-		return fmt.Errorf("archived attendance cannot be edited")
-	}
-
-	// Validate status
-	validStatuses := map[string]bool{"absent": true, "present": true, "late": true}
-	if !validStatuses[status] {
-		return fmt.Errorf("invalid status: %s. Must be 'absent', 'present', or 'late'", status)
-	}
-
-	query := `
-		UPDATE attendance 
-		SET status = ?,
-		    remarks = ?,
-		    updated_at = CURRENT_TIMESTAMP
-		WHERE class_id = ? AND student_id = ? AND attendance_date = ?
-	`
-
-	_, err = a.db.Exec(query, status, nullString(remarks), classID, studentUserID, date)
-	if err != nil {
-		log.Printf("⚠ Failed to update attendance record: %v", err)
-		return err
-	}
-
-	log.Printf("✓ Attendance record updated: class_id=%d, student_id=%d, date=%s, status=%s", classID, studentUserID, date, status)
-	return nil
+	return fmt.Errorf("manual attendance editing is disabled. Attendance remarks are set automatically from Time In and session close")
 }
 
-// RecordAttendance records or updates attendance for a student in a class (same-day only)
-func (a *App) RecordAttendance(classID, studentID int, status, remarks string, recordedBy int) error {
+func (a *App) GetSessionAttendance(sessionID int, teacherUserID int) ([]Attendance, error) {
 	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	today := time.Now().Format("2006-01-02")
-
-	// Verify student is enrolled in the class
-	var exists int
-	err := a.db.QueryRow(
-		`SELECT 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = 0 OR is_archived IS NULL)`,
-		classID, studentID,
-	).Scan(&exists)
-	if err != nil {
-		log.Printf("⚠ Student %d not enrolled in class %d: %v", studentID, classID, err)
-		return fmt.Errorf("student not enrolled in this class")
-	}
-
-	// Validate status
-	validStatuses := map[string]bool{"absent": true, "present": true, "late": true}
-	if !validStatuses[status] {
-		return fmt.Errorf("invalid status: %s. Must be 'absent', 'present', or 'late'", status)
-	}
-
-	// Record or update attendance for TODAY only
-	query := `
-		MERGE attendance AS target
-		USING (SELECT ? AS class_id, ? AS student_id, ? AS attendance_date, ? AS status, ? AS remarks) AS source
-		ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.attendance_date = source.attendance_date
-		WHEN MATCHED AND target.is_archived = 0 THEN
-			UPDATE SET status = source.status, remarks = source.remarks, updated_at = CURRENT_TIMESTAMP
-		WHEN NOT MATCHED THEN
-			INSERT (class_id, student_id, attendance_date, status, remarks, is_archived)
-			VALUES (source.class_id, source.student_id, source.attendance_date, source.status, source.remarks, 0);
-	`
-	_, err = a.db.Exec(query, classID, studentID, today, status, nullString(remarks))
-	if err != nil {
-		log.Printf("⚠ Failed to record attendance: %v", err)
-		return err
-	}
-
-	log.Printf("✓ Attendance recorded: student=%d, class=%d, status=%s", studentID, classID, status)
-	return nil
-}
-
-// RecordStudentLogin records when a student logs in during class time
-func (a *App) RecordStudentLogin(classID, studentID int) error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	today := time.Now().Format("2006-01-02")
-
-	// Verify student is enrolled in the class
-	var exists int
-	err := a.db.QueryRow(
-		`SELECT TOP 1 1 FROM classlist WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = 0 OR is_archived IS NULL)`,
-		classID, studentID,
-	).Scan(&exists)
-	if err != nil {
-		return fmt.Errorf("student not enrolled in this class")
-	}
-
-	// Record attendance as present (today only)
-	query := `
-		MERGE attendance AS target
-		USING (SELECT ? AS class_id, ? AS student_id, ? AS attendance_date, 'present' AS status, NULL AS remarks) AS source
-		ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.attendance_date = source.attendance_date
-		WHEN MATCHED AND target.is_archived = 0 THEN
-			UPDATE SET status = 'present', updated_at = CURRENT_TIMESTAMP
-		WHEN NOT MATCHED THEN
-			INSERT (class_id, student_id, attendance_date, status, remarks, is_archived)
-			VALUES (source.class_id, source.student_id, source.attendance_date, source.status, source.remarks, 0);
-	`
-
-	_, err = a.db.Exec(query, classID, studentID, today)
-	if err != nil {
-		log.Printf("⚠ Failed to record student login: %v", err)
-		return err
-	}
-
-	log.Printf("✓ Student login recorded: student=%d, class=%d", studentID, classID)
-	return nil
-}
-
-// ExportAttendanceCSV exports attendance to CSV for a specific class
-func (a *App) ExportAttendanceCSV(classID int) (string, error) {
-	if err := a.checkDB(); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	query := `
 		SELECT 
-			a.class_id, a.student_id, CONVERT(VARCHAR(10), a.attendance_date, 23) as date, a.status, a.remarks,
-			stu.student_id, stu.first_name, stu.middle_name, stu.last_name,
-			c.subject_code, s.description as subject_name
+			a.class_id,
+			a.student_id,
+			CONVERT(VARCHAR(10), a.attendance_date, 23) as date,
+			stu.student_id,
+			stu.first_name,
+			stu.middle_name,
+			stu.last_name,
+			c.subject_code,
+			s.description as subject_name,
+			CASE
+				WHEN LOWER(LTRIM(RTRIM(ISNULL(a.status, '')))) IN ('present', 'late') THEN (
+					COALESCE(CONVERT(VARCHAR(8), a.time_in_at, 108), CONVERT(VARCHAR(8), a.updated_at, 108))
+				)
+				ELSE NULL
+			END as time_in,
+			a.status,
+			a.remarks,
+			COALESCE(a.is_archived, 0) as is_archived
 		FROM attendance a
 		JOIN students stu ON a.student_id = stu.id
 		JOIN classes c ON a.class_id = c.class_id
 		JOIN subjects s ON c.subject_code = s.subject_code
-		WHERE a.class_id = ?
-		ORDER BY a.attendance_date DESC, stu.last_name, stu.first_name
+		WHERE a.session_id = ?
+		ORDER BY stu.last_name, stu.first_name
 	`
-	rows, err := a.db.Query(query, classID)
+
+	rows, err := a.db.Query(query, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var attendances []Attendance
+	for rows.Next() {
+		var att Attendance
+		var middleName, remarks, status, timeIn sql.NullString
+		var isArchived bool
+
+		err := rows.Scan(
+			&att.ClassID, &att.StudentUserID, &att.Date,
+			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
+			&att.SubjectCode, &att.SubjectName,
+			&timeIn, &status, &remarks, &isArchived,
+		)
+		if err != nil {
+			log.Printf("Failed to scan session attendance row: %v", err)
+			continue
+		}
+
+		if middleName.Valid {
+			att.MiddleName = &middleName.String
+		}
+		if status.Valid {
+			att.Status = strings.TrimSpace(status.String)
+		}
+		att.Remarks = normalizeAttendanceRemark(att.Status, remarks)
+		if timeIn.Valid {
+			att.TimeIn = &timeIn.String
+		}
+		att.IsArchived = isArchived
+		att.IsEditable = false
+
+		attendances = append(attendances, att)
+	}
+
+	return attendances, nil
+}
+
+// ExportAttendanceCSVByDate exports attendance to CSV for a specific class and date.
+func (a *App) ExportAttendanceCSVByDate(classID int, date string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return "", fmt.Errorf("invalid date format: %w", err)
+	}
+
+	var subjectCode string
+	var subjectName, schedule, room, teacherName sql.NullString
+	classQuery := `
+		SELECT
+			c.subject_code,
+			s.description,
+			c.schedule,
+			c.room,
+			(t.last_name + ', ' + t.first_name) as teacher_name
+		FROM classes c
+		JOIN subjects s ON c.subject_code = s.subject_code
+		LEFT JOIN teachers t ON c.teacher_id = t.id
+		WHERE c.class_id = ?
+	`
+	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName)
+	if err != nil {
+		log.Printf("Failed to get class info for attendance CSV export: %v", err)
+		subjectCode = fmt.Sprintf("CLASS %d", classID)
+		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
+	}
+
+	query := `
+		SELECT 
+			a.class_id, a.student_id, CONVERT(VARCHAR(10), a.attendance_date, 23) as date,
+			stu.student_id, stu.first_name, stu.middle_name, stu.last_name,
+			c.subject_code, s.description as subject_name,
+			CASE
+				WHEN LOWER(LTRIM(RTRIM(ISNULL(a.status, '')))) IN ('present', 'late') THEN (
+					SELECT TOP 1 CONVERT(VARCHAR(8), le.login_time, 108)
+					FROM log_entries le
+					WHERE le.user_id = stu.id AND CAST(le.login_time AS DATE) = a.attendance_date
+					ORDER BY le.login_time ASC
+				)
+				ELSE NULL
+			END as time_in,
+			a.remarks,
+			a.status
+		FROM attendance a
+		JOIN students stu ON a.student_id = stu.id
+		JOIN classes c ON a.class_id = c.class_id
+		JOIN subjects s ON c.subject_code = s.subject_code
+		WHERE a.class_id = ? AND a.attendance_date = ?
+		ORDER BY stu.last_name, stu.first_name
+	`
+	rows, err := a.db.Query(query, classID, date)
 	if err != nil {
 		return "", err
 	}
@@ -341,9 +370,629 @@ func (a *App) ExportAttendanceCSV(classID int) (string, error) {
 	var attendances []Attendance
 	for rows.Next() {
 		var att Attendance
-		var remarks, middleName sql.NullString
+		var middleName, timeIn, remarks, status sql.NullString
 		err := rows.Scan(
-			&att.ClassID, &att.StudentUserID, &att.Date, &att.Status, &remarks,
+			&att.ClassID, &att.StudentUserID, &att.Date,
+			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
+			&att.SubjectCode, &att.SubjectName,
+			&timeIn, &remarks, &status,
+		)
+		if err != nil {
+			continue
+		}
+
+		if middleName.Valid {
+			att.MiddleName = &middleName.String
+		}
+		if timeIn.Valid {
+			att.TimeIn = &timeIn.String
+		}
+		if remarks.Valid {
+			att.Remarks = &remarks.String
+		}
+		if status.Valid {
+			att.Status = status.String
+		}
+
+		attendances = append(attendances, att)
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("attendance_%d_%s_%s.csv", classID, date, time.Now().Format("150405")))
+
+	file, err := os.Create(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	subjectNameValue := "—"
+	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
+		subjectNameValue = subjectName.String
+	}
+	scheduleValue := "—"
+	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
+		scheduleValue = schedule.String
+	}
+	roomValue := "—"
+	if room.Valid && strings.TrimSpace(room.String) != "" {
+		roomValue = room.String
+	}
+	teacherValue := "—"
+	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
+		teacherValue = teacherName.String
+	}
+
+	displayDate := date
+	if parsedDate, parseErr := time.Parse("2006-01-02", date); parseErr == nil {
+		displayDate = parsedDate.Format("January 2, 2006")
+	}
+
+	writer.Write([]string{"ATTENDANCE SHEET"})
+	writer.Write([]string{displayDate})
+	writer.Write([]string{""})
+	writer.Write([]string{"CLASS INFORMATION"})
+	writer.Write([]string{"Subject", fmt.Sprintf("%s - %s", subjectCode, subjectNameValue), "Schedule", scheduleValue})
+	writer.Write([]string{"Instructor", teacherValue, "Room", roomValue})
+	writer.Write([]string{""})
+	writer.Write([]string{"DAILY ATTENDANCE RECORD"})
+	writer.Write([]string{"Total Students", fmt.Sprintf("%d", len(attendances))})
+	writer.Write([]string{"No.", "Student ID", "Student Name", "Time In", "Remarks"})
+
+	presentCount := 0
+	lateCount := 0
+	absentCount := 0
+
+	for index, att := range attendances {
+		middleName := ""
+		if att.MiddleName != nil {
+			middleName = strings.TrimSpace(*att.MiddleName)
+		}
+
+		middleInitial := ""
+		if middleName != "" {
+			middleInitial = fmt.Sprintf(" %s.", strings.ToUpper(string(middleName[0])))
+		}
+		fullName := fmt.Sprintf("%s, %s%s", att.LastName, att.FirstName, middleInitial)
+		status := strings.ToLower(strings.TrimSpace(att.Status))
+		switch status {
+		case "present":
+			presentCount++
+		case "late":
+			lateCount++
+		default:
+			absentCount++
+		}
+
+		remarksValue := ""
+		if att.Remarks != nil {
+			remarksValue = strings.TrimSpace(*att.Remarks)
+		}
+		timeInValue := ""
+		if att.TimeIn != nil {
+			timeInValue = strings.TrimSpace(*att.TimeIn)
+		}
+
+		writer.Write([]string{
+			fmt.Sprintf("%d", index+1),
+			att.StudentCode,
+			fullName,
+			timeInValue,
+			remarksValue,
+		})
+	}
+
+	writer.Write([]string{""})
+	writer.Write([]string{"SUMMARY"})
+	writer.Write([]string{"Present", fmt.Sprintf("%d", presentCount)})
+	writer.Write([]string{"Late", fmt.Sprintf("%d", lateCount)})
+	writer.Write([]string{"Absent", fmt.Sprintf("%d", absentCount)})
+	writer.Write([]string{"Total", fmt.Sprintf("%d", len(attendances))})
+
+	log.Printf("Attendance exported to CSV by date: class=%d, date=%s, file=%s", classID, date, filename)
+	return filename, nil
+}
+
+// ExportAttendancePDFByDate exports attendance to PDF for a specific class and date.
+func (a *App) ExportAttendancePDFByDate(classID int, date string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return "", fmt.Errorf("invalid date format: %w", err)
+	}
+
+	var subjectCode string
+	var subjectName, schedule, room, teacherName sql.NullString
+	classQuery := `
+		SELECT
+			c.subject_code,
+			s.description,
+			c.schedule,
+			c.room,
+			(t.last_name + ', ' + t.first_name) as teacher_name
+		FROM classes c
+		JOIN subjects s ON c.subject_code = s.subject_code
+		LEFT JOIN teachers t ON c.teacher_id = t.id
+		WHERE c.class_id = ?
+	`
+	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName)
+	if err != nil {
+		log.Printf("Failed to get class info for attendance PDF export: %v", err)
+		subjectCode = fmt.Sprintf("CLASS %d", classID)
+		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
+	}
+
+	query := `
+		SELECT 
+			a.class_id, a.student_id, CONVERT(VARCHAR(10), a.attendance_date, 23) as date,
+			stu.student_id, stu.first_name, stu.middle_name, stu.last_name,
+			c.subject_code, s.description as subject_name,
+			CASE
+				WHEN LOWER(LTRIM(RTRIM(ISNULL(a.status, '')))) IN ('present', 'late') THEN (
+					SELECT TOP 1 CONVERT(VARCHAR(8), le.login_time, 108)
+					FROM log_entries le
+					WHERE le.user_id = stu.id AND CAST(le.login_time AS DATE) = a.attendance_date
+					ORDER BY le.login_time ASC
+				)
+				ELSE NULL
+			END as time_in,
+			a.remarks,
+			a.status
+		FROM attendance a
+		JOIN students stu ON a.student_id = stu.id
+		JOIN classes c ON a.class_id = c.class_id
+		JOIN subjects s ON c.subject_code = s.subject_code
+		WHERE a.class_id = ? AND a.attendance_date = ?
+		ORDER BY stu.last_name, stu.first_name
+	`
+	rows, err := a.db.Query(query, classID, date)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var attendances []Attendance
+	for rows.Next() {
+		var att Attendance
+		var middleName, timeIn, remarks, status sql.NullString
+		err := rows.Scan(
+			&att.ClassID, &att.StudentUserID, &att.Date,
+			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
+			&att.SubjectCode, &att.SubjectName,
+			&timeIn, &remarks, &status,
+		)
+		if err != nil {
+			continue
+		}
+
+		if middleName.Valid {
+			att.MiddleName = &middleName.String
+		}
+		if timeIn.Valid {
+			att.TimeIn = &timeIn.String
+		}
+		if remarks.Valid {
+			att.Remarks = &remarks.String
+		}
+		if status.Valid {
+			att.Status = status.String
+		}
+
+		attendances = append(attendances, att)
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("attendance_%d_%s_%s.pdf", classID, date, time.Now().Format("150405")))
+
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.SetMargins(10, 10, 10)
+	pdf.SetAutoPageBreak(true, 10)
+	pdf.AddPage()
+
+	subjectNameValue := "—"
+	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
+		subjectNameValue = subjectName.String
+	}
+	scheduleValue := "—"
+	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
+		scheduleValue = schedule.String
+	}
+	roomValue := "—"
+	if room.Valid && strings.TrimSpace(room.String) != "" {
+		roomValue = room.String
+	}
+	teacherValue := "—"
+	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
+		teacherValue = teacherName.String
+	}
+
+	displayDate := date
+	if parsedDate, parseErr := time.Parse("2006-01-02", date); parseErr == nil {
+		displayDate = parsedDate.Format("January 2, 2006")
+	}
+
+	pdf.SetFont("Arial", "B", 14)
+	pdf.Cell(0, 8, "Attendance Sheet")
+	pdf.Ln(9)
+	pdf.SetFont("Arial", "", 10)
+	pdf.Cell(0, 6, displayDate)
+	pdf.Ln(6)
+	pdf.SetFont("Arial", "B", 10)
+	pdf.Cell(0, 6, "CLASS INFORMATION")
+	pdf.Ln(7)
+	pdf.SetFont("Arial", "", 10)
+	pdf.CellFormat(25, 6, "Subject:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(90, 6, fmt.Sprintf("%s - %s", subjectCode, subjectNameValue), "", 0, "L", false, 0, "")
+	pdf.CellFormat(20, 6, "Schedule:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(55, 6, scheduleValue, "", 1, "L", false, 0, "")
+	pdf.CellFormat(25, 6, "Instructor:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(90, 6, teacherValue, "", 0, "L", false, 0, "")
+	pdf.CellFormat(20, 6, "Room:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(55, 6, roomValue, "", 1, "L", false, 0, "")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "B", 10)
+	pdf.CellFormat(120, 6, "DAILY ATTENDANCE RECORD", "", 0, "L", false, 0, "")
+	pdf.CellFormat(70, 6, fmt.Sprintf("Total Students: %d", len(attendances)), "", 1, "R", false, 0, "")
+	pdf.Ln(1)
+
+	pdf.SetFont("Arial", "B", 9)
+	pdf.CellFormat(12, 7, "#", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(30, 7, "Student ID", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(88, 7, "Student Name", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(28, 7, "Time In", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(32, 7, "Remarks", "1", 1, "C", false, 0, "")
+
+	pdf.SetFont("Arial", "", 9)
+	presentCount := 0
+	lateCount := 0
+	absentCount := 0
+	for index, att := range attendances {
+		middleInitial := ""
+		if att.MiddleName != nil && *att.MiddleName != "" {
+			middleInitial = fmt.Sprintf(" %s.", strings.ToUpper(string((*att.MiddleName)[0])))
+		}
+		fullName := fmt.Sprintf("%s, %s%s", att.LastName, att.FirstName, middleInitial)
+		status := strings.ToLower(strings.TrimSpace(att.Status))
+		switch status {
+		case "present":
+			presentCount++
+		case "late":
+			lateCount++
+		default:
+			absentCount++
+		}
+
+		pdf.CellFormat(12, 7, fmt.Sprintf("%d", index+1), "1", 0, "C", false, 0, "")
+		timeInValue := ""
+		if att.TimeIn != nil {
+			timeInValue = strings.TrimSpace(*att.TimeIn)
+		}
+		remarksValue := ""
+		if att.Remarks != nil {
+			remarksValue = strings.TrimSpace(*att.Remarks)
+		}
+
+		pdf.CellFormat(30, 7, att.StudentCode, "1", 0, "L", false, 0, "")
+		pdf.CellFormat(88, 7, fullName, "1", 0, "L", false, 0, "")
+		pdf.CellFormat(28, 7, timeInValue, "1", 0, "C", false, 0, "")
+		pdf.CellFormat(32, 7, remarksValue, "1", 1, "L", false, 0, "")
+	}
+
+	pdf.Ln(3)
+	pdf.SetFont("Arial", "B", 9)
+	pdf.CellFormat(190, 6, "SUMMARY", "", 1, "L", false, 0, "")
+	pdf.SetFont("Arial", "", 9)
+	pdf.CellFormat(40, 6, fmt.Sprintf("Present: %d", presentCount), "", 0, "L", false, 0, "")
+	pdf.CellFormat(40, 6, fmt.Sprintf("Late: %d", lateCount), "", 0, "L", false, 0, "")
+	pdf.CellFormat(40, 6, fmt.Sprintf("Absent: %d", absentCount), "", 0, "L", false, 0, "")
+	pdf.CellFormat(70, 6, fmt.Sprintf("Total: %d", len(attendances)), "", 1, "R", false, 0, "")
+
+	if err := pdf.OutputFileAndClose(filename); err != nil {
+		return "", err
+	}
+
+	log.Printf("Attendance exported to PDF by date: class=%d, date=%s, file=%s", classID, date, filename)
+	return filename, nil
+}
+
+// ExportArchivedAttendanceCSVByDate exports only archived attendance records for a specific class/date/session.
+func (a *App) ExportArchivedAttendanceCSVByDate(classID int, date string, sessionID int) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+
+	// sessionID == 0 means "all sessions for this class/date"; otherwise filter by specific session
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return "", fmt.Errorf("invalid date format: %w", err)
+	}
+
+	var subjectCode string
+	var subjectName, schedule, room, teacherName sql.NullString
+	classQuery := `
+		SELECT
+			c.subject_code,
+			s.description,
+			c.schedule,
+			c.room,
+			(t.last_name + ', ' + t.first_name) as teacher_name
+		FROM classes c
+		JOIN subjects s ON c.subject_code = s.subject_code
+		LEFT JOIN teachers t ON c.teacher_id = t.id
+		WHERE c.class_id = ?
+	`
+	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName)
+	if err != nil {
+		log.Printf("Failed to get class info for archived attendance CSV export: %v", err)
+		subjectCode = fmt.Sprintf("CLASS %d", classID)
+		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
+	}
+
+	query := `
+		WITH ranked_attendance AS (
+			SELECT 
+				a.class_id, a.student_id, CONVERT(VARCHAR(10), a.attendance_date, 23) as date,
+				stu.student_id AS student_code, stu.first_name, stu.middle_name, stu.last_name,
+				c.subject_code, s.description as subject_name,
+				CASE
+					WHEN LOWER(LTRIM(RTRIM(ISNULL(a.status, '')))) IN ('present', 'late') THEN (
+						SELECT TOP 1 CONVERT(VARCHAR(8), le.login_time, 108)
+						FROM log_entries le
+						WHERE le.user_id = stu.id AND CAST(le.login_time AS DATE) = a.attendance_date
+						ORDER BY le.login_time ASC
+					)
+					ELSE NULL
+				END as time_in,
+				a.remarks,
+				a.status,
+				ROW_NUMBER() OVER (
+					PARTITION BY a.student_id
+					ORDER BY a.updated_at DESC, a.created_at DESC, a.id DESC
+				) AS rn
+			FROM attendance a
+			JOIN students stu ON a.student_id = stu.id
+			JOIN classes c ON a.class_id = c.class_id
+			JOIN subjects s ON c.subject_code = s.subject_code
+						WHERE a.class_id = ?
+							AND a.attendance_date = ?
+							AND COALESCE(a.is_archived, 0) = 1
+							-- If sessionID == 0, include all archived attendance rows for the class/date
+							AND ( ? = 0 OR a.session_id = ? )
+		)
+		SELECT
+			class_id, student_id, date,
+			student_code, first_name, middle_name, last_name,
+			subject_code, subject_name,
+			time_in, remarks, status
+		FROM ranked_attendance
+		WHERE rn = 1
+		ORDER BY last_name, first_name
+	`
+	args := []interface{}{classID, date, sessionID, sessionID}
+
+	rows, err := a.db.Query(query, args...)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var attendances []Attendance
+	for rows.Next() {
+		var att Attendance
+		var remarks, middleName, timeIn, status sql.NullString
+		err := rows.Scan(
+			&att.ClassID, &att.StudentUserID, &att.Date,
+			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
+			&att.SubjectCode, &att.SubjectName,
+			&timeIn, &remarks, &status,
+		)
+		if err != nil {
+			continue
+		}
+
+		if remarks.Valid {
+			att.Remarks = &remarks.String
+		}
+		if middleName.Valid {
+			att.MiddleName = &middleName.String
+		}
+		if timeIn.Valid {
+			att.TimeIn = &timeIn.String
+		}
+		if status.Valid {
+			att.Status = status.String
+		}
+
+		attendances = append(attendances, att)
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("archived_attendance_%d_%s_%s.csv", classID, date, time.Now().Format("150405")))
+
+	file, err := os.Create(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	subjectNameValue := "—"
+	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
+		subjectNameValue = subjectName.String
+	}
+	scheduleValue := "—"
+	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
+		scheduleValue = schedule.String
+	}
+	roomValue := "—"
+	if room.Valid && strings.TrimSpace(room.String) != "" {
+		roomValue = room.String
+	}
+	teacherValue := "—"
+	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
+		teacherValue = teacherName.String
+	}
+
+	displayDate := date
+	if parsedDate, parseErr := time.Parse("2006-01-02", date); parseErr == nil {
+		displayDate = parsedDate.Format("January 2, 2006")
+	}
+
+	writer.Write([]string{"ATTENDANCE SHEET"})
+	writer.Write([]string{displayDate})
+	writer.Write([]string{""})
+	writer.Write([]string{"CLASS INFORMATION"})
+	writer.Write([]string{"Subject", fmt.Sprintf("%s - %s", subjectCode, subjectNameValue), "Schedule", scheduleValue})
+	writer.Write([]string{"Instructor", teacherValue, "Room", roomValue})
+	writer.Write([]string{""})
+	writer.Write([]string{"DAILY ATTENDANCE RECORD"})
+	writer.Write([]string{"Total Students", fmt.Sprintf("%d", len(attendances))})
+	writer.Write([]string{"No.", "Student ID", "Student Name", "Time In", "Remarks"})
+
+	presentCount := 0
+	lateCount := 0
+	absentCount := 0
+
+	for index, att := range attendances {
+		middleName := ""
+		if att.MiddleName != nil {
+			middleName = strings.TrimSpace(*att.MiddleName)
+		}
+
+		middleInitial := ""
+		if middleName != "" {
+			middleInitial = fmt.Sprintf(" %s.", strings.ToUpper(string(middleName[0])))
+		}
+		fullName := fmt.Sprintf("%s, %s%s", att.LastName, att.FirstName, middleInitial)
+		status := strings.ToLower(strings.TrimSpace(att.Status))
+		switch status {
+		case "present":
+			presentCount++
+		case "late":
+			lateCount++
+		default:
+			absentCount++
+		}
+
+		timeInValue := ""
+		if att.TimeIn != nil {
+			timeInValue = strings.TrimSpace(*att.TimeIn)
+		}
+		remarksValue := ""
+		if att.Remarks != nil {
+			remarksValue = strings.TrimSpace(*att.Remarks)
+		}
+
+		writer.Write([]string{
+			fmt.Sprintf("%d", index+1),
+			att.StudentCode,
+			fullName,
+			timeInValue,
+			remarksValue,
+		})
+	}
+
+	writer.Write([]string{""})
+	writer.Write([]string{"SUMMARY"})
+	writer.Write([]string{"Present", fmt.Sprintf("%d", presentCount)})
+	writer.Write([]string{"Late", fmt.Sprintf("%d", lateCount)})
+	writer.Write([]string{"Absent", fmt.Sprintf("%d", absentCount)})
+	writer.Write([]string{"Total", fmt.Sprintf("%d", len(attendances))})
+
+	log.Printf("Archived attendance exported to CSV by date: class=%d, date=%s, session=%d, file=%s", classID, date, sessionID, filename)
+	return filename, nil
+}
+
+// ExportArchivedAttendancePDFByDate exports only archived attendance records for a specific class/date/session.
+func (a *App) ExportArchivedAttendancePDFByDate(classID int, date string, sessionID int) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+
+	// sessionID == 0 means export all archived attendance rows for this class/date
+
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return "", fmt.Errorf("invalid date format: %w", err)
+	}
+
+	var subjectCode string
+	var subjectName, schedule, room, teacherName sql.NullString
+	classQuery := `
+		SELECT
+			c.subject_code,
+			s.description,
+			c.schedule,
+			c.room,
+			(t.last_name + ', ' + t.first_name) as teacher_name
+		FROM classes c
+		JOIN subjects s ON c.subject_code = s.subject_code
+		LEFT JOIN teachers t ON c.teacher_id = t.id
+		WHERE c.class_id = ?
+	`
+	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName)
+	if err != nil {
+		log.Printf("Failed to get class info for archived attendance PDF export: %v", err)
+		subjectCode = fmt.Sprintf("CLASS %d", classID)
+		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
+	}
+
+	query := `
+		WITH ranked_attendance AS (
+			SELECT 
+				a.class_id, a.student_id, CONVERT(VARCHAR(10), a.attendance_date, 23) as date,
+				CASE
+					WHEN LOWER(LTRIM(RTRIM(ISNULL(a.status, '')))) IN ('present', 'late') THEN (
+						SELECT TOP 1 CONVERT(VARCHAR(8), le.login_time, 108)
+						FROM log_entries le
+						WHERE le.user_id = stu.id AND CAST(le.login_time AS DATE) = a.attendance_date
+						ORDER BY le.login_time ASC
+					)
+					ELSE NULL
+				END as time_in,
+				a.status, a.remarks,
+				stu.student_id AS student_code, stu.first_name, stu.middle_name, stu.last_name,
+				c.subject_code, s.description as subject_name,
+				ROW_NUMBER() OVER (
+					PARTITION BY a.student_id
+					ORDER BY a.updated_at DESC, a.created_at DESC, a.id DESC
+				) AS rn
+			FROM attendance a
+			JOIN students stu ON a.student_id = stu.id
+			JOIN classes c ON a.class_id = c.class_id
+			JOIN subjects s ON c.subject_code = s.subject_code
+						WHERE a.class_id = ?
+							AND a.attendance_date = ?
+							AND COALESCE(a.is_archived, 0) = 1
+							AND ( ? = 0 OR a.session_id = ? )
+		)
+		SELECT
+						class_id, student_id, date, time_in, status, remarks,
+			student_code, first_name, middle_name, last_name,
+			subject_code, subject_name
+		FROM ranked_attendance
+		WHERE rn = 1
+		ORDER BY last_name, first_name
+	`
+	args := []interface{}{classID, date, sessionID, sessionID}
+
+	rows, err := a.db.Query(query, args...)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var attendances []Attendance
+	for rows.Next() {
+		var att Attendance
+		var timeIn, remarks, middleName sql.NullString
+		err := rows.Scan(
+			&att.ClassID, &att.StudentUserID, &att.Date, &timeIn, &att.Status, &remarks,
 			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
 			&att.SubjectCode, &att.SubjectName,
 		)
@@ -357,162 +1006,125 @@ func (a *App) ExportAttendanceCSV(classID int) (string, error) {
 		if middleName.Valid {
 			att.MiddleName = &middleName.String
 		}
+		if timeIn.Valid {
+			att.TimeIn = &timeIn.String
+		}
 
 		attendances = append(attendances, att)
 	}
 
 	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("attendance_%s.csv", time.Now().Format("20060102_150405")))
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("archived_attendance_%d_%s_%s.pdf", classID, date, time.Now().Format("150405")))
 
-	file, err := os.Create(filename)
-	if err != nil {
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.SetMargins(10, 10, 10)
+	pdf.SetAutoPageBreak(true, 10)
+	pdf.AddPage()
+
+	subjectNameValue := "—"
+	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
+		subjectNameValue = subjectName.String
+	}
+	scheduleValue := "—"
+	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
+		scheduleValue = schedule.String
+	}
+	roomValue := "—"
+	if room.Valid && strings.TrimSpace(room.String) != "" {
+		roomValue = room.String
+	}
+	teacherValue := "—"
+	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
+		teacherValue = teacherName.String
+	}
+
+	displayDate := date
+	if parsedDate, parseErr := time.Parse("2006-01-02", date); parseErr == nil {
+		displayDate = parsedDate.Format("January 2, 2006")
+	}
+
+	pdf.SetFont("Arial", "B", 14)
+	pdf.Cell(0, 8, "Attendance Sheet")
+	pdf.Ln(9)
+	pdf.SetFont("Arial", "", 10)
+	pdf.Cell(0, 6, displayDate)
+	pdf.Ln(6)
+	pdf.SetFont("Arial", "B", 10)
+	pdf.Cell(0, 6, "CLASS INFORMATION")
+	pdf.Ln(7)
+	pdf.SetFont("Arial", "", 10)
+	pdf.CellFormat(25, 6, "Subject:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(90, 6, fmt.Sprintf("%s - %s", subjectCode, subjectNameValue), "", 0, "L", false, 0, "")
+	pdf.CellFormat(20, 6, "Schedule:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(55, 6, scheduleValue, "", 1, "L", false, 0, "")
+	pdf.CellFormat(25, 6, "Instructor:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(90, 6, teacherValue, "", 0, "L", false, 0, "")
+	pdf.CellFormat(20, 6, "Room:", "", 0, "L", false, 0, "")
+	pdf.CellFormat(55, 6, roomValue, "", 1, "L", false, 0, "")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "B", 10)
+	pdf.CellFormat(120, 6, "DAILY ATTENDANCE RECORD", "", 0, "L", false, 0, "")
+	pdf.CellFormat(70, 6, fmt.Sprintf("Total Students: %d", len(attendances)), "", 1, "R", false, 0, "")
+	pdf.Ln(1)
+
+	pdf.SetFont("Arial", "B", 9)
+	pdf.CellFormat(12, 7, "#", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(30, 7, "Student ID", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(88, 7, "Student Name", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(28, 7, "Time In", "1", 0, "C", false, 0, "")
+	pdf.CellFormat(32, 7, "Remarks", "1", 1, "C", false, 0, "")
+
+	pdf.SetFont("Arial", "", 9)
+	presentCount := 0
+	lateCount := 0
+	absentCount := 0
+	for index, att := range attendances {
+		middleInitial := ""
+		if att.MiddleName != nil && *att.MiddleName != "" {
+			middleInitial = fmt.Sprintf(" %s.", strings.ToUpper(string((*att.MiddleName)[0])))
+		}
+		fullName := fmt.Sprintf("%s, %s%s", att.LastName, att.FirstName, middleInitial)
+		status := strings.ToLower(strings.TrimSpace(att.Status))
+		switch status {
+		case "present":
+			presentCount++
+		case "late":
+			lateCount++
+		default:
+			absentCount++
+		}
+
+		pdf.CellFormat(12, 7, fmt.Sprintf("%d", index+1), "1", 0, "C", false, 0, "")
+		timeInValue := ""
+		if att.TimeIn != nil {
+			timeInValue = strings.TrimSpace(*att.TimeIn)
+		}
+		remarksValue := ""
+		if att.Remarks != nil {
+			remarksValue = strings.TrimSpace(*att.Remarks)
+		}
+
+		pdf.CellFormat(30, 7, att.StudentCode, "1", 0, "L", false, 0, "")
+		pdf.CellFormat(88, 7, fullName, "1", 0, "L", false, 0, "")
+		pdf.CellFormat(28, 7, timeInValue, "1", 0, "C", false, 0, "")
+		pdf.CellFormat(32, 7, remarksValue, "1", 1, "L", false, 0, "")
+	}
+
+	pdf.Ln(3)
+	pdf.SetFont("Arial", "B", 9)
+	pdf.CellFormat(190, 6, "SUMMARY", "", 1, "L", false, 0, "")
+	pdf.SetFont("Arial", "", 9)
+	pdf.CellFormat(40, 6, fmt.Sprintf("Present: %d", presentCount), "", 0, "L", false, 0, "")
+	pdf.CellFormat(40, 6, fmt.Sprintf("Late: %d", lateCount), "", 0, "L", false, 0, "")
+	pdf.CellFormat(40, 6, fmt.Sprintf("Absent: %d", absentCount), "", 0, "L", false, 0, "")
+	pdf.CellFormat(70, 6, fmt.Sprintf("Total: %d", len(attendances)), "", 1, "R", false, 0, "")
+
+	if err := pdf.OutputFileAndClose(filename); err != nil {
 		return "", err
 	}
-	defer file.Close()
 
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	// Write header
-	writer.Write([]string{"Date", "Student ID", "First Name", "Middle Name", "Last Name", "Subject", "Status", "Remarks"})
-
-	// Write data
-	for _, att := range attendances {
-		middleName := ""
-		if att.MiddleName != nil {
-			middleName = *att.MiddleName
-		}
-		remarks := ""
-		if att.Remarks != nil {
-			remarks = *att.Remarks
-		}
-
-		writer.Write([]string{
-			att.Date,
-			att.StudentCode,
-			att.FirstName,
-			middleName,
-			att.LastName,
-			fmt.Sprintf("%s - %s", att.SubjectCode, att.SubjectName),
-			att.Status,
-			remarks,
-		})
-	}
-
-	log.Printf("✓ Attendance exported to CSV: %s", filename)
+	log.Printf("Archived attendance exported to PDF by date: class=%d, date=%s, session=%d, file=%s", classID, date, sessionID, filename)
 	return filename, nil
-}
-
-// ==============================================================================
-// HELPER FUNCTIONS
-// ==============================================================================
-
-// autoRecordAttendanceOnLogin automatically records attendance when a student logs in during class time
-func (a *App) autoRecordAttendanceOnLogin(studentID int) {
-	if a.db == nil {
-		if err := a.reconnectDB(); err != nil {
-			log.Printf("⚠️  Cannot auto-record attendance: %v", err)
-			return
-		}
-	}
-
-	today := time.Now().Format("2006-01-02")
-	currentTime := time.Now()
-
-	// Get all enrolled classes for this student with attendance initialized for today
-	query := `
-		SELECT 
-			cl.class_id,
-			c.schedule,
-			c.school_year,
-			c.semester
-		FROM classlist cl
-		JOIN classes c ON cl.class_id = c.class_id
-		LEFT JOIN attendance a ON cl.class_id = a.class_id AND cl.student_id = a.student_id AND a.attendance_date = ?
-		WHERE cl.student_id = ? 
-			AND cl.status = 'active'
-			AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
-			AND c.is_active = 1
-			AND a.class_id IS NOT NULL
-	`
-
-	rows, err := a.db.Query(query, today, studentID)
-	if err != nil {
-		log.Printf("Failed to query enrolled classes for auto-attendance: %v", err)
-		return
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var classID int
-		var schedule sql.NullString
-		var schoolYear, semester sql.NullString
-
-		err := rows.Scan(&classID, &schedule, &schoolYear, &semester)
-		if err != nil {
-			continue
-		}
-
-		// Check if current time matches class schedule
-		if schedule.Valid && a.isWithinClassSchedule(schedule.String, currentTime) {
-			// Update attendance to present
-			updateQuery := `
-				UPDATE attendance 
-				SET status = 'present',
-					updated_at = CURRENT_TIMESTAMP
-				WHERE class_id = ? AND student_id = ? AND attendance_date = ? AND COALESCE(is_archived, 0) = 0
-			`
-			_, err := a.db.Exec(updateQuery, classID, studentID, today)
-			if err != nil {
-				log.Printf("Failed to auto-record attendance for student %d, class %d: %v", studentID, classID, err)
-			} else {
-				log.Printf("Auto-recorded attendance: student=%d, class=%d", studentID, classID)
-			}
-		}
-	}
-}
-
-// isWithinClassSchedule checks if the current time is within the class schedule window
-func (a *App) isWithinClassSchedule(schedule string, currentTime time.Time) bool {
-	// Parse schedule format: "Monday 8:00 AM - 10:00 AM" or "Mon-Wed 2:00 PM - 4:00 PM"
-	parts := strings.Split(schedule, " ")
-	if len(parts) < 5 {
-		return false
-	}
-
-	// Check if current day matches schedule
-	currentDay := currentTime.Weekday().String()
-	daysPart := parts[0]
-
-	// Handle day ranges (Mon-Fri) or specific days (Monday)
-	if !strings.Contains(strings.ToLower(daysPart), strings.ToLower(currentDay[:3])) {
-		return false
-	}
-
-	// Parse start time
-	startTimeStr := parts[1] + " " + parts[2] // "8:00 AM"
-	startTime, err := time.Parse("3:04 PM", startTimeStr)
-	if err != nil {
-		return false
-	}
-
-	// Parse end time (parts[4] + parts[5])
-	endTimeStr := parts[4] + " " + parts[5] // "10:00 AM"
-	endTime, err := time.Parse("3:04 PM", endTimeStr)
-	if err != nil {
-		return false
-	}
-
-	// Compare times (ignore date, only check time)
-	currentTimeOnly := time.Date(0, 1, 1, currentTime.Hour(), currentTime.Minute(), 0, 0, time.UTC)
-	startTimeOnly := time.Date(0, 1, 1, startTime.Hour(), startTime.Minute(), 0, 0, time.UTC)
-	endTimeOnly := time.Date(0, 1, 1, endTime.Hour(), endTime.Minute(), 0, 0, time.UTC)
-
-	// Allow logging in 10 minutes before scheduled time
-	tenMinutesBefore := startTimeOnly.Add(-10 * time.Minute)
-
-	return (currentTimeOnly.After(tenMinutesBefore) || currentTimeOnly.Equal(tenMinutesBefore)) &&
-		(currentTimeOnly.Before(endTimeOnly) || currentTimeOnly.Equal(endTimeOnly))
 }
 
 // ==============================================================================
@@ -520,16 +1132,37 @@ func (a *App) isWithinClassSchedule(schedule string, currentTime time.Time) bool
 // ==============================================================================
 
 // ArchiveAttendanceSheet marks all attendance records for a class on a specific date as archived.
-// Rule: Only allowed for attendance_date < TODAY. Same-day attendance cannot be archived.
+// Rule:
+// - Past attendance can be archived.
+// - Today's attendance can be archived only if its session is closed.
+// - Future attendance cannot be archived.
 func (a *App) ArchiveAttendanceSheet(classID int, date string) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
 
-	// Enforce: cannot archive today's attendance
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return fmt.Errorf("failed to initialize attendance sessions table: %w", err)
+	}
+
+	// Enforce archive rules
 	today := time.Now().Format("2006-01-02")
-	if date >= today {
-		return fmt.Errorf("cannot archive today's or future attendance. Only past attendance can be archived")
+	if date > today {
+		return fmt.Errorf("cannot archive future attendance")
+	}
+
+	if date == today {
+		var sessionStatus string
+		err := a.db.QueryRow(
+			`SELECT TOP 1 status FROM attendance_sessions WHERE class_id = ? AND attendance_date = ? AND COALESCE(is_archived, 0) = 0 ORDER BY session_id DESC`,
+			classID, date,
+		).Scan(&sessionStatus)
+		if err != nil {
+			return fmt.Errorf("cannot archive today's attendance unless the session is saved/closed")
+		}
+		if sessionStatus != "closed" {
+			return fmt.Errorf("cannot archive today's attendance while session is still open")
+		}
 	}
 
 	// Archive attendance records
@@ -542,12 +1175,84 @@ func (a *App) ArchiveAttendanceSheet(classID int, date string) error {
 
 	result, err := a.db.Exec(query, classID, date)
 	if err != nil {
-		log.Printf("⚠ Failed to archive attendance records: %v", err)
+		log.Printf("Failed to archive attendance records: %v", err)
+		return err
+	}
+
+	_, sessionArchiveErr := a.db.Exec(`
+		UPDATE attendance_sessions
+		SET is_archived = 1,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE class_id = ? AND attendance_date = ? AND status = 'closed'
+	`, classID, date)
+	if sessionArchiveErr != nil {
+		log.Printf("Warning: failed to archive attendance sessions for class_id=%d date=%s: %v", classID, date, sessionArchiveErr)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("Archived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
+	return nil
+}
+
+// ArchiveAttendanceSession marks attendance records for a specific session as archived.
+// This allows archiving one saved attendance row at a time even if there are other sessions on the same date.
+func (a *App) ArchiveAttendanceSession(sessionID int, teacherUserID int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return fmt.Errorf("failed to initialize attendance sessions table: %w", err)
+	}
+
+	var attendanceDate string
+	var sessionStatus string
+	err := a.db.QueryRow(`
+		SELECT
+			CONVERT(VARCHAR(10), s.attendance_date, 23) AS attendance_date,
+			s.status
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
+		WHERE s.session_id = ? AND c.teacher_id = ? AND COALESCE(s.is_archived, 0) = 0
+	`, sessionID, teacherUserID).Scan(&attendanceDate, &sessionStatus)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("session not found or not authorized")
+	}
+	if err != nil {
+		return err
+	}
+
+	today := time.Now().Format("2006-01-02")
+	if attendanceDate > today {
+		return fmt.Errorf("cannot archive future attendance")
+	}
+	if attendanceDate == today && sessionStatus != "closed" {
+		return fmt.Errorf("cannot archive today's attendance while session is still open")
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE attendance
+		SET is_archived = 1,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE session_id = ?
+	`, sessionID)
+	if err != nil {
+		log.Printf("Failed to archive attendance records by session: %v", err)
 		return err
 	}
 
 	rowsAffected, _ := result.RowsAffected()
-	log.Printf("✓ Archived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
+	_, sessionArchiveErr := a.db.Exec(`
+		UPDATE attendance_sessions
+		SET is_archived = 1,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE session_id = ?
+	`, sessionID)
+	if sessionArchiveErr != nil {
+		log.Printf("Warning: failed to mark attendance session archived: session_id=%d err=%v", sessionID, sessionArchiveErr)
+	}
+
+	log.Printf("Archived attendance session: session_id=%d, records=%d", sessionID, rowsAffected)
 	return nil
 }
 
@@ -568,17 +1273,80 @@ func (a *App) UnarchiveAttendanceSheet(classID int, date string) error {
 
 	result, err := a.db.Exec(query, classID, date)
 	if err != nil {
-		log.Printf("⚠ Failed to unarchive attendance records: %v", err)
+		log.Printf("Failed to unarchive attendance records: %v", err)
 		return err
 	}
 
+	_, sessionUnarchiveErr := a.db.Exec(`
+		UPDATE attendance_sessions
+		SET is_archived = 0,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE class_id = ? AND attendance_date = ?
+	`, classID, date)
+	if sessionUnarchiveErr != nil {
+		log.Printf("Warning: failed to unarchive attendance sessions for class_id=%d date=%s: %v", classID, date, sessionUnarchiveErr)
+	}
+
 	rowsAffected, _ := result.RowsAffected()
-	log.Printf("✓ Unarchived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
+	log.Printf("Unarchived attendance sheet: class_id=%d, date=%s, records=%d", classID, date, rowsAffected)
+	return nil
+}
+
+// UnarchiveAttendanceSession removes the archived flag from one specific attendance session.
+// This is used when there are multiple sessions on the same class/date and only one should be restored.
+func (a *App) UnarchiveAttendanceSession(sessionID int, teacherUserID int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return fmt.Errorf("failed to initialize attendance sessions table: %w", err)
+	}
+
+	var classID int
+	var attendanceDate string
+	err := a.db.QueryRow(`
+		SELECT s.class_id, CONVERT(VARCHAR(10), s.attendance_date, 23) AS attendance_date
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
+		WHERE s.session_id = ? AND c.teacher_id = ?
+	`, sessionID, teacherUserID).Scan(&classID, &attendanceDate)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("session not found or not authorized")
+	}
+	if err != nil {
+		return err
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE attendance
+		SET is_archived = 0,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE session_id = ?
+	`, sessionID)
+	if err != nil {
+		log.Printf("Failed to unarchive attendance records by session: %v", err)
+		return err
+	}
+
+	_, sessionUnarchiveErr := a.db.Exec(`
+		UPDATE attendance_sessions
+		SET is_archived = 0,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE session_id = ?
+	`, sessionID)
+	if sessionUnarchiveErr != nil {
+		log.Printf("Warning: failed to unarchive attendance session flag: session_id=%d err=%v", sessionID, sessionUnarchiveErr)
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("Unarchived attendance session: session_id=%d, class_id=%d, date=%s, records=%d", sessionID, classID, attendanceDate, rowsAffected)
 	return nil
 }
 
 // ArchivedAttendanceSheet represents a summary of an archived attendance sheet
 type ArchivedAttendanceSheet struct {
+	SessionID    int    `json:"session_id"`
 	ClassID      int    `json:"class_id"`
 	Date         string `json:"date"`
 	SubjectCode  string `json:"subject_code"`
@@ -598,29 +1366,43 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 	}
 
 	query := `
-		SELECT
-			a.class_id,
-			CONVERT(VARCHAR(10), a.attendance_date, 23) AS date,
-			subj.subject_code,
-			subj.description AS subject_name,
-			c.edp_code,
-			c.schedule,
-			COUNT(a.student_id) AS student_count,
-			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
-			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
-			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count
-		FROM attendance a
-		JOIN classes c ON a.class_id = c.class_id
-		JOIN subjects subj ON c.subject_code = subj.subject_code
-		WHERE c.teacher_id = ?
-		  AND a.is_archived = 1
-		GROUP BY a.class_id, a.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
-		ORDER BY a.attendance_date DESC, subj.subject_code
-	`
+				SELECT
+						s.session_id,
+						s.class_id,
+						CONVERT(VARCHAR(10), s.attendance_date, 23) AS date,
+						subj.subject_code,
+						subj.description AS subject_name,
+						c.edp_code,
+						c.schedule,
+						-- Count based on archived attendance rows for the session (unique students).
+						-- Join attendance rows that are archived and either belong to the same session
+						-- OR (have no session_id but match by class_id + attendance_date). This
+						-- ensures sheets archived by date (where attendance.session_id may be NULL)
+						-- are still counted correctly.
+						COUNT(DISTINCT a.student_id) AS student_count,
+						SUM(CASE WHEN LOWER(ISNULL(a.status, '')) = 'present' THEN 1 ELSE 0 END) AS present_count,
+						SUM(CASE WHEN LOWER(ISNULL(a.status, '')) = 'absent' THEN 1 ELSE 0 END) AS absent_count,
+						SUM(CASE WHEN LOWER(ISNULL(a.status, '')) = 'late' THEN 1 ELSE 0 END) AS late_count
+				FROM attendance_sessions s
+				JOIN classes c ON s.class_id = c.class_id
+				JOIN subjects subj ON c.subject_code = subj.subject_code
+				LEFT JOIN attendance a ON COALESCE(a.is_archived, 0) = 1
+						AND (
+								a.session_id = s.session_id
+								OR (a.session_id IS NULL AND a.class_id = s.class_id AND a.attendance_date = s.attendance_date)
+						)
+				WHERE c.teacher_id = ?
+					AND (
+						COALESCE(s.is_archived, 0) = 1
+						OR a.student_id IS NOT NULL
+					)
+				GROUP BY s.session_id, s.class_id, s.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
+				ORDER BY s.attendance_date DESC, s.session_id DESC, subj.subject_code
+		`
 
 	rows, err := a.db.Query(query, teacherUserID)
 	if err != nil {
-		log.Printf("⚠ Failed to query archived attendance sheets: %v", err)
+		log.Printf("Failed to query archived attendance sheets: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -631,13 +1413,14 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 		var edpCode, schedule sql.NullString
 
 		err := rows.Scan(
+			&sheet.SessionID,
 			&sheet.ClassID, &sheet.Date,
 			&sheet.SubjectCode, &sheet.SubjectName,
 			&edpCode, &schedule,
 			&sheet.StudentCount, &sheet.PresentCount, &sheet.AbsentCount, &sheet.LateCount,
 		)
 		if err != nil {
-			log.Printf("⚠ Failed to scan archived attendance sheet: %v", err)
+			log.Printf("Failed to scan archived attendance sheet: %v", err)
 			continue
 		}
 
@@ -656,12 +1439,15 @@ func (a *App) GetArchivedAttendanceSheets(teacherUserID int) ([]ArchivedAttendan
 
 // AttendanceSheetSummary represents a summary of an attendance sheet with its status
 type AttendanceSheetSummary struct {
+	SessionID    int    `json:"session_id"`
 	ClassID      int    `json:"class_id"`
 	Date         string `json:"date"`
 	SubjectCode  string `json:"subject_code"`
 	SubjectName  string `json:"subject_name"`
 	EdpCode      string `json:"edp_code"`
 	Schedule     string `json:"schedule"`
+	Status       string `json:"status"`
+	OpenedAt     string `json:"opened_at,omitempty"`
 	StudentCount int    `json:"student_count"`
 	PresentCount int    `json:"present_count"`
 	AbsentCount  int    `json:"absent_count"`
@@ -675,35 +1461,44 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return nil, fmt.Errorf("failed to initialize attendance sessions table: %w", err)
+	}
 
 	today := time.Now().Format("2006-01-02")
 
 	query := `
 		SELECT
-			a.class_id,
-			CONVERT(VARCHAR(10), a.attendance_date, 23) AS date,
+			s.session_id,
+			s.class_id,
+			CONVERT(VARCHAR(10), s.attendance_date, 23) AS date,
 			subj.subject_code,
 			subj.description AS subject_name,
 			c.edp_code,
 			c.schedule,
+			s.status,
+			CONVERT(VARCHAR(19), s.opened_at, 120) AS opened_at,
 			COUNT(a.student_id) AS student_count,
 			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
 			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
 			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count,
 			COALESCE(MAX(CAST(a.is_archived AS INT)), 0) AS is_archived
-		FROM attendance a
-		JOIN classes c ON a.class_id = c.class_id
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
 		JOIN subjects subj ON c.subject_code = subj.subject_code
+		LEFT JOIN attendance a ON a.session_id = s.session_id
 		WHERE c.teacher_id = ?
-		  AND COALESCE(a.is_archived, 0) = 0
+		  AND s.status = 'closed'
+		  AND COALESCE(s.is_archived, 0) = 0
 		  AND COALESCE(c.is_archived, 0) = 0
-		GROUP BY a.class_id, a.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule
-		ORDER BY a.attendance_date DESC, subj.subject_code
+		  AND (a.session_id IS NULL OR COALESCE(a.is_archived, 0) = 0)
+		GROUP BY s.session_id, s.class_id, s.attendance_date, subj.subject_code, subj.description, c.edp_code, c.schedule, s.status, s.opened_at
+		ORDER BY s.attendance_date DESC, s.session_id DESC, subj.subject_code
 	`
 
 	rows, err := a.db.Query(query, teacherUserID)
 	if err != nil {
-		log.Printf("⚠ Failed to query active attendance sheets: %v", err)
+		log.Printf("Failed to query active attendance sheets: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -711,17 +1506,19 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 	var sheets []AttendanceSheetSummary
 	for rows.Next() {
 		var sheet AttendanceSheetSummary
-		var edpCode, schedule sql.NullString
+		var edpCode, schedule, openedAt, status sql.NullString
 
 		err := rows.Scan(
+			&sheet.SessionID,
 			&sheet.ClassID, &sheet.Date,
 			&sheet.SubjectCode, &sheet.SubjectName,
 			&edpCode, &schedule,
+			&status, &openedAt,
 			&sheet.StudentCount, &sheet.PresentCount, &sheet.AbsentCount, &sheet.LateCount,
 			&sheet.IsArchived,
 		)
 		if err != nil {
-			log.Printf("⚠ Failed to scan active attendance sheet: %v", err)
+			log.Printf("Failed to scan active attendance sheet: %v", err)
 			continue
 		}
 
@@ -731,6 +1528,12 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 		if schedule.Valid {
 			sheet.Schedule = schedule.String
 		}
+		if status.Valid {
+			sheet.Status = status.String
+		}
+		if openedAt.Valid {
+			sheet.OpenedAt = openedAt.String
+		}
 		// Is editable only if date == today
 		sheet.IsEditable = (sheet.Date == today)
 
@@ -738,4 +1541,877 @@ func (a *App) GetActiveAttendanceSheets(teacherUserID int) ([]AttendanceSheetSum
 	}
 
 	return sheets, nil
+}
+
+type AttendanceSession struct {
+	SessionID            int     `json:"session_id"`
+	ClassID              int     `json:"class_id"`
+	AttendanceDate       string  `json:"attendance_date"`
+	SessionName          string  `json:"session_name"`
+	Status               string  `json:"status"`
+	ClassDurationMinutes *int    `json:"class_duration_minutes,omitempty"`
+	GracePeriodMinutes   *int    `json:"grace_period_minutes,omitempty"`
+	OpenedAt             *string `json:"opened_at,omitempty"`
+	ClosedAt             *string `json:"closed_at,omitempty"`
+	SubjectCode          string  `json:"subject_code"`
+	SubjectName          string  `json:"subject_name"`
+	EdpCode              string  `json:"edp_code"`
+	PresentCount         int     `json:"present_count"`
+	AbsentCount          int     `json:"absent_count"`
+	LateCount            int     `json:"late_count"`
+}
+
+func (a *App) ensureAttendanceSessionsTable() error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	query := `
+		IF OBJECT_ID('attendance_sessions', 'U') IS NULL
+		BEGIN
+			CREATE TABLE attendance_sessions (
+				session_id INT IDENTITY(1,1) PRIMARY KEY,
+				class_id INT NOT NULL,
+				attendance_date DATE NOT NULL,
+				session_name NVARCHAR(255) NOT NULL,
+				status NVARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+				is_archived BIT NOT NULL DEFAULT 0,
+				class_duration_minutes INT NULL,
+				grace_period_minutes INT NULL,
+				opened_at DATETIME NULL,
+				closed_at DATETIME NULL,
+				created_by_user_id INT NOT NULL,
+				created_at DATETIME DEFAULT GETDATE(),
+				updated_at DATETIME DEFAULT GETDATE(),
+				CONSTRAINT FK_attendance_sessions_class FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE,
+				CONSTRAINT FK_attendance_sessions_creator FOREIGN KEY (created_by_user_id) REFERENCES users(id)
+			)
+		END
+
+		IF OBJECT_ID('attendance_sessions', 'U') IS NOT NULL
+			AND EXISTS (
+				SELECT 1
+				FROM sys.key_constraints
+				WHERE name = 'UQ_attendance_sessions_class_date'
+					AND [type] = 'UQ'
+					AND parent_object_id = OBJECT_ID('attendance_sessions')
+			)
+		BEGIN
+			ALTER TABLE attendance_sessions DROP CONSTRAINT UQ_attendance_sessions_class_date
+		END
+	`
+
+	_, err := a.db.Exec(query)
+	if err != nil {
+		return err
+	}
+
+	migrateAttendanceQuery := `
+		IF OBJECT_ID('attendance_sessions', 'U') IS NOT NULL
+			AND COL_LENGTH('attendance_sessions', 'is_archived') IS NULL
+		BEGIN
+			ALTER TABLE attendance_sessions ADD is_archived BIT NOT NULL DEFAULT 0
+		END
+
+		IF OBJECT_ID('attendance_sessions', 'U') IS NOT NULL
+			AND COL_LENGTH('attendance_sessions', 'class_duration_minutes') IS NULL
+		BEGIN
+			ALTER TABLE attendance_sessions ADD class_duration_minutes INT NULL
+		END
+
+		IF OBJECT_ID('attendance_sessions', 'U') IS NOT NULL
+			AND COL_LENGTH('attendance_sessions', 'grace_period_minutes') IS NULL
+		BEGIN
+			ALTER TABLE attendance_sessions ADD grace_period_minutes INT NULL
+		END
+
+		IF OBJECT_ID('attendance', 'U') IS NOT NULL
+			AND COL_LENGTH('attendance', 'session_id') IS NULL
+		BEGIN
+			ALTER TABLE attendance ADD session_id INT NULL
+		END
+
+		IF OBJECT_ID('attendance', 'U') IS NOT NULL
+			AND COL_LENGTH('attendance', 'time_in_at') IS NULL
+		BEGIN
+			ALTER TABLE attendance ADD time_in_at DATETIME NULL
+		END
+
+		IF OBJECT_ID('attendance', 'U') IS NOT NULL
+		BEGIN
+			IF COL_LENGTH('attendance', 'time_in_at') IS NOT NULL
+			BEGIN
+				EXEC sp_executesql N'UPDATE attendance
+				SET time_in_at = COALESCE(time_in_at, updated_at)
+				WHERE time_in_at IS NULL
+					AND LOWER(LTRIM(RTRIM(COALESCE(status, '''')))) IN (''present'', ''late'', ''seat-in'', ''seat in'')';
+			END
+		END
+
+		IF OBJECT_ID('attendance', 'U') IS NOT NULL
+			AND COL_LENGTH('attendance', 'session_id') IS NOT NULL
+			AND EXISTS (
+				SELECT 1
+				FROM attendance a
+				WHERE a.session_id IS NULL
+			)
+		BEGIN
+			EXEC sp_executesql N'UPDATE a
+			SET a.session_id = s.latest_session_id
+			FROM attendance a
+			JOIN (
+				SELECT class_id, attendance_date, MAX(session_id) AS latest_session_id
+				FROM attendance_sessions
+				GROUP BY class_id, attendance_date
+			) s
+				ON a.class_id = s.class_id
+				AND a.attendance_date = s.attendance_date
+			WHERE a.session_id IS NULL';
+		END
+
+		DECLARE @dropUniqueAttendanceSql NVARCHAR(MAX);
+		SELECT TOP 1 @dropUniqueAttendanceSql = 'ALTER TABLE attendance DROP CONSTRAINT [' + kc.name + ']'
+		FROM sys.key_constraints kc
+		WHERE kc.parent_object_id = OBJECT_ID('attendance')
+			AND kc.[type] = 'UQ'
+			AND EXISTS (
+				SELECT 1
+				FROM sys.index_columns ic
+				JOIN sys.columns col ON ic.object_id = col.object_id AND ic.column_id = col.column_id
+				WHERE ic.object_id = kc.parent_object_id
+					AND ic.index_id = kc.unique_index_id
+					AND col.name IN ('class_id', 'student_id', 'attendance_date')
+			)
+			AND NOT EXISTS (
+				SELECT 1
+				FROM sys.index_columns ic
+				JOIN sys.columns col ON ic.object_id = col.object_id AND ic.column_id = col.column_id
+				WHERE ic.object_id = kc.parent_object_id
+					AND ic.index_id = kc.unique_index_id
+					AND col.name = 'session_id'
+			);
+		IF @dropUniqueAttendanceSql IS NOT NULL
+		BEGIN
+			EXEC sp_executesql @dropUniqueAttendanceSql;
+		END
+
+		IF OBJECT_ID('attendance', 'U') IS NOT NULL
+			AND NOT EXISTS (
+				SELECT 1
+				FROM sys.key_constraints
+				WHERE name = 'UQ_attendance_class_student_date_session'
+					AND [type] = 'UQ'
+					AND parent_object_id = OBJECT_ID('attendance')
+			)
+		BEGIN
+			ALTER TABLE attendance
+			ADD CONSTRAINT UQ_attendance_class_student_date_session UNIQUE (class_id, student_id, attendance_date, session_id)
+		END
+
+		IF OBJECT_ID('attendance', 'U') IS NOT NULL
+			AND NOT EXISTS (
+				SELECT 1
+				FROM sys.indexes
+				WHERE name = 'IX_attendance_class_date_session_student'
+					AND object_id = OBJECT_ID('attendance')
+			)
+		BEGIN
+			CREATE INDEX IX_attendance_class_date_session_student
+			ON attendance (class_id, attendance_date, session_id, student_id)
+		END
+	`
+
+	_, err = a.db.Exec(migrateAttendanceQuery)
+	return err
+}
+
+func (a *App) ensureAttendanceRowsForSession(sessionID, classID int, date string) error {
+	query := `
+		INSERT INTO attendance (class_id, student_id, attendance_date, session_id, status, remarks, is_archived, created_at)
+		SELECT
+			cl.class_id,
+			cl.student_id,
+			?,
+			?,
+			NULL,
+			NULL,
+			0,
+			CURRENT_TIMESTAMP
+		FROM classlist cl
+		JOIN classes c ON cl.class_id = c.class_id
+				WHERE a.class_id = ?
+					AND a.attendance_date = ?
+					AND (? = 0 OR a.session_id = ?)
+					AND COALESCE(a.is_archived, 0) = 1
+			AND COALESCE(c.is_archived, 0) = 0
+			AND NOT EXISTS (
+	args := []interface{}{classID, date, sessionID, sessionID}
+				FROM attendance a
+				WHERE a.class_id = cl.class_id
+					AND a.student_id = cl.student_id
+					AND a.attendance_date = ?
+					AND a.session_id = ?
+			)
+	`
+
+	_, err := a.db.Exec(query, date, sessionID, classID, date, sessionID)
+	return err
+}
+
+func (a *App) closeExpiredAttendanceSessions() error {
+	_, normalizeErr := a.db.Exec(`
+		UPDATE att
+		SET
+			att.status = 'absent',
+			att.remarks = 'Absent',
+			att.time_in_at = NULL,
+			att.updated_at = CURRENT_TIMESTAMP
+		FROM attendance att
+		JOIN attendance_sessions s ON att.session_id = s.session_id
+		WHERE s.status = 'open'
+			AND COALESCE(s.is_archived, 0) = 0
+			AND COALESCE(att.is_archived, 0) = 0
+			AND s.opened_at IS NOT NULL
+			AND DATEADD(MINUTE,
+				CASE
+					WHEN COALESCE(NULLIF(s.class_duration_minutes, 0), 0) > 0
+					THEN COALESCE(NULLIF(s.class_duration_minutes, 0), 0)
+					ELSE COALESCE(NULLIF(s.grace_period_minutes, 0), 0)
+				END,
+				s.opened_at
+			) <= GETDATE()
+			AND LOWER(LTRIM(RTRIM(COALESCE(att.status, '')))) NOT IN ('present', 'late', 'seat-in', 'seat in', 'absent')
+	`)
+	if normalizeErr != nil {
+		return normalizeErr
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE attendance_sessions
+		SET
+			status = 'closed',
+			closed_at = COALESCE(closed_at, CURRENT_TIMESTAMP),
+			updated_at = CURRENT_TIMESTAMP
+		WHERE status = 'open'
+			AND COALESCE(is_archived, 0) = 0
+			AND opened_at IS NOT NULL
+			AND DATEADD(MINUTE,
+				CASE
+					WHEN COALESCE(NULLIF(class_duration_minutes, 0), 0) > 0
+					THEN COALESCE(NULLIF(class_duration_minutes, 0), 0)
+					ELSE COALESCE(NULLIF(grace_period_minutes, 0), 0)
+				END,
+				opened_at
+			) <= GETDATE()
+			AND (
+				CASE
+					WHEN COALESCE(NULLIF(class_duration_minutes, 0), 0) > 0
+					THEN COALESCE(NULLIF(class_duration_minutes, 0), 0)
+					ELSE COALESCE(NULLIF(grace_period_minutes, 0), 0)
+				END
+			) > 0
+	`)
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected, rowsErr := result.RowsAffected(); rowsErr == nil && rowsAffected > 0 {
+		log.Printf("Auto-closed %d expired attendance session(s)", rowsAffected)
+	}
+
+	return nil
+}
+
+func (a *App) getAttendanceSessionByID(sessionID int) (*AttendanceSession, error) {
+	query := `
+		SELECT
+			s.session_id,
+			s.class_id,
+			CONVERT(VARCHAR(10), s.attendance_date, 23) AS attendance_date,
+			s.session_name,
+			s.status,
+			s.class_duration_minutes,
+			s.grace_period_minutes,
+			CONVERT(VARCHAR(19), s.opened_at, 120) AS opened_at,
+			CONVERT(VARCHAR(19), s.closed_at, 120) AS closed_at,
+			subj.subject_code,
+			subj.description,
+			COALESCE(c.edp_code, ''),
+			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
+			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
+			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
+		JOIN subjects subj ON c.subject_code = subj.subject_code
+		LEFT JOIN attendance a ON a.session_id = s.session_id
+		WHERE s.session_id = ?
+		GROUP BY s.session_id, s.class_id, s.attendance_date, s.session_name, s.status, s.class_duration_minutes, s.grace_period_minutes,
+			s.opened_at, s.closed_at, subj.subject_code, subj.description, c.edp_code
+	`
+
+	var session AttendanceSession
+	var classDuration, gracePeriod sql.NullInt64
+	var openedAt, closedAt sql.NullString
+	err := a.db.QueryRow(query, sessionID).Scan(
+		&session.SessionID,
+		&session.ClassID,
+		&session.AttendanceDate,
+		&session.SessionName,
+		&session.Status,
+		&classDuration,
+		&gracePeriod,
+		&openedAt,
+		&closedAt,
+		&session.SubjectCode,
+		&session.SubjectName,
+		&session.EdpCode,
+		&session.PresentCount,
+		&session.AbsentCount,
+		&session.LateCount,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if classDuration.Valid {
+		v := int(classDuration.Int64)
+		session.ClassDurationMinutes = &v
+	}
+	if gracePeriod.Valid {
+		v := int(gracePeriod.Int64)
+		session.GracePeriodMinutes = &v
+	}
+	if openedAt.Valid {
+		v := openedAt.String
+		session.OpenedAt = &v
+	}
+	if closedAt.Valid {
+		v := closedAt.String
+		session.ClosedAt = &v
+	}
+
+	return &session, nil
+}
+
+func (a *App) CreateAttendanceSession(classID int, date, sessionName string, teacherUserID int, classDurationMinutes int, gracePeriodMinutes int) (*AttendanceSession, error) {
+	if err := a.checkDB(); err != nil {
+		return nil, err
+	}
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return nil, fmt.Errorf("failed to initialize attendance sessions table: %w", err)
+	}
+	if err := a.closeExpiredAttendanceSessions(); err != nil {
+		log.Printf("Warning: failed to close expired attendance sessions before create: %v", err)
+	}
+
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return nil, fmt.Errorf("invalid date format")
+	}
+
+	var ownerClassID int
+	err := a.db.QueryRow(`
+		SELECT class_id FROM classes
+		WHERE class_id = ? AND teacher_id = ? AND is_active = 1 AND COALESCE(is_archived, 0) = 0
+	`, classID, teacherUserID).Scan(&ownerClassID)
+	if err != nil {
+		return nil, fmt.Errorf("class not found or not authorized")
+	}
+
+	if strings.TrimSpace(sessionName) == "" {
+		sessionName = fmt.Sprintf("Attendance %s %s", date, time.Now().Format("15:04:05"))
+	}
+
+	var openSessionID int
+	err = a.db.QueryRow(`
+		SELECT TOP 1 session_id
+		FROM attendance_sessions
+		WHERE class_id = ? AND attendance_date = ? AND status = 'open' AND COALESCE(is_archived, 0) = 0
+		ORDER BY session_id DESC
+	`, classID, date).Scan(&openSessionID)
+	if err == nil {
+		if ensureErr := a.ensureAttendanceRowsForSession(openSessionID, classID, date); ensureErr != nil {
+			return nil, fmt.Errorf("failed to prepare attendance rows: %w", ensureErr)
+		}
+		return a.getAttendanceSessionByID(openSessionID)
+	}
+	if err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	if strings.TrimSpace(sessionName) == fmt.Sprintf("Attendance %s", date) {
+		var existingCount int
+		countErr := a.db.QueryRow(`
+			SELECT COUNT(*)
+			FROM attendance_sessions
+			WHERE class_id = ? AND attendance_date = ? AND COALESCE(is_archived, 0) = 0
+		`, classID, date).Scan(&existingCount)
+		if countErr == nil && existingCount > 0 {
+			sessionName = fmt.Sprintf("Attendance %s (%d)", date, existingCount+1)
+		}
+	}
+
+	var newSessionID int
+	err = a.db.QueryRow(`
+		INSERT INTO attendance_sessions
+		(class_id, attendance_date, session_name, status, class_duration_minutes, grace_period_minutes, opened_at, created_by_user_id, created_at, updated_at)
+		OUTPUT INSERTED.session_id
+		VALUES (?, ?, ?, 'open', ?, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	`, classID, date, sessionName, nullInt(classDurationMinutes), nullInt(gracePeriodMinutes), teacherUserID).Scan(&newSessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := a.ensureAttendanceRowsForSession(newSessionID, classID, date); err != nil {
+		return nil, fmt.Errorf("failed to prepare attendance rows: %w", err)
+	}
+
+	return a.getAttendanceSessionByID(newSessionID)
+}
+
+func (a *App) GetTeacherAttendanceSessions(teacherUserID int) ([]AttendanceSession, error) {
+	if err := a.checkDB(); err != nil {
+		return nil, err
+	}
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return nil, fmt.Errorf("failed to initialize attendance sessions table: %w", err)
+	}
+	if err := a.closeExpiredAttendanceSessions(); err != nil {
+		log.Printf("Warning: failed to close expired attendance sessions before teacher fetch: %v", err)
+	}
+
+	query := `
+		SELECT
+			s.session_id,
+			s.class_id,
+			CONVERT(VARCHAR(10), s.attendance_date, 23) AS attendance_date,
+			s.session_name,
+			s.status,
+			s.class_duration_minutes,
+			s.grace_period_minutes,
+			CONVERT(VARCHAR(19), s.opened_at, 120) AS opened_at,
+			CONVERT(VARCHAR(19), s.closed_at, 120) AS closed_at,
+			subj.subject_code,
+			subj.description,
+			COALESCE(c.edp_code, ''),
+			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
+			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
+			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
+		JOIN subjects subj ON c.subject_code = subj.subject_code
+		LEFT JOIN attendance a ON a.session_id = s.session_id
+		WHERE c.teacher_id = ?
+			AND COALESCE(s.is_archived, 0) = 0
+		GROUP BY s.session_id, s.class_id, s.attendance_date, s.session_name, s.status, s.class_duration_minutes, s.grace_period_minutes,
+			s.opened_at, s.closed_at, subj.subject_code, subj.description, c.edp_code
+		ORDER BY s.attendance_date DESC, s.session_id DESC
+	`
+
+	rows, err := a.db.Query(query, teacherUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	sessions := make([]AttendanceSession, 0)
+	for rows.Next() {
+		var session AttendanceSession
+		var classDuration, gracePeriod sql.NullInt64
+		var openedAt, closedAt sql.NullString
+
+		err := rows.Scan(
+			&session.SessionID,
+			&session.ClassID,
+			&session.AttendanceDate,
+			&session.SessionName,
+			&session.Status,
+			&classDuration,
+			&gracePeriod,
+			&openedAt,
+			&closedAt,
+			&session.SubjectCode,
+			&session.SubjectName,
+			&session.EdpCode,
+			&session.PresentCount,
+			&session.AbsentCount,
+			&session.LateCount,
+		)
+		if err != nil {
+			continue
+		}
+
+		if classDuration.Valid {
+			v := int(classDuration.Int64)
+			session.ClassDurationMinutes = &v
+		}
+		if gracePeriod.Valid {
+			v := int(gracePeriod.Int64)
+			session.GracePeriodMinutes = &v
+		}
+		if openedAt.Valid {
+			v := openedAt.String
+			session.OpenedAt = &v
+		}
+		if closedAt.Valid {
+			v := closedAt.String
+			session.ClosedAt = &v
+		}
+
+		sessions = append(sessions, session)
+	}
+
+	return sessions, nil
+}
+
+func (a *App) OpenAttendanceSession(sessionID int, teacherUserID int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return err
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE s
+		SET
+			s.status = 'open',
+			s.opened_at = COALESCE(s.opened_at, CURRENT_TIMESTAMP),
+			s.closed_at = NULL,
+			s.updated_at = CURRENT_TIMESTAMP
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
+		WHERE s.session_id = ? AND c.teacher_id = ? AND COALESCE(s.is_archived, 0) = 0
+	`, sessionID, teacherUserID)
+	if err != nil {
+		return err
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("session not found or not authorized")
+	}
+
+	return nil
+}
+
+func (a *App) SaveAttendanceSession(sessionID int, teacherUserID int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return err
+	}
+
+	_, normalizeErr := a.db.Exec(`
+		UPDATE attendance
+		SET
+			status = COALESCE(NULLIF(status, ''), 'absent'),
+			remarks = CASE
+				WHEN COALESCE(NULLIF(status, ''), 'absent') = 'present' THEN 'Present'
+				WHEN COALESCE(NULLIF(status, ''), 'absent') = 'late' THEN 'Late'
+				ELSE 'Absent'
+			END,
+			time_in_at = CASE
+				WHEN COALESCE(NULLIF(status, ''), 'absent') IN ('present', 'late', 'seat-in', 'seat in')
+					THEN COALESCE(time_in_at, updated_at)
+				ELSE NULL
+			END,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE session_id = ? AND COALESCE(is_archived, 0) = 0
+	`, sessionID)
+	if normalizeErr != nil {
+		return normalizeErr
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE s
+		SET
+			s.status = 'closed',
+			s.closed_at = CURRENT_TIMESTAMP,
+			s.updated_at = CURRENT_TIMESTAMP
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
+		WHERE s.session_id = ? AND c.teacher_id = ? AND COALESCE(s.is_archived, 0) = 0
+	`, sessionID, teacherUserID)
+	if err != nil {
+		return err
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("session not found or not authorized")
+	}
+
+	return nil
+}
+
+func (a *App) RenameAttendanceSession(sessionID int, sessionName string, teacherUserID int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return err
+	}
+
+	sessionName = strings.TrimSpace(sessionName)
+	if sessionName == "" {
+		return fmt.Errorf("session name is required")
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE s
+		SET
+			s.session_name = ?,
+			s.updated_at = CURRENT_TIMESTAMP
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
+		WHERE s.session_id = ? AND c.teacher_id = ? AND COALESCE(s.is_archived, 0) = 0
+	`, sessionName, sessionID, teacherUserID)
+	if err != nil {
+		return err
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("session not found or not authorized")
+	}
+
+	return nil
+}
+
+func (a *App) GetStudentOpenAttendanceSessions(studentUserID int) ([]AttendanceSession, error) {
+	if err := a.checkDB(); err != nil {
+		return nil, err
+	}
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return nil, err
+	}
+	if err := a.closeExpiredAttendanceSessions(); err != nil {
+		log.Printf("Warning: failed to close expired attendance sessions before student fetch: %v", err)
+	}
+
+	query := `
+		SELECT
+			s.session_id,
+			s.class_id,
+			CONVERT(VARCHAR(10), s.attendance_date, 23) AS attendance_date,
+			s.session_name,
+			s.status,
+			s.class_duration_minutes,
+			s.grace_period_minutes,
+			CONVERT(VARCHAR(19), s.opened_at, 120) AS opened_at,
+			CONVERT(VARCHAR(19), s.closed_at, 120) AS closed_at,
+			subj.subject_code,
+			subj.description,
+			COALESCE(c.edp_code, ''),
+			SUM(CASE WHEN a.status = 'present' THEN 1 ELSE 0 END) AS present_count,
+			SUM(CASE WHEN a.status = 'absent' THEN 1 ELSE 0 END) AS absent_count,
+			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count
+		FROM attendance_sessions s
+		JOIN classes c ON s.class_id = c.class_id
+		JOIN classlist cl ON cl.class_id = c.class_id
+		JOIN subjects subj ON c.subject_code = subj.subject_code
+		LEFT JOIN attendance sa
+			ON sa.session_id = s.session_id
+			AND sa.class_id = s.class_id
+			AND sa.student_id = cl.student_id
+			AND sa.attendance_date = s.attendance_date
+		LEFT JOIN attendance a ON a.session_id = s.session_id
+		WHERE cl.student_id = ?
+			AND cl.status = 'active'
+			AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
+			AND s.status = 'open'
+			AND COALESCE(s.is_archived, 0) = 0
+			AND LOWER(LTRIM(RTRIM(COALESCE(sa.status, '')))) NOT IN ('present', 'late', 'seat-in', 'seat in')
+			AND CONVERT(VARCHAR(10), s.attendance_date, 23) = CONVERT(VARCHAR(10), GETDATE(), 23)
+		GROUP BY s.session_id, s.class_id, s.attendance_date, s.session_name, s.status, s.class_duration_minutes, s.grace_period_minutes,
+			s.opened_at, s.closed_at, subj.subject_code, subj.description, c.edp_code
+		ORDER BY s.opened_at DESC, s.session_id DESC
+	`
+
+	rows, err := a.db.Query(query, studentUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]AttendanceSession, 0)
+	for rows.Next() {
+		var session AttendanceSession
+		var classDuration, gracePeriod sql.NullInt64
+		var openedAt, closedAt sql.NullString
+
+		err := rows.Scan(
+			&session.SessionID,
+			&session.ClassID,
+			&session.AttendanceDate,
+			&session.SessionName,
+			&session.Status,
+			&classDuration,
+			&gracePeriod,
+			&openedAt,
+			&closedAt,
+			&session.SubjectCode,
+			&session.SubjectName,
+			&session.EdpCode,
+			&session.PresentCount,
+			&session.AbsentCount,
+			&session.LateCount,
+		)
+		if err != nil {
+			continue
+		}
+
+		if classDuration.Valid {
+			v := int(classDuration.Int64)
+			session.ClassDurationMinutes = &v
+		}
+		if gracePeriod.Valid {
+			v := int(gracePeriod.Int64)
+			session.GracePeriodMinutes = &v
+		}
+		if openedAt.Valid {
+			v := openedAt.String
+			session.OpenedAt = &v
+		}
+		if closedAt.Valid {
+			v := closedAt.String
+			session.ClosedAt = &v
+		}
+
+		result = append(result, session)
+	}
+
+	return result, nil
+}
+
+func (a *App) StudentTimeIn(sessionID int, studentUserID int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return err
+	}
+
+	if err := a.closeStaleSessions(); err != nil {
+		log.Printf("Failed to close stale sessions before student time-in: %v", err)
+	}
+	if err := a.closeExpiredAttendanceSessions(); err != nil {
+		log.Printf("Failed to close expired attendance sessions before student time-in: %v", err)
+	}
+
+	var classID int
+	var attendanceDate string
+	var status string
+	var classDuration sql.NullInt64
+	var gracePeriod sql.NullInt64
+	var openedAt sql.NullTime
+	err := a.db.QueryRow(`
+		SELECT s.class_id, CONVERT(VARCHAR(10), s.attendance_date, 23), s.status, s.class_duration_minutes, s.grace_period_minutes, s.opened_at
+		FROM attendance_sessions s
+		WHERE s.session_id = ?
+	`, sessionID).Scan(&classID, &attendanceDate, &status, &classDuration, &gracePeriod, &openedAt)
+	if err != nil {
+		return fmt.Errorf("attendance session not found")
+	}
+
+	if status != "open" {
+		return fmt.Errorf("attendance session is closed")
+	}
+
+	var enrolled int
+	err = a.db.QueryRow(`
+		SELECT 1 FROM classlist
+		WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = 0 OR is_archived IS NULL)
+	`, classID, studentUserID).Scan(&enrolled)
+	if err != nil {
+		return fmt.Errorf("student is not enrolled in this class")
+	}
+
+	var activeLogin int
+	err = a.db.QueryRow(`
+		SELECT TOP 1 1
+		FROM log_entries le
+		WHERE le.user_id = ?
+			AND le.logout_time IS NULL
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = le.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
+		ORDER BY le.login_time DESC
+	`, studentUserID, sessionHeartbeatTimeoutSeconds).Scan(&activeLogin)
+	if err != nil {
+		return fmt.Errorf("student must be logged in to time in")
+	}
+
+	if err := a.ensureAttendanceRowsForSession(sessionID, classID, attendanceDate); err != nil {
+		return err
+	}
+
+	resolvedGrace := int64(0)
+	if gracePeriod.Valid {
+		resolvedGrace = gracePeriod.Int64
+	}
+
+	resolvedClassDuration := int64(0)
+	if classDuration.Valid {
+		resolvedClassDuration = classDuration.Int64
+	}
+
+	// Use class duration as the session expiry window. Do NOT treat the grace
+	// period as the cutoff for closing the session; grace only affects late
+	// determination. If class duration is unset (0) we won't auto-close the
+	// session based on grace expiration which would prevent marking students
+	// as late.
+	attendanceWindowMinutes := resolvedClassDuration
+
+	if openedAt.Valid {
+		if attendanceWindowMinutes > 0 {
+			expiresAt := openedAt.Time.Add(time.Duration(attendanceWindowMinutes) * time.Minute)
+			if time.Now().After(expiresAt) {
+				_, _ = a.db.Exec(`
+					UPDATE attendance_sessions
+					SET status = 'closed', closed_at = COALESCE(closed_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP
+					WHERE session_id = ? AND status = 'open'
+				`, sessionID)
+				return fmt.Errorf("attendance session class duration is over")
+			}
+		}
+	}
+
+	finalStatus := "present"
+	if openedAt.Valid {
+		lateCutoff := openedAt.Time.Add(time.Duration(resolvedGrace) * time.Minute)
+		if !time.Now().Before(lateCutoff) {
+			finalStatus = "late"
+		}
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE attendance
+		SET
+			status = ?,
+			remarks = ?,
+			time_in_at = COALESCE(time_in_at, CURRENT_TIMESTAMP),
+			updated_at = CURRENT_TIMESTAMP
+		WHERE class_id = ? AND student_id = ? AND attendance_date = ? AND session_id = ? AND COALESCE(is_archived, 0) = 0
+	`, finalStatus, strings.Title(finalStatus), classID, studentUserID, attendanceDate, sessionID)
+	if err != nil {
+		return err
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("attendance record not found")
+	}
+
+	return nil
+}
+
+func nullInt(value int) interface{} {
+	if value < 0 {
+		return nil
+	}
+	return value
 }

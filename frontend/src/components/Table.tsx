@@ -18,6 +18,7 @@ interface TableProps<T> {
   onSort?: (key: string) => void;
   loading?: boolean;
   emptyMessage?: string;
+  hideEmptyIcon?: boolean;
   hoverable?: boolean;
   striped?: boolean;
   compact?: boolean;
@@ -60,6 +61,7 @@ function Table<T extends Record<string, any>>({
   onSort,
   loading = false,
   emptyMessage = 'No data available',
+  hideEmptyIcon = false,
   hoverable = true,
   striped = true,
   compact = false,
@@ -151,19 +153,21 @@ function Table<T extends Record<string, any>>({
               <tr>
                 <td colSpan={columns.length} className="px-6 py-12 text-center">
                   <div className="flex flex-col items-center gap-2">
-                    <svg
-                      className="h-12 w-12 text-gray-300"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={1.5}
-                        d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-                      />
-                    </svg>
+                    {!hideEmptyIcon && (
+                      <svg
+                        className="h-12 w-12 text-gray-300"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                        />
+                      </svg>
+                    )}
                     <p className="text-sm text-gray-600 font-medium">{emptyMessage}</p>
                   </div>
                 </td>
@@ -174,7 +178,7 @@ function Table<T extends Record<string, any>>({
                   key={index}
                   className={`
                     ${striped && index % 2 === 0 ? 'bg-white' : striped ? 'bg-gray-50/50' : 'bg-white'}
-                    ${hoverable ? 'hover:bg-primary-50/50 transition-colors' : ''}
+                    ${hoverable ? 'hover:bg-gray-50 transition-colors' : ''}
                     ${onRowClick ? 'cursor-pointer' : ''}
                     border-b border-gray-100 last:border-b-0
                   `}

@@ -39,7 +39,7 @@ func (a *App) GetInactiveClasses(teacherUserID int) ([]CourseClass, error) {
 
 	rows, err := a.db.Query(query, teacherUserID)
 	if err != nil {
-		log.Printf("⚠ Failed to query inactive classes: %v", err)
+		log.Printf("Failed to query inactive classes: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -58,7 +58,7 @@ func (a *App) GetInactiveClasses(teacherUserID int) ([]CourseClass, error) {
 			&cls.EnrolledCount, &cls.IsActive, &isArchived, &createdByUserID,
 		)
 		if err != nil {
-			log.Printf("⚠ Error scanning inactive class: %v", err)
+			log.Printf("Error scanning inactive class: %v", err)
 			continue
 		}
 
@@ -101,25 +101,22 @@ func (a *App) GetInactiveClasses(teacherUserID int) ([]CourseClass, error) {
 }
 
 // ArchiveClass marks a class as archived.
-// Rule: A class must be CLOSED (is_active=false) before it can be archived.
-// When archiving a class, also archive all its attendance records and enrollments.
+// Google Classroom-like behavior: teacher can archive an active or closed class.
+// The class remains restorable with its original active/closed state.
+// When archiving a class, also archive all attendance records and enrollments.
 func (a *App) ArchiveClass(classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
 
-	// Check class status: must be CLOSED (is_active=false) to archive
-	var isActive bool
+	// Check class status
 	var isArchived bool
-	err := a.db.QueryRow(`SELECT is_active, COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isActive, &isArchived)
+	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isArchived)
 	if err != nil {
 		return fmt.Errorf("class not found")
 	}
 	if isArchived {
 		return fmt.Errorf("class is already archived")
-	}
-	if isActive {
-		return fmt.Errorf("class must be closed before it can be archived. Close the class first")
 	}
 
 	// Archive the class
@@ -131,7 +128,7 @@ func (a *App) ArchiveClass(classID int) error {
 	`
 	_, err = a.db.Exec(query, classID)
 	if err != nil {
-		log.Printf("⚠ Failed to archive class: %v", err)
+		log.Printf("Failed to archive class: %v", err)
 		return err
 	}
 
@@ -142,7 +139,7 @@ func (a *App) ArchiveClass(classID int) error {
 		classID, today,
 	)
 	if err != nil {
-		log.Printf("⚠ Warning: Failed to archive past attendance for class %d: %v", classID, err)
+		log.Printf("Warning: Failed to archive past attendance for class %d: %v", classID, err)
 	}
 
 	// Also archive all enrollment records for this class
@@ -151,10 +148,10 @@ func (a *App) ArchiveClass(classID int) error {
 		classID,
 	)
 	if err != nil {
-		log.Printf("⚠ Warning: Failed to archive enrollments for class %d: %v", classID, err)
+		log.Printf("Warning: Failed to archive enrollments for class %d: %v", classID, err)
 	}
 
-	log.Printf("✓ Archived class and related records: class_id=%d", classID)
+	log.Printf("Archived class and related records: class_id=%d", classID)
 	return nil
 }
 
@@ -162,6 +159,15 @@ func (a *App) ArchiveClass(classID int) error {
 func (a *App) UnarchiveClass(classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
+	}
+
+	var classArchived bool
+	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&classArchived)
+	if err != nil {
+		return fmt.Errorf("class not found")
+	}
+	if !classArchived {
+		return fmt.Errorf("class is not archived")
 	}
 
 	query := `
@@ -173,12 +179,31 @@ func (a *App) UnarchiveClass(classID int) error {
 
 	result, err := a.db.Exec(query, classID)
 	if err != nil {
-		log.Printf("⚠ Failed to unarchive class: %v", err)
+		log.Printf("Failed to unarchive class: %v", err)
 		return err
 	}
 
+	// Restore archived attendance rows for this class.
+	// Personal student hide state is handled separately in student_archived_classes.
+	_, err = a.db.Exec(
+		`UPDATE attendance SET is_archived = 0, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`,
+		classID,
+	)
+	if err != nil {
+		log.Printf("Warning: Failed to restore attendance archive flags for class %d: %v", classID, err)
+	}
+
+	// Restore archived class enrollments so class membership returns after restore.
+	_, err = a.db.Exec(
+		`UPDATE classlist SET is_archived = 0, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`,
+		classID,
+	)
+	if err != nil {
+		log.Printf("Warning: Failed to restore classlist archive flags for class %d: %v", classID, err)
+	}
+
 	rowsAffected, _ := result.RowsAffected()
-	log.Printf("✓ Unarchived class: class_id=%d, affected=%d", classID, rowsAffected)
+	log.Printf("Unarchived class: class_id=%d, affected=%d", classID, rowsAffected)
 	return nil
 }
 
@@ -210,7 +235,7 @@ func (a *App) GetArchivedClasses(teacherUserID int) ([]CourseClass, error) {
 
 	rows, err := a.db.Query(query, teacherUserID)
 	if err != nil {
-		log.Printf("⚠ Failed to query archived classes: %v", err)
+		log.Printf("Failed to query archived classes: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -228,7 +253,7 @@ func (a *App) GetArchivedClasses(teacherUserID int) ([]CourseClass, error) {
 			&cls.EnrolledCount, &cls.IsActive, &cls.IsArchived, &createdByUserID,
 		)
 		if err != nil {
-			log.Printf("⚠ Failed to scan archived class: %v", err)
+			log.Printf("Failed to scan archived class: %v", err)
 			continue
 		}
 
@@ -279,6 +304,9 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
+	if err := a.ensureStudentArchivedClassesTable(); err != nil {
+		return nil, err
+	}
 
 	query := `
 		SELECT 
@@ -289,6 +317,7 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 			c.is_active, c.is_archived, c.created_by_user_id, c.created_at
 		FROM classlist cl
 		JOIN classes c ON cl.class_id = c.class_id
+		LEFT JOIN student_archived_classes sac ON sac.student_id = cl.student_id AND sac.class_id = cl.class_id
 		LEFT JOIN subjects s ON c.subject_code = s.subject_code
 		LEFT JOIN teachers t ON c.teacher_id = t.id
 		LEFT JOIN (
@@ -297,13 +326,18 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 			WHERE status = 'active'
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE cl.student_id = ? AND cl.is_archived = 1
+		WHERE cl.student_id = ?
+		  AND cl.status = 'active'
+		  AND (
+			COALESCE(c.is_archived, 0) = 1
+			OR sac.class_id IS NOT NULL
+		  )
 		ORDER BY c.school_year DESC, c.semester DESC, c.subject_code ASC
 	`
 
 	rows, err := a.db.Query(query, studentUserID)
 	if err != nil {
-		log.Printf("⚠ Failed to query student archived classes: %v", err)
+		log.Printf("Failed to query student archived classes: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -322,7 +356,7 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 			&cls.EnrolledCount, &cls.IsActive, &cls.IsArchived, &createdByUserID, &createdAt,
 		)
 		if err != nil {
-			log.Printf("⚠ Failed to scan student archived class: %v", err)
+			log.Printf("Failed to scan student archived class: %v", err)
 			continue
 		}
 
@@ -366,6 +400,6 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 		classes = append(classes, cls)
 	}
 
-	log.Printf("✓ Found %d archived classes for student user_id=%d", len(classes), studentUserID)
+	log.Printf("Found %d archived classes for student user_id=%d", len(classes), studentUserID)
 	return classes, nil
 }

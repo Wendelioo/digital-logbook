@@ -10,13 +10,13 @@ import (
 // checkDB validates database connection and attempts reconnection if needed
 func (a *App) checkDB() error {
 	if a.db == nil {
-		log.Println("⚠️  Database is nil, attempting to reconnect...")
+		log.Println("Database is nil, attempting to reconnect...")
 		return a.reconnectDB()
 	}
 
 	// Verify the connection is still alive
 	if err := a.db.Ping(); err != nil {
-		log.Printf("⚠️  Database ping failed: %v, attempting to reconnect...", err)
+		log.Printf("Database ping failed: %v, attempting to reconnect...", err)
 		a.db.Close()
 		a.db = nil
 		return a.reconnectDB()
@@ -29,11 +29,11 @@ func (a *App) checkDB() error {
 func (a *App) reconnectDB() error {
 	db, err := InitDatabase()
 	if err != nil {
-		log.Printf("❌ Database reconnection failed: %v", err)
+		log.Printf("Database reconnection failed: %v", err)
 		return fmt.Errorf("database not connected - reconnection failed: %w", err)
 	}
 	a.db = db
-	log.Println("✅ Database reconnected successfully")
+	log.Println("Database reconnected successfully")
 	return nil
 }
 

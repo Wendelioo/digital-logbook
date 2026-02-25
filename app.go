@@ -47,19 +47,25 @@ func (a *App) startup(ctx context.Context) {
 		if err == nil {
 			break
 		}
-		log.Printf("? Database connection attempt %d/%d failed: %v", i, maxRetries, err)
+		log.Printf("Database connection attempt %d/%d failed: %v", i, maxRetries, err)
 		if i < maxRetries {
-			log.Printf("? Retrying in %d seconds...", i*2)
+			log.Printf("Retrying in %d seconds...", i*2)
 			time.Sleep(time.Duration(i*2) * time.Second)
 		}
 	}
 
 	if err != nil {
-		log.Println("??  All database connection attempts failed - will auto-reconnect on next request")
-		log.Println("?? To fix: Check SQL Server is running, TCP/IP is enabled, and credentials are correct")
+		log.Println("All database connection attempts failed - will auto-reconnect on next request")
+		log.Println("To fix: Check SQL Server is running, TCP/IP is enabled, and credentials are correct")
 	} else {
 		a.db = db
-		log.Println("? Database connected successfully")
+		log.Println("Database connected successfully")
+		if err := a.ensureSessionHeartbeatTable(); err != nil {
+			log.Printf("Failed to ensure session heartbeat table: %v", err)
+		}
+		if err := a.closeStaleSessions(); err != nil {
+			log.Printf("Failed to close stale sessions on startup: %v", err)
+		}
 	}
 
 	// If kiosk mode is on, force lock the screen on startup
@@ -70,8 +76,14 @@ func (a *App) startup(ctx context.Context) {
 			time.Sleep(500 * time.Millisecond)
 			wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
 			wailsRuntime.WindowFullscreen(a.ctx)
-			log.Println("🔒 Kiosk mode: Screen locked on startup")
+			log.Println("Kiosk mode: Screen locked on startup")
 		}()
+	}
+}
+
+func (a *App) shutdown(ctx context.Context) {
+	if err := a.CloseSessionsForCurrentHost(); err != nil {
+		log.Printf("Failed to close sessions on app shutdown: %v", err)
 	}
 }
 
@@ -90,7 +102,7 @@ func (a *App) UnlockScreen() {
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, false)
 	wailsRuntime.WindowSetSize(a.ctx, 1000, 700)
 	wailsRuntime.WindowCenter(a.ctx)
-	log.Println("🔓 Screen unlocked - app is now a normal window")
+	log.Println("Screen unlocked - app is now a normal window")
 }
 
 // LockScreen is called after logout.
@@ -103,7 +115,7 @@ func (a *App) LockScreen() {
 	wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
 	wailsRuntime.WindowMaximise(a.ctx)
 	wailsRuntime.WindowFullscreen(a.ctx)
-	log.Println("🔒 Screen locked - waiting for next user to login")
+	log.Println("Screen locked - waiting for next user to login")
 }
 
 // IsKioskMode returns whether kiosk mode is enabled (for frontend to know)
@@ -128,7 +140,7 @@ type User struct {
 	StudentID      *string `json:"student_id"`
 	Email          *string `json:"email"`
 	ContactNumber  *string `json:"contact_number"`
-	PhotoURL       *string `json:"photo_url"`  // Base64 data URL for frontend display
+	PhotoURL       *string `json:"photo_url"` // Base64 data URL for frontend display
 	DepartmentCode *string `json:"department_code"`
 	Created        string  `json:"created"`
 	LoginLogID     int     `json:"login_log_id"` // Track the login session
@@ -195,7 +207,7 @@ type ClassStudent struct {
 	Gender        *string `json:"gender,omitempty"`
 	Email         *string `json:"email,omitempty"`
 	ContactNumber *string `json:"contact_number,omitempty"`
-	PhotoURL      *string `json:"photo_url,omitempty"`  // Base64 data URL for frontend display
+	PhotoURL      *string `json:"photo_url,omitempty"` // Base64 data URL for frontend display
 	ClassID       *int    `json:"class_id,omitempty"`
 	IsEnrolled    bool    `json:"is_enrolled"`
 }
@@ -228,6 +240,10 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 		return dashboard, err
 	}
 
+	if err := a.closeStaleSessions(); err != nil {
+		log.Printf("Failed to close stale sessions in admin dashboard: %v", err)
+	}
+
 	// Count students
 	a.db.QueryRow(`SELECT COUNT(*) FROM students`).Scan(&dashboard.TotalStudents)
 
@@ -241,28 +257,53 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE login_time >= DATEADD(HOUR, -24, GETDATE())`).Scan(&dashboard.RecentLogins)
 
 	// Count active users now (logged in today without logout, distinct per user)
-	a.db.QueryRow(`SELECT COUNT(DISTINCT user_id) FROM log_entries WHERE logout_time IS NULL AND CAST(login_time AS DATE) = CAST(GETDATE() AS DATE)`).Scan(&dashboard.ActiveUsersNow)
+	a.db.QueryRow(`
+		SELECT COUNT(DISTINCT ll.user_id)
+		FROM log_entries ll
+		WHERE ll.logout_time IS NULL
+			AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE)
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = ll.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
+	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.ActiveUsersNow)
 
 	// Count students currently logged in (JOIN with users to get role)
 	a.db.QueryRow(`
 		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
 		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'student'
-	`).Scan(&dashboard.StudentsLoggedIn)
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = ll.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
+	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.StudentsLoggedIn)
 
 	// Count teachers currently logged in
 	a.db.QueryRow(`
 		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
 		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'teacher'
-	`).Scan(&dashboard.TeachersLoggedIn)
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = ll.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
+	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.TeachersLoggedIn)
 
 	// Count working students currently logged in
 	a.db.QueryRow(`
 		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
 		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'working_student'
-	`).Scan(&dashboard.WorkingStudentsLoggedIn)
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = ll.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
+	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.WorkingStudentsLoggedIn)
 
 	// Count today's logins
 	a.db.QueryRow(`
@@ -316,25 +357,25 @@ type Subject struct {
 
 // CourseClass represents a class/section
 type CourseClass struct {
-	ID                    int     `json:"id"`
-	ClassID               int     `json:"class_id"`
-	SubjectCode           string  `json:"subject_code"`
-	SubjectName           string  `json:"subject_name"`
-	DescriptiveTitle      *string `json:"descriptive_title,omitempty"`
-	EdpCode               *string `json:"edp_code,omitempty"`
-	Section               *string `json:"section,omitempty"`
-	Schedule              *string `json:"schedule,omitempty"`
-	Room                  *string `json:"room,omitempty"`
-	SchoolYear            *string `json:"school_year,omitempty"`
-	Semester              *string `json:"semester,omitempty"`
-	TeacherUserID         int     `json:"teacher_user_id"`
-	TeacherName           *string `json:"teacher_name,omitempty"`
-	StudentCount          int     `json:"student_count"`
-	EnrolledCount         int     `json:"enrolled_count"`
-	IsActive              bool    `json:"is_active"`
-	IsArchived            bool    `json:"is_archived"`
-	CreatedByUserID       *int    `json:"created_by_user_id,omitempty"`
-	CreatedAt             string  `json:"created_at"`
+	ID                   int     `json:"id"`
+	ClassID              int     `json:"class_id"`
+	SubjectCode          string  `json:"subject_code"`
+	SubjectName          string  `json:"subject_name"`
+	DescriptiveTitle     *string `json:"descriptive_title,omitempty"`
+	EdpCode              *string `json:"edp_code,omitempty"`
+	Section              *string `json:"section,omitempty"`
+	Schedule             *string `json:"schedule,omitempty"`
+	Room                 *string `json:"room,omitempty"`
+	SchoolYear           *string `json:"school_year,omitempty"`
+	Semester             *string `json:"semester,omitempty"`
+	TeacherUserID        int     `json:"teacher_user_id"`
+	TeacherName          *string `json:"teacher_name,omitempty"`
+	StudentCount         int     `json:"student_count"`
+	EnrolledCount        int     `json:"enrolled_count"`
+	IsActive             bool    `json:"is_active"`
+	IsArchived           bool    `json:"is_archived"`
+	CreatedByUserID      *int    `json:"created_by_user_id,omitempty"`
+	CreatedAt            string  `json:"created_at"`
 	LatestAttendanceDate *string `json:"latest_attendance_date,omitempty"`
 	ClassStatus          string  `json:"class_status"`
 }
@@ -356,6 +397,7 @@ type Attendance struct {
 	LastName       string  `json:"last_name"`
 	Date           string  `json:"date"`
 	AttendanceDate string  `json:"attendance_date"`
+	TimeIn         *string `json:"time_in,omitempty"`
 	Status         string  `json:"status"`
 	Remarks        *string `json:"remarks"`
 	RecordedBy     int     `json:"recorded_by"`
@@ -509,6 +551,15 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 		return dashboard, err
 	}
 
+	if err := a.closeStaleSessions(); err != nil {
+		log.Printf("Failed to close stale sessions in student dashboard: %v", err)
+	}
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		log.Printf("Failed to ensure attendance sessions table in student dashboard: %v", err)
+	} else if err := a.closeExpiredAttendanceSessions(); err != nil {
+		log.Printf("Failed to close expired attendance sessions in student dashboard: %v", err)
+	}
+
 	// Get all attendance records for this student
 	query := `
 		SELECT 
@@ -516,6 +567,7 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 			stu.student_id,
 			stu.first_name, stu.middle_name, stu.last_name,
 			c.subject_code, s.description as subject_name,
+			CONVERT(VARCHAR(8), a.time_in_at, 108) as time_in,
 			a.status, a.remarks
 		FROM attendance a
 		JOIN students stu ON a.student_id = stu.id
@@ -535,12 +587,12 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	presentCount := 0
 	for rows.Next() {
 		var att Attendance
-		var middleName, remarks sql.NullString
+		var middleName, remarks, status, timeIn sql.NullString
 		err := rows.Scan(
 			&att.ClassID, &att.StudentID, &att.Date,
 			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
 			&att.SubjectCode, &att.SubjectName,
-			&att.Status, &remarks,
+			&timeIn, &status, &remarks,
 		)
 		if err != nil {
 			log.Printf("Failed to scan attendance: %v", err)
@@ -549,13 +601,22 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 		if middleName.Valid {
 			att.MiddleName = &middleName.String
 		}
+		if status.Valid {
+			att.Status = strings.TrimSpace(status.String)
+		}
+		if timeIn.Valid {
+			value := strings.TrimSpace(timeIn.String)
+			if value != "" {
+				att.TimeIn = &value
+			}
+		}
 		if remarks.Valid {
 			att.Remarks = &remarks.String
 		}
 		attendance = append(attendance, att)
 
-		// Count present records
-		if att.Status == "Present" {
+		// Count present records (case-insensitive)
+		if strings.EqualFold(strings.TrimSpace(att.Status), "present") {
 			presentCount++
 		}
 
@@ -580,8 +641,13 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 		SELECT COUNT(*), pc_number 
 		FROM log_entries 
 		WHERE user_id = ? AND logout_time IS NULL
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = log_entries.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
 		GROUP BY pc_number
-	`, userID).Scan(&loggedIn, &pcNumber)
+	`, userID, sessionHeartbeatTimeoutSeconds).Scan(&loggedIn, &pcNumber)
 	if err == nil && loggedIn > 0 {
 		dashboard.CurrentlyLoggedIn = true
 		if pcNumber.Valid {
@@ -620,6 +686,10 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 		return dashboard, err
 	}
 
+	if err := a.closeStaleSessions(); err != nil {
+		log.Printf("Failed to close stale sessions in working student dashboard: %v", err)
+	}
+
 	// Count students
 	a.db.QueryRow(`SELECT COUNT(*) FROM students`).Scan(&dashboard.StudentsRegistered)
 
@@ -641,9 +711,17 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 
 	// Count students currently logged in
 	a.db.QueryRow(`
-		SELECT COUNT(*) FROM log_entries 
-		WHERE logout_time IS NULL AND user_type = 'student'
-	`).Scan(&dashboard.ActiveStudentsNow)
+		SELECT COUNT(DISTINCT ll.user_id)
+		FROM log_entries ll
+		INNER JOIN users u ON ll.user_id = u.id
+		WHERE ll.logout_time IS NULL
+			AND u.user_type = 'student'
+			AND EXISTS (
+				SELECT 1 FROM user_session_heartbeats sh
+				WHERE sh.user_id = ll.user_id
+				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+			)
+	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.ActiveStudentsNow)
 
 	return dashboard, nil
 }

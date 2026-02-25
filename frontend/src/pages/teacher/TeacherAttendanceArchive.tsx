@@ -1,16 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Button from '../../components/Button';
 import {
   Eye,
-  Archive,
-  Library,
+  ArchiveRestore,
   Download,
 } from 'lucide-react';
 import {
-  ExportAttendanceCSV,
   ExportClasslistCSV,
   GetArchivedAttendanceSheets,
+  UnarchiveAttendanceSession,
   UnarchiveAttendanceSheet,
   GetArchivedClasses,
   UnarchiveClass,
@@ -18,14 +17,20 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { Class } from './types';
 
-function StoredAttendance() {
+export type AttendanceArchiveTab = 'attendance' | 'classes';
+
+interface AttendanceArchiveProps {
+  initialTab?: AttendanceArchiveTab;
+  hideHeader?: boolean;
+  onClassUnarchived?: () => void;
+}
+
+function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarchived }: AttendanceArchiveProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const tabParam = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<'attendance' | 'classes'>(
-    tabParam === 'classes' ? 'classes' : 'attendance'
-  );
+  const resolvedInitialTab: AttendanceArchiveTab = initialTab || (searchParams.get('tab') === 'classes' ? 'classes' : 'attendance');
+  const [activeTab, setActiveTab] = useState<AttendanceArchiveTab>(resolvedInitialTab);
   
   // Attendance state
   const [archivedSheets, setArchivedSheets] = useState<any[]>([]);
@@ -35,6 +40,8 @@ function StoredAttendance() {
   const [attendanceCurrentPage, setAttendanceCurrentPage] = useState(1);
   const [filteredAttendance, setFilteredAttendance] = useState<any[]>([]);
   const [unarchivingAttendance, setUnarchivingAttendance] = useState<string | null>(null);
+  const [downloadingAttendance, setDownloadingAttendance] = useState<string | null>(null);
+  const [downloadMenuKey, setDownloadMenuKey] = useState<string | null>(null);
   
   // Classes state
   const [archivedClasses, setArchivedClasses] = useState<Class[]>([]);
@@ -44,47 +51,17 @@ function StoredAttendance() {
   const [classCurrentPage, setClassCurrentPage] = useState(1);
   const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
   const [unarchivingClass, setUnarchivingClass] = useState<number | null>(null);
+  const [downloadingClasslist, setDownloadingClasslist] = useState<number | null>(null);
+  const [classDownloadMenuKey, setClassDownloadMenuKey] = useState<string | null>(null);
   
-  // Export state
-  const [exportingAttendance, setExportingAttendance] = useState<string | null>(null);
-  const [exportingClasslist, setExportingClasslist] = useState<number | null>(null);
-
-  const handleExportAttendance = async (classId: number, date: string) => {
-    const key = `${classId}-${date}`;
-    setExportingAttendance(key);
-    try {
-      const filePath = await ExportAttendanceCSV(classId);
-      alert(`Attendance exported successfully!\nFile saved to: ${filePath}`);
-    } catch (error) {
-      console.error('Failed to export attendance:', error);
-      alert('Failed to export attendance. Please try again.');
-    } finally {
-      setExportingAttendance(null);
-    }
-  };
-
-  const handleExportClasslist = async (classId: number) => {
-    setExportingClasslist(classId);
-    try {
-      const filePath = await ExportClasslistCSV(classId);
-      alert(`Classlist exported successfully!\nFile saved to: ${filePath}`);
-    } catch (error) {
-      console.error('Failed to export classlist:', error);
-      alert('Failed to export classlist. Please try again.');
-    } finally {
-      setExportingClasslist(null);
-    }
-  };
-
   useEffect(() => {
-    // Sync activeTab with URL query parameter
-    const tab = searchParams.get('tab');
-    if (tab === 'classes') {
-      setActiveTab('classes');
-    } else {
-      setActiveTab('attendance');
+    if (initialTab) {
+      setActiveTab(initialTab);
+      return;
     }
-  }, [searchParams]);
+    const tab = searchParams.get('tab');
+    setActiveTab(tab === 'classes' ? 'classes' : 'attendance');
+  }, [initialTab, searchParams]);
 
   useEffect(() => {
     loadArchivedSheets();
@@ -153,14 +130,18 @@ function StoredAttendance() {
     }
   };
 
-  const handleUnarchiveAttendance = async (classId: number, date: string) => {
-    const key = `${classId}-${date}`;
+  const handleUnarchiveAttendance = async (classId: number, date: string, sessionId?: number) => {
+    const key = sessionId ? `${classId}-${date}-${sessionId}` : `${classId}-${date}`;
     setUnarchivingAttendance(key);
     try {
-      await UnarchiveAttendanceSheet(classId, date);
+      if (sessionId && user?.id) {
+        await UnarchiveAttendanceSession(sessionId, user.id);
+      } else {
+        await UnarchiveAttendanceSheet(classId, date);
+      }
       await loadArchivedSheets();
     } catch (error) {
-      console.error('Failed to unarchive:', error);
+      console.error('Failed to restore:', error);
     } finally {
       setUnarchivingAttendance(null);
     }
@@ -171,10 +152,54 @@ function StoredAttendance() {
     try {
       await UnarchiveClass(classId);
       await loadArchivedClassesList();
+      onClassUnarchived?.();
     } catch (error) {
-      console.error('Failed to unarchive class:', error);
+      console.error('Failed to restore class:', error);
     } finally {
       setUnarchivingClass(null);
+    }
+  };
+
+  const handleDownloadArchivedClasslist = async (cls: Class, format: 'csv' | 'pdf') => {
+    setDownloadingClasslist(cls.class_id);
+    setClassDownloadMenuKey(null);
+    try {
+      if (format === 'csv') {
+        const filePath = await ExportClasslistCSV(cls.class_id);
+        alert(`Archived classlist exported successfully.\nFile saved to: ${filePath}`);
+      } else {
+        const filePath = await (window as any).go.main.App.ExportClasslistPDF(cls.class_id);
+        alert(`Archived classlist PDF exported successfully.\nFile saved to: ${filePath}`);
+      }
+    } catch (error) {
+      console.error('Failed to download archived classlist:', error);
+      alert('Failed to download archived classlist. Please try again.');
+    } finally {
+      setDownloadingClasslist(null);
+    }
+  };
+
+  const getSheetKey = (sheet: any) => (sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`);
+
+  const handleDownloadArchivedAttendance = async (sheet: any, format: 'csv' | 'pdf') => {
+    const key = sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`;
+
+    setDownloadingAttendance(key);
+    setDownloadMenuKey(null);
+    try {
+      const sessionId = Number(sheet.session_id) || 0;
+      if (format === 'csv') {
+        const filePath = await (window as any).go.main.App.ExportArchivedAttendanceCSVByDate(sheet.class_id, sheet.date, sessionId);
+        alert(`Archived attendance sheet exported successfully.\nFile saved to: ${filePath}`);
+      } else {
+        const filePath = await (window as any).go.main.App.ExportArchivedAttendancePDFByDate(sheet.class_id, sheet.date, sessionId);
+        alert(`Archived attendance sheet exported successfully.\nFile saved to: ${filePath}`);
+      }
+    } catch (error) {
+      console.error('Failed to download archived attendance:', error);
+      alert('Failed to download archived attendance. Please try again.');
+    } finally {
+      setDownloadingAttendance(null);
     }
   };
 
@@ -191,9 +216,10 @@ function StoredAttendance() {
   }
 
   // Calculate pagination for attendance
-  const attendanceTotalPages = Math.ceil(filteredAttendance.length / attendanceEntriesPerPage);
-  const attendanceStartIndex = (attendanceCurrentPage - 1) * attendanceEntriesPerPage;
-  const attendanceEndIndex = attendanceStartIndex + attendanceEntriesPerPage;
+  const attendanceIsShowingAll = attendanceEntriesPerPage === -1;
+  const attendanceTotalPages = attendanceIsShowingAll ? 1 : Math.ceil(filteredAttendance.length / attendanceEntriesPerPage);
+  const attendanceStartIndex = attendanceIsShowingAll ? 0 : (attendanceCurrentPage - 1) * attendanceEntriesPerPage;
+  const attendanceEndIndex = attendanceIsShowingAll ? filteredAttendance.length : attendanceStartIndex + attendanceEntriesPerPage;
   const currentAttendanceRecords = filteredAttendance.slice(attendanceStartIndex, attendanceEndIndex);
   const attendanceStartEntry = filteredAttendance.length > 0 ? attendanceStartIndex + 1 : 0;
   const attendanceEndEntry = Math.min(attendanceEndIndex, filteredAttendance.length);
@@ -209,11 +235,13 @@ function StoredAttendance() {
   return (
     <div className="flex flex-col h-full p-6">
       {/* Header Section */}
-      <div className="flex-shrink-0 mb-4">
-        <h2 className="text-2xl font-bold text-gray-900">
-          {activeTab === 'classes' ? 'Archived Classlist' : 'Archived Attendance'}
-        </h2>
-      </div>
+      {!hideHeader && (
+        <div className="flex-shrink-0 mb-4">
+          <h2 className="text-2xl font-bold text-gray-900">
+            {activeTab === 'classes' ? 'Archived Classlist' : 'Archived Attendance'}
+          </h2>
+        </div>
+      )}
 
       {/* Attendance Tab Content */}
       {activeTab === 'attendance' && (
@@ -235,6 +263,7 @@ function StoredAttendance() {
                   <option value={25}>25</option>
                   <option value={50}>50</option>
                   <option value={100}>100</option>
+                  <option value={-1}>All</option>
                 </select>
                 <span className="text-sm text-gray-700">entries</span>
               </div>
@@ -267,17 +296,14 @@ function StoredAttendance() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
                         Summary
                       </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
-                        Status
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '160px' }}>
                         Action
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {currentAttendanceRecords.map((sheet) => (
-                      <tr key={`${sheet.class_id}-${sheet.date}`} className="hover:bg-gray-50 transition-colors">
+                      <tr key={sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
                         </td>
@@ -301,29 +327,58 @@ function StoredAttendance() {
                           </div>
                           <div className="text-xs text-gray-400 mt-1">{sheet.student_count} total students</div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                            Archived
-                          </span>
-                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                           <div className="flex items-center justify-center gap-2">
+                            <div className="relative">
+                              <button
+                                onClick={() => {
+                                  const key = getSheetKey(sheet);
+                                  setDownloadMenuKey((current) => (current === key ? null : key));
+                                }}
+                                className="h-9 w-9 inline-flex items-center justify-center text-emerald-600 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
+                                disabled={downloadingAttendance === getSheetKey(sheet)}
+                                title="Download"
+                              >
+                                <Download className="h-4 w-4" />
+                              </button>
+                              {downloadMenuKey === getSheetKey(sheet) && (
+                                <div className="absolute right-0 bottom-full mb-1 z-20 w-28 rounded-md border border-gray-200 bg-white shadow-lg">
+                                  <button
+                                    onClick={() => handleDownloadArchivedAttendance(sheet, 'csv')}
+                                    className="block w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+                                  >
+                                    Download CSV
+                                  </button>
+                                  <button
+                                    onClick={() => handleDownloadArchivedAttendance(sheet, 'pdf')}
+                                    className="block w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+                                  >
+                                    Download PDF
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                             <button
                               onClick={() => {
-                                navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}`);
+                                navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}`, {
+                                  state: {
+                                    fromArchiveModal: true,
+                                    returnToArchiveTab: 'attendance',
+                                  },
+                                });
                               }}
-                              className="p-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
+                              className="h-9 w-9 inline-flex items-center justify-center text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
                               title="View"
                             >
                               <Eye className="h-4 w-4" />
                             </button>
                             <button
-                              onClick={() => handleUnarchiveAttendance(sheet.class_id, sheet.date)}
-                              className="p-2 text-orange-600 hover:text-orange-900 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
-                              disabled={unarchivingAttendance === `${sheet.class_id}-${sheet.date}`}
-                              title="Unarchive"
+                              onClick={() => handleUnarchiveAttendance(sheet.class_id, sheet.date, sheet.session_id)}
+                              className="h-9 w-9 inline-flex items-center justify-center text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+                              disabled={unarchivingAttendance === (sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`)}
+                              title="Restore"
                             >
-                              <Archive className="h-4 w-4" />
+                              <ArchiveRestore className="h-4 w-4" />
                             </button>
                           </div>
                         </td>
@@ -336,10 +391,7 @@ function StoredAttendance() {
               <div className="text-center py-12">
                 {attendanceSearchTerm ? (
                   <>
-                    <svg className="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">No matching archived records found</h3>
+                    <h3 className="text-sm font-medium text-gray-900">No matching archived records found</h3>
                     <div className="mt-4">
                       <Button
                         onClick={() => setAttendanceSearchTerm('')}
@@ -352,8 +404,7 @@ function StoredAttendance() {
                   </>
                 ) : (
                   <>
-                    <Archive className="mx-auto h-12 w-12 text-gray-300" />
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">No archived attendance sheets</h3>
+                    <h3 className="text-sm font-medium text-gray-900">No archived attendance sheets</h3>
                   </>
                 )}
               </div>
@@ -366,6 +417,7 @@ function StoredAttendance() {
               <div className="text-sm text-gray-700">
                 Showing {attendanceStartEntry} to {attendanceEndEntry} of {filteredAttendance.length} entries
               </div>
+              {!attendanceIsShowingAll && (
               <div className="flex items-center gap-1">
                 <Button
                   onClick={() => setAttendanceCurrentPage(prev => Math.max(1, prev - 1))}
@@ -390,6 +442,7 @@ function StoredAttendance() {
                   Next
                 </Button>
               </div>
+              )}
             </div>
           )}
         </>
@@ -468,20 +521,54 @@ function StoredAttendance() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                           <div className="flex items-center justify-center gap-2">
+                            <div className="relative">
+                              <button
+                                onClick={() => {
+                                  const key = `class-${cls.class_id}`;
+                                  setClassDownloadMenuKey((current) => (current === key ? null : key));
+                                }}
+                                className="h-9 w-9 inline-flex items-center justify-center text-emerald-600 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
+                                disabled={downloadingClasslist === cls.class_id}
+                                title="Download"
+                              >
+                                <Download className="h-4 w-4" />
+                              </button>
+                              {classDownloadMenuKey === `class-${cls.class_id}` && (
+                                <div className="absolute right-0 bottom-full mb-1 z-20 w-28 rounded-md border border-gray-200 bg-white shadow-lg">
+                                  <button
+                                    onClick={() => handleDownloadArchivedClasslist(cls, 'csv')}
+                                    className="block w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+                                  >
+                                    Download CSV
+                                  </button>
+                                  <button
+                                    onClick={() => handleDownloadArchivedClasslist(cls, 'pdf')}
+                                    className="block w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
+                                  >
+                                    Download PDF
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                             <button
-                              onClick={() => navigate(`/teacher/class-management/${cls.class_id}?mode=view`)}
-                              className="p-2 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
+                              onClick={() => navigate(`/teacher/class-management/${cls.class_id}?mode=view`, {
+                                state: {
+                                  fromArchiveModal: true,
+                                  returnToArchiveTab: 'classes',
+                                },
+                              })}
+                              className="h-9 w-9 inline-flex items-center justify-center text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
                               title="View"
                             >
                               <Eye className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleUnarchiveClass(cls.class_id)}
-                              className="p-2 text-orange-600 hover:text-orange-900 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50"
+                              className="h-9 w-9 inline-flex items-center justify-center text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
                               disabled={unarchivingClass === cls.class_id}
-                              title="Unarchive"
+                              title="Restore"
                             >
-                              <Archive className="h-4 w-4" />
+                              <ArchiveRestore className="h-4 w-4" />
                             </button>
                           </div>
                         </td>
@@ -494,10 +581,7 @@ function StoredAttendance() {
               <div className="text-center py-12">
                 {classSearchTerm ? (
                   <>
-                    <svg className="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">No matching archived classes found</h3>
+                    <h3 className="text-sm font-medium text-gray-900">No matching archived classes found</h3>
                     <div className="mt-4">
                       <Button
                         onClick={() => setClassSearchTerm('')}
@@ -510,8 +594,7 @@ function StoredAttendance() {
                   </>
                 ) : (
                   <>
-                    <Library className="mx-auto h-12 w-12 text-gray-300" />
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">No archived classes</h3>
+                    <h3 className="text-sm font-medium text-gray-900">No archived classes</h3>
                   </>
                 )}
               </div>
@@ -556,4 +639,4 @@ function StoredAttendance() {
   );
 }
 
-export default StoredAttendance;
+export default TeacherAttendanceArchive;

@@ -264,7 +264,7 @@ function LoginPage() {
                   id="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-11 pr-11 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="login-password-input w-full pl-11 pr-11 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   required
                 />
                 <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -279,15 +279,8 @@ function LoginPage() {
               </div>
             </div>
 
-            {/* Error Message */}
-            {error && (
-              <div className="bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded-r-lg text-sm font-medium">
-                {error}
-              </div>
-            )}
-
-            {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between pt-1">
+            {/* Remember Me */}
+            <div className="pt-1">
               <label className="flex items-center cursor-pointer group">
                 <input 
                   type="checkbox" 
@@ -297,9 +290,6 @@ function LoginPage() {
                   Remember me
                 </span>
               </label>
-              <a href="#" className="text-sm text-teal-600 hover:text-teal-700 font-medium transition-colors">
-                Forgot password?
-              </a>
             </div>
 
             {/* Submit Button */}

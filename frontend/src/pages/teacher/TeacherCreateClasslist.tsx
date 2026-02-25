@@ -274,6 +274,7 @@ function CreateClasslist() {
                           id="schedule"
                           value={formData.schedule}
                           onChange={(e) => setFormData({ ...formData, schedule: e.target.value })}
+                          placeholder="e.g., MWF 8:00 AM - 10:00 AM"
                           className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                           required
                         />

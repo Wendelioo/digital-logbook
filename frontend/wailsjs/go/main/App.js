@@ -6,6 +6,10 @@ export function ActivateClass(arg1) {
   return window['go']['main']['App']['ActivateClass'](arg1);
 }
 
+export function ArchiveAttendanceSession(arg1, arg2) {
+  return window['go']['main']['App']['ArchiveAttendanceSession'](arg1, arg2);
+}
+
 export function ArchiveAttendanceSheet(arg1, arg2) {
   return window['go']['main']['App']['ArchiveAttendanceSheet'](arg1, arg2);
 }
@@ -42,6 +46,10 @@ export function ArchiveStudentEnrollment(arg1, arg2) {
   return window['go']['main']['App']['ArchiveStudentEnrollment'](arg1, arg2);
 }
 
+export function ArchiveUser(arg1) {
+  return window['go']['main']['App']['ArchiveUser'](arg1);
+}
+
 export function ChangePassword(arg1, arg2, arg3) {
   return window['go']['main']['App']['ChangePassword'](arg1, arg2, arg3);
 }
@@ -52,6 +60,14 @@ export function CheckAttendanceExists(arg1, arg2) {
 
 export function CloseClass(arg1) {
   return window['go']['main']['App']['CloseClass'](arg1);
+}
+
+export function CloseSessionsForCurrentHost() {
+  return window['go']['main']['App']['CloseSessionsForCurrentHost']();
+}
+
+export function CreateAttendanceSession(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['CreateAttendanceSession'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function CreateClass(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10) {
@@ -114,6 +130,14 @@ export function EnrollStudentInClass(arg1, arg2, arg3) {
   return window['go']['main']['App']['EnrollStudentInClass'](arg1, arg2, arg3);
 }
 
+export function ExportArchivedAttendanceCSVByDate(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ExportArchivedAttendanceCSVByDate'](arg1, arg2, arg3);
+}
+
+export function ExportArchivedAttendancePDFByDate(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ExportArchivedAttendancePDFByDate'](arg1, arg2, arg3);
+}
+
 export function ExportArchivedFeedbackCSV() {
   return window['go']['main']['App']['ExportArchivedFeedbackCSV']();
 }
@@ -146,12 +170,20 @@ export function ExportArchivedLogsPDF() {
   return window['go']['main']['App']['ExportArchivedLogsPDF']();
 }
 
-export function ExportAttendanceCSV(arg1) {
-  return window['go']['main']['App']['ExportAttendanceCSV'](arg1);
+export function ExportAttendanceCSVByDate(arg1, arg2) {
+  return window['go']['main']['App']['ExportAttendanceCSVByDate'](arg1, arg2);
+}
+
+export function ExportAttendancePDFByDate(arg1, arg2) {
+  return window['go']['main']['App']['ExportAttendancePDFByDate'](arg1, arg2);
 }
 
 export function ExportClasslistCSV(arg1) {
   return window['go']['main']['App']['ExportClasslistCSV'](arg1);
+}
+
+export function ExportClasslistPDF(arg1) {
+  return window['go']['main']['App']['ExportClasslistPDF'](arg1);
 }
 
 export function ExportFeedbackCSV() {
@@ -246,6 +278,10 @@ export function GetArchivedStudents() {
   return window['go']['main']['App']['GetArchivedStudents']();
 }
 
+export function GetArchivedUsers() {
+  return window['go']['main']['App']['GetArchivedUsers']();
+}
+
 export function GetAvailableSections() {
   return window['go']['main']['App']['GetAvailableSections']();
 }
@@ -318,6 +354,10 @@ export function GetRecentAttendance(arg1, arg2) {
   return window['go']['main']['App']['GetRecentAttendance'](arg1, arg2);
 }
 
+export function GetSessionAttendance(arg1, arg2) {
+  return window['go']['main']['App']['GetSessionAttendance'](arg1, arg2);
+}
+
 export function GetStudentArchivedClasses(arg1) {
   return window['go']['main']['App']['GetStudentArchivedClasses'](arg1);
 }
@@ -338,8 +378,16 @@ export function GetStudentLoginLogs(arg1) {
   return window['go']['main']['App']['GetStudentLoginLogs'](arg1);
 }
 
+export function GetStudentOpenAttendanceSessions(arg1) {
+  return window['go']['main']['App']['GetStudentOpenAttendanceSessions'](arg1);
+}
+
 export function GetSubjects() {
   return window['go']['main']['App']['GetSubjects']();
+}
+
+export function GetTeacherAttendanceSessions(arg1) {
+  return window['go']['main']['App']['GetTeacherAttendanceSessions'](arg1);
 }
 
 export function GetTeacherClasses(arg1) {
@@ -418,6 +466,10 @@ export function MarkEnrollmentDropped(arg1, arg2) {
   return window['go']['main']['App']['MarkEnrollmentDropped'](arg1, arg2);
 }
 
+export function OpenAttendanceSession(arg1, arg2) {
+  return window['go']['main']['App']['OpenAttendanceSession'](arg1, arg2);
+}
+
 export function OpenClassAttendance(arg1, arg2) {
   return window['go']['main']['App']['OpenClassAttendance'](arg1, arg2);
 }
@@ -430,20 +482,24 @@ export function ReactivateEnrollment(arg1, arg2) {
   return window['go']['main']['App']['ReactivateEnrollment'](arg1, arg2);
 }
 
-export function RecordAttendance(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['RecordAttendance'](arg1, arg2, arg3, arg4, arg5);
-}
-
-export function RecordStudentLogin(arg1, arg2) {
-  return window['go']['main']['App']['RecordStudentLogin'](arg1, arg2);
-}
-
 export function RecordTimeoutLogout(arg1) {
   return window['go']['main']['App']['RecordTimeoutLogout'](arg1);
 }
 
+export function RenameAttendanceSession(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RenameAttendanceSession'](arg1, arg2, arg3);
+}
+
 export function ReopenClass(arg1) {
   return window['go']['main']['App']['ReopenClass'](arg1);
+}
+
+export function ResetPasswordByRole(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ResetPasswordByRole'](arg1, arg2, arg3);
+}
+
+export function SaveAttendanceSession(arg1, arg2) {
+  return window['go']['main']['App']['SaveAttendanceSession'](arg1, arg2);
 }
 
 export function SaveEquipmentFeedback(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
@@ -466,8 +522,20 @@ export function SetStudentEnrollmentStatus(arg1, arg2, arg3) {
   return window['go']['main']['App']['SetStudentEnrollmentStatus'](arg1, arg2, arg3);
 }
 
+export function StudentTimeIn(arg1, arg2) {
+  return window['go']['main']['App']['StudentTimeIn'](arg1, arg2);
+}
+
 export function SubmitRegistration(arg1) {
   return window['go']['main']['App']['SubmitRegistration'](arg1);
+}
+
+export function TouchSession(arg1) {
+  return window['go']['main']['App']['TouchSession'](arg1);
+}
+
+export function UnarchiveAttendanceSession(arg1, arg2) {
+  return window['go']['main']['App']['UnarchiveAttendanceSession'](arg1, arg2);
 }
 
 export function UnarchiveAttendanceSheet(arg1, arg2) {
@@ -500,6 +568,10 @@ export function UnarchiveStudent(arg1) {
 
 export function UnarchiveStudentEnrollment(arg1, arg2) {
   return window['go']['main']['App']['UnarchiveStudentEnrollment'](arg1, arg2);
+}
+
+export function UnarchiveUser(arg1) {
+  return window['go']['main']['App']['UnarchiveUser'](arg1);
 }
 
 export function UnenrollStudentFromClass(arg1) {

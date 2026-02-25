@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Login, Logout, UnlockScreen, LockScreen, IsKioskMode } from '../../wailsjs/go/main/App';
 import type { User } from '../types';
 import { useInactivityDetection, useWindowUnload } from '../hooks/useInactivity';
@@ -24,10 +24,54 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
+const HEARTBEAT_INTERVAL_MS = 30 * 1000;
+const RUNTIME_WAIT_TIMEOUT_MS = 5000;
+const RUNTIME_WAIT_INTERVAL_MS = 50;
+
+function isWailsRuntimeReady() {
+  return !!window.go?.main?.App;
+}
+
+async function waitForWailsRuntime(timeoutMs = RUNTIME_WAIT_TIMEOUT_MS): Promise<boolean> {
+  if (isWailsRuntimeReady()) return true;
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    await new Promise((resolve) => window.setTimeout(resolve, RUNTIME_WAIT_INTERVAL_MS));
+    if (isWailsRuntimeReady()) return true;
+  }
+
+  return false;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const logoutInProgressRef = useRef(false);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const sendHeartbeat = () => {
+      if (!window.go?.main?.App?.TouchSession) return;
+      window.go.main.App.TouchSession(user.id).catch(() => {});
+    };
+
+    sendHeartbeat();
+    const heartbeatTimer = window.setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(heartbeatTimer);
+    };
+  }, [user]);
+
+  const clearLocalSession = useCallback(() => {
+    setUser(null);
+    setIsAuthenticated(false);
+    localStorage.removeItem('user');
+    sessionStorage.clear();
+    window.dispatchEvent(new CustomEvent(AUTH_STATUS_CHANGED_EVENT));
+  }, []);
 
   // Check for saved user session on mount
   useEffect(() => {
@@ -48,6 +92,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Handle inactivity and window close
   const handleAutoLogout = useCallback(async () => {
+    if (logoutInProgressRef.current) {
+      return;
+    }
+
+    logoutInProgressRef.current = true;
     try {
       if (user && window.go?.main?.App) {
         await Logout(user.id);
@@ -55,10 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Auto logout failed:', error);
     } finally {
-      setUser(null);
-      setIsAuthenticated(false);
-      localStorage.removeItem('user');
-      window.dispatchEvent(new CustomEvent(AUTH_STATUS_CHANGED_EVENT));
+      clearLocalSession();
 
       // Lock screen in kiosk mode on auto-logout
       try {
@@ -66,22 +112,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (e) {
         // Silently ignore if not in kiosk mode
       }
+
+      logoutInProgressRef.current = false;
     }
-  }, [user]);
+  }, [clearLocalSession, user]);
 
   useInactivityDetection(handleAutoLogout, !!user);
   useWindowUnload(handleAutoLogout, !!user);
 
   const login = async (username: string, password: string): Promise<User> => {
+    logoutInProgressRef.current = false;
+
     // Clear existing state
     setUser(null);
     setIsAuthenticated(false);
     localStorage.removeItem('user');
 
     try {
-      // Check Wails runtime availability
-      if (!window.go?.main?.App) {
-        throw new Error('Application runtime not initialized. Please restart the application.');
+      // Check Wails runtime availability (allow short delay for runtime injection)
+      const runtimeReady = await waitForWailsRuntime();
+      if (!runtimeReady) {
+        throw new Error('Application runtime not initialized. Please run the app via Wails (wails dev or built app).');
       }
 
       const userData = await Login(username, password);
@@ -110,6 +161,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+    if (logoutInProgressRef.current) {
+      return;
+    }
+
+    logoutInProgressRef.current = true;
     try {
       if (user && window.go?.main?.App) {
         await Logout(user.id);
@@ -117,11 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Backend logout failed:', error);
     } finally {
-      setUser(null);
-      setIsAuthenticated(false);
-      localStorage.removeItem('user');
-      sessionStorage.clear();
-      window.dispatchEvent(new CustomEvent(AUTH_STATUS_CHANGED_EVENT));
+      clearLocalSession();
 
       // Lock screen in kiosk mode so next user must login
       try {
@@ -129,6 +181,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (e) {
         // Silently ignore if not in kiosk mode
       }
+
+      logoutInProgressRef.current = false;
     }
   };
 

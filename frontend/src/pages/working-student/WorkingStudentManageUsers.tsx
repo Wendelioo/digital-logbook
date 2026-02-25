@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
+import WorkingStudentArchivedStudentsModal from '../../components/WorkingStudentArchivedStudentsModal';
 import {
   Users,
   Eye,
   X,
+  Archive,
+  Settings,
 } from 'lucide-react';
-import { GetAllRegisteredStudents } from '../../../wailsjs/go/main/App';
+import { ArchiveStudent, GetAllRegisteredStudents, ResetPasswordByRole } from '../../../wailsjs/go/main/App';
 import { ClassStudent, ViewStudentDetailsModalProps } from './types';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface StudentRow {
   id: string;
@@ -96,6 +100,7 @@ function ViewStudentDetailsModal({ student, isOpen, onClose }: ViewStudentDetail
 }
 
 function ManageUsers() {
+  const { user: currentUser } = useAuth();
   const [students, setStudents] = useState<ClassStudent[]>([]);
   const [filteredStudents, setFilteredStudents] = useState<ClassStudent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,6 +109,7 @@ function ManageUsers() {
   const [viewingStudent, setViewingStudent] = useState<ClassStudent | null>(null);
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
 
   const loadStudents = async () => {
     try {
@@ -116,6 +122,51 @@ function ManageUsers() {
       setError('Unable to load students from server.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleArchiveStudent = async (student: ClassStudent) => {
+    try {
+      await ArchiveStudent(student.id);
+      await loadStudents();
+    } catch (error) {
+      console.error('Failed to archive student:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to archive student.';
+      setError(errorMessage);
+    }
+  };
+
+  const handleResetStudentPassword = async (student: ClassStudent) => {
+    if (!currentUser) {
+      setError('Current session not found. Please login again.');
+      return;
+    }
+
+    const newPassword = window.prompt(`Set new password for ${student.first_name} ${student.last_name}:`);
+    if (newPassword === null) return;
+
+    const trimmedPassword = newPassword.trim();
+    if (!trimmedPassword) {
+      setError('New password is required.');
+      return;
+    }
+
+    const confirmPassword = window.prompt('Confirm new password:');
+    if (confirmPassword === null) return;
+
+    if (trimmedPassword !== confirmPassword.trim()) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    try {
+      await ResetPasswordByRole(currentUser.id, student.id, trimmedPassword);
+      setError('');
+      alert('Password reset successful.');
+    } catch (error) {
+      console.error('Failed to reset student password:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to reset password.';
+      setError(errorMessage);
     }
   };
 
@@ -156,8 +207,15 @@ function ManageUsers() {
 
   return (
     <div className="p-6">
-      <div className="mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Student Management</h2>
+        <Button
+          onClick={() => setShowArchiveModal(true)}
+          variant="outline"
+          icon={<Archive className="h-4 w-4" />}
+        >
+          Archive
+        </Button>
       </div>
 
       {error && (
@@ -234,13 +292,29 @@ function ManageUsers() {
                       {(student as any).contact_number || 'N/A'}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
-                      <Button
-                        onClick={() => setViewingStudent(student)}
-                        variant="outline"
-                        size="sm"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          onClick={() => setViewingStudent(student)}
+                          variant="outline"
+                          size="sm"
+                          icon={<Eye className="h-3 w-3" />}
+                          title="View"
+                        />
+                        <Button
+                          onClick={() => handleArchiveStudent(student)}
+                          variant="outline"
+                          size="sm"
+                          icon={<Archive className="h-3 w-3" />}
+                          title="Archive"
+                        />
+                        <Button
+                          onClick={() => handleResetStudentPassword(student)}
+                          variant="outline"
+                          size="sm"
+                          icon={<Settings className="h-3 w-3" />}
+                          title="Reset Password"
+                        />
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -305,6 +379,11 @@ function ManageUsers() {
         student={viewingStudent}
         isOpen={!!viewingStudent}
         onClose={() => setViewingStudent(null)}
+      />
+
+      <WorkingStudentArchivedStudentsModal
+        isOpen={showArchiveModal}
+        onClose={() => setShowArchiveModal(false)}
       />
     </div>
   );

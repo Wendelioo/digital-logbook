@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import {
   Users,
   Trash2,
-  CheckCircle,
-  XCircle,
   X,
   Archive,
   ArchiveRestore,
@@ -19,16 +17,19 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { User, ArchivedStudent } from './types';
 
-function ArchivedStudentsManagement() {
+interface ArchivedStudentsManagementProps {
+  hideHeader?: boolean;
+  archivedOnly?: boolean;
+}
+
+function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }: ArchivedStudentsManagementProps) {
   const { user } = useAuth();
   const [activeStudents, setActiveStudents] = useState<User[]>([]);
   const [archivedStudents, setArchivedStudents] = useState<ArchivedStudent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTab, setSelectedTab] = useState<'active' | 'archived'>('active');
+  const [selectedTab, setSelectedTab] = useState<'active' | 'archived'>(archivedOnly ? 'archived' : 'active');
   const [searchTerm, setSearchTerm] = useState('');
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
-  const [showArchiveModal, setShowArchiveModal] = useState(false);
-  const [studentToArchive, setStudentToArchive] = useState<User | null>(null);
   const [showUnarchiveModal, setShowUnarchiveModal] = useState(false);
   const [studentToUnarchive, setStudentToUnarchive] = useState<ArchivedStudent | null>(null);
 
@@ -39,12 +40,12 @@ function ArchivedStudentsManagement() {
   const loadData = async () => {
     setLoading(true);
     try {
-      if (selectedTab === 'active') {
-        const data = await GetActiveStudentsForArchiving();
-        setActiveStudents(data || []);
-      } else {
+      if (archivedOnly || selectedTab === 'archived') {
         const data = await GetArchivedStudents();
         setArchivedStudents(data || []);
+      } else {
+        const data = await GetActiveStudentsForArchiving();
+        setActiveStudents(data || []);
       }
     } catch (error) {
       console.error('Failed to load students:', error);
@@ -56,21 +57,19 @@ function ArchivedStudentsManagement() {
 
   useEffect(() => {
     loadData();
-  }, [selectedTab]);
+  }, [selectedTab, archivedOnly]);
 
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 5000);
   };
 
-  const handleArchiveStudent = async () => {
-    if (!studentToArchive || !user) return;
+  const handleArchiveStudent = async (student: User) => {
+    if (!user) return;
 
     try {
-      await ArchiveStudent(studentToArchive.id);
-      showNotification('success', 'Student archived successfully. Account will be deleted after 360 days.');
-      setShowArchiveModal(false);
-      setStudentToArchive(null);
+      await ArchiveStudent(student.id);
+      showNotification('success', 'Student archived. Deletion is scheduled after 360 days.');
       loadData();
     } catch (error: any) {
       showNotification('error', error.message || 'Failed to archive student');
@@ -82,7 +81,7 @@ function ArchivedStudentsManagement() {
 
     try {
       await UnarchiveStudent(studentToUnarchive.user_id);
-      showNotification('success', 'Student account restored successfully');
+      showNotification('success', 'Student account restored.');
       setShowUnarchiveModal(false);
       setStudentToUnarchive(null);
       loadData();
@@ -99,10 +98,10 @@ function ArchivedStudentsManagement() {
     try {
       const count = await DeleteExpiredStudents();
       if (count > 0) {
-        showNotification('success', `Successfully deleted ${count} expired student account(s)`);
+        showNotification('success', `Deleted ${count} expired student account(s).`);
         loadData();
       } else {
-        showNotification('success', 'No expired accounts to delete');
+        showNotification('success', 'No expired accounts to delete.');
       }
     } catch (error: any) {
       showNotification('error', error.message || 'Failed to delete expired accounts');
@@ -130,14 +129,7 @@ function ArchivedStudentsManagement() {
         }`}>
           <div className="p-4">
             <div className="flex items-start">
-              <div className="flex-shrink-0">
-                {notification.type === 'success' ? (
-                  <CheckCircle className="h-6 w-6 text-green-400" />
-                ) : (
-                  <XCircle className="h-6 w-6 text-red-400" />
-                )}
-              </div>
-              <div className="ml-3 w-0 flex-1 pt-0.5">
+              <div className="w-0 flex-1 pt-0.5">
                 <p className={`text-sm font-medium ${
                   notification.type === 'success' ? 'text-green-800' : 'text-red-800'
                 }`}>
@@ -157,37 +149,40 @@ function ArchivedStudentsManagement() {
         </div>
       )}
 
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Student Archive Management</h2>
-      </div>
+      {!hideHeader && (
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Student Archive Management</h2>
+        </div>
+      )}
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setSelectedTab('active')}
-            className={`${
-              selectedTab === 'active'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
-          >
-            <Users className="h-4 w-4" />
-            Active Students
-          </button>
-          <button
-            onClick={() => setSelectedTab('archived')}
-            className={`${
-              selectedTab === 'archived'
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
-          >
-            <Archive className="h-4 w-4" />
-            Archived Students ({archivedStudents.length})
-          </button>
-        </nav>
-      </div>
+      {!archivedOnly && (
+        <div className="border-b border-gray-200 mb-6">
+          <nav className="-mb-px flex space-x-8">
+            <button
+              onClick={() => setSelectedTab('active')}
+              className={`${
+                selectedTab === 'active'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+            >
+              <Users className="h-4 w-4" />
+              Active Students
+            </button>
+            <button
+              onClick={() => setSelectedTab('archived')}
+              className={`${
+                selectedTab === 'archived'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+            >
+              <Archive className="h-4 w-4" />
+              Archived Students ({archivedStudents.length})
+            </button>
+          </nav>
+        </div>
+      )}
 
       {/* Actions Bar */}
       <div className="mb-6 flex items-center justify-between">
@@ -203,15 +198,7 @@ function ArchivedStudentsManagement() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
         </div>
-        {selectedTab === 'archived' && (
-          <Button
-            variant="danger"
-            onClick={handleDeleteExpired}
-            icon={<Trash2 className="h-4 w-4" />}
-          >
-            Delete Expired Accounts
-          </Button>
-        )}
+        {(archivedOnly || selectedTab === 'archived') && null}
       </div>
 
       {/* Content */}
@@ -222,25 +209,25 @@ function ArchivedStudentsManagement() {
       ) : (
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
-          {selectedTab === 'active' ? (
+          {!archivedOnly && selectedTab === 'active' ? (
             // Active Students Table
             filteredActiveStudents.length > 0 ? (
               <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-                <thead className="bg-blue-600 sticky top-0 z-10">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Student Number
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
                       Full Name
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
                       Email
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Contact
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Actions
                     </th>
                   </tr>
@@ -264,10 +251,7 @@ function ArchivedStudentsManagement() {
                         <Button
                           variant="warning"
                           size="sm"
-                          onClick={() => {
-                            setStudentToArchive(student);
-                            setShowArchiveModal(true);
-                          }}
+                          onClick={() => handleArchiveStudent(student)}
                           icon={<Archive className="h-4 w-4" />}
                         >
                           Archive
@@ -279,32 +263,31 @@ function ArchivedStudentsManagement() {
               </table>
             ) : (
               <div className="px-6 py-12 text-center">
-                <Users className="mx-auto h-12 w-12 text-gray-400" />
-                <p className="mt-2 text-gray-500">No active students found</p>
+                <p className="text-gray-500">No active students found.</p>
               </div>
             )
           ) : (
             // Archived Students Table
             filteredArchivedStudents.length > 0 ? (
               <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-                <thead className="bg-gray-600 sticky top-0 z-10">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Student Number
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
                       Full Name
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Archived Date
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Deletion Date
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
                       Days Left
                     </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-white uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Actions
                     </th>
                   </tr>
@@ -339,14 +322,14 @@ function ArchivedStudentsManagement() {
                         <Button
                           variant="success"
                           size="sm"
+                          className="h-9 w-9 px-0 py-0"
                           onClick={() => {
                             setStudentToUnarchive(student);
                             setShowUnarchiveModal(true);
                           }}
                           icon={<ArchiveRestore className="h-4 w-4" />}
-                        >
-                          Restore
-                        </Button>
+                          title="Restore"
+                        />
                       </td>
                     </tr>
                   ))}
@@ -354,8 +337,7 @@ function ArchivedStudentsManagement() {
               </table>
             ) : (
               <div className="px-6 py-12 text-center">
-                <Archive className="mx-auto h-12 w-12 text-gray-400" />
-                <p className="mt-2 text-gray-500">No archived students found</p>
+                <p className="text-gray-500">No archived students found.</p>
               </div>
             )
           )}
@@ -363,48 +345,7 @@ function ArchivedStudentsManagement() {
         </div>
       )}
 
-      {/* Archive Confirmation Modal */}
-      {showArchiveModal && studentToArchive && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
-                <Archive className="h-6 w-6 text-yellow-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900">Archive Student Account</h3>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">
-              You are about to archive <strong>{studentToArchive.first_name} {studentToArchive.last_name}</strong> ({studentToArchive.student_id}).
-            </p>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-4">
-              <p className="text-sm text-yellow-800">
-                <strong>Important:</strong> The student's account will be deactivated and scheduled for permanent deletion after 360 days. 
-                You can restore the account before the deletion date if needed.
-              </p>
-            </div>
-            <div className="flex gap-3 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowArchiveModal(false);
-                  setStudentToArchive(null);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="warning"
-                onClick={handleArchiveStudent}
-                icon={<Archive className="h-4 w-4" />}
-              >
-                Archive Student
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Unarchive Confirmation Modal */}
+      {/* Restore Confirmation Modal */}
       {showUnarchiveModal && studentToUnarchive && (
         <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
@@ -419,8 +360,7 @@ function ArchivedStudentsManagement() {
             </p>
             <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4">
               <p className="text-sm text-blue-800">
-                The student's account will be reactivated and removed from the deletion schedule. 
-                They will be able to log in again immediately.
+                The account will be active again and removed from the deletion schedule.
               </p>
             </div>
             <div className="flex gap-3 justify-end">
@@ -438,7 +378,7 @@ function ArchivedStudentsManagement() {
                 onClick={handleUnarchiveStudent}
                 icon={<ArchiveRestore className="h-4 w-4" />}
               >
-                Restore Account
+                Restore
               </Button>
             </div>
           </div>
