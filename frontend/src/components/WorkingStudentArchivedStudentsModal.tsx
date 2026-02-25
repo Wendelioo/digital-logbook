@@ -1,4 +1,3 @@
-import React from 'react';
 import Modal from './Modal';
 import ArchivedStudentsManagement from '../pages/working-student/WorkingStudentArchiving';
 
@@ -12,7 +11,7 @@ function WorkingStudentArchivedStudentsModal({ isOpen, onClose }: WorkingStudent
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Archived Students"
+      title="Archive"
       size="2xl"
     >
       <ArchivedStudentsManagement hideHeader archivedOnly />

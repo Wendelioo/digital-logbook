@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import WorkingStudentArchivedStudentsModal from '../../components/WorkingStudentArchivedStudentsModal';
 import {
@@ -126,9 +126,6 @@ function ManageUsers() {
   };
 
   const handleArchiveStudent = async (student: ClassStudent) => {
-    const confirmed = window.confirm(`Archive ${student.first_name} ${student.last_name} (${student.student_id})?`);
-    if (!confirmed) return;
-
     try {
       await ArchiveStudent(student.id);
       await loadStudents();
@@ -217,7 +214,7 @@ function ManageUsers() {
           variant="outline"
           icon={<Archive className="h-4 w-4" />}
         >
-          Archived Students
+          Archive
         </Button>
       </div>
 

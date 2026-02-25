@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import {
   Users,
@@ -30,8 +30,6 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
   const [selectedTab, setSelectedTab] = useState<'active' | 'archived'>(archivedOnly ? 'archived' : 'active');
   const [searchTerm, setSearchTerm] = useState('');
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
-  const [showArchiveModal, setShowArchiveModal] = useState(false);
-  const [studentToArchive, setStudentToArchive] = useState<User | null>(null);
   const [showUnarchiveModal, setShowUnarchiveModal] = useState(false);
   const [studentToUnarchive, setStudentToUnarchive] = useState<ArchivedStudent | null>(null);
 
@@ -66,14 +64,12 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
     setTimeout(() => setNotification(null), 5000);
   };
 
-  const handleArchiveStudent = async () => {
-    if (!studentToArchive || !user) return;
+  const handleArchiveStudent = async (student: User) => {
+    if (!user) return;
 
     try {
-      await ArchiveStudent(studentToArchive.id);
+      await ArchiveStudent(student.id);
       showNotification('success', 'Student archived. Deletion is scheduled after 360 days.');
-      setShowArchiveModal(false);
-      setStudentToArchive(null);
       loadData();
     } catch (error: any) {
       showNotification('error', error.message || 'Failed to archive student');
@@ -255,10 +251,7 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
                         <Button
                           variant="warning"
                           size="sm"
-                          onClick={() => {
-                            setStudentToArchive(student);
-                            setShowArchiveModal(true);
-                          }}
+                          onClick={() => handleArchiveStudent(student)}
                           icon={<Archive className="h-4 w-4" />}
                         >
                           Archive
@@ -348,46 +341,6 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
               </div>
             )
           )}
-          </div>
-        </div>
-      )}
-
-      {/* Archive Confirmation Modal */}
-      {showArchiveModal && studentToArchive && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
-                <Archive className="h-6 w-6 text-yellow-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900">Archive Student Account</h3>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">
-              You are about to archive <strong>{studentToArchive.first_name} {studentToArchive.last_name}</strong> ({studentToArchive.student_id}).
-            </p>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 mb-4">
-              <p className="text-sm text-yellow-800">
-                The account will be inactive and scheduled for permanent deletion after 360 days.
-              </p>
-            </div>
-            <div className="flex gap-3 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowArchiveModal(false);
-                  setStudentToArchive(null);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="warning"
-                onClick={handleArchiveStudent}
-                icon={<Archive className="h-4 w-4" />}
-              >
-                Archive Student
-              </Button>
-            </div>
           </div>
         </div>
       )}

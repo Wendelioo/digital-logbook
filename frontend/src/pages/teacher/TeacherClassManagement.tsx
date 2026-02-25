@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
 import TeacherStoredArchiveModal from '../../components/TeacherStoredArchiveModal';
@@ -7,7 +7,6 @@ import {
   Edit,
   Plus,
   Archive,
-  Trash2,
   AlertCircle,
   X,
 } from 'lucide-react';
@@ -127,9 +126,6 @@ function ClassManagement() {
   };
 
   const handleArchiveClass = async (classId: number) => {
-    if (!window.confirm('Are you sure you want to archive this class? It will be moved to the Archive section along with all its attendance records.')) {
-      return;
-    }
     try {
       await ArchiveClass(classId);
       await loadClasses();
@@ -169,7 +165,7 @@ function ClassManagement() {
               onClick={() => setShowArchiveModal(true)}
               variant="outline"
               size="sm"
-              icon={<Trash2 className="h-4 w-4" />}
+              icon={<Archive className="h-4 w-4" />}
             >
               Archive
             </Button>

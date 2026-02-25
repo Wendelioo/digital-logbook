@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import Table from '../../components/Table';
 import AdminArchiveModal from '../../components/AdminArchiveModal';
@@ -7,14 +7,12 @@ import {
   Search,
   X,
   AlertCircle,
-  Archive,
-  Trash2
+  Archive
 } from 'lucide-react';
 import {
   GetAllLogs,
   ArchiveSelectedLogs
 } from '../../../wailsjs/go/main/App';
-import ArchiveConfirmationModal from '../../components/ArchiveConfirmationModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { LoginLog } from './types';
 
@@ -36,14 +34,6 @@ function ViewLogs() {
   // Toast notification
   const [toast, setToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
-  // Archive confirmation modal
-  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
-  const [archiveTarget, setArchiveTarget] = useState<{
-    logIDs: number[];
-    itemType: string;
-    itemDescription: string;
-    successMessage: string;
-  } | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [archiveModalTab, setArchiveModalTab] = useState<'archived-logs' | 'reports'>('archived-logs');
@@ -75,40 +65,18 @@ function ViewLogs() {
     }
   };
 
-  const openArchiveConfirmation = (
-    logIDs: number[],
-    itemType: string,
-    itemDescription: string,
-    successMessage: string
-  ) => {
-    if (logIDs.length === 0) {
+  const handleArchiveSelected = async () => {
+    const ids = Array.from(selectedLogIDs);
+    if (ids.length === 0) {
       showToast('error', 'No log entries to archive.');
       return;
     }
-
-    setArchiveTarget({ logIDs, itemType, itemDescription, successMessage });
-    setShowArchiveConfirm(true);
-  };
-
-  const handleArchiveSelected = () => {
-    const ids = Array.from(selectedLogIDs);
-    openArchiveConfirmation(
-      ids,
-      'log entries',
-      `${ids.length} selected entr${ids.length === 1 ? 'y' : 'ies'}`,
-      `${ids.length} log entr${ids.length === 1 ? 'y' : 'ies'} archived.`
-    );
-  };
-
-  const confirmArchive = async () => {
-    if (!archiveTarget || !user) return;
+    if (!user) return;
     
     setArchiving(true);
     try {
-      await ArchiveSelectedLogs(archiveTarget.logIDs, user.id);
-      showToast('success', archiveTarget.successMessage);
-      setShowArchiveConfirm(false);
-      setArchiveTarget(null);
+      await ArchiveSelectedLogs(ids, user.id);
+      showToast('success', `${ids.length} log entr${ids.length === 1 ? 'y' : 'ies'} archived.`);
       setSelectedLogIDs(new Set());
       await loadLogs();
       setArchiveModalTab('archived-logs');
@@ -228,7 +196,7 @@ function ViewLogs() {
         <Button
           onClick={() => setShowArchiveModal(true)}
           variant="outline"
-          icon={<Trash2 className="h-4 w-4" />}
+          icon={<Archive className="h-4 w-4" />}
         >
           Archived Logs
         </Button>
@@ -415,21 +383,7 @@ function ViewLogs() {
         )}
       </div>
 
-      {/* Archive Confirmation Modal */}
-      {showArchiveConfirm && archiveTarget && (
-        <ArchiveConfirmationModal
-          isOpen={showArchiveConfirm}
-          onClose={() => {
-            setShowArchiveConfirm(false);
-            setArchiveTarget(null);
-          }}
-          onConfirm={confirmArchive}
-          loading={archiving}
-          itemType={archiveTarget.itemType}
-          itemDescription={archiveTarget.itemDescription}
-        />
-      )}
-
+      {/* Archive Modal */}
       <AdminArchiveModal
         isOpen={showArchiveModal}
         onClose={() => setShowArchiveModal(false)}

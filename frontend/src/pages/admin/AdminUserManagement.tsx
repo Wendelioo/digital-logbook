@@ -469,10 +469,6 @@ function UserManagement() {
       return;
     }
 
-    if (!confirm('Archive this account? You can restore it later from Archived Accounts.')) {
-      return;
-    }
-
     try {
       await ArchiveUser(user.id);
       showNotification('success', 'User archived successfully!');
@@ -599,7 +595,7 @@ function UserManagement() {
             variant="outline"
             icon={<Archive className="h-4 w-4" />}
           >
-            Archived Accounts
+            Archive
           </Button>
           <Button
             onClick={() => setShowForm(true)}
@@ -933,7 +929,7 @@ function UserManagement() {
       <Modal
         isOpen={showArchivedModal}
         onClose={() => setShowArchivedModal(false)}
-        title="Archived Accounts"
+        title="Archive"
         size="2xl"
       >
         {archivedLoading ? (

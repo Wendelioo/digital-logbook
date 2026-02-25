@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Button from '../../components/Button';
 import Table from '../../components/Table';
 import { Badge } from '../../components/Badge';

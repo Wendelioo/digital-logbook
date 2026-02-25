@@ -66,8 +66,8 @@ export function CloseSessionsForCurrentHost() {
   return window['go']['main']['App']['CloseSessionsForCurrentHost']();
 }
 
-export function CreateAttendanceSession(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['CreateAttendanceSession'](arg1, arg2, arg3, arg4, arg5);
+export function CreateAttendanceSession(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['CreateAttendanceSession'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function CreateClass(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10) {
@@ -168,10 +168,6 @@ export function ExportArchivedLogsCSV() {
 
 export function ExportArchivedLogsPDF() {
   return window['go']['main']['App']['ExportArchivedLogsPDF']();
-}
-
-export function ExportAttendanceCSV(arg1) {
-  return window['go']['main']['App']['ExportAttendanceCSV'](arg1);
 }
 
 export function ExportAttendanceCSVByDate(arg1, arg2) {
@@ -600,10 +596,6 @@ export function UpdateClass(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
 
 export function UpdateDepartment(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['UpdateDepartment'](arg1, arg2, arg3, arg4, arg5);
-}
-
-export function UpdateSessionAttendanceRecord(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['UpdateSessionAttendanceRecord'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function UpdateUser(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {

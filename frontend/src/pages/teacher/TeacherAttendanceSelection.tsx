@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
 import TeacherStoredArchiveModal from '../../components/TeacherStoredArchiveModal';
-import { ConfirmModal } from '../../components/Modal';
 import {
   Edit,
   Archive,
-  Trash2,
   Eye,
-  Lock,
+  Save,
+  Plus,
   X,
+  Pause,
+  Play,
+  Square,
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
@@ -38,20 +40,14 @@ interface AttendanceSheet {
   is_editable: boolean;
 }
 
-interface PendingArchiveSheet {
-  session_id?: number;
-  class_id: number;
-  date: string;
-  subject_code: string;
-  subject_name: string;
-}
-
 interface AttendanceSession {
   session_id: number;
   class_id: number;
   attendance_date: string;
   session_name: string;
   status: 'open' | 'closed';
+  class_duration_minutes?: number;
+  grace_period_minutes?: number;
   opened_at?: string;
   subject_code: string;
   subject_name: string;
@@ -59,6 +55,13 @@ interface AttendanceSession {
   present_count: number;
   absent_count: number;
   late_count: number;
+}
+
+type TimerMode = 'running' | 'paused' | 'stopped';
+
+interface SessionTimerControl {
+  mode: TimerMode;
+  pausedAt?: number;
 }
 
 function AttendanceClassSelection() {
@@ -81,11 +84,57 @@ function AttendanceClassSelection() {
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [pendingArchiveSheet, setPendingArchiveSheet] = useState<PendingArchiveSheet | null>(null);
-  const [archiving, setArchiving] = useState(false);
   const [attendanceSessions, setAttendanceSessions] = useState<AttendanceSession[]>([]);
   const [sessionBusyId, setSessionBusyId] = useState<number | null>(null);
-  const [lateThreshold, setLateThreshold] = useState('10');
+  const [classDuration, setClassDuration] = useState('90');
+  const [gracePeriod, setGracePeriod] = useState('10');
+  const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
+  const [sessionTimerControls, setSessionTimerControls] = useState<Record<number, SessionTimerControl>>({});
+
+  const parseSessionDateTime = (value?: string): Date | null => {
+    if (!value) return null;
+    const parsed = new Date(value.replace(' ', 'T'));
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const formatRemaining = (seconds: number): string => {
+    if (seconds <= 0) return '00:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const getSessionTimerControl = (sessionId: number): SessionTimerControl => {
+    return sessionTimerControls[sessionId] || { mode: 'running' };
+  };
+
+  const handleSessionTimerMode = (sessionId: number, mode: TimerMode) => {
+    setSessionTimerControls((prev) => {
+      const current = prev[sessionId] || { mode: 'running' as TimerMode };
+
+      if (mode === 'paused') {
+        const pausedAt = current.mode === 'paused' && typeof current.pausedAt === 'number'
+          ? current.pausedAt
+          : nowTimestamp;
+        return {
+          ...prev,
+          [sessionId]: { mode: 'paused', pausedAt },
+        };
+      }
+
+      if (mode === 'stopped') {
+        return {
+          ...prev,
+          [sessionId]: { mode: 'stopped' },
+        };
+      }
+
+      return {
+        ...prev,
+        [sessionId]: { mode: 'running' },
+      };
+    });
+  };
 
   useEffect(() => {
     const state = location.state as { openArchiveModal?: boolean; archiveTab?: 'attendance' | 'classes' } | null;
@@ -94,6 +143,14 @@ function AttendanceClassSelection() {
       navigate(location.pathname, { replace: true, state: null });
     }
   }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    const ticker = window.setInterval(() => {
+      setNowTimestamp(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(ticker);
+  }, []);
 
   // Load all teacher classes for the "Add Attendance" dropdown
   useEffect(() => {
@@ -182,13 +239,15 @@ function AttendanceClassSelection() {
         (session) => session.class_id === classId && session.attendance_date === today && session.status === 'closed'
       );
 
-      const threshold = Number(lateThreshold);
+      const durationMinutes = Number(classDuration);
+      const graceMinutes = Number(gracePeriod);
       const createdSession = await (window as any).go.main.App.CreateAttendanceSession(
         classId,
         today,
         '',
         user?.id || 0,
-        Number.isNaN(threshold) ? 10 : threshold
+        Number.isNaN(durationMinutes) ? 90 : durationMinutes,
+        Number.isNaN(graceMinutes) ? 10 : graceMinutes
       );
 
       if (!hasOpenTodaySession && hasClosedTodaySession) {
@@ -249,29 +308,14 @@ function AttendanceClassSelection() {
     }
   };
 
-  const handleArchiveClick = (sheet: AttendanceSheet) => {
-    setNotice(null);
-    setPendingArchiveSheet({
-      session_id: sheet.session_id,
-      class_id: sheet.class_id,
-      date: sheet.date,
-      subject_code: sheet.subject_code,
-      subject_name: sheet.subject_name,
-    });
-  };
-
-  const handleConfirmArchive = async () => {
-    if (!pendingArchiveSheet) return;
-
-    setArchiving(true);
+  const handleArchiveClick = async (sheet: AttendanceSheet) => {
     setNotice(null);
     try {
-      if (pendingArchiveSheet.session_id) {
-        await (window as any).go.main.App.ArchiveAttendanceSession(pendingArchiveSheet.session_id, user?.id || 0);
+      if (sheet.session_id) {
+        await (window as any).go.main.App.ArchiveAttendanceSession(sheet.session_id, user?.id || 0);
       } else {
-        await (window as any).go.main.App.ArchiveAttendanceSheet(pendingArchiveSheet.class_id, pendingArchiveSheet.date);
+        await (window as any).go.main.App.ArchiveAttendanceSheet(sheet.class_id, sheet.date);
       }
-      setPendingArchiveSheet(null);
       setRefreshKey(prev => prev + 1);
       setNotice({ type: 'success', text: 'Attendance archived successfully.' });
     } catch (error) {
@@ -280,8 +324,6 @@ function AttendanceClassSelection() {
         type: 'error',
         text: 'Failed to archive attendance. ' + (error instanceof Error ? error.message : 'Please try again.'),
       });
-    } finally {
-      setArchiving(false);
     }
   };
 
@@ -353,7 +395,7 @@ function AttendanceClassSelection() {
               onClick={() => setShowArchiveModal(true)}
               variant="outline"
               size="sm"
-              icon={<Trash2 className="h-4 w-4" />}
+              icon={<Archive className="h-4 w-4" />}
             >
               Archive
             </Button>
@@ -361,8 +403,9 @@ function AttendanceClassSelection() {
               onClick={() => setShowAddModal(true)}
               variant="primary"
               size="sm"
+              icon={<Plus className="h-4 w-4" />}
             >
-              Take Attendance
+              Attendance
             </Button>
           </div>
         </div>
@@ -393,11 +436,72 @@ function AttendanceClassSelection() {
                 <div>
                   <p className="text-sm font-medium text-gray-900">{session.session_name || `${session.subject_code} Attendance`}</p>
                   <p className="text-xs text-gray-500">{session.subject_code} • P:{session.present_count} A:{session.absent_count} L:{session.late_count}</p>
+                  {(() => {
+                    const openedAt = parseSessionDateTime(session.opened_at);
+                    if (!openedAt) {
+                      return null;
+                    }
+
+                    const timerControl = getSessionTimerControl(session.session_id);
+                    const classMinutes = Math.max(0, session.class_duration_minutes || 0);
+                    const graceMinutes = Math.max(0, session.grace_period_minutes || 0);
+                    const classDeadline = new Date(openedAt.getTime() + classMinutes * 60 * 1000);
+                    const graceDeadline = new Date(openedAt.getTime() + graceMinutes * 60 * 1000);
+                    const attendanceDeadline = new Date(classDeadline.getTime() + graceMinutes * 60 * 1000);
+                    const effectiveNow = timerControl.mode === 'running'
+                      ? nowTimestamp
+                      : timerControl.mode === 'paused'
+                        ? (timerControl.pausedAt || nowTimestamp)
+                        : attendanceDeadline.getTime();
+                    const classRemaining = timerControl.mode === 'stopped'
+                      ? 0
+                      : Math.max(0, Math.floor((classDeadline.getTime() - effectiveNow) / 1000));
+                    const graceRemaining = timerControl.mode === 'stopped'
+                      ? 0
+                      : Math.max(0, Math.floor((graceDeadline.getTime() - effectiveNow) / 1000));
+
+                    return (
+                      <>
+                        <p className="text-[11px] text-gray-500">
+                          Class remaining: {formatRemaining(classRemaining)}
+                        </p>
+                        <p className="text-[11px] text-gray-500">
+                          Grace period remaining: {timerControl.mode === 'stopped'
+                            ? '00:00'
+                            : formatRemaining(graceRemaining)}
+                        </p>
+                      </>
+                    );
+                  })()}
                   {session.opened_at && (
                     <p className="text-[11px] text-gray-400">Generated: {new Date(session.opened_at.replace(' ', 'T')).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => handleSessionTimerMode(session.session_id, 'paused')}
+                    variant="outline"
+                    size="sm"
+                    disabled={getSessionTimerControl(session.session_id).mode === 'paused'}
+                    icon={<Pause className="h-3 w-3" />}
+                    title="Pause Timer"
+                  />
+                  <Button
+                    onClick={() => handleSessionTimerMode(session.session_id, 'running')}
+                    variant="outline"
+                    size="sm"
+                    disabled={getSessionTimerControl(session.session_id).mode === 'running'}
+                    icon={<Play className="h-3 w-3" />}
+                    title="Play Timer"
+                  />
+                  <Button
+                    onClick={() => handleSessionTimerMode(session.session_id, 'stopped')}
+                    variant="outline"
+                    size="sm"
+                    disabled={getSessionTimerControl(session.session_id).mode === 'stopped'}
+                    icon={<Square className="h-3 w-3" />}
+                    title="Stop Timer"
+                  />
                   <Button
                     onClick={() => navigate(`/teacher/attendance/${session.class_id}?date=${session.attendance_date}&sessionId=${session.session_id}`)}
                     variant="outline"
@@ -419,7 +523,7 @@ function AttendanceClassSelection() {
                     variant="primary"
                     size="sm"
                     disabled={sessionBusyId === session.session_id}
-                    icon={<Lock className="h-3 w-3" />}
+                    icon={<Save className="h-3 w-3" />}
                     title="Save Attendance"
                   >
                     Save
@@ -672,13 +776,23 @@ function AttendanceClassSelection() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-600"
                 />
               </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Class Duration (minutes)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={classDuration}
+                  onChange={(e) => setClassDuration(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
               <div className="mb-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Late Threshold (minutes)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Grace Period / Time Allocation (minutes)</label>
                 <input
                   type="number"
                   min={0}
-                  value={lateThreshold}
-                  onChange={(e) => setLateThreshold(e.target.value)}
+                  value={gracePeriod}
+                  onChange={(e) => setGracePeriod(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
@@ -697,8 +811,9 @@ function AttendanceClassSelection() {
                 onClick={handleAddAttendanceSubmit}
                 variant="primary"
                 disabled={!selectedClassId || openingAttendance !== null}
+                icon={<Plus className="h-4 w-4" />}
               >
-                {openingAttendance ? 'Loading...' : 'Open Class'}
+                {openingAttendance ? 'Loading...' : 'Attendance'}
               </Button>
             </div>
           </div>
@@ -711,21 +826,6 @@ function AttendanceClassSelection() {
         initialTab="attendance"
       />
 
-      <ConfirmModal
-        isOpen={!!pendingArchiveSheet}
-        onClose={() => {
-          if (!archiving) setPendingArchiveSheet(null);
-        }}
-        onConfirm={handleConfirmArchive}
-        title="Archive attendance sheet?"
-        message={pendingArchiveSheet
-          ? `${pendingArchiveSheet.subject_code} - ${pendingArchiveSheet.subject_name} (${new Date(pendingArchiveSheet.date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}) will be moved to the Archive section.`
-          : 'This attendance sheet will be moved to the Archive section.'}
-        variant="warning"
-        confirmText="Archive"
-        cancelText="Cancel"
-        loading={archiving}
-      />
     </div>
   );
 }

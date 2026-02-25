@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import Table from '../../components/Table';
 import AdminArchiveModal from '../../components/AdminArchiveModal';
@@ -7,14 +7,12 @@ import {
   X,
   SlidersHorizontal,
   Archive,
-  Trash2,
   AlertCircle
 } from 'lucide-react';
 import {
   GetFeedback,
   ArchiveFeedback
 } from '../../../wailsjs/go/main/App';
-import ArchiveConfirmationModal from '../../components/ArchiveConfirmationModal';
 import { useAuth } from '../../contexts/AuthContext';
 import { Feedback } from './types';
 
@@ -36,13 +34,6 @@ function Reports() {
   const [dateFilter, setDateFilter] = useState('');
 
   // Archive functionality
-  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
-  const [archiveTarget, setArchiveTarget] = useState<{
-    reportIDs: number[];
-    itemType: string;
-    itemDescription: string;
-    successMessage: string;
-  } | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [archiveModalTab, setArchiveModalTab] = useState<'archived-logs' | 'reports'>('reports');
@@ -108,40 +99,18 @@ function Reports() {
     setTimeout(() => setToast(null), 5000);
   };
 
-  const openArchiveConfirmation = (
-    reportIDs: number[],
-    itemType: string,
-    itemDescription: string,
-    successMessage: string
-  ) => {
-    if (reportIDs.length === 0) {
+  const handleArchiveSelected = async () => {
+    const ids = Array.from(selectedReportIDs);
+    if (ids.length === 0) {
       showToast('error', 'No reports to archive.');
       return;
     }
-
-    setArchiveTarget({ reportIDs, itemType, itemDescription, successMessage });
-    setShowArchiveConfirm(true);
-  };
-
-  const handleArchiveSelected = () => {
-    const ids = Array.from(selectedReportIDs);
-    openArchiveConfirmation(
-      ids,
-      'equipment reports',
-      `${ids.length} selected report${ids.length === 1 ? '' : 's'}`,
-      `${ids.length} report${ids.length === 1 ? '' : 's'} archived.`
-    );
-  };
-
-  const confirmArchive = async () => {
-    if (!archiveTarget || !user) return;
+    if (!user) return;
     
     setArchiving(true);
     try {
-      await ArchiveFeedback(archiveTarget.reportIDs, user.id);
-      showToast('success', archiveTarget.successMessage);
-      setShowArchiveConfirm(false);
-      setArchiveTarget(null);
+      await ArchiveFeedback(ids, user.id);
+      showToast('success', `${ids.length} report${ids.length === 1 ? '' : 's'} archived.`);
       setSelectedReportIDs(new Set());
       await loadReports();
       setArchiveModalTab('reports');
@@ -225,7 +194,7 @@ function Reports() {
           <Button
             onClick={() => setShowArchiveModal(true)}
             variant="outline"
-            icon={<Trash2 className="h-4 w-4" />}
+            icon={<Archive className="h-4 w-4" />}
           >
             Archived Reports
           </Button>
@@ -505,21 +474,6 @@ function Reports() {
         } animate-slideIn`}>
           <span className="font-medium">{toast.message}</span>
         </div>
-      )}
-
-      {/* Archive Confirmation Modal */}
-      {showArchiveConfirm && archiveTarget && (
-        <ArchiveConfirmationModal
-          isOpen={showArchiveConfirm}
-          onClose={() => {
-            setShowArchiveConfirm(false);
-            setArchiveTarget(null);
-          }}
-          onConfirm={confirmArchive}
-          loading={archiving}
-          itemType={archiveTarget.itemType}
-          itemDescription={archiveTarget.itemDescription}
-        />
       )}
 
       <AdminArchiveModal

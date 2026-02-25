@@ -397,6 +397,7 @@ type Attendance struct {
 	LastName       string  `json:"last_name"`
 	Date           string  `json:"date"`
 	AttendanceDate string  `json:"attendance_date"`
+	TimeIn         *string `json:"time_in,omitempty"`
 	Status         string  `json:"status"`
 	Remarks        *string `json:"remarks"`
 	RecordedBy     int     `json:"recorded_by"`
@@ -553,6 +554,11 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	if err := a.closeStaleSessions(); err != nil {
 		log.Printf("Failed to close stale sessions in student dashboard: %v", err)
 	}
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		log.Printf("Failed to ensure attendance sessions table in student dashboard: %v", err)
+	} else if err := a.closeExpiredAttendanceSessions(); err != nil {
+		log.Printf("Failed to close expired attendance sessions in student dashboard: %v", err)
+	}
 
 	// Get all attendance records for this student
 	query := `
@@ -561,6 +567,7 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 			stu.student_id,
 			stu.first_name, stu.middle_name, stu.last_name,
 			c.subject_code, s.description as subject_name,
+			CONVERT(VARCHAR(8), a.time_in_at, 108) as time_in,
 			a.status, a.remarks
 		FROM attendance a
 		JOIN students stu ON a.student_id = stu.id
@@ -580,12 +587,12 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	presentCount := 0
 	for rows.Next() {
 		var att Attendance
-		var middleName, remarks sql.NullString
+		var middleName, remarks, status, timeIn sql.NullString
 		err := rows.Scan(
 			&att.ClassID, &att.StudentID, &att.Date,
 			&att.StudentCode, &att.FirstName, &middleName, &att.LastName,
 			&att.SubjectCode, &att.SubjectName,
-			&att.Status, &remarks,
+			&timeIn, &status, &remarks,
 		)
 		if err != nil {
 			log.Printf("Failed to scan attendance: %v", err)
@@ -594,13 +601,22 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 		if middleName.Valid {
 			att.MiddleName = &middleName.String
 		}
+		if status.Valid {
+			att.Status = strings.TrimSpace(status.String)
+		}
+		if timeIn.Valid {
+			value := strings.TrimSpace(timeIn.String)
+			if value != "" {
+				att.TimeIn = &value
+			}
+		}
 		if remarks.Valid {
 			att.Remarks = &remarks.String
 		}
 		attendance = append(attendance, att)
 
-		// Count present records
-		if att.Status == "Present" {
+		// Count present records (case-insensitive)
+		if strings.EqualFold(strings.TrimSpace(att.Status), "present") {
 			presentCount++
 		}
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardBody, StatCard } from '../../components/Card';
 import {
@@ -239,27 +239,42 @@ function DashboardOverview() {
           <Card>
             <CardHeader title="Quick Actions" />
             <CardBody>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
                 <Link
                   to="users"
-                  className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-primary-300 transition-colors"
                 >
-                  <UserPlus className="h-6 w-6 text-primary-600 mr-3" />
-                  <span className="text-gray-900">Manage Users</span>
+                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-primary-50 flex items-center justify-center">
+                    <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-primary-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words">Manage Users</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 leading-snug break-words">Create or update student and teacher accounts.</p>
+                  </div>
                 </Link>
                 <Link
                   to="logs"
-                  className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-primary-300 transition-colors"
                 >
-                  <ClipboardList className="h-6 w-6 text-primary-600 mr-3" />
-                  <span className="text-gray-900">View Logs</span>
+                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-primary-50 flex items-center justify-center">
+                    <ClipboardList className="h-5 w-5 sm:h-6 sm:w-6 text-primary-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words">View Logs</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 leading-snug break-words">Monitor daily login and attendance activity.</p>
+                  </div>
                 </Link>
                 <Link
                   to="reports"
-                  className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-primary-300 transition-colors"
                 >
-                  <FileText className="h-6 w-6 text-primary-600 mr-3" />
-                  <span className="text-gray-900">Export Reports</span>
+                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-primary-50 flex items-center justify-center">
+                    <FileText className="h-5 w-5 sm:h-6 sm:w-6 text-primary-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words">Export Reports</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 leading-snug break-words">Generate logs and feedback report files.</p>
+                  </div>
                 </Link>
               </div>
             </CardBody>

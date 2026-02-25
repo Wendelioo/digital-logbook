@@ -1,16 +1,7 @@
-/* ================================
-   DIGITAL LOGBOOK - SQL SERVER VERSION
-   Matches MySQL schema structure with SQL Server syntax
-================================ */
 
--- Note: Database must be created manually first
--- CREATE DATABASE logbookdb;
 USE logbookdb;
 GO
 
-/* ================================
-   DROP TABLES (in correct order)
-================================ */
 IF OBJECT_ID('registration_approvals', 'U') IS NOT NULL DROP TABLE registration_approvals;
 IF OBJECT_ID('feedback', 'U') IS NOT NULL DROP TABLE feedback;
 IF OBJECT_ID('user_session_heartbeats', 'U') IS NOT NULL DROP TABLE user_session_heartbeats;
@@ -30,9 +21,6 @@ IF OBJECT_ID('departments', 'U') IS NOT NULL DROP TABLE departments;
 IF OBJECT_ID('users', 'U') IS NOT NULL DROP TABLE users;
 GO
 
-/* ================================
-   USERS
-================================ */
 CREATE TABLE users (
     id INT IDENTITY(1,1) PRIMARY KEY,
     username NVARCHAR(50) NOT NULL UNIQUE,
@@ -46,10 +34,6 @@ CREATE TABLE users (
 );
 GO
 
-/* ================================
-   PROFILE PHOTOS
-   Stores profile photos as base64 data URLs directly in the database.
-================================ */
 CREATE TABLE profile_photos (
     user_id INT PRIMARY KEY,
     photo_data NVARCHAR(MAX) NOT NULL,
@@ -58,9 +42,6 @@ CREATE TABLE profile_photos (
 );
 GO
 
-/* ================================
-   DEPARTMENTS
-================================ */
 CREATE TABLE departments (
     department_code NVARCHAR(20) PRIMARY KEY,
     department_name NVARCHAR(200) UNIQUE NOT NULL,
@@ -71,9 +52,6 @@ CREATE TABLE departments (
 );
 GO
 
-/* ================================
-   ADMINS
-================================ */
 CREATE TABLE admins (
     id INT PRIMARY KEY,
     admin_id NVARCHAR(50) UNIQUE NOT NULL,
@@ -88,9 +66,7 @@ CREATE TABLE admins (
 );
 GO
 
-/* ================================
-   TEACHERS
-================================ */
+
 CREATE TABLE teachers (
     id INT PRIMARY KEY,
     teacher_id NVARCHAR(50) UNIQUE NOT NULL,
@@ -107,9 +83,6 @@ CREATE TABLE teachers (
 );
 GO
 
-/* ================================
-   STUDENTS
-================================ */
 CREATE TABLE students (
     id INT PRIMARY KEY,
     student_id NVARCHAR(50) UNIQUE NOT NULL,
@@ -127,9 +100,6 @@ CREATE TABLE students (
 );
 GO
 
-/* ================================
-   SUBJECTS
-================================ */
 CREATE TABLE subjects (
     subject_code NVARCHAR(20) PRIMARY KEY,
     description NVARCHAR(MAX),
@@ -138,9 +108,6 @@ CREATE TABLE subjects (
 );
 GO
 
-/* ================================
-   CLASSES
-================================ */
 CREATE TABLE classes (
     class_id INT IDENTITY(1,1) PRIMARY KEY,
     subject_code NVARCHAR(20) NOT NULL,
@@ -163,9 +130,6 @@ CREATE TABLE classes (
 );
 GO
 
-/* ================================
-   CLASSLIST
-================================ */
 CREATE TABLE classlist (
     class_id INT NOT NULL,
     student_id INT NOT NULL,
@@ -180,10 +144,6 @@ CREATE TABLE classlist (
 );
 GO
 
-/* ================================
-   STUDENT ARCHIVED CLASSES (PERSONAL)
-   This is per-student only. Teacher archive is in classes.is_archived.
-================================ */
 CREATE TABLE student_archived_classes (
     student_id INT NOT NULL,
     class_id INT NOT NULL,
@@ -204,7 +164,8 @@ CREATE TABLE attendance (
     student_id INT NOT NULL,
     attendance_date DATE NOT NULL,
     session_id INT NULL,
-    status NVARCHAR(20) DEFAULT 'absent' CHECK (status IN ('present', 'absent', 'late')),
+    status NVARCHAR(20) NULL DEFAULT NULL CHECK (status IN ('present', 'absent', 'late') OR status IS NULL),
+    time_in_at DATETIME2 NULL,
     remarks NVARCHAR(MAX),
     is_archived BIT DEFAULT 0,
     created_at DATETIME DEFAULT GETDATE(),
@@ -224,7 +185,9 @@ CREATE TABLE attendance_sessions (
     attendance_date DATE NOT NULL,
     session_name NVARCHAR(255) NOT NULL,
     status NVARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
-    late_threshold_minutes INT NULL,
+    is_archived BIT NOT NULL DEFAULT 0,
+    class_duration_minutes INT NULL,
+    grace_period_minutes INT NULL,
     opened_at DATETIME NULL,
     closed_at DATETIME NULL,
     created_by_user_id INT NOT NULL,
@@ -252,9 +215,7 @@ CREATE TABLE log_entries (
 );
 GO
 
-/* ================================
-    USER SESSION HEARTBEATS
-================================ */
+
 CREATE TABLE user_session_heartbeats (
      user_id INT NOT NULL PRIMARY KEY,
      last_seen DATETIME NOT NULL DEFAULT GETDATE(),
@@ -264,9 +225,6 @@ CREATE TABLE user_session_heartbeats (
 );
 GO
 
-/* ================================
-   FEEDBACK
-================================ */
 CREATE TABLE feedback (
     id INT IDENTITY(1,1) PRIMARY KEY,
     student_id INT NOT NULL,
@@ -293,9 +251,7 @@ CREATE TABLE feedback (
 );
 GO
 
-/* ================================
-   REGISTRATION APPROVALS
-================================ */
+
 CREATE TABLE registration_approvals (
     id INT IDENTITY(1,1) PRIMARY KEY,
     user_id INT UNIQUE NOT NULL,
@@ -310,9 +266,6 @@ CREATE TABLE registration_approvals (
 );
 GO
 
-/* ================================
-   INDEXES FOR PERFORMANCE
-================================ */
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_user_type ON users(user_type);
 CREATE INDEX idx_log_entries_user_id ON log_entries(user_id);
@@ -331,9 +284,6 @@ CREATE INDEX idx_teachers_teacher_id ON teachers(teacher_id);
 CREATE INDEX idx_students_student_id ON students(student_id);
 GO
 
-/* ================================
-   TRIGGERS FOR updated_at COLUMNS
-================================ */
 CREATE TRIGGER trg_users_updated_at
 ON users
 AFTER UPDATE
@@ -475,8 +425,3 @@ BEGIN
     FROM registration_approvals ra
     INNER JOIN inserted i ON ra.id = i.id;
 END;
-GO
-
-PRINT 'Database schema created successfully for SQL Server!';
-PRINT 'Schema now matches MySQL structure with SQL Server syntax.';
-GO

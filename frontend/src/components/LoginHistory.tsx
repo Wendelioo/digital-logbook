@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { GetStudentLoginLogs } from '../../wailsjs/go/main/App';
 import { useAuth } from '../contexts/AuthContext';
 import Button from './Button';

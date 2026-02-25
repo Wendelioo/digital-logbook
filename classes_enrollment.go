@@ -27,10 +27,10 @@ func (a *App) GetAvailableStudents(classID int) ([]ClassStudent, error) {
 	query := `
 		SELECT 
 			s.id as id, s.student_id, s.first_name, s.middle_name, s.last_name,
-			EXISTS(
+			CASE WHEN EXISTS(
 				SELECT 1 FROM classlist cl 
 				WHERE cl.student_id = s.id AND cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
-			) as is_enrolled
+			) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END as is_enrolled
 		FROM students s
 		WHERE NOT EXISTS (
 			SELECT 1 FROM classlist cl 
@@ -71,10 +71,10 @@ func (a *App) GetAllStudentsForEnrollment(classID int) ([]ClassStudent, error) {
 	query := `
 		SELECT 
 			s.id as id, s.student_id, s.first_name, s.middle_name, s.last_name,
-			EXISTS(
+			CASE WHEN EXISTS(
 				SELECT 1 FROM classlist cl 
 				WHERE cl.student_id = s.id AND cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
-			) as is_enrolled
+			) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END as is_enrolled
 		FROM students s
 		ORDER BY last_name, first_name
 	`

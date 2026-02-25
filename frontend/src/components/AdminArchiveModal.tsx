@@ -1,4 +1,3 @@
-import React from 'react';
 import Modal from './Modal';
 import ArchiveManagement, { ArchiveTab } from '../pages/admin/AdminArchive';
 

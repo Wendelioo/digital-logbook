@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Button from '../../components/Button';
 import {
@@ -296,9 +296,6 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
                         Summary
                       </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
-                        Status
-                      </th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '160px' }}>
                         Action
                       </th>
@@ -329,11 +326,6 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                             )}
                           </div>
                           <div className="text-xs text-gray-400 mt-1">{sheet.student_count} total students</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                            Archived
-                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                           <div className="flex items-center justify-center gap-2">

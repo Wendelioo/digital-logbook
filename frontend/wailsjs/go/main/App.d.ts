@@ -34,7 +34,7 @@ export function CloseClass(arg1:number):Promise<void>;
 
 export function CloseSessionsForCurrentHost():Promise<void>;
 
-export function CreateAttendanceSession(arg1:number,arg2:string,arg3:string,arg4:number,arg5:number):Promise<main.AttendanceSession>;
+export function CreateAttendanceSession(arg1:number,arg2:string,arg3:string,arg4:number,arg5:number,arg6:number):Promise<main.AttendanceSession>;
 
 export function CreateClass(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:number):Promise<number>;
 
@@ -85,8 +85,6 @@ export function ExportArchivedLogSheetPDF(arg1:string):Promise<string>;
 export function ExportArchivedLogsCSV():Promise<string>;
 
 export function ExportArchivedLogsPDF():Promise<string>;
-
-export function ExportAttendanceCSV(arg1:number):Promise<string>;
 
 export function ExportAttendanceCSVByDate(arg1:number,arg2:string):Promise<string>;
 
@@ -301,8 +299,6 @@ export function UpdateAttendanceRecord(arg1:number,arg2:number,arg3:string,arg4:
 export function UpdateClass(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:boolean):Promise<void>;
 
 export function UpdateDepartment(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<void>;
-
-export function UpdateSessionAttendanceRecord(arg1:number,arg2:number,arg3:number,arg4:string,arg5:string):Promise<void>;
 
 export function UpdateUser(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string):Promise<void>;
 

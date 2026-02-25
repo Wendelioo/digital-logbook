@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
 import {
@@ -6,7 +6,6 @@ import {
   X,
   Archive,
   Download,
-  Lock,
 } from 'lucide-react';
 import {
   OpenClassAttendance,
@@ -315,7 +314,6 @@ function AttendanceManagementDetail() {
             <div className="text-center py-8">
               <Calendar className="mx-auto h-12 w-12 text-gray-300 mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 mb-2">No Attendance Selected</h3>
-              <p className="text-sm text-gray-500 mb-4">Attendance is synced from active classlist and student logins. Use "Take Attendance" on Attendance Management if you need to open or adjust today's sheet.</p>
               <Button
                 onClick={handleCancelClick}
                 variant="outline"
@@ -346,14 +344,6 @@ function AttendanceManagementDetail() {
               </div>
             )}
 
-            {/* Read-only Banner for past dates */}
-            {!isEditable && attendanceRecords.length > 0 && !attendanceRecords[0].is_archived && selectedDate !== today && (
-              <div className="mb-4 bg-gray-50 border border-gray-200 rounded-md px-4 py-2 flex items-center gap-2">
-                <Lock className="h-4 w-4 text-gray-500" />
-                <span className="text-sm font-medium text-gray-600">Past attendance is read only. Only today's attendance can be edited.</span>
-              </div>
-            )}
-
             {/* Sheet Title */}
             <div className="mb-6 pb-4 border-b border-gray-400">
               <div className="text-center mb-4">
@@ -362,16 +352,6 @@ function AttendanceManagementDetail() {
                   {attendanceRecords.length > 0 && attendanceRecords[0].is_archived && (
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
                       ARCHIVED
-                    </span>
-                  )}
-                  {isEditable && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                      EDITABLE
-                    </span>
-                  )}
-                  {!isEditable && attendanceRecords.length > 0 && !attendanceRecords[0].is_archived && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                      READ ONLY
                     </span>
                   )}
                 </div>
@@ -446,7 +426,7 @@ function AttendanceManagementDetail() {
                     {/* Attendance List Header */}
                     <thead>
                       <tr>
-                        <th colSpan={4} className="px-4 py-3 text-left border-b-2 border-gray-900">
+                        <th colSpan={5} className="px-4 py-3 text-left border-b-2 border-gray-900">
                           <div className="flex items-center justify-between">
                             <span className="text-gray-900 font-bold text-sm tracking-wide">DAILY ATTENDANCE RECORD</span>
                             <div className="flex items-center gap-3">
@@ -459,7 +439,8 @@ function AttendanceManagementDetail() {
                         <th className="px-2 py-2 text-center text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '50px' }}>No.</th>
                         <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '100px' }}>Student ID</th>
                         <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '180px' }}>Student Name</th>
-                        <th className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '160px' }}>Status</th>
+                        <th className="px-3 py-2 text-center text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '160px' }}>Time In</th>
+                        <th className="px-3 py-2 text-left text-xs font-bold text-gray-700 uppercase whitespace-nowrap" style={{ minWidth: '180px' }}>Remarks</th>
                       </tr>
                     </thead>
 
@@ -468,8 +449,6 @@ function AttendanceManagementDetail() {
                       {attendanceRecords.length > 0 ? (
                         attendanceRecords.map((record, index) => {
                           const key = `${record.class_id}-${record.student_user_id}-${record.date}`;
-                          const isUpdating = updatingStatus[key];
-                          const isDisabled = isUpdating || !isEditable;
                           return (
                             <tr key={key} className="hover:bg-gray-50 border-b border-gray-100">
                               <td className="px-2 py-1.5 text-center font-medium text-gray-900 whitespace-nowrap">
@@ -481,27 +460,18 @@ function AttendanceManagementDetail() {
                               <td className="px-3 py-1.5 text-gray-900 whitespace-nowrap">
                                 {record.last_name}, {record.first_name} {record.middle_name ? record.middle_name.charAt(0) + '.' : ''}
                               </td>
-                              <td className="px-3 py-1.5">
-                                <div className="flex justify-center">
-                                  <select
-                                    value={record.status || 'absent'}
-                                    onChange={(e) => !isDisabled && handleStatusChange(record, e.target.value)}
-                                    disabled={isDisabled}
-                                    className={`px-2 py-1 border border-gray-300 rounded text-xs font-medium ${isDisabled ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white text-gray-800'}`}
-                                    title={!isEditable ? 'Read-only' : 'Set attendance status'}
-                                  >
-                                    <option value="present">Present</option>
-                                    <option value="late">Late</option>
-                                    <option value="absent">Absent</option>
-                                  </select>
-                                </div>
+                              <td className="px-3 py-1.5 text-center text-gray-900 whitespace-nowrap">
+                                {record.time_in || '—'}
+                              </td>
+                              <td className="px-3 py-1.5 text-gray-900">
+                                {record.remarks || '—'}
                               </td>
                             </tr>
                           );
                         })
                       ) : (
                         <tr>
-                          <td colSpan={4} className="px-4 py-8 text-center">
+                          <td colSpan={5} className="px-4 py-8 text-center">
                             <p className="text-sm text-gray-500">No students enrolled in this class yet.</p>
                             <p className="text-xs text-gray-400 mt-1">Students will appear here once they are enrolled.</p>
                           </td>
@@ -512,7 +482,7 @@ function AttendanceManagementDetail() {
                     {/* Summary Footer */}
                     <tfoot>
                       <tr className="border-t-2 border-gray-900">
-                        <td colSpan={4} className="px-4 py-3">
+                        <td colSpan={5} className="px-4 py-3">
                           <div className="flex justify-between items-center text-xs">
                             <div className="flex gap-4 font-medium">
                               <span className="text-green-700">

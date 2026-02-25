@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { StatCard } from '../../components/Card';
 import { Card, CardHeader, CardBody } from '../../components/Card';
@@ -201,44 +201,49 @@ function DashboardOverview() {
           )}
 
           {/* Quick Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Link
-              to="attendance"
-              className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:shadow-md transition-all duration-200"
-            >
-              <div className="flex-shrink-0 w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-500 transition-colors duration-200">
-                <ClipboardCheck className="h-6 w-6 text-indigo-600 group-hover:text-white transition-colors duration-200" />
+          <Card>
+            <CardHeader title="Quick Actions" />
+            <CardBody>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+                <Link
+                  to="attendance"
+                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:shadow-md transition-all duration-200"
+                >
+                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-500 transition-colors duration-200">
+                    <ClipboardCheck className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-600 group-hover:text-white transition-colors duration-200" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-indigo-600 transition-colors">Take Attendance</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">Check and update today's attendance.</p>
+                  </div>
+                </Link>
+                <Link
+                  to="login-history"
+                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all duration-200"
+                >
+                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-500 transition-colors duration-200">
+                    <Clock className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600 group-hover:text-white transition-colors duration-200" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">View Login History</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">Review your login and logout records.</p>
+                  </div>
+                </Link>
+                <Link
+                  to="classes"
+                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border-2 border-gray-200 rounded-lg hover:border-green-500 hover:shadow-md transition-all duration-200"
+                >
+                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-500 transition-colors duration-200">
+                    <Library className="h-5 w-5 sm:h-6 sm:w-6 text-green-600 group-hover:text-white transition-colors duration-200" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-green-600 transition-colors">Manage Classes</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">View and manage your classes.</p>
+                  </div>
+                </Link>
               </div>
-              <div className="ml-4 flex-1">
-                <h3 className="text-base font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">Take Attendance</h3>
-                <p className="text-sm text-gray-500 mt-0.5">Check and update today's attendance</p>
-              </div>
-            </Link>
-            <Link
-              to="login-history"
-              className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all duration-200"
-            >
-              <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-500 transition-colors duration-200">
-                <Clock className="h-6 w-6 text-blue-600 group-hover:text-white transition-colors duration-200" />
-              </div>
-              <div className="ml-4 flex-1">
-                <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">View Login History</h3>
-                <p className="text-sm text-gray-500 mt-0.5">View your login and logout records</p>
-              </div>
-            </Link>
-            <Link
-              to="classes"
-              className="group flex items-center p-5 bg-white border-2 border-gray-200 rounded-lg hover:border-green-500 hover:shadow-md transition-all duration-200"
-            >
-              <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-500 transition-colors duration-200">
-                <Library className="h-6 w-6 text-green-600 group-hover:text-white transition-colors duration-200" />
-              </div>
-              <div className="ml-4 flex-1">
-                <h3 className="text-base font-semibold text-gray-900 group-hover:text-green-600 transition-colors">Manage Classes</h3>
-                <p className="text-sm text-gray-500 mt-0.5">View and manage your classes</p>
-              </div>
-            </Link>
-          </div>
+            </CardBody>
+          </Card>
         </div>
 
         <Card className="h-fit">

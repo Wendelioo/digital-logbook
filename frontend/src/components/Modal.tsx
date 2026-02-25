@@ -12,6 +12,7 @@ interface ModalProps {
   closeOnOverlayClick?: boolean;
   footer?: ReactNode;
   variant?: 'default' | 'danger' | 'success' | 'warning' | 'info';
+  showVariantIcon?: boolean;
 }
 
 /**
@@ -53,6 +54,7 @@ const Modal: React.FC<ModalProps> = ({
   closeOnOverlayClick = true,
   footer,
   variant = 'default',
+  showVariantIcon = true,
 }) => {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -116,8 +118,8 @@ const Modal: React.FC<ModalProps> = ({
       <div className={`relative bg-white rounded-xl shadow-2xl w-full ${sizeClasses[size]} max-h-[90vh] flex flex-col animate-slideIn`}>
         {/* Header */}
         <div className={`flex items-center justify-between px-6 py-4 border-b ${variantHeaderColors[variant]}`}>
-          <div className="flex items-center gap-3">
-            {variantIcons[variant]}
+          <div className={`flex items-center ${showVariantIcon ? 'gap-3' : ''}`}>
+            {showVariantIcon ? variantIcons[variant] : null}
             <h2 id="modal-title" className="text-lg font-semibold text-gray-900">
               {title}
             </h2>
@@ -160,6 +162,7 @@ interface ConfirmModalProps {
   confirmText?: string;
   cancelText?: string;
   loading?: boolean;
+  showVariantIcon?: boolean;
 }
 
 export const ConfirmModal: React.FC<ConfirmModalProps> = ({
@@ -172,6 +175,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   loading = false,
+  showVariantIcon = true,
 }) => {
   return (
     <Modal
@@ -180,6 +184,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
       title={title}
       size="sm"
       variant={variant}
+      showVariantIcon={showVariantIcon}
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={loading}>

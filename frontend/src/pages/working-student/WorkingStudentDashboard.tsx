@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardBody, StatCard } from '../../components/Card';
 import {
@@ -147,54 +147,62 @@ function DashboardOverview() {
           </Card>
 
           {/* Quick Actions */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            <Link
-              to="manage-users"
-              className="group flex items-center p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200"
-            >
-              <div className="flex-shrink-0">
-                <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
-                  <Users className="h-5 w-5 text-white" />
-                </div>
+          <Card>
+            <CardHeader title="Quick Actions" />
+            <CardBody>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+                <Link
+                  to="manage-users"
+                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200"
+                >
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
+                      <Users className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">Student Management</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">Approve and manage student registrations.</p>
+                  </div>
+                </Link>
+                <Link
+                  to="equipment-reports"
+                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200"
+                >
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
+                      <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">Equipment Reports</h3>
+                      {stats.pending_feedback > 0 && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] sm:text-xs font-medium bg-red-100 text-red-800">
+                          {stats.pending_feedback}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">Review student issue reports.</p>
+                  </div>
+                </Link>
+                <Link
+                  to="login-history"
+                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200"
+                >
+                  <div className="flex-shrink-0">
+                    <div className="w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
+                      <Clock className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">View Login History</h3>
+                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">View your login and logout records.</p>
+                  </div>
+                </Link>
               </div>
-              <div className="ml-3">
-                <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">Student Management</h3>
-              </div>
-            </Link>
-            <Link
-              to="equipment-reports"
-              className="group flex items-center p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200"
-            >
-              <div className="flex-shrink-0">
-                <div className="w-10 h-10 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
-                  <AlertCircle className="h-5 w-5 text-white" />
-                </div>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">Equipment Reports</h3>
-                <p className="text-sm text-gray-500">Review student issue reports</p>
-                {stats.pending_feedback > 0 && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 ml-2">
-                    {stats.pending_feedback}
-                  </span>
-                )}
-              </div>
-            </Link>
-            <Link
-              to="login-history"
-              className="group flex items-center p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200"
-            >
-              <div className="flex-shrink-0">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
-                  <Clock className="h-5 w-5 text-white" />
-                </div>
-              </div>
-              <div className="ml-3">
-                <h3 className="text-base font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">View Login History</h3>
-                <p className="text-sm text-gray-500">View your login and logout records</p>
-              </div>
-            </Link>
-          </div>
+            </CardBody>
+          </Card>
         </div>
 
         <Card className="h-fit">

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Bell, AlertCircle, CheckCircle2, Info } from 'lucide-react';
 
 export interface DashboardNotificationItem {

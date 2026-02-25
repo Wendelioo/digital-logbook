@@ -279,8 +279,8 @@ function LoginPage() {
               </div>
             </div>
 
-            {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between pt-1">
+            {/* Remember Me */}
+            <div className="pt-1">
               <label className="flex items-center cursor-pointer group">
                 <input 
                   type="checkbox" 
@@ -290,9 +290,6 @@ function LoginPage() {
                   Remember me
                 </span>
               </label>
-              <a href="#" className="text-sm text-teal-600 hover:text-teal-700 font-medium transition-colors">
-                Forgot password?
-              </a>
             </div>
 
             {/* Submit Button */}

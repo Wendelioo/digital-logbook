@@ -20,9 +20,10 @@ import { CourseClass, ClasslistEntry, SemesterGroup } from './types';
 
 interface ArchivedClassesProps {
   hideHeader?: boolean;
+  onClassRestored?: () => void;
 }
 
-function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
+function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClassesProps) {
   const { user } = useAuth();
   const [archivedClasses, setArchivedClasses] = useState<CourseClass[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,6 +93,7 @@ function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
     try {
       await UnarchiveStudentEnrollment(user.id, classInfo.class_id);
       await loadArchivedClasses(); // Refresh the list
+      onClassRestored?.();
     } catch (error) {
       console.error('Failed to restore class:', error);
       alert(`Failed to restore class. ${error instanceof Error ? error.message : 'Please try again.'}`);
@@ -178,14 +180,14 @@ function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Archive className="h-6 w-6 text-gray-600" />
-              <h2 className="text-2xl font-bold text-gray-900">Archived/Hidden Classes</h2>
+              <h2 className="text-2xl font-bold text-gray-900">Archived Classes</h2>
             </div>
             <div className="text-sm text-gray-500">
               {archivedClasses.length} {archivedClasses.length === 1 ? 'class' : 'classes'}
             </div>
           </div>
           <p className="mt-1 text-sm text-gray-600">
-            Teacher-archived classes are read-only. Hidden classes can be restored to My Classes.
+            Teacher-archived classes are read-only. Archived classes can be restored to My Classes.
           </p>
         </div>
       )}
@@ -359,7 +361,7 @@ function ArchivedClasses({ hideHeader = false }: ArchivedClassesProps) {
               </button>
             </>
           ) : (
-            <p className="text-gray-500 font-medium">No hidden or archived classes.</p>
+            <p className="text-gray-500 font-medium">No archived classes.</p>
           )}
         </div>
       )}

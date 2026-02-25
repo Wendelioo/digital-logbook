@@ -176,6 +176,7 @@ export namespace main {
 	    last_name: string;
 	    date: string;
 	    attendance_date: string;
+	    time_in?: string;
 	    status: string;
 	    remarks?: string;
 	    recorded_by: number;
@@ -204,6 +205,7 @@ export namespace main {
 	        this.last_name = source["last_name"];
 	        this.date = source["date"];
 	        this.attendance_date = source["attendance_date"];
+	        this.time_in = source["time_in"];
 	        this.status = source["status"];
 	        this.remarks = source["remarks"];
 	        this.recorded_by = source["recorded_by"];
@@ -218,7 +220,8 @@ export namespace main {
 	    attendance_date: string;
 	    session_name: string;
 	    status: string;
-	    late_threshold_minutes?: number;
+	    class_duration_minutes?: number;
+	    grace_period_minutes?: number;
 	    opened_at?: string;
 	    closed_at?: string;
 	    subject_code: string;
@@ -239,7 +242,8 @@ export namespace main {
 	        this.attendance_date = source["attendance_date"];
 	        this.session_name = source["session_name"];
 	        this.status = source["status"];
-	        this.late_threshold_minutes = source["late_threshold_minutes"];
+	        this.class_duration_minutes = source["class_duration_minutes"];
+	        this.grace_period_minutes = source["grace_period_minutes"];
 	        this.opened_at = source["opened_at"];
 	        this.closed_at = source["closed_at"];
 	        this.subject_code = source["subject_code"];

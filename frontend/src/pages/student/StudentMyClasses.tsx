@@ -7,10 +7,9 @@ import {
   Plus,
   Loader2,
   Users,
-  Library,
   Eye,
   Archive,
-  Trash2,
+  ArchiveRestore,
 } from 'lucide-react';
 import {
   GetStudentClasses,
@@ -107,13 +106,7 @@ function MyClasses() {
 
   const handleArchiveClass = async (classInfo: CourseClass) => {
     if (!user) return;
-    
-    const confirmArchive = window.confirm(
-	  `Hide "${classInfo.subject_code}" from My Classes? You can restore it later from Archived Classes.`
-    );
-    
-    if (!confirmArchive) return;
-    
+
     try {
       await ArchiveStudentEnrollment(user.id, classInfo.class_id);
       await loadClasses(); // Refresh the list
@@ -210,15 +203,16 @@ function MyClasses() {
     <div className="flex flex-col">
       {/* Header Section */}
       <div className="flex-shrink-0 mb-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-2xl font-bold text-gray-900">My Classes</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               onClick={() => setShowArchiveModal(true)}
               variant="outline"
-              icon={<Trash2 className="h-4 w-4" />}
+              size="sm"
+              icon={<ArchiveRestore className="h-4 w-4" />}
             >
-			  Hidden/Archived
+              Archive
             </Button>
             <Button
               onClick={() => {
@@ -228,6 +222,7 @@ function MyClasses() {
                 setJoinSuccess('');
               }}
               variant="primary"
+              size="sm"
               icon={<Plus className="h-4 w-4" />}
             >
               Join Class
@@ -245,6 +240,7 @@ function MyClasses() {
       <StudentArchivedClassesModal
         isOpen={showArchiveModal}
         onClose={() => setShowArchiveModal(false)}
+        onClassRestored={loadClasses}
       />
 
       {/* Controls Section */}
@@ -375,9 +371,9 @@ function MyClasses() {
 
       {/* Table Section */}
       {currentClasses.length > 0 ? (
-        <div className="flex-1 overflow-x-auto">
+        <div className="flex-1">
           <div className="bg-white shadow rounded-lg overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="w-full table-fixed divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -409,22 +405,22 @@ function MyClasses() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {currentClasses.map((cls) => (
                   <tr key={cls.class_id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-gray-900 break-words">
                       {cls.edp_code || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-gray-900 break-words">
                       {cls.subject_code || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-gray-900 break-words">
                       {cls.descriptive_title || cls.subject_name || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-gray-900 break-words">
                       {cls.teacher_name || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-gray-900 break-words">
                       {cls.schedule || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 text-sm text-gray-900 break-words">
                       {cls.room || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
@@ -432,7 +428,7 @@ function MyClasses() {
                         {cls.enrolled_count || 0}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <td className="px-6 py-4 text-sm font-medium">
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => handleViewClasslist(cls)}
@@ -507,7 +503,6 @@ function MyClasses() {
             </>
           ) : (
             <div className="bg-white shadow rounded-lg p-12 text-center">
-              <Library className="mx-auto h-12 w-12 text-gray-400 mb-4" />
               <p className="text-gray-500 font-medium">No classes enrolled</p>
             </div>
           )}
