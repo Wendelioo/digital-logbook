@@ -67,46 +67,46 @@ func (a *App) OpenClassAttendance(classID int, date string) ([]Attendance, error
 
 	today := time.Now().Format("2006-01-02")
 
-	// Only auto-create attendance if:
-	// 1. The requested date is TODAY
-	// 2. The class is ACTIVE (not closed)
-	// 3. The class is NOT archived
-	// 4. Attendance does NOT already exist for this date
+	// For today: ensure an open attendance_sessions row exists so enrolled students
+	// see "Attendance Today" and the Time In button on their dashboard.
 	if date == today && classIsActive && !isArchived {
-		var count int
-		err = a.db.QueryRow(
-			`SELECT COUNT(*) FROM attendance WHERE class_id = ? AND attendance_date = ?`,
-			classID, date,
-		).Scan(&count)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check existing attendance: %w", err)
-		}
-
-		if count == 0 {
-			// Auto-create attendance rows for all active students
-			insertQuery := `
-				INSERT INTO attendance (class_id, student_id, attendance_date, status, remarks, is_archived, created_at)
-				SELECT 
-					cl.class_id,
-					cl.student_id,
-					?,
-					'absent',
-					'Absent',
-					0,
-					CURRENT_TIMESTAMP
-				FROM classlist cl
-				WHERE cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
-				AND NOT EXISTS (
-					SELECT 1 FROM attendance a 
-					WHERE a.class_id = cl.class_id AND a.student_id = cl.student_id AND a.attendance_date = ?
-				)
-			`
-			_, err = a.db.Exec(insertQuery, date, classID, date)
-			if err != nil {
-				log.Printf("Failed to auto-create attendance: %v", err)
-				return nil, fmt.Errorf("failed to create attendance: %w", err)
+		if err := a.ensureAttendanceSessionsTable(); err != nil {
+			log.Printf("Failed to ensure attendance sessions table in OpenClassAttendance: %v", err)
+		} else if err := a.closeExpiredAttendanceSessions(); err != nil {
+			log.Printf("Failed to close expired sessions in OpenClassAttendance: %v", err)
+		} else {
+			var openSessionID int
+			errSession := a.db.QueryRow(`
+				SELECT TOP 1 session_id FROM attendance_sessions
+				WHERE class_id = ? AND attendance_date = ? AND status = 'open' AND COALESCE(is_archived, 0) = 0
+				ORDER BY session_id DESC
+			`, classID, date).Scan(&openSessionID)
+			if errSession == nil {
+				if ensureErr := a.ensureAttendanceRowsForSession(openSessionID, classID, date); ensureErr != nil {
+					log.Printf("Failed to ensure attendance rows for existing session %d: %v", openSessionID, ensureErr)
+				}
+			} else if errSession == sql.ErrNoRows {
+				// No open session: create one so students get Time In
+				var teacherID int
+				if errTeacher := a.db.QueryRow(`SELECT teacher_id FROM classes WHERE class_id = ?`, classID).Scan(&teacherID); errTeacher != nil {
+					teacherID = 0
+				}
+				sessionName := fmt.Sprintf("Attendance %s", date)
+				var newSessionID int
+				insertErr := a.db.QueryRow(`
+					INSERT INTO attendance_sessions
+					(class_id, attendance_date, session_name, status, class_duration_minutes, grace_period_minutes, opened_at, created_by_user_id, created_at, updated_at)
+					OUTPUT INSERTED.session_id
+					VALUES (?, ?, ?, 'open', 90, 10, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				`, classID, date, sessionName, teacherID).Scan(&newSessionID)
+				if insertErr != nil {
+					log.Printf("Failed to create open session when teacher opens attendance: %v", insertErr)
+				} else if ensureErr := a.ensureAttendanceRowsForSession(newSessionID, classID, date); ensureErr != nil {
+					log.Printf("Failed to ensure attendance rows for new session %d: %v", newSessionID, ensureErr)
+				} else {
+					log.Printf("Auto-created open attendance session %d for class %d on %s (students can time in)", newSessionID, classID, date)
+				}
 			}
-			log.Printf("Auto-created attendance for class %d on %s", classID, date)
 		}
 	}
 
@@ -1739,13 +1739,12 @@ func (a *App) ensureAttendanceRowsForSession(sessionID, classID int, date string
 			CURRENT_TIMESTAMP
 		FROM classlist cl
 		JOIN classes c ON cl.class_id = c.class_id
-				WHERE a.class_id = ?
-					AND a.attendance_date = ?
-					AND (? = 0 OR a.session_id = ?)
-					AND COALESCE(a.is_archived, 0) = 1
+		WHERE cl.class_id = ?
+			AND cl.status = 'active'
+			AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
 			AND COALESCE(c.is_archived, 0) = 0
 			AND NOT EXISTS (
-	args := []interface{}{classID, date, sessionID, sessionID}
+				SELECT 1
 				FROM attendance a
 				WHERE a.class_id = cl.class_id
 					AND a.student_id = cl.student_id
@@ -1772,14 +1771,8 @@ func (a *App) closeExpiredAttendanceSessions() error {
 			AND COALESCE(s.is_archived, 0) = 0
 			AND COALESCE(att.is_archived, 0) = 0
 			AND s.opened_at IS NOT NULL
-			AND DATEADD(MINUTE,
-				CASE
-					WHEN COALESCE(NULLIF(s.class_duration_minutes, 0), 0) > 0
-					THEN COALESCE(NULLIF(s.class_duration_minutes, 0), 0)
-					ELSE COALESCE(NULLIF(s.grace_period_minutes, 0), 0)
-				END,
-				s.opened_at
-			) <= GETDATE()
+			AND COALESCE(NULLIF(s.class_duration_minutes, 0), 0) > 0
+			AND DATEADD(MINUTE, COALESCE(NULLIF(s.class_duration_minutes, 0), 0), s.opened_at) <= GETDATE()
 			AND LOWER(LTRIM(RTRIM(COALESCE(att.status, '')))) NOT IN ('present', 'late', 'seat-in', 'seat in', 'absent')
 	`)
 	if normalizeErr != nil {
@@ -1795,21 +1788,8 @@ func (a *App) closeExpiredAttendanceSessions() error {
 		WHERE status = 'open'
 			AND COALESCE(is_archived, 0) = 0
 			AND opened_at IS NOT NULL
-			AND DATEADD(MINUTE,
-				CASE
-					WHEN COALESCE(NULLIF(class_duration_minutes, 0), 0) > 0
-					THEN COALESCE(NULLIF(class_duration_minutes, 0), 0)
-					ELSE COALESCE(NULLIF(grace_period_minutes, 0), 0)
-				END,
-				opened_at
-			) <= GETDATE()
-			AND (
-				CASE
-					WHEN COALESCE(NULLIF(class_duration_minutes, 0), 0) > 0
-					THEN COALESCE(NULLIF(class_duration_minutes, 0), 0)
-					ELSE COALESCE(NULLIF(grace_period_minutes, 0), 0)
-				END
-			) > 0
+			AND COALESCE(NULLIF(class_duration_minutes, 0), 0) > 0
+			AND DATEADD(MINUTE, COALESCE(NULLIF(class_duration_minutes, 0), 0), opened_at) <= GETDATE()
 	`)
 	if err != nil {
 		return err
@@ -2223,7 +2203,6 @@ func (a *App) GetStudentOpenAttendanceSessions(studentUserID int) ([]AttendanceS
 			AND s.status = 'open'
 			AND COALESCE(s.is_archived, 0) = 0
 			AND LOWER(LTRIM(RTRIM(COALESCE(sa.status, '')))) NOT IN ('present', 'late', 'seat-in', 'seat in')
-			AND CONVERT(VARCHAR(10), s.attendance_date, 23) = CONVERT(VARCHAR(10), GETDATE(), 23)
 		GROUP BY s.session_id, s.class_id, s.attendance_date, s.session_name, s.status, s.class_duration_minutes, s.grace_period_minutes,
 			s.opened_at, s.closed_at, subj.subject_code, subj.description, c.edp_code
 		ORDER BY s.opened_at DESC, s.session_id DESC
@@ -2349,11 +2328,6 @@ func (a *App) StudentTimeIn(sessionID int, studentUserID int) error {
 		return err
 	}
 
-	resolvedGrace := int64(0)
-	if gracePeriod.Valid {
-		resolvedGrace = gracePeriod.Int64
-	}
-
 	resolvedClassDuration := int64(0)
 	if classDuration.Valid {
 		resolvedClassDuration = classDuration.Int64
@@ -2380,23 +2354,27 @@ func (a *App) StudentTimeIn(sessionID int, studentUserID int) error {
 		}
 	}
 
-	finalStatus := "present"
-	if openedAt.Valid {
-		lateCutoff := openedAt.Time.Add(time.Duration(resolvedGrace) * time.Minute)
-		if !time.Now().Before(lateCutoff) {
-			finalStatus = "late"
-		}
-	}
-
+	// Determine present vs late using the database clock so timezone and server
+	// consistency match. Late = time-in is after (opened_at + grace_period_minutes).
 	result, err := a.db.Exec(`
-		UPDATE attendance
+		UPDATE a
 		SET
-			status = ?,
-			remarks = ?,
-			time_in_at = COALESCE(time_in_at, CURRENT_TIMESTAMP),
-			updated_at = CURRENT_TIMESTAMP
-		WHERE class_id = ? AND student_id = ? AND attendance_date = ? AND session_id = ? AND COALESCE(is_archived, 0) = 0
-	`, finalStatus, strings.Title(finalStatus), classID, studentUserID, attendanceDate, sessionID)
+			a.status = CASE
+				WHEN s.opened_at IS NULL THEN 'present'
+				WHEN GETDATE() <= DATEADD(MINUTE, COALESCE(NULLIF(s.grace_period_minutes, 0), 0), s.opened_at) THEN 'present'
+				ELSE 'late'
+			END,
+			a.remarks = CASE
+				WHEN s.opened_at IS NULL THEN 'Present'
+				WHEN GETDATE() <= DATEADD(MINUTE, COALESCE(NULLIF(s.grace_period_minutes, 0), 0), s.opened_at) THEN 'Present'
+				ELSE 'Late'
+			END,
+			a.time_in_at = COALESCE(a.time_in_at, CURRENT_TIMESTAMP),
+			a.updated_at = CURRENT_TIMESTAMP
+		FROM attendance a
+		INNER JOIN attendance_sessions s ON s.session_id = a.session_id
+		WHERE a.class_id = ? AND a.student_id = ? AND a.attendance_date = ? AND a.session_id = ? AND COALESCE(a.is_archived, 0) = 0
+	`, classID, studentUserID, attendanceDate, sessionID)
 	if err != nil {
 		return err
 	}

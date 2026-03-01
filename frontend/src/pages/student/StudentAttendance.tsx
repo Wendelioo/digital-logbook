@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import Button from '../../components/Button';
 import { CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -25,6 +25,7 @@ function StudentAttendance() {
   const [timingInSession, setTimingInSession] = useState<number | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
+  const previousSessionCountRef = useRef<number | null>(null);
 
   const parseSessionDateTime = (value?: string): Date | null => {
     if (!value) return null;
@@ -48,25 +49,51 @@ function StudentAttendance() {
     return Date.now() >= lateCutoff ? 'late' : 'present';
   };
 
-  const loadSessions = async () => {
-    if (!user?.id) return;
+  const loadSessions = useCallback(async (options?: { showLoading?: boolean }) => {
+    const showLoading = options?.showLoading ?? true;
+    if (!user?.id) {
+      if (showLoading) {
+        setLoading(false);
+      }
+      return;
+    }
 
-    setLoading(true);
+    if (showLoading) {
+      setLoading(true);
+    }
     try {
       const data = await GetStudentOpenAttendanceSessions(user.id);
-      setSessions(data || []);
+      const nextSessions = data || [];
+      setSessions(nextSessions);
+
+      const nextCount = nextSessions.length;
+      const previousCount = previousSessionCountRef.current;
+      if (previousCount !== null && nextCount !== previousCount) {
+        if (nextCount > previousCount) {
+          setNotice({ type: 'success', text: `${nextCount} attendance session(s) are open for your classes.` });
+        } else {
+          setNotice({ type: 'success', text: 'One or more attendance sessions have closed.' });
+        }
+      }
+      previousSessionCountRef.current = nextCount;
     } catch (error) {
       console.error('Failed to load attendance sessions:', error);
       setNotice({ type: 'error', text: 'Unable to load attendance sessions.' });
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
-  };
+  }, [user?.id]);
 
   useEffect(() => {
-    loadSessions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+    loadSessions({ showLoading: true });
+    const refreshInterval = setInterval(() => {
+      loadSessions({ showLoading: false });
+    }, 30000);
+
+    return () => clearInterval(refreshInterval);
+  }, [loadSessions]);
 
   useEffect(() => {
     const ticker = window.setInterval(() => {
@@ -112,7 +139,7 @@ function StudentAttendance() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Attendance</h2>
-        <Button onClick={loadSessions} variant="outline" size="sm">Refresh</Button>
+        <Button onClick={() => loadSessions({ showLoading: true })} variant="outline" size="sm">Refresh</Button>
       </div>
 
       {notice && (
@@ -140,11 +167,32 @@ function StudentAttendance() {
                   const graceDeadline = new Date(openedAt.getTime() + graceMinutes * 60 * 1000);
                   const classRemaining = Math.max(0, Math.floor((classDeadline.getTime() - nowTimestamp) / 1000));
                   const graceRemaining = Math.max(0, Math.floor((graceDeadline.getTime() - nowTimestamp) / 1000));
+                  const expectedStatus = getExpectedTimeInStatus(session);
+
+                  const statusMessage =
+                    classRemaining <= 0
+                      ? 'Class session window has ended. If you did not time in, you will be marked Absent.'
+                      : graceRemaining > 0
+                        ? 'Time in while the grace timer is running to be marked Present.'
+                        : 'Grace period is over. Time in now will be recorded as Late.';
 
                   return (
-                    <p className="text-[11px] text-gray-500">
-                      Class remaining: {formatRemaining(classRemaining)} • Grace remaining: {formatRemaining(graceRemaining)}
-                    </p>
+                    <div className="space-y-0.5">
+                      <p className="text-[11px] text-gray-500">
+                        Class remaining: {formatRemaining(classRemaining)} • Grace remaining: {formatRemaining(graceRemaining)}
+                      </p>
+                      <p
+                        className={`text-[11px] ${
+                          expectedStatus === 'late' && graceRemaining <= 0 && classRemaining > 0
+                            ? 'text-yellow-700'
+                            : classRemaining <= 0
+                              ? 'text-red-700'
+                              : 'text-green-700'
+                        }`}
+                      >
+                        {statusMessage}
+                      </p>
+                    </div>
                   );
                 })()}
               </div>

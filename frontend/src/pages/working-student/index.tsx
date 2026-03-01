@@ -2,7 +2,7 @@ import { Routes, Route, useLocation } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import PendingRegistrations from '../../components/PendingRegistrations';
 import LoginHistory from '../../components/LoginHistory';
-import { MyClasses, ArchivedClasses } from '../student';
+import { MyClasses, ArchivedClasses, StudentAttendance } from '../student';
 import {
   LayoutDashboard,
   Users,
@@ -10,6 +10,7 @@ import {
   BarChart3,
   ClipboardList,
   Library,
+  ClipboardCheck,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import DashboardOverview from './WorkingStudentDashboard';
@@ -37,6 +38,7 @@ function WorkingStudentDashboard() {
     
     // Student Features Section - for when working students need to access their own student features
     // Note: No "My Feedback History" because working students forward feedback, they don't submit it
+    { name: 'Attendance', href: '/working-student/attendance', icon: <ClipboardCheck className="h-5 w-5" />, current: location.pathname === '/working-student/attendance' },
     { name: 'My Classes', href: '/working-student/my-classes', icon: <Library className="h-5 w-5" />, current: location.pathname === '/working-student/my-classes' },
     { name: 'Login History', href: '/working-student/login-history', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/working-student/login-history' },
   ];
@@ -52,6 +54,7 @@ function WorkingStudentDashboard() {
         <Route path="equipment-reports" element={<EquipmentReports />} />
         
         {/* Student Feature Routes - for working students to access their own student features */}
+        <Route path="attendance" element={<StudentAttendance />} />
         <Route path="my-classes" element={<MyClasses />} />
         <Route path="my-archived-classes" element={<ArchivedClasses />} />
         <Route path="login-history" element={<LoginHistory showStatus={false} />} />

@@ -369,15 +369,13 @@ func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error)
 		return 0, err
 	}
 
-	// Validate student ID
-	if studentUserID <= 0 {
-		return 0, fmt.Errorf("invalid student ID")
+	if err := ValidatePositiveID(studentUserID, "student ID"); err != nil {
+		return 0, err
 	}
 
-	// Validate and sanitize EDP code (done in GetClassesByEDPCode)
-	edpCode = strings.TrimSpace(edpCode)
-	if edpCode == "" {
-		return 0, fmt.Errorf("EDP code cannot be empty")
+	edpCode, err := ValidateEDPCode(edpCode)
+	if err != nil {
+		return 0, err
 	}
 
 	// First, find active classes with this EDP code

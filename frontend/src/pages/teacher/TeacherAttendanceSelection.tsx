@@ -811,9 +811,8 @@ function AttendanceClassSelection() {
                 onClick={handleAddAttendanceSubmit}
                 variant="primary"
                 disabled={!selectedClassId || openingAttendance !== null}
-                icon={<Plus className="h-4 w-4" />}
               >
-                {openingAttendance ? 'Loading...' : 'Attendance'}
+                {openingAttendance ? 'Loading...' : 'Confirm'}
               </Button>
             </div>
           </div>

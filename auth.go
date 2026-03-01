@@ -20,6 +20,13 @@ func (a *App) Login(username, password string) (*User, error) {
 		return nil, fmt.Errorf("database connection failed - please check database configuration")
 	}
 
+	if err := ValidateUsername(username); err != nil {
+		return nil, err
+	}
+	if err := ValidatePassword(password); err != nil {
+		return nil, err
+	}
+
 	var user User
 	var accountStatus string
 	var isActive bool
@@ -135,6 +142,15 @@ func (a *App) ChangePassword(username, oldPassword, newPassword string) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
+	if err := ValidateUsername(username); err != nil {
+		return err
+	}
+	if err := ValidatePassword(oldPassword); err != nil {
+		return err
+	}
+	if err := ValidatePassword(newPassword); err != nil {
+		return err
+	}
 
 	var storedPassword string
 	if err := a.db.QueryRow(`SELECT password FROM users WHERE username = ?`, username).Scan(&storedPassword); err != nil {
@@ -166,12 +182,16 @@ func (a *App) ResetPasswordByRole(requesterUserID, targetUserID int, newPassword
 	if err := a.checkDB(); err != nil {
 		return err
 	}
-
-	newPassword = strings.TrimSpace(newPassword)
-	if newPassword == "" {
-		return fmt.Errorf("new password is required")
+	if err := ValidatePositiveID(requesterUserID, "requester user ID"); err != nil {
+		return err
 	}
-	if len(newPassword) < 6 {
+	if err := ValidatePositiveID(targetUserID, "target user ID"); err != nil {
+		return err
+	}
+	if err := ValidatePassword(newPassword); err != nil {
+		return err
+	}
+	if len(strings.TrimSpace(newPassword)) < 6 {
 		return fmt.Errorf("new password must be at least 6 characters long")
 	}
 

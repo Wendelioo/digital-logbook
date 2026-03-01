@@ -14,6 +14,7 @@ import {
   ArchiveFeedback
 } from '../../../wailsjs/go/main/App';
 import { useAuth } from '../../contexts/AuthContext';
+import { parseReportContext } from '../../utils/feedbackComments';
 import { Feedback } from './types';
 
 function Reports() {
@@ -74,24 +75,6 @@ function Reports() {
   const clearFilters = () => {
     setSearchQuery('');
     setDateFilter('');
-  };
-
-  const parseWorkingStudentMeta = (notes?: string) => {
-    if (!notes) {
-      return {
-        verification: 'N/A',
-        recommendation: 'N/A'
-      };
-    }
-
-    const lines = notes.split('\n').map((line) => line.trim());
-    const verificationLine = lines.find((line) => line.toLowerCase().startsWith('verification:'));
-    const recommendationLine = lines.find((line) => line.toLowerCase().startsWith('recommendation:'));
-
-    return {
-      verification: verificationLine ? verificationLine.replace(/^verification:\s*/i, '').trim() || 'N/A' : 'N/A',
-      recommendation: recommendationLine ? recommendationLine.replace(/^recommendation:\s*/i, '').trim() || 'N/A' : 'N/A'
-    };
   };
 
   const showToast = (type: 'success' | 'error', message: string) => {
@@ -351,12 +334,24 @@ function Reports() {
             },
             {
               key: 'pc_number',
-              label: 'PC Number',
-              render: (report: Feedback) => (
-                <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                  {report.pc_number}
-                </span>
-              )
+              label: 'Reported for / Submitted from',
+              render: (report: Feedback) => {
+                const { reportedForAnotherPC, submittedFrom } = parseReportContext(report.comments);
+                return (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium w-fit">
+                      Reported for: {report.pc_number}
+                    </span>
+                    {(reportedForAnotherPC || submittedFrom) && (
+                      <span className="text-xs text-gray-500">
+                        {reportedForAnotherPC && 'Reported for another PC'}
+                        {reportedForAnotherPC && submittedFrom && ' · '}
+                        {submittedFrom && `Submitted from: ${submittedFrom}`}
+                      </span>
+                    )}
+                  </div>
+                );
+              }
             },
             {
               key: 'date_submitted',
@@ -372,38 +367,21 @@ function Reports() {
               )
             },
             {
-              key: 'verification',
-              label: 'Verification',
-              render: (report: Feedback) => {
-                const meta = parseWorkingStudentMeta(report.working_student_notes);
-                const normalized = meta.verification.toLowerCase();
-
-                let badgeClass = 'bg-gray-100 text-gray-700';
-                if (normalized.includes('confirmed')) {
-                  badgeClass = 'bg-green-100 text-green-700';
-                }
-                if (normalized.includes('not confirmed')) {
-                  badgeClass = 'bg-red-100 text-red-700';
-                }
-
-                return (
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${badgeClass}`}>
-                    {meta.verification}
-                  </span>
-                );
-              }
-            },
-            {
-              key: 'recommendation',
-              label: 'Recommendation',
-              render: (report: Feedback) => {
-                const meta = parseWorkingStudentMeta(report.working_student_notes);
-                return (
-                  <span className="text-sm text-gray-700">
-                    {meta.recommendation}
-                  </span>
-                );
-              }
+              key: 'verified_at',
+              label: 'Verified at',
+              render: (report: Feedback) => (
+                <span className="text-gray-600">
+                  {report.verified_at
+                    ? new Date(report.verified_at).toLocaleString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })
+                    : '—'}
+                </span>
+              )
             },
             {
               key: 'forwarded_by_name',

@@ -12,7 +12,6 @@ import {
   UserCircle,
   Menu,
   X as XIcon,
-  AlertCircle,
 } from 'lucide-react';
 import LogoutFeedbackModal from './LogoutFeedbackModal';
 
@@ -163,7 +162,12 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
         }
       }
       
-      // Call the backend function to save feedback
+      // When reporting for another PC, pass its number; otherwise backend uses current machine hostname
+      const optionalPCNumber =
+        feedbackData.reportingContext === 'other_pc' && feedbackData.targetPCNumber?.trim()
+          ? feedbackData.targetPCNumber.trim()
+          : '';
+
       await SaveEquipmentFeedback(
         user.id,
         user.name,
@@ -175,7 +179,8 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
         keyboardIssue,
         monitorStatus,
         monitorIssue,
-        additionalComments
+        additionalComments,
+        optionalPCNumber
       );
       
       console.log('Feedback saved successfully');
@@ -202,11 +207,6 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
   const handleFeedbackCancel = () => {
     setShowFeedbackModal(false);
-  };
-
-  const handleOpenQuickReport = () => {
-    setFeedbackMode('manual');
-    setShowFeedbackModal(true);
   };
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -731,17 +731,6 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                   <p className="section-highlight-subtitle">{subtitle}</p>
                 )}
               </div>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            {user?.role === 'student' && (
-              <button
-                onClick={handleOpenQuickReport}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border border-danger-200 text-danger-700 bg-danger-50 hover:bg-danger-100 transition-colors"
-              >
-                <AlertCircle className="w-4 h-4" />
-                Report Issue Now
-              </button>
             )}
           </div>
         </header>

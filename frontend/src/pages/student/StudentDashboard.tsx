@@ -86,6 +86,20 @@ function DashboardOverview() {
       ...prev,
     ].slice(0, 10));
   };
+  const upsertNotification = (id: string, message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
+    setNotifications((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      return [
+        {
+          id,
+          message,
+          createdAt: Date.now(),
+          tone,
+        },
+        ...next,
+      ].slice(0, 10);
+    });
+  };
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -122,6 +136,21 @@ function DashboardOverview() {
         const nextAbsentCount = (data.attendance || []).filter(a => normalizeStatus(a.status) === 'absent').length;
         const nextOpenSessions = sessions.length;
         const nextCurrentlyLoggedIn = !!data.currently_logged_in;
+        upsertNotification(
+          'student-open-sessions',
+          `Open attendance sessions: ${nextOpenSessions}.`,
+          nextOpenSessions > 0 ? 'warning' : 'success'
+        );
+        upsertNotification(
+          'student-absences',
+          `Absences recorded: ${nextAbsentCount}.`,
+          nextAbsentCount > 0 ? 'warning' : 'success'
+        );
+        upsertNotification(
+          'student-login-status',
+          nextCurrentlyLoggedIn ? 'Account status: Logged in on a lab PC.' : 'Account status: Not logged in on a lab PC.',
+          nextCurrentlyLoggedIn ? 'info' : 'success'
+        );
         const previous = previousMetricsRef.current;
 
         if (!previous) {
@@ -247,7 +276,7 @@ function DashboardOverview() {
 
           {lastLogin && (
             <Card>
-              <CardHeader title="Account Information" />
+              <CardHeader title="Login Information" />
               <CardBody>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <InfoCard
@@ -307,17 +336,53 @@ function DashboardOverview() {
 
               {recentAttendance.length > 0 && (
                 <div className="mt-6 border-t border-gray-200 pt-4">
-                  <p className="text-sm font-medium text-gray-700 mb-3">Recent Records</p>
-                  <div className="space-y-2">
-                    {recentAttendance.map((record, index) => (
-                      <div key={`${record.class_id}-${record.date}-${index}`} className="p-3 bg-gray-50 rounded-md">
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-xs font-medium text-gray-800 truncate">{record.subject_code} • {record.date}</p>
-                          <span className="text-xs text-gray-600">Time In: {record.time_in || '—'}</span>
+                  <p className="text-sm font-semibold text-gray-800 mb-3">Recent Records</p>
+                  <div className="space-y-3">
+                    {recentAttendance.map((record, index) => {
+                      const status = (record.status || '').trim() || '—';
+                      const statusColor =
+                        status.toLowerCase() === 'present'
+                          ? 'text-emerald-700 bg-emerald-50'
+                          : status.toLowerCase() === 'late'
+                            ? 'text-amber-700 bg-amber-50'
+                            : status.toLowerCase() === 'absent'
+                              ? 'text-red-700 bg-red-50'
+                              : 'text-gray-600 bg-gray-100';
+                      const displayDate = record.date
+                        ? (() => {
+                            const d = new Date(record.date + 'T12:00:00');
+                            return Number.isNaN(d.getTime()) ? record.date : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                          })()
+                        : record.date;
+                      return (
+                        <div
+                          key={`${record.class_id}-${record.date}-${index}`}
+                          className="rounded-lg border border-gray-200 bg-gray-50/80 p-3 space-y-2"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-gray-900">
+                              {record.subject_code}
+                            </p>
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${statusColor}`}>
+                              {status}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+                            <span className="text-gray-500">Date</span>
+                            <span className="text-gray-700">{displayDate}</span>
+                            <span className="text-gray-500">Time in</span>
+                            <span className="text-gray-700 font-medium tabular-nums">
+                              {record.time_in || '—'}
+                            </span>
+                          </div>
+                          {record.remarks && record.remarks.trim() && (
+                            <p className="text-xs text-gray-500 pt-0.5 border-t border-gray-200/80">
+                              {record.remarks.trim()}
+                            </p>
+                          )}
                         </div>
-                        <p className="text-xs text-gray-600 mt-1">Status: {(record.status || '').trim() || '—'} • Remarks: {record.remarks || '—'}</p>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -369,7 +434,7 @@ function DashboardOverview() {
           </Card>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-6 md:border-l md:border-gray-300 md:pl-6">
           <Card className="h-fit">
             <CardHeader title="Notifications" />
             <CardBody>
@@ -384,45 +449,84 @@ function DashboardOverview() {
             <CardHeader title="Attendance Today" />
             <CardBody>
               {openSessions.length > 0 ? (
-                <div className="space-y-3">
-                  {openSessions.map((session) => (
-                    <div key={session.session_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{session.subject_code} - {session.subject_name}</p>
-                        <p className="text-xs text-gray-500">{session.session_name || 'Attendance Session'} • EDP: {session.edp_code || '-'}</p>
-                        {(() => {
-                          const openedAt = parseSessionDateTime(session.opened_at);
-                          if (!openedAt) {
-                            return null;
-                          }
+                <div className="space-y-4">
+                  {openSessions.map((session) => {
+                    const openedAt = parseSessionDateTime(session.opened_at);
+                    const classMinutes = Math.max(0, session.class_duration_minutes || 0);
+                    const graceMinutes = Math.max(0, session.grace_period_minutes || 0);
+                    const classDeadline = openedAt ? new Date(openedAt.getTime() + classMinutes * 60 * 1000) : null;
+                    const graceDeadline = openedAt ? new Date(openedAt.getTime() + graceMinutes * 60 * 1000) : null;
+                    const classRemaining = classDeadline ? Math.max(0, Math.floor((classDeadline.getTime() - nowTimestamp) / 1000)) : 0;
+                    const graceRemaining = graceDeadline ? Math.max(0, Math.floor((graceDeadline.getTime() - nowTimestamp) / 1000)) : 0;
+                    const expectedStatus = getExpectedTimeInStatus(session);
+                    const statusMessage =
+                      classRemaining <= 0
+                        ? 'Session ended. Time in no longer available—you will be marked Absent if you did not time in.'
+                        : graceRemaining > 0
+                          ? 'Time in now to be marked Present.'
+                          : 'Grace period over. You can still time in—you will be marked Late.';
 
-                          const classMinutes = Math.max(0, session.class_duration_minutes || 0);
-                          const graceMinutes = Math.max(0, session.grace_period_minutes || 0);
-                          const classDeadline = new Date(openedAt.getTime() + classMinutes * 60 * 1000);
-                          const graceDeadline = new Date(openedAt.getTime() + graceMinutes * 60 * 1000);
-                          const classRemaining = Math.max(0, Math.floor((classDeadline.getTime() - nowTimestamp) / 1000));
-                          const graceRemaining = Math.max(0, Math.floor((graceDeadline.getTime() - nowTimestamp) / 1000));
-
-                          return (
-                            <p className="text-[11px] text-gray-500">
-                              Class remaining: {formatRemaining(classRemaining)} • Grace remaining: {formatRemaining(graceRemaining)}
-                            </p>
-                          );
-                        })()}
-                      </div>
-                      <Button
-                        onClick={() => handleTimeIn(session.session_id)}
-                        variant="primary"
-                        size="sm"
-                        disabled={timingInSession === session.session_id}
+                    return (
+                      <div
+                        key={session.session_id}
+                        className="rounded-lg border border-gray-200 bg-gray-50/80 p-4 space-y-3"
                       >
-                        {timingInSession === session.session_id ? 'Submitting...' : 'Time In'}
-                      </Button>
-                    </div>
-                  ))}
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 leading-tight">
+                              {session.subject_code}
+                            </p>
+                            <p className="text-xs text-gray-600 mt-0.5">
+                              {session.subject_name}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {session.session_name || 'Attendance'} · EDP {session.edp_code || '—'}
+                            </p>
+                          </div>
+                          <Button
+                            onClick={() => handleTimeIn(session.session_id)}
+                            variant="primary"
+                            size="sm"
+                            disabled={timingInSession === session.session_id}
+                            className="flex-shrink-0"
+                          >
+                            {timingInSession === session.session_id ? 'Submitting...' : 'Time In'}
+                          </Button>
+                        </div>
+
+                        {openedAt && (
+                          <div className="pt-2 border-t border-gray-200/80 space-y-2">
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                              <span className="text-gray-500">Class remaining</span>
+                              <span className="font-medium tabular-nums text-gray-700">
+                                {formatRemaining(classRemaining)}
+                              </span>
+                              <span className="text-gray-500">Grace remaining</span>
+                              <span className="font-medium tabular-nums text-gray-700">
+                                {formatRemaining(graceRemaining)}
+                              </span>
+                            </div>
+                            <p
+                              className={`text-xs font-medium ${
+                                expectedStatus === 'late' && graceRemaining <= 0 && classRemaining > 0
+                                  ? 'text-amber-700'
+                                  : classRemaining <= 0
+                                    ? 'text-red-700'
+                                    : 'text-emerald-700'
+                              }`}
+                            >
+                              {statusMessage}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500">No open attendance sessions for your classes today.</p>
+                <p className="text-sm text-gray-500 text-center py-2">
+                  No open attendance sessions for your classes.
+                </p>
               )}
             </CardBody>
           </Card>

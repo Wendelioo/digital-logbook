@@ -66,6 +66,10 @@ export function CloseSessionsForCurrentHost() {
   return window['go']['main']['App']['CloseSessionsForCurrentHost']();
 }
 
+export function ConfirmFeedback(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ConfirmFeedback'](arg1, arg2, arg3, arg4);
+}
+
 export function CreateAttendanceSession(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['CreateAttendanceSession'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
@@ -314,6 +318,10 @@ export function GetCompletedEnrollments(arg1) {
   return window['go']['main']['App']['GetCompletedEnrollments'](arg1);
 }
 
+export function GetConfirmedFeedback() {
+  return window['go']['main']['App']['GetConfirmedFeedback']();
+}
+
 export function GetDepartments() {
   return window['go']['main']['App']['GetDepartments']();
 }
@@ -502,8 +510,8 @@ export function SaveAttendanceSession(arg1, arg2) {
   return window['go']['main']['App']['SaveAttendanceSession'](arg1, arg2);
 }
 
-export function SaveEquipmentFeedback(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11) {
-  return window['go']['main']['App']['SaveEquipmentFeedback'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11);
+export function SaveEquipmentFeedback(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12) {
+  return window['go']['main']['App']['SaveEquipmentFeedback'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12);
 }
 
 export function SaveProfilePhoto(arg1, arg2) {

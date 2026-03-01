@@ -40,6 +40,20 @@ function DashboardOverview() {
       ...prev,
     ].slice(0, 10));
   };
+  const upsertNotification = (id: string, message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
+    setNotifications((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      return [
+        {
+          id,
+          message,
+          createdAt: Date.now(),
+          tone,
+        },
+        ...next,
+      ].slice(0, 10);
+    });
+  };
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -74,6 +88,13 @@ function DashboardOverview() {
 
         const nextActiveClasses = nextClasses.filter(cls => cls.is_active).length;
         const nextTotalStudents = nextClasses.reduce((sum, cls) => sum + cls.enrolled_count, 0);
+        upsertNotification(
+          'teacher-open-sessions',
+          `Open attendance sessions today: ${nextOpenSessionsToday}.`,
+          nextOpenSessionsToday > 0 ? 'warning' : 'success'
+        );
+        upsertNotification('teacher-active-classes', `Active classes: ${nextActiveClasses}.`, 'info');
+        upsertNotification('teacher-total-students', `Enrolled students: ${nextTotalStudents}.`, 'info');
         const previous = previousMetricsRef.current;
 
         if (!previous) {
@@ -230,7 +251,7 @@ function DashboardOverview() {
                   </div>
                 </Link>
                 <Link
-                  to="classes"
+                  to="class-management"
                   className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border-2 border-gray-200 rounded-lg hover:border-green-500 hover:shadow-md transition-all duration-200"
                 >
                   <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-500 transition-colors duration-200">
@@ -246,15 +267,17 @@ function DashboardOverview() {
           </Card>
         </div>
 
-        <Card className="h-fit">
-          <CardHeader title="Notifications" />
-          <CardBody>
-            <DashboardNotifications
-              items={notifications}
-              emptyMessage="No new class or attendance updates."
-            />
-          </CardBody>
-        </Card>
+        <div className="md:border-l md:border-gray-300 md:pl-6">
+          <Card className="h-fit">
+            <CardHeader title="Notifications" />
+            <CardBody>
+              <DashboardNotifications
+                items={notifications}
+                emptyMessage="No new class or attendance updates."
+              />
+            </CardBody>
+          </Card>
+        </div>
       </div>
 
     </div>

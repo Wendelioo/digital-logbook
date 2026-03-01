@@ -113,6 +113,14 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 		return nil, err
 	}
 
+	sanitizedTerm, err := ValidateSearchTerm(searchTerm)
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateUserType(userType); err != nil {
+		return nil, err
+	}
+
 	query := `
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
@@ -162,7 +170,7 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 			CONVERT(VARCHAR(10), u.created_at, 120) LIKE ?
 		)
 	`
-	searchPattern := "%" + searchTerm + "%"
+	searchPattern := "%" + sanitizedTerm + "%"
 	args := []interface{}{
 		searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
 		searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
@@ -189,6 +197,46 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 func (a *App) CreateUser(password, name, firstName, middleName, lastName, role, employeeID, studentID, email, contactNumber string, departmentCode string) error {
 	if err := a.checkDB(); err != nil {
 		return err
+	}
+
+	// Input validation to prevent injection and malformed data
+	if err := ValidatePassword(password); err != nil {
+		return err
+	}
+	if err := ValidateRequiredName(firstName, "first name"); err != nil {
+		return err
+	}
+	if err := ValidateRequiredName(lastName, "last name"); err != nil {
+		return err
+	}
+	if err := ValidateName(middleName, "middle name"); err != nil {
+		return err
+	}
+	if err := ValidateUserType(role); err != nil {
+		return err
+	}
+	if role == "admin" || role == "teacher" {
+		if err := ValidateEmployeeID(employeeID); err != nil {
+			return err
+		}
+	}
+	if role == "student" || role == "working_student" {
+		if err := ValidateStudentID(studentID); err != nil {
+			return err
+		}
+	}
+	if email != "" {
+		if err := ValidateEmail(email); err != nil {
+			return err
+		}
+	}
+	if contactNumber != "" {
+		if err := ValidateContactNumber(contactNumber); err != nil {
+			return err
+		}
+	}
+	if len(strings.TrimSpace(departmentCode)) > MaxLenDepartment {
+		return fmt.Errorf("department code must be at most %d characters", MaxLenDepartment)
 	}
 
 	log.Printf("CreateUser called - Role: %s, StudentID: %s, Email: %s", role, studentID, email)

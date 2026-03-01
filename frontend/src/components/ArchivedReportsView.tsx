@@ -3,6 +3,7 @@ import { Card, CardBody } from './Card';
 import Button from './Button';
 import { Badge } from './Badge';
 import { ChevronRight, ChevronDown, ArchiveRestore, Calendar, Eye } from 'lucide-react';
+import { parseReportContext } from '../utils/feedbackComments';
 
 interface Feedback {
   id: number;
@@ -10,6 +11,7 @@ interface Feedback {
   student_name: string;
   student_id_str: string;
   pc_number: string;
+  comments?: string;
   computer_status: string;
   mouse_status: string;
   keyboard_status: string;
@@ -49,20 +51,26 @@ const ArchivedReportsView: React.FC<ArchivedReportsViewProps> = ({
 
   useEffect(() => {
     const grouped: GroupedReports = {};
-    
-    archivedReports.forEach(report => {
-      const date = report.date_submitted.split(/[T\s]/)[0];
-      if (!grouped[date]) {
-        grouped[date] = [];
-      }
-      grouped[date].push(report);
-    });
+    try {
+      (archivedReports || []).forEach(report => {
+        const raw = report?.date_submitted;
+        const date = typeof raw === 'string' ? raw.split(/[T\s]/)[0] : '';
+        if (!date) return;
+        if (!grouped[date]) {
+          grouped[date] = [];
+        }
+        grouped[date].push(report);
+      });
 
-    setGroupedReports(grouped);
-    
-    const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
-    if (dates.length > 0) {
-      setExpandedGroups(new Set([dates[0]]));
+      setGroupedReports(grouped);
+
+      const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+      if (dates.length > 0) {
+        setExpandedGroups(new Set([dates[0]]));
+      }
+    } catch (err) {
+      console.error('ArchivedReportsView: failed to group reports', err);
+      setGroupedReports({});
     }
   }, [archivedReports]);
 
@@ -87,9 +95,13 @@ const ArchivedReportsView: React.FC<ArchivedReportsViewProps> = ({
   };
 
   const handleRestore = async () => {
-    if (selectedReports.size === 0) return;
-    await onRestore(Array.from(selectedReports));
-    setSelectedReports(new Set());
+    if (selectedReports.size === 0 || !onRestore) return;
+    try {
+      await onRestore(Array.from(selectedReports));
+      setSelectedReports(new Set());
+    } catch (err) {
+      console.error('Failed to restore reports:', err);
+    }
   };
 
   const toggleReportSelection = (reportId: number) => {
@@ -287,7 +299,7 @@ const ArchivedReportsView: React.FC<ArchivedReportsViewProps> = ({
                               Full Name
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              PC Number
+                              Reported for / Submitted from
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Computer
@@ -325,8 +337,21 @@ const ArchivedReportsView: React.FC<ArchivedReportsViewProps> = ({
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                 {report.student_name}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <Badge variant="info">{report.pc_number}</Badge>
+                              <td className="px-6 py-4">
+                                <div className="flex flex-col gap-0.5">
+                                  <Badge variant="info">Reported for: {report.pc_number}</Badge>
+                                  {(() => {
+                                    const { reportedForAnotherPC, submittedFrom } = parseReportContext(report.comments);
+                                    if (!reportedForAnotherPC && !submittedFrom) return null;
+                                    return (
+                                      <span className="text-xs text-gray-500">
+                                        {reportedForAnotherPC && 'Reported for another PC'}
+                                        {reportedForAnotherPC && submittedFrom && ' · '}
+                                        {submittedFrom && `Submitted from: ${submittedFrom}`}
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
                                 <Badge variant={getStatusBadgeVariant(report.computer_status)}>

@@ -11,16 +11,22 @@ import {
 } from 'lucide-react';
 import {
   GetPendingFeedback,
+  GetConfirmedFeedback,
+  ConfirmFeedback,
   ForwardFeedbackToAdmin,
   ForwardMultipleFeedbackToAdmin,
 } from '../../../wailsjs/go/main/App';
 import { useAuth } from '../../contexts/AuthContext';
+import { parseReportContext } from '../../utils/feedbackComments';
 import { Feedback } from './types';
+
+type SectionTab = 'awaiting' | 'ready_to_forward';
 
 function EquipmentReports() {
   const { user } = useAuth();
   const [feedbackList, setFeedbackList] = useState<Feedback[]>([]);
-  const [reportFilter, setReportFilter] = useState<'all' | 'issue_now' | 'logout_feedback'>('all');
+  const [confirmedList, setConfirmedList] = useState<Feedback[]>([]);
+  const [sectionTab, setSectionTab] = useState<SectionTab>('awaiting');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
@@ -28,32 +34,38 @@ function EquipmentReports() {
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [showBatchForwardModal, setShowBatchForwardModal] = useState(false);
   const [forwardNotes, setForwardNotes] = useState('');
-  const [verificationDecision, setVerificationDecision] = useState<'confirmed' | 'not_confirmed' | ''>('');
-  const [recommendation, setRecommendation] = useState('');
   const [forwarding, setForwarding] = useState(false);
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedReportForDetails, setSelectedReportForDetails] = useState<Feedback | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmFeedback, setConfirmFeedback] = useState<Feedback | null>(null);
+  const [confirmDecision, setConfirmDecision] = useState<'confirm' | 'reject' | null>(null);
+  const [confirmNotes, setConfirmNotes] = useState('');
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
-    loadPendingFeedback();
+    loadAllFeedback();
 
-    // Auto-refresh every 30 seconds to show new feedback submissions
     const refreshInterval = setInterval(() => {
-      loadPendingFeedback();
+      loadAllFeedback();
     }, 30000);
 
     return () => clearInterval(refreshInterval);
   }, []);
 
-  const loadPendingFeedback = async () => {
+  const loadAllFeedback = async () => {
     try {
-      const data = await GetPendingFeedback();
-      setFeedbackList(data || []);
+      const [pending, confirmed] = await Promise.all([
+        GetPendingFeedback(),
+        GetConfirmedFeedback(),
+      ]);
+      setFeedbackList(pending || []);
+      setConfirmedList(confirmed || []);
       setError('');
     } catch (error) {
-      console.error('Failed to load pending feedback:', error);
-      setError('Unable to load pending feedback. Make sure you are connected to the database.');
+      console.error('Failed to load feedback:', error);
+      setError('Unable to load feedback. Make sure you are connected to the database.');
     } finally {
       setLoading(false);
     }
@@ -64,104 +76,56 @@ function EquipmentReports() {
     setTimeout(() => setNotification(null), 5000);
   };
 
-  const isIssueNowReport = (feedback: Feedback) => {
-    return (feedback.comments || '').includes('Report Context:');
+  const currentList = sectionTab === 'awaiting' ? feedbackList : confirmedList;
+  const visibleFeedbackList = currentList;
+
+  const handleConfirmClick = (feedback: Feedback, decision: 'confirm' | 'reject') => {
+    setConfirmFeedback(feedback);
+    setConfirmDecision(decision);
+    setConfirmNotes('');
+    setShowConfirmModal(true);
   };
 
-  const parseIssueNowDetails = (comments?: string) => {
-    const raw = comments || '';
-    const tokens = raw.split(/[\n;]+/).map((token) => token.trim()).filter(Boolean);
-
-    const getValue = (label: string) => {
-      const match = tokens.find((token) => token.toLowerCase().startsWith(`${label.toLowerCase()}:`));
-      return match ? match.substring(match.indexOf(':') + 1).trim() : '';
-    };
-
-    const issueCategory = getValue('Issue Category');
-    const reportContext = getValue('Report Context');
-    const reportedBy = getValue('Reported By');
-    const urgency = getValue('Urgency');
-    const targetPCNumber = getValue('Target PC Number');
-    const affectedStudentID = getValue('Affected Student ID');
-
-    const issueDetailToken = tokens.find((token) =>
-      /^(Computer|Monitor|Keyboard|Mouse):/i.test(token),
-    );
-    const issueDescription = issueDetailToken
-      ? issueDetailToken.substring(issueDetailToken.indexOf(':') + 1).trim()
-      : '';
-
-    const additional = getValue('Additional');
-
-    return {
-      issueCategory,
-      reportContext,
-      reportedBy,
-      urgency,
-      targetPCNumber,
-      affectedStudentID,
-      issueDescription,
-      additional,
-    };
-  };
-
-  const issueNowReports = feedbackList.filter((feedback) => isIssueNowReport(feedback));
-  const logoutFeedbackReports = feedbackList.filter((feedback) => !isIssueNowReport(feedback));
-
-  const visibleFeedbackList = reportFilter === 'issue_now'
-    ? issueNowReports
-    : reportFilter === 'logout_feedback'
-    ? logoutFeedbackReports
-    : feedbackList;
-
-  const selectedReportIsIssueNow = selectedReportForDetails ? isIssueNowReport(selectedReportForDetails) : false;
-  const selectedIssueNowDetails = selectedReportForDetails ? parseIssueNowDetails(selectedReportForDetails.comments) : null;
-
-  const buildForwardNotes = () => {
-    const decisionLabel = verificationDecision === 'confirmed'
-      ? 'Confirmed issue'
-      : 'Not confirmed';
-
-    const parts: string[] = [
-      `Verification: ${decisionLabel}`,
-      `Recommendation: ${recommendation.trim() || 'N/A'}`,
-    ];
-
-    const trimmedForwardNotes = forwardNotes.trim();
-    if (trimmedForwardNotes) {
-      parts.push(`Working Student Notes: ${trimmedForwardNotes}`);
+  const handleConfirmSubmit = async () => {
+    if (!confirmFeedback || !user || !confirmDecision) return;
+    setConfirming(true);
+    try {
+      await ConfirmFeedback(confirmFeedback.id, user.id, confirmDecision === 'confirm', confirmNotes.trim());
+      showNotification(
+        'success',
+        confirmDecision === 'confirm'
+          ? 'Report confirmed. It can now be forwarded to admin.'
+          : 'Report marked as not confirmed.'
+      );
+      setShowConfirmModal(false);
+      setConfirmFeedback(null);
+      setConfirmDecision(null);
+      setConfirmNotes('');
+      await loadAllFeedback();
+    } catch (error) {
+      console.error('Failed to confirm/reject feedback:', error);
+      showNotification('error', 'Failed to save. Please try again.');
+    } finally {
+      setConfirming(false);
     }
-
-    return parts.join('\n');
   };
 
   const handleForwardClick = (feedback: Feedback) => {
     setSelectedFeedback(feedback);
     setForwardNotes('');
-    setVerificationDecision('');
-    setRecommendation('');
     setShowForwardModal(true);
   };
 
   const handleForwardSubmit = async () => {
     if (!selectedFeedback || !user) return;
-
-    if (!verificationDecision) {
-      showNotification('error', 'Please confirm whether the report is true before forwarding.');
-      return;
-    }
-
     setForwarding(true);
     try {
-      const compiledNotes = buildForwardNotes();
-      await ForwardFeedbackToAdmin(selectedFeedback.id, user.id, compiledNotes);
+      await ForwardFeedbackToAdmin(selectedFeedback.id, user.id, forwardNotes.trim());
       showNotification('success', 'Feedback forwarded to admin successfully!');
       setShowForwardModal(false);
       setSelectedFeedback(null);
       setForwardNotes('');
-      setVerificationDecision('');
-      setRecommendation('');
-      await loadPendingFeedback(); // Refresh the list
+      await loadAllFeedback();
     } catch (error) {
       console.error('Failed to forward feedback:', error);
       showNotification('error', 'Failed to forward feedback. Please try again.');
@@ -176,33 +140,22 @@ function EquipmentReports() {
       return;
     }
     setForwardNotes('');
-    setVerificationDecision('');
-    setRecommendation('');
     setShowBatchForwardModal(true);
   };
 
   const handleBatchForwardSubmit = async () => {
     if (selectedFeedbackIds.size === 0 || !user) return;
-
-    if (!verificationDecision) {
-      showNotification('error', 'Please confirm whether the selected reports are true before forwarding.');
-      return;
-    }
-
     setForwarding(true);
     try {
       const feedbackIdsArray = Array.from(selectedFeedbackIds);
-      const compiledNotes = buildForwardNotes();
-      const count = await ForwardMultipleFeedbackToAdmin(feedbackIdsArray, user.id, compiledNotes);
+      const count = await ForwardMultipleFeedbackToAdmin(feedbackIdsArray, user.id, forwardNotes.trim());
       showNotification('success', `Successfully forwarded ${count} report${count !== 1 ? 's' : ''} to admin!`);
       setShowBatchForwardModal(false);
       setSelectedFeedbackIds(new Set());
       setForwardNotes('');
-      setVerificationDecision('');
-      setRecommendation('');
-      await loadPendingFeedback(); // Refresh the list
+      await loadAllFeedback();
     } catch (error) {
-      console.error('Failed to forward feedback:', error);
+      console.error('Failed to batch forward:', error);
       showNotification('error', 'Failed to forward feedback. Please try again.');
     } finally {
       setForwarding(false);
@@ -305,40 +258,32 @@ function EquipmentReports() {
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setReportFilter('all')}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-            reportFilter === 'all'
-              ? 'bg-blue-100 text-blue-700 border-blue-200'
-              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-          }`}
-        >
-          All ({feedbackList.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setReportFilter('issue_now')}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-            reportFilter === 'issue_now'
-              ? 'bg-orange-100 text-orange-700 border-orange-200'
-              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-          }`}
-        >
-          Report Issue Now ({issueNowReports.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setReportFilter('logout_feedback')}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-            reportFilter === 'logout_feedback'
-              ? 'bg-green-100 text-green-700 border-green-200'
-              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-          }`}
-        >
-          Logout Feedback ({logoutFeedbackReports.length})
-        </button>
+      {/* Section: Awaiting verification vs Ready to forward */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-100">
+          <button
+            type="button"
+            onClick={() => { setSectionTab('awaiting'); setSelectedFeedbackIds(new Set()); }}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              sectionTab === 'awaiting'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Awaiting your verification ({feedbackList.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => { setSectionTab('ready_to_forward'); setSelectedFeedbackIds(new Set()); }}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              sectionTab === 'ready_to_forward'
+                ? 'bg-white text-gray-900 shadow-sm'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            Verified – ready to forward ({confirmedList.length})
+          </button>
+        </div>
       </div>
 
       {visibleFeedbackList.length === 0 ? (
@@ -347,8 +292,8 @@ function EquipmentReports() {
         </div>
       ) : (
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          {/* Batch Actions Bar */}
-          {selectedFeedbackIds.size > 0 && (
+          {/* Batch Actions Bar - only for "Verified - ready to forward" */}
+          {sectionTab === 'ready_to_forward' && selectedFeedbackIds.size > 0 && (
             <div className="px-6 py-3 bg-blue-50 border-b border-blue-200 flex items-center justify-between">
               <div className="text-sm text-gray-700">
                 <span className="font-semibold text-blue-900">{selectedFeedbackIds.size}</span> report{selectedFeedbackIds.size !== 1 ? 's' : ''} selected
@@ -377,29 +322,35 @@ function EquipmentReports() {
               <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
                 <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider" style={{ minWidth: '50px' }}>
-                      <input
-                        type="checkbox"
-                        checked={visibleFeedbackList.length > 0 && visibleFeedbackList.every((feedback) => selectedFeedbackIds.has(feedback.id))}
-                        onChange={(e) => handleSelectAll(e.target.checked)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                    </th>
+                    {sectionTab === 'ready_to_forward' ? (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider" style={{ minWidth: '50px' }}>
+                        <input
+                          type="checkbox"
+                          checked={visibleFeedbackList.length > 0 && visibleFeedbackList.every((feedback) => selectedFeedbackIds.has(feedback.id))}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                      </th>
+                    ) : (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider" style={{ minWidth: '50px' }} />
+                    )}
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
                       Student ID
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '130px' }}>
-                      Report Type
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '180px' }}>
                       Full Name
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
-                      PC Number
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                      Reported for / Submitted from
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                       Date
                     </th>
+                    {sectionTab === 'ready_to_forward' && (
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                        Verified at
+                      </th>
+                    )}
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
                       Actions
                     </th>
@@ -409,36 +360,42 @@ function EquipmentReports() {
                   {visibleFeedbackList.map((feedback) => (
                     <tr key={feedback.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-4 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={selectedFeedbackIds.has(feedback.id)}
-                          onChange={(e) => handleSelectFeedback(feedback.id, e.target.checked)}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
+                        {sectionTab === 'ready_to_forward' ? (
+                          <input
+                            type="checkbox"
+                            checked={selectedFeedbackIds.has(feedback.id)}
+                            onChange={(e) => handleSelectFeedback(feedback.id, e.target.checked)}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                        ) : (
+                          <span className="sr-only">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-700">
                           {feedback.student_id_str}
                         </div>
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        {isIssueNowReport(feedback) ? (
-                          <span className="px-2.5 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-semibold">
-                            Report Issue Now
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">
-                            Logout Feedback
-                          </span>
-                        )}
-                      </td>
                       <td className="px-4 py-4 text-sm font-medium text-gray-900" style={{ wordBreak: 'break-word' }}>
                         {feedback.student_name}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
-                          {feedback.pc_number}
-                        </span>
+                      <td className="px-4 py-4">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold w-fit">
+                            Reported for: {feedback.pc_number}
+                          </span>
+                          {(() => {
+                            const { reportedForAnotherPC, submittedFrom } = parseReportContext(feedback.comments);
+                            if (!reportedForAnotherPC && !submittedFrom) return null;
+                            return (
+                              <span className="text-xs text-gray-500">
+                                {reportedForAnotherPC && 'Reported for another PC'}
+                                {reportedForAnotherPC && submittedFrom && ' · '}
+                                {submittedFrom && `Submitted from: ${submittedFrom}`}
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-700">
@@ -449,8 +406,22 @@ function EquipmentReports() {
                           }) : '-'}
                         </div>
                       </td>
+                      {sectionTab === 'ready_to_forward' && (
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <span className="text-sm text-gray-600">
+                            {feedback.verified_at
+                              ? new Date(feedback.verified_at).toLocaleString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })
+                              : '—'}
+                          </span>
+                        </td>
+                      )}
                       <td className="px-4 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Button
                             variant="outline"
                             size="sm"
@@ -462,14 +433,36 @@ function EquipmentReports() {
                           >
                             View Details
                           </Button>
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() => handleForwardClick(feedback)}
-                            icon={<Send className="h-4 w-4" />}
-                          >
-                            Forward
-                          </Button>
+                          {sectionTab === 'awaiting' ? (
+                            <>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                onClick={() => handleConfirmClick(feedback, 'confirm')}
+                                icon={<CheckCircle className="h-4 w-4" />}
+                              >
+                                Confirm issue
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleConfirmClick(feedback, 'reject')}
+                                className="border-red-200 text-red-700 hover:bg-red-50"
+                                icon={<XCircle className="h-4 w-4" />}
+                              >
+                                Reject
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={() => handleForwardClick(feedback)}
+                              icon={<Send className="h-4 w-4" />}
+                            >
+                              Forward
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -480,7 +473,9 @@ function EquipmentReports() {
           </div>
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
             <div className="text-sm text-gray-600">
-              Showing <span className="font-semibold text-gray-900">{visibleFeedbackList.length}</span> pending report{visibleFeedbackList.length !== 1 ? 's' : ''}
+              {sectionTab === 'awaiting'
+                ? `Showing ${visibleFeedbackList.length} report${visibleFeedbackList.length !== 1 ? 's' : ''} awaiting your verification`
+                : `Showing ${visibleFeedbackList.length} verified report${visibleFeedbackList.length !== 1 ? 's' : ''} ready to forward`}
             </div>
           </div>
         </div>
@@ -526,8 +521,19 @@ function EquipmentReports() {
                     <p className="font-medium text-gray-900">{selectedFeedback.student_name}</p>
                   </div>
                   <div>
-                    <span className="text-gray-600">PC Number:</span>
+                    <span className="text-gray-600">Reported for (PC):</span>
                     <p className="font-medium text-gray-900">{selectedFeedback.pc_number}</p>
+                    {(() => {
+                      const { reportedForAnotherPC, submittedFrom } = parseReportContext(selectedFeedback.comments);
+                      if (!reportedForAnotherPC && !submittedFrom) return null;
+                      return (
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {reportedForAnotherPC && 'Reported for another PC'}
+                          {reportedForAnotherPC && submittedFrom && ' · '}
+                          {submittedFrom && `Submitted from: ${submittedFrom}`}
+                        </p>
+                      );
+                    })()}
                   </div>
                   <div>
                     <span className="text-gray-600">Date:</span>
@@ -588,50 +594,9 @@ function EquipmentReports() {
                 )}
               </div>
 
-              {/* Verification & Recommendation */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Verification Result <span className="text-red-500">*</span>
-                </label>
-                <div className="space-y-2 mb-4">
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="radio"
-                      name="verification"
-                      value="confirmed"
-                      checked={verificationDecision === 'confirmed'}
-                      onChange={() => setVerificationDecision('confirmed')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                    />
-                    Confirmed issue (true)
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="radio"
-                      name="verification"
-                      value="not_confirmed"
-                      checked={verificationDecision === 'not_confirmed'}
-                      onChange={() => setVerificationDecision('not_confirmed')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                    />
-                    Not confirmed (not true)
-                  </label>
-                </div>
-
-                <label htmlFor="recommendation" className="block text-sm font-medium text-gray-700 mb-2">
-                  Recommendation (Optional)
-                </label>
-                <textarea
-                  id="recommendation"
-                  rows={3}
-                  value={recommendation}
-                  onChange={(e) => setRecommendation(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
-                  placeholder="Suggest a fix or next action for admin..."
-                />
-
                 <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-2">
-                  Additional Notes (Optional)
+                  Notes (Optional)
                 </label>
                 <textarea
                   id="notes"
@@ -639,7 +604,7 @@ function EquipmentReports() {
                   value={forwardNotes}
                   onChange={(e) => setForwardNotes(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Add any observations or recommendations for the admin..."
+                  placeholder="Add any notes for the admin..."
                 />
               </div>
 
@@ -658,6 +623,98 @@ function EquipmentReports() {
                   loading={forwarding}
                 >
                   Forward to Admin
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm / Reject Modal */}
+      {showConfirmModal && confirmFeedback && confirmDecision && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowConfirmModal(false);
+              setConfirmFeedback(null);
+              setConfirmDecision(null);
+              setConfirmNotes('');
+            }
+          }}
+        >
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 relative">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setShowConfirmModal(false);
+                setConfirmFeedback(null);
+                setConfirmDecision(null);
+                setConfirmNotes('');
+              }}
+              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold"
+            >
+              ×
+            </Button>
+            <div className="p-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className={`p-2 rounded-lg ${confirmDecision === 'confirm' ? 'bg-green-100' : 'bg-red-100'}`}>
+                  {confirmDecision === 'confirm' ? (
+                    <CheckCircle className="h-6 w-6 text-green-600" />
+                  ) : (
+                    <XCircle className="h-6 w-6 text-red-600" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">
+                    {confirmDecision === 'confirm' ? 'Confirm issue' : 'Reject report'}
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-0.5">
+                    {confirmFeedback.student_name} · Reported for: PC {confirmFeedback.pc_number}
+                    {(() => {
+                      const { submittedFrom } = parseReportContext(confirmFeedback.comments);
+                      return submittedFrom ? ` · Submitted from: ${submittedFrom}` : '';
+                    })()}
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-gray-700 mb-4">
+                {confirmDecision === 'confirm'
+                  ? 'Confirm that the reported equipment issue is true. Once confirmed, this report can be forwarded to admin.'
+                  : 'Mark this report as not confirmed (issue not verified). It will not be forwarded to admin.'}
+              </p>
+              <label htmlFor="confirm-notes" className="block text-sm font-medium text-gray-700 mb-2">
+                Notes (optional)
+              </label>
+              <textarea
+                id="confirm-notes"
+                rows={3}
+                value={confirmNotes}
+                onChange={(e) => setConfirmNotes(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-6"
+                placeholder="Add verification notes..."
+              />
+              <div className="flex justify-end gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowConfirmModal(false);
+                    setConfirmFeedback(null);
+                    setConfirmDecision(null);
+                    setConfirmNotes('');
+                  }}
+                  disabled={confirming}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleConfirmSubmit}
+                  loading={confirming}
+                  className={confirmDecision === 'reject' ? 'bg-red-600 hover:bg-red-700' : ''}
+                >
+                  {confirmDecision === 'confirm' ? 'Confirm issue' : 'Reject report'}
                 </Button>
               </div>
             </div>
@@ -700,61 +757,26 @@ function EquipmentReports() {
               <div className="bg-gray-50 rounded-lg p-4 mb-6 max-h-48 overflow-y-auto">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Selected Reports</h4>
                 <div className="space-y-2">
-                  {feedbackList
+                  {confirmedList
                     .filter(f => selectedFeedbackIds.has(f.id))
                     .map((feedback) => (
                       <div key={feedback.id} className="text-sm text-gray-700 flex items-center justify-between py-1 border-b border-gray-200 last:border-0">
                         <span className="font-medium">{feedback.student_name}</span>
-                        <span className="text-gray-500">PC {feedback.pc_number}</span>
+                        <span className="text-gray-500">
+                          Reported for: PC {feedback.pc_number}
+                          {(() => {
+                            const { submittedFrom } = parseReportContext(feedback.comments);
+                            return submittedFrom ? ` · from ${submittedFrom}` : '';
+                          })()}
+                        </span>
                       </div>
                     ))}
                 </div>
               </div>
 
-              {/* Verification & Recommendation */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Verification Result for Selected Reports <span className="text-red-500">*</span>
-                </label>
-                <div className="space-y-2 mb-4">
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="radio"
-                      name="batch-verification"
-                      value="confirmed"
-                      checked={verificationDecision === 'confirmed'}
-                      onChange={() => setVerificationDecision('confirmed')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                    />
-                    Confirmed issue (true)
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="radio"
-                      name="batch-verification"
-                      value="not_confirmed"
-                      checked={verificationDecision === 'not_confirmed'}
-                      onChange={() => setVerificationDecision('not_confirmed')}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                    />
-                    Not confirmed (not true)
-                  </label>
-                </div>
-
-                <label htmlFor="batch-recommendation" className="block text-sm font-medium text-gray-700 mb-2">
-                  Recommendation (Optional)
-                </label>
-                <textarea
-                  id="batch-recommendation"
-                  rows={3}
-                  value={recommendation}
-                  onChange={(e) => setRecommendation(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
-                  placeholder="Suggest a fix or next action for admin (applies to all selected reports)..."
-                />
-
                 <label htmlFor="batch-notes" className="block text-sm font-medium text-gray-700 mb-2">
-                  Additional Notes (Optional)
+                  Notes (Optional)
                 </label>
                 <textarea
                   id="batch-notes"
@@ -762,7 +784,7 @@ function EquipmentReports() {
                   value={forwardNotes}
                   onChange={(e) => setForwardNotes(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Add any observations or recommendations for the admin (applies to all selected reports)..."
+                  placeholder="Add any notes for the admin (applies to all selected reports)..."
                 />
               </div>
 
@@ -814,12 +836,8 @@ function EquipmentReports() {
                   <FileText className="h-6 w-6 text-blue-600" />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-bold text-gray-900">
-                      {selectedReportIsIssueNow ? 'Issue Report Details' : 'Equipment Report Details'}
-                  </h3>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {selectedReportIsIssueNow ? 'Immediate issue report submitted by student' : 'Logout equipment feedback submitted by student'}
-                    </p>
+                  <h3 className="text-2xl font-bold text-gray-900">Equipment Report Details</h3>
+                  <p className="text-sm text-gray-600 mt-1">Equipment feedback submitted by student</p>
                 </div>
               </div>
 
@@ -838,8 +856,19 @@ function EquipmentReports() {
                       <p className="font-medium text-gray-900">{selectedReportForDetails.student_id_str}</p>
                     </div>
                     <div>
-                      <span className="text-gray-600">PC Number:</span>
+                      <span className="text-gray-600">Reported for (PC):</span>
                       <p className="font-medium text-gray-900">{selectedReportForDetails.pc_number}</p>
+                      {(() => {
+                        const { reportedForAnotherPC, submittedFrom } = parseReportContext(selectedReportForDetails.comments);
+                        if (!reportedForAnotherPC && !submittedFrom) return null;
+                        return (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {reportedForAnotherPC && 'Reported for another PC'}
+                            {reportedForAnotherPC && submittedFrom && ' · '}
+                            {submittedFrom && `Submitted from: ${submittedFrom}`}
+                          </p>
+                        );
+                      })()}
                     </div>
                     <div>
                       <span className="text-gray-600">Date Submitted:</span>
@@ -856,53 +885,7 @@ function EquipmentReports() {
                   </div>
                 </div>
 
-                {selectedReportIsIssueNow ? (
-                  <>
-                    <div className="bg-orange-50 rounded-lg p-4">
-                      <h4 className="text-sm font-semibold text-gray-700 mb-3">Issue Report Details</h4>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <span className="text-gray-600">Issue Category:</span>
-                          <p className="font-medium text-gray-900">{selectedIssueNowDetails?.issueCategory || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Urgency:</span>
-                          <p className="font-medium text-gray-900">{selectedIssueNowDetails?.urgency || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Report Context:</span>
-                          <p className="font-medium text-gray-900">{selectedIssueNowDetails?.reportContext || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Reported By:</span>
-                          <p className="font-medium text-gray-900">{selectedIssueNowDetails?.reportedBy || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Target PC Number:</span>
-                          <p className="font-medium text-gray-900">{selectedIssueNowDetails?.targetPCNumber || 'N/A'}</p>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Affected Student ID:</span>
-                          <p className="font-medium text-gray-900">{selectedIssueNowDetails?.affectedStudentID || 'N/A'}</p>
-                        </div>
-                      </div>
-                      <div className="mt-4">
-                        <span className="text-gray-600 text-sm">Issue Description:</span>
-                        <p className="text-sm font-medium text-gray-900 mt-1 whitespace-pre-wrap">
-                          {selectedIssueNowDetails?.issueDescription || 'N/A'}
-                        </p>
-                      </div>
-                      {selectedIssueNowDetails?.additional && (
-                        <div className="mt-3">
-                          <span className="text-gray-600 text-sm">Additional Note:</span>
-                          <p className="text-sm text-gray-900 mt-1 whitespace-pre-wrap">{selectedIssueNowDetails.additional}</p>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="bg-gray-50 rounded-lg p-4">
+                <div className="bg-gray-50 rounded-lg p-4">
                       <h4 className="text-sm font-semibold text-gray-700 mb-3">Equipment Conditions</h4>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
@@ -956,13 +939,11 @@ function EquipmentReports() {
                       </div>
                     </div>
 
-                    {selectedReportForDetails.comments && (
-                      <div className="bg-blue-50 rounded-lg p-4">
-                        <h4 className="text-sm font-semibold text-gray-700 mb-2">Student Comments</h4>
-                        <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedReportForDetails.comments}</p>
-                      </div>
-                    )}
-                  </>
+                {selectedReportForDetails.comments && (
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2">Student Comments</h4>
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedReportForDetails.comments}</p>
+                  </div>
                 )}
               </div>
 

@@ -50,12 +50,42 @@ function DashboardOverview() {
       ...prev,
     ].slice(0, 10));
   };
+  const upsertNotification = (id: string, message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
+    setNotifications((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      return [
+        {
+          id,
+          message,
+          createdAt: Date.now(),
+          tone,
+        },
+        ...next,
+      ].slice(0, 10);
+    });
+  };
 
   useEffect(() => {
     const loadStats = async () => {
       try {
         const data = await GetAdminDashboard();
         setStats(data);
+        upsertNotification('admin-active-users', `Active users now: ${data.active_users_now}.`, 'info');
+        upsertNotification(
+          'admin-pending-feedback',
+          data.pending_feedback > 0
+            ? `${data.pending_feedback} feedback report(s) pending action.`
+            : 'No pending feedback reports.',
+          data.pending_feedback > 0 ? 'warning' : 'success'
+        );
+        upsertNotification(
+          'admin-locked-accounts',
+          data.locked_accounts > 0
+            ? `${data.locked_accounts} locked account(s) need review.`
+            : 'No locked accounts awaiting review.',
+          data.locked_accounts > 0 ? 'warning' : 'success'
+        );
+        upsertNotification('admin-today-logins', `Today's logins: ${data.today_logins}.`, 'info');
 
         const previous = previousStatsRef.current;
         if (!previous) {
@@ -281,15 +311,17 @@ function DashboardOverview() {
           </Card>
         </div>
 
-        <Card className="h-fit">
-          <CardHeader title="Notifications" />
-          <CardBody>
-            <DashboardNotifications
-              items={notifications}
-              emptyMessage="No new admin alerts."
-            />
-          </CardBody>
-        </Card>
+        <div className="md:border-l md:border-gray-300 md:pl-6">
+          <Card className="h-fit">
+            <CardHeader title="Notifications" />
+            <CardBody>
+              <DashboardNotifications
+                items={notifications}
+                emptyMessage="No new admin alerts."
+              />
+            </CardBody>
+          </Card>
+        </div>
       </div>
     </div>
   );

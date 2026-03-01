@@ -360,7 +360,8 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                             </div>
                             <button
                               onClick={() => {
-                                navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}`, {
+                                const sessionQuery = sheet.session_id ? `&sessionId=${sheet.session_id}` : '';
+                                navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}${sessionQuery}`, {
                                   state: {
                                     fromArchiveModal: true,
                                     returnToArchiveTab: 'attendance',

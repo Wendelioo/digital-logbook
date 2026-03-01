@@ -9,6 +9,7 @@ import {
   GetStudentFeedback,
 } from '../../../wailsjs/go/main/App';
 import { useAuth } from '../../contexts/AuthContext';
+import { parseReportContext } from '../../utils/feedbackComments';
 import { Feedback } from './types';
 
 function FeedbackHistory() {
@@ -237,7 +238,7 @@ function FeedbackHistory() {
                         Date & Time
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        PC Number
+                        Reported for / Submitted from
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Computer
@@ -279,10 +280,23 @@ function FeedbackHistory() {
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full font-medium">
-                        {feedback.pc_number}
-                      </span>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full font-medium w-fit">
+                          Reported for: {feedback.pc_number}
+                        </span>
+                        {(() => {
+                          const { reportedForAnotherPC, submittedFrom } = parseReportContext(feedback.comments);
+                          if (!reportedForAnotherPC && !submittedFrom) return null;
+                          return (
+                            <span className="text-xs text-gray-500">
+                              {reportedForAnotherPC && 'Reported for another PC'}
+                              {reportedForAnotherPC && submittedFrom && ' · '}
+                              {submittedFrom && `Submitted from: ${submittedFrom}`}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${feedback.equipment_condition === 'Good'

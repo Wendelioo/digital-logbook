@@ -34,6 +34,8 @@ export function CloseClass(arg1:number):Promise<void>;
 
 export function CloseSessionsForCurrentHost():Promise<void>;
 
+export function ConfirmFeedback(arg1:number,arg2:number,arg3:boolean,arg4:string):Promise<void>;
+
 export function CreateAttendanceSession(arg1:number,arg2:string,arg3:string,arg4:number,arg5:number,arg6:number):Promise<main.AttendanceSession>;
 
 export function CreateClass(arg1:string,arg2:number,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:number):Promise<number>;
@@ -158,6 +160,8 @@ export function GetClassesByEDPCode(arg1:string):Promise<Array<main.CourseClass>
 
 export function GetCompletedEnrollments(arg1:number):Promise<Array<main.ClasslistEntry>>;
 
+export function GetConfirmedFeedback():Promise<Array<main.Feedback>>;
+
 export function GetDepartments():Promise<Array<main.Department>>;
 
 export function GetFeedback():Promise<Array<main.Feedback>>;
@@ -252,7 +256,7 @@ export function ResetPasswordByRole(arg1:number,arg2:number,arg3:string):Promise
 
 export function SaveAttendanceSession(arg1:number,arg2:number):Promise<void>;
 
-export function SaveEquipmentFeedback(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string):Promise<void>;
+export function SaveEquipmentFeedback(arg1:number,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string,arg12:string):Promise<void>;
 
 export function SaveProfilePhoto(arg1:number,arg2:string):Promise<void>;
 

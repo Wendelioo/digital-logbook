@@ -45,3 +45,4 @@ export default StudentDashboard;
 export { MyClasses } from './StudentMyClasses';
 export { ArchivedClasses } from './StudentArchivedClasses';
 export { FeedbackHistory } from './StudentFeedbackHistory';
+export { default as StudentAttendance } from './StudentAttendance';

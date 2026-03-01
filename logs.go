@@ -238,6 +238,9 @@ func (a *App) UnarchiveLogs(logIDs []int) error {
 	if len(logIDs) == 0 {
 		return fmt.Errorf("no log IDs provided")
 	}
+	if err := ValidatePositiveIDs(logIDs, "log ID"); err != nil {
+		return err
+	}
 
 	placeholders := make([]string, len(logIDs))
 	args := make([]interface{}, len(logIDs))
@@ -1067,6 +1070,12 @@ func (a *App) ArchiveLogs(logIDs []int, adminUserID int) (int, error) {
 
 	if len(logIDs) == 0 {
 		return 0, fmt.Errorf("no log IDs provided")
+	}
+	if err := ValidatePositiveIDs(logIDs, "log ID"); err != nil {
+		return 0, err
+	}
+	if err := ValidatePositiveID(adminUserID, "admin user ID"); err != nil {
+		return 0, err
 	}
 
 	// Build placeholders for the IN clause

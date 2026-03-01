@@ -190,7 +190,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
 
   const progress = mode === 'logout' ? (logoutCompletedItems / 4) * 100 : 100;
   const canSubmit = mode === 'logout'
-    ? progress === 100
+    ? progress === 100 && (feedback.reportingContext === 'current_pc' || feedback.targetPCNumber.trim().length > 0)
     : feedback.issueDescription.trim().length > 0 &&
       (feedback.reportingContext === 'current_pc' || feedback.targetPCNumber.trim().length > 0);
 
@@ -316,7 +316,42 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
           )}
 
           {mode === 'logout' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <>
+              <div className="border border-gray-200 rounded-xl p-4 mb-6 bg-gray-50">
+                <h4 className="text-sm font-semibold text-gray-800 mb-3">Reporting for</h4>
+                <div className="flex flex-wrap items-center gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="reportingContext"
+                      checked={feedback.reportingContext === 'current_pc'}
+                      onChange={() => setFeedback({ ...feedback, reportingContext: 'current_pc', targetPCNumber: '' })}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">This PC (the one I used)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="reportingContext"
+                      checked={feedback.reportingContext === 'other_pc'}
+                      onChange={() => setFeedback({ ...feedback, reportingContext: 'other_pc' })}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Another PC</span>
+                  </label>
+                  {feedback.reportingContext === 'other_pc' && (
+                    <input
+                      type="text"
+                      value={feedback.targetPCNumber}
+                      onChange={(e) => setFeedback({ ...feedback, targetPCNumber: e.target.value })}
+                      placeholder="PC number (e.g. PC-12)"
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent w-40"
+                    />
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <EquipmentItem
                 label="Computer"
                 icon={<Computer />}
@@ -345,6 +380,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
                 onChange={(value) => setFeedback({ ...feedback, monitor: value })}
               />
             </div>
+            </>
           ) : (
             <div className="border border-gray-200 rounded-xl p-4 mb-6 bg-white">
               <h4 className="text-sm font-semibold text-gray-800 mb-3">Issue Details</h4>

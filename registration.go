@@ -216,14 +216,23 @@ func (a *App) ProcessRegistration(req ApprovalRequest) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
+	if err := ValidatePositiveID(req.UserID, "user ID"); err != nil {
+		return err
+	}
+	if err := ValidatePositiveID(req.ApprovedBy, "approver user ID"); err != nil {
+		return err
+	}
 
 	// Validate action
 	if req.Action != "approve" && req.Action != "reject" {
 		return fmt.Errorf("invalid action: must be 'approve' or 'reject'")
 	}
 
-	if req.Action == "reject" && strings.TrimSpace(req.RejectionReason) == "" {
-		return fmt.Errorf("rejection reason is required")
+	if req.Action == "reject" {
+		if strings.TrimSpace(req.RejectionReason) == "" {
+			return fmt.Errorf("rejection reason is required")
+		}
+		req.RejectionReason, _ = ValidateRejectionReason(req.RejectionReason)
 	}
 
 	// Start transaction
@@ -288,30 +297,37 @@ func validateRegistration(req RegistrationRequest) error {
 	if strings.TrimSpace(req.StudentID) == "" {
 		return fmt.Errorf("student ID is required")
 	}
-	if len(req.StudentID) < 4 || len(req.StudentID) > 50 {
-		return fmt.Errorf("student ID must be between 4 and 50 characters")
+	if err := ValidateStudentID(req.StudentID); err != nil {
+		return err
+	}
+	if len(strings.TrimSpace(req.StudentID)) < 4 {
+		return fmt.Errorf("student ID must be at least 4 characters")
 	}
 
 	// Name validation
-	if strings.TrimSpace(req.FirstName) == "" {
-		return fmt.Errorf("first name is required")
+	if err := ValidateRequiredName(req.FirstName, "first name"); err != nil {
+		return err
 	}
-	if strings.TrimSpace(req.LastName) == "" {
-		return fmt.Errorf("last name is required")
+	if err := ValidateRequiredName(req.LastName, "last name"); err != nil {
+		return err
+	}
+	if req.MiddleName != "" {
+		if err := ValidateName(req.MiddleName, "middle name"); err != nil {
+			return err
+		}
 	}
 
 	// Email validation
-	if strings.TrimSpace(req.Email) == "" {
-		return fmt.Errorf("email is required")
-	}
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
-	if !emailRegex.MatchString(req.Email) {
-		return fmt.Errorf("invalid email format")
+	if err := ValidateEmail(req.Email); err != nil {
+		return err
 	}
 
 	// Contact number validation
 	if strings.TrimSpace(req.ContactNumber) == "" {
 		return fmt.Errorf("contact number is required")
+	}
+	if err := ValidateContactNumber(req.ContactNumber); err != nil {
+		return err
 	}
 	// Allow Philippine mobile numbers (11 digits starting with 09) or landlines
 	phoneRegex := regexp.MustCompile(`^(09\d{9}|\d{7,15})$`)
@@ -321,8 +337,8 @@ func validateRegistration(req RegistrationRequest) error {
 	}
 
 	// Password validation
-	if strings.TrimSpace(req.Password) == "" {
-		return fmt.Errorf("password is required")
+	if err := ValidatePassword(req.Password); err != nil {
+		return err
 	}
 	if len(req.Password) < 8 {
 		return fmt.Errorf("password must be at least 8 characters long")

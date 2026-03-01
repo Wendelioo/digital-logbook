@@ -68,11 +68,17 @@ function AttendanceManagementDetail() {
         setSessionId(matched.session_id);
         setSessionStatus(matched.status);
         return { sessionId: matched.session_id as number, status: matched.status as 'open' | 'closed' };
-      } else {
-        setSessionId(null);
-        setSessionStatus(null);
-        return { sessionId: null as number | null, status: null as 'open' | 'closed' | null };
       }
+
+      if (hasRouteSessionId) {
+        setSessionId(routeSessionId);
+        setSessionStatus('closed');
+        return { sessionId: routeSessionId, status: 'closed' };
+      }
+
+      setSessionId(null);
+      setSessionStatus(null);
+      return { sessionId: null as number | null, status: null as 'open' | 'closed' | null };
     } catch (err) {
       console.error('Failed to load session metadata:', err);
       setSessionId(null);
