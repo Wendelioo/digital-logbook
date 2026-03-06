@@ -1,18 +1,13 @@
-package main
+package backend
 
 import (
 	"database/sql"
-	"encoding/base64"
-	"encoding/csv"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
-	docx "github.com/lukasjarosch/go-docx"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // ==============================================================================
@@ -113,6 +108,14 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 		return nil, err
 	}
 
+	sanitizedTerm, err := ValidateSearchTerm(searchTerm)
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateUserType(userType); err != nil {
+		return nil, err
+	}
+
 	query := `
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
@@ -162,7 +165,7 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 			CONVERT(VARCHAR(10), u.created_at, 120) LIKE ?
 		)
 	`
-	searchPattern := "%" + searchTerm + "%"
+	searchPattern := "%" + sanitizedTerm + "%"
 	args := []interface{}{
 		searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
 		searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
@@ -191,6 +194,46 @@ func (a *App) CreateUser(password, name, firstName, middleName, lastName, role, 
 		return err
 	}
 
+	// Input validation to prevent injection and malformed data
+	if err := ValidateStrongPassword(password); err != nil {
+		return err
+	}
+	if err := ValidateRequiredName(firstName, "first name"); err != nil {
+		return err
+	}
+	if err := ValidateRequiredName(lastName, "last name"); err != nil {
+		return err
+	}
+	if err := ValidateName(middleName, "middle name"); err != nil {
+		return err
+	}
+	if err := ValidateUserType(role); err != nil {
+		return err
+	}
+	if role == "admin" || role == "teacher" {
+		if err := ValidateEmployeeID(employeeID); err != nil {
+			return err
+		}
+	}
+	if role == "student" || role == "working_student" {
+		if err := ValidateStudentID(studentID); err != nil {
+			return err
+		}
+	}
+	if email != "" {
+		if err := ValidateEmail(email); err != nil {
+			return err
+		}
+	}
+	if contactNumber != "" {
+		if err := ValidateContactNumber(contactNumber); err != nil {
+			return err
+		}
+	}
+	if len(strings.TrimSpace(departmentCode)) > MaxLenDepartment {
+		return fmt.Errorf("department code must be at most %d characters", MaxLenDepartment)
+	}
+
 	log.Printf("CreateUser called - Role: %s, StudentID: %s, Email: %s", role, studentID, email)
 
 	// Determine username based on role
@@ -217,10 +260,16 @@ func (a *App) CreateUser(password, name, firstName, middleName, lastName, role, 
 		return err
 	}
 
+	// Hash password before storing
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
 	// Insert into users table
 	query := `INSERT INTO users (username, password, user_type) OUTPUT INSERTED.id VALUES (?, ?, ?)`
 	var userID int64
-	err := a.db.QueryRow(query, username, password, role).Scan(&userID)
+	err = a.db.QueryRow(query, username, string(hashedPassword), role).Scan(&userID)
 	if err != nil {
 		log.Printf("Failed to insert into users table: %v", err)
 		return fmt.Errorf("failed to create user account: %w", err)
@@ -273,6 +322,103 @@ func (a *App) DeleteUser(id int) error {
 	query := `DELETE FROM users WHERE id = ?`
 	_, err := a.db.Exec(query, id)
 	return err
+}
+
+// DeleteExpiredDeactivatedUsers permanently deletes accounts that have been deactivated
+// (suspended) for more than 30 days. Intended to be run periodically by an administrator.
+func (a *App) DeleteExpiredDeactivatedUsers() (int, error) {
+	if err := a.checkDB(); err != nil {
+		return 0, err
+	}
+
+	const days = 30
+
+	rows, err := a.db.Query(`
+		SELECT id
+		FROM users
+		WHERE account_status = 'suspended'
+		  AND is_active = 0
+		  AND updated_at <= DATEADD(DAY, -?, GETDATE())
+	`, days)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query expired deactivated users: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return 0, fmt.Errorf("failed to scan deactivated user id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	placeholders := "?"
+	args := make([]interface{}, len(ids))
+	args[0] = ids[0]
+	for i := 1; i < len(ids); i++ {
+		placeholders += ",?"
+		args[i] = ids[i]
+	}
+
+	deleteQuery := fmt.Sprintf(`DELETE FROM users WHERE id IN (%s)`, placeholders)
+	result, err := a.db.Exec(deleteQuery, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete expired deactivated users: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get affected row count: %w", err)
+	}
+
+	log.Printf("Deleted %d expired deactivated user account(s)", affected)
+	return int(affected), nil
+}
+
+// DeactivateTeacher deactivates a teacher account instead of immediate deletion.
+// The account remains in the system (inactive) for record purposes and can be reactivated.
+func (a *App) DeactivateTeacher(id int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	var userType string
+	err := a.db.QueryRow(`SELECT user_type FROM users WHERE id = ?`, id).Scan(&userType)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("user not found")
+		}
+		return err
+	}
+
+	if userType != "teacher" {
+		return fmt.Errorf("only teacher accounts can be deactivated with this action")
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE users
+		SET account_status = 'suspended', is_active = 0, updated_at = GETDATE()
+		WHERE id = ? AND (is_active = 1 OR account_status <> 'suspended')
+	`, id)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("teacher account is already deactivated or not eligible for deactivation")
+	}
+
+	return nil
 }
 
 // ArchiveUser archives a user account (teachers cannot be archived)
@@ -375,58 +521,6 @@ func (a *App) GetArchivedUsers() ([]User, error) {
 	defer rows.Close()
 
 	return a.scanUsers(rows)
-}
-
-// ==============================================================================
-// BULK USER CREATION METHODS
-// ==============================================================================
-
-// CreateUsersBulkFromFile creates multiple students from uploaded file (PDF, DOCX, CSV, TXT)
-func (a *App) CreateUsersBulkFromFile(fileDataBase64 string, fileName string) (map[string]interface{}, error) {
-	if err := a.checkDB(); err != nil {
-		return nil, err
-	}
-
-	fileData, err := base64.StdEncoding.DecodeString(fileDataBase64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode file data: %w", err)
-	}
-
-	if len(fileData) == 0 {
-		return nil, fmt.Errorf("file is empty")
-	}
-
-	ext := strings.ToLower(filepath.Ext(fileName))
-	textContent, err := a.parseFileContent(fileData, ext)
-	if err != nil {
-		return nil, err
-	}
-
-	records := extractStudentDataFromText(textContent)
-	if len(records) == 0 {
-		return nil, fmt.Errorf("no student data found in file")
-	}
-
-	return a.processBulkRecords(records)
-}
-
-// CreateUsersBulk creates multiple students from CSV data
-func (a *App) CreateUsersBulk(csvData string) (map[string]interface{}, error) {
-	if err := a.checkDB(); err != nil {
-		return nil, err
-	}
-
-	reader := csv.NewReader(strings.NewReader(csvData))
-	records, err := reader.ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse CSV: %w", err)
-	}
-
-	if len(records) == 0 {
-		return nil, fmt.Errorf("CSV file is empty")
-	}
-
-	return a.processBulkRecordsSimple(records)
 }
 
 // ==============================================================================
@@ -534,308 +628,6 @@ func (a *App) insertRoleSpecificProfile(userID int64, role, firstName, middleNam
 	}
 
 	return nil
-}
-
-// parseFileContent parses file content based on extension
-func (a *App) parseFileContent(fileData []byte, ext string) (string, error) {
-	switch ext {
-	case ".pdf":
-		return parsePDF(fileData)
-	case ".docx", ".doc":
-		return parseDOCX(fileData)
-	case ".csv", ".txt":
-		return string(fileData), nil
-	default:
-		return string(fileData), nil
-	}
-}
-
-// processBulkRecords processes bulk student records with header detection
-func (a *App) processBulkRecords(records [][]string) (map[string]interface{}, error) {
-	startIndex := 0
-	columnMap := make(map[string]int)
-
-	if len(records) > 0 {
-		firstRow := records[0]
-		firstRowLower := strings.ToLower(strings.Join(firstRow, " "))
-
-		isHeader := strings.Contains(firstRowLower, "student") ||
-			strings.Contains(firstRowLower, "code") ||
-			strings.Contains(firstRowLower, "id") ||
-			strings.Contains(firstRowLower, "name") ||
-			strings.Contains(firstRowLower, "email") ||
-			strings.Contains(firstRowLower, "contact")
-
-		if isHeader {
-			startIndex = 1
-			columnMap = detectColumns(firstRow)
-		}
-	}
-
-	if len(columnMap) == 0 {
-		columnMap = map[string]int{
-			"student_code": 0,
-			"first_name":   1,
-			"last_name":    2,
-		}
-		if len(records) > 0 && len(records[0]) > 3 {
-			columnMap["middle_name"] = 3
-		}
-		if len(records) > 0 && len(records[0]) > 4 {
-			columnMap["contact"] = 4
-		}
-	}
-
-	var successCount, errorCount int
-	var errors []string
-
-	for i, record := range records[startIndex:] {
-		rowNum := i + startIndex + 1
-
-		for len(record) < 3 {
-			record = append(record, "")
-		}
-
-		studentCode := getColumnValue(record, columnMap["student_code"], true)
-		firstName := getColumnValue(record, columnMap["first_name"], true)
-		lastName := getColumnValue(record, columnMap["last_name"], true)
-		middleName := getColumnValue(record, columnMap["middle_name"], columnMap["middle_name"] >= 0)
-		email := getColumnValue(record, columnMap["email"], columnMap["email"] >= 0)
-		contactNumber := getColumnValue(record, columnMap["contact"], columnMap["contact"] >= 0)
-
-		if studentCode == "" || firstName == "" || lastName == "" {
-			errorCount++
-			errors = append(errors, fmt.Sprintf("Row %d: Missing required field", rowNum))
-			continue
-		}
-
-		fullName := fmt.Sprintf("%s, %s", lastName, firstName)
-		if middleName != "" {
-			fullName = fmt.Sprintf("%s, %s %s", lastName, firstName, middleName)
-		}
-
-		err := a.CreateUser(studentCode, fullName, firstName, middleName, lastName, "student", "", studentCode, email, contactNumber, "")
-		if err != nil {
-			errorCount++
-			errors = append(errors, fmt.Sprintf("Row %d (%s): %v", rowNum, studentCode, err))
-			log.Printf("Failed to create student at row %d: %v", rowNum, err)
-		} else {
-			successCount++
-			log.Printf("Created student: %s %s (Code: %s)", firstName, lastName, studentCode)
-		}
-	}
-
-	return map[string]interface{}{
-		"success_count": successCount,
-		"error_count":   errorCount,
-		"total_count":   len(records) - startIndex,
-		"errors":        errors,
-	}, nil
-}
-
-// processBulkRecordsSimple processes CSV records with simple format
-func (a *App) processBulkRecordsSimple(records [][]string) (map[string]interface{}, error) {
-	startIndex := 0
-	if len(records) > 0 {
-		firstRow := strings.ToLower(strings.Join(records[0], " "))
-		if strings.Contains(firstRow, "student") || strings.Contains(firstRow, "code") || strings.Contains(firstRow, "name") {
-			startIndex = 1
-		}
-	}
-
-	var successCount, errorCount int
-	var errors []string
-
-	for i, record := range records[startIndex:] {
-		rowNum := i + startIndex + 1
-
-		if len(record) < 3 {
-			errorCount++
-			errors = append(errors, fmt.Sprintf("Row %d: Insufficient columns", rowNum))
-			continue
-		}
-
-		studentCode := strings.TrimSpace(record[0])
-		firstName := strings.TrimSpace(record[1])
-		lastName := strings.TrimSpace(record[2])
-		middleName := ""
-		contactNumber := ""
-
-		if len(record) >= 4 {
-			middleName = strings.TrimSpace(record[3])
-		}
-		if len(record) >= 5 {
-			contactNumber = strings.TrimSpace(record[4])
-		}
-
-		if studentCode == "" || firstName == "" || lastName == "" {
-			errorCount++
-			errors = append(errors, fmt.Sprintf("Row %d: Missing required field", rowNum))
-			continue
-		}
-
-		fullName := fmt.Sprintf("%s, %s", lastName, firstName)
-		if middleName != "" {
-			fullName = fmt.Sprintf("%s, %s %s", lastName, firstName, middleName)
-		}
-
-		err := a.CreateUser(studentCode, fullName, firstName, middleName, lastName, "student", "", studentCode, "", contactNumber, "")
-		if err != nil {
-			errorCount++
-			errors = append(errors, fmt.Sprintf("Row %d (%s): %v", rowNum, studentCode, err))
-			log.Printf("Failed to create student at row %d: %v", rowNum, err)
-		} else {
-			successCount++
-			log.Printf("Created student: %s %s (Code: %s)", firstName, lastName, studentCode)
-		}
-	}
-
-	return map[string]interface{}{
-		"success_count": successCount,
-		"error_count":   errorCount,
-		"total_count":   len(records) - startIndex,
-		"errors":        errors,
-	}, nil
-}
-
-// ==============================================================================
-// FILE PARSING UTILITIES
-// ==============================================================================
-
-// extractStudentDataFromText extracts student information from text content
-func extractStudentDataFromText(text string) [][]string {
-	var records [][]string
-	lines := strings.Split(text, "\n")
-
-	studentCodePattern := regexp.MustCompile(`(?i)(?:student\s*(?:code|id|number)[:\s]*)?([A-Z0-9\-]{3,})`)
-	namePattern := regexp.MustCompile(`([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)`)
-
-	var currentRecord []string
-	var foundCode bool
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		codeMatches := studentCodePattern.FindStringSubmatch(line)
-		if len(codeMatches) > 1 && !foundCode {
-			if len(currentRecord) >= 2 {
-				records = append(records, currentRecord)
-			}
-			currentRecord = []string{codeMatches[1]}
-			foundCode = true
-			continue
-		}
-
-		if foundCode {
-			nameMatches := namePattern.FindAllString(line, -1)
-			if len(nameMatches) >= 2 {
-				currentRecord = append(currentRecord, nameMatches[0])
-				if len(nameMatches) >= 3 {
-					currentRecord = append(currentRecord, nameMatches[len(nameMatches)-1])
-					currentRecord = append(currentRecord, nameMatches[1])
-				} else {
-					currentRecord = append(currentRecord, nameMatches[len(nameMatches)-1])
-					currentRecord = append(currentRecord, "")
-				}
-				foundCode = false
-				if len(currentRecord) >= 3 {
-					records = append(records, currentRecord)
-					currentRecord = []string{}
-				}
-			}
-		}
-	}
-
-	if len(currentRecord) >= 3 {
-		records = append(records, currentRecord)
-	}
-
-	if len(records) == 0 {
-		reader := csv.NewReader(strings.NewReader(text))
-		csvRecords, err := reader.ReadAll()
-		if err == nil && len(csvRecords) > 0 {
-			return csvRecords
-		}
-
-		for _, line := range lines {
-			if strings.Contains(line, "\t") {
-				fields := strings.Split(line, "\t")
-				if len(fields) >= 3 {
-					records = append(records, fields)
-				}
-			} else if strings.Contains(line, ",") {
-				fields := strings.Split(line, ",")
-				cleanedFields := make([]string, len(fields))
-				for i, f := range fields {
-					cleanedFields[i] = strings.TrimSpace(f)
-				}
-				if len(cleanedFields) >= 3 {
-					records = append(records, cleanedFields)
-				}
-			}
-		}
-	}
-
-	return records
-}
-
-// parsePDF extracts text from PDF file
-func parsePDF(fileData []byte) (string, error) {
-	_ = fileData
-	return "", fmt.Errorf("PDF parsing is not available. Please convert your PDF to CSV or TXT format, or use DOCX format")
-}
-
-// parseDOCX extracts text from DOCX file
-func parseDOCX(fileData []byte) (string, error) {
-	tmpFile, err := os.CreateTemp("", "docx_*.docx")
-	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.Write(fileData); err != nil {
-		tmpFile.Close()
-		return "", fmt.Errorf("failed to write temp file: %w", err)
-	}
-	tmpFile.Close()
-
-	doc, err := docx.Open(tmpFile.Name())
-	if err != nil {
-		return "", fmt.Errorf("failed to open DOCX: %w", err)
-	}
-	defer doc.Close()
-
-	var text strings.Builder
-	docXML := doc.GetFile("word/document.xml")
-	if len(docXML) == 0 {
-		return "", fmt.Errorf("could not read document.xml from DOCX file")
-	}
-
-	runParser := docx.NewRunParser(docXML)
-	if err := runParser.Execute(); err != nil {
-		return "", fmt.Errorf("failed to parse DOCX runs: %w", err)
-	}
-
-	runs := runParser.Runs()
-	for _, run := range runs {
-		if run != nil && run.HasText {
-			runText := run.GetText(docXML)
-			if runText != "" {
-				text.WriteString(runText)
-				text.WriteString(" ")
-			}
-		}
-	}
-
-	result := text.String()
-	if result == "" {
-		return "", fmt.Errorf("could not extract text from DOCX")
-	}
-
-	return result, nil
 }
 
 // detectColumns detects column indices from header row
@@ -1165,6 +957,63 @@ func (a *App) DeleteExpiredStudents() (int, error) {
 	}
 
 	return int(rowsAffected), nil
+}
+
+// DeleteExpiredStudentAccounts permanently deletes student and working_student accounts
+// that are at least 4 years old based on their user account creation date.
+// This should be called periodically (e.g., daily) as an additional safety net
+// beyond the login-time expiry checks.
+func (a *App) DeleteExpiredStudentAccounts() (int, error) {
+	if err := a.checkDB(); err != nil {
+		return 0, err
+	}
+
+	// Find student/working_student users whose account age is >= 4 years
+	rows, err := a.db.Query(`
+		SELECT id
+		FROM users
+		WHERE user_type IN ('student', 'working_student')
+		  AND created_at <= DATEADD(YEAR, -4, GETDATE())
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query expired student accounts: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			return 0, fmt.Errorf("failed to scan expired student account id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	placeholders := "?"
+	args := make([]interface{}, len(ids))
+	args[0] = ids[0]
+	for i := 1; i < len(ids); i++ {
+		placeholders += ",?"
+		args[i] = ids[i]
+	}
+
+	deleteQuery := fmt.Sprintf(`DELETE FROM users WHERE id IN (%s)`, placeholders)
+	result, err := a.db.Exec(deleteQuery, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to delete expired student accounts: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get affected row count: %w", err)
+	}
+
+	log.Printf("Deleted %d student/working_student account(s) that reached 4-year validity", affected)
+	return int(affected), nil
 }
 
 // GetActiveStudentsForArchiving returns active students that can be archived

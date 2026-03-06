@@ -4,7 +4,7 @@ import Button from '../../components/Button';
 import {
   CreateClass,
   CreateSubject,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 
 function CreateClasslist() {
@@ -169,7 +169,7 @@ function CreateClasslist() {
             </h2>
           </div>
 
-          <form onSubmit={handleSubmit} className="flex-1 overflow-hidden flex flex-col">
+          <form onSubmit={handleSubmit} className="flex-1 overflow-hidden flex flex-col" noValidate>
             <div className="flex-1 overflow-y-auto p-6">
               <div className="space-y-6">
                 {/* Basic Information Section */}

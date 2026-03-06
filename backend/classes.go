@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"database/sql"
@@ -947,17 +947,19 @@ func (a *App) GetAllTeachers() ([]User, error) {
 	return teachers, nil
 }
 
-// GetAllRegisteredStudents returns all registered students
+// GetAllRegisteredStudents returns all registered students.
+// NOTE: This endpoint is safe to expose to working students because it deliberately omits
+// sensitive identifiers such as email, contact number, and internal student ID.
 func (a *App) GetAllRegisteredStudents() ([]ClassStudent, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
 
-	// Base query that gets all students with photo data from profile_photos table
+	// This query intentionally excludes email and contact_number for privacy.
 	query := `
 		SELECT 
 			s.id as id, s.student_id, s.first_name, s.middle_name, s.last_name, 
-			s.email, s.contact_number, pp.photo_data
+			NULL as email, NULL as contact_number, pp.photo_data
 		FROM students s
 		LEFT JOIN profile_photos pp ON s.id = pp.user_id
 		ORDER BY s.last_name, s.first_name

@@ -13,7 +13,7 @@ import {
   CreateDepartment,
   UpdateDepartment,
   DeleteDepartment
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { Department } from './types';
 
 function DepartmentManagement() {
@@ -312,7 +312,7 @@ function DepartmentManagement() {
               <div className="w-24 h-0.5 bg-blue-600 mx-auto"></div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto px-8 pb-8 flex-1">
+            <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto px-8 pb-8 flex-1" noValidate>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Department Code *</label>

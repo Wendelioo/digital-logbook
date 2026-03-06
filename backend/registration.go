@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"database/sql"
@@ -29,14 +29,14 @@ type RegistrationRequest struct {
 
 // PendingRegistration represents a registration awaiting approval
 type PendingRegistration struct {
-	UserID        int       `json:"user_id"`
-	StudentID     string    `json:"student_id"`
-	LastName      string    `json:"last_name"`
-	FirstName     string    `json:"first_name"`
-	MiddleName    *string   `json:"middle_name"`
-	ContactNumber string `json:"contact_number"`
-	Email         string `json:"email"`
-	SubmittedAt   string `json:"submitted_at"`
+	UserID        int     `json:"user_id"`
+	StudentID     string  `json:"student_id"`
+	LastName      string  `json:"last_name"`
+	FirstName     string  `json:"first_name"`
+	MiddleName    *string `json:"middle_name"`
+	ContactNumber string  `json:"contact_number"`
+	Email         string  `json:"email"`
+	SubmittedAt   string  `json:"submitted_at"`
 }
 
 // ApprovalRequest represents an approval/rejection action
@@ -201,10 +201,10 @@ func (a *App) GetPendingRegistrations() ([]PendingRegistration, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan registration: %v", err)
 		}
-		
+
 		// Format time field as string
 		reg.SubmittedAt = submittedAt.Format("2006-01-02 15:04:05")
-		
+
 		registrations = append(registrations, reg)
 	}
 
@@ -216,14 +216,23 @@ func (a *App) ProcessRegistration(req ApprovalRequest) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
+	if err := ValidatePositiveID(req.UserID, "user ID"); err != nil {
+		return err
+	}
+	if err := ValidatePositiveID(req.ApprovedBy, "approver user ID"); err != nil {
+		return err
+	}
 
 	// Validate action
 	if req.Action != "approve" && req.Action != "reject" {
 		return fmt.Errorf("invalid action: must be 'approve' or 'reject'")
 	}
 
-	if req.Action == "reject" && strings.TrimSpace(req.RejectionReason) == "" {
-		return fmt.Errorf("rejection reason is required")
+	if req.Action == "reject" {
+		if strings.TrimSpace(req.RejectionReason) == "" {
+			return fmt.Errorf("rejection reason is required")
+		}
+		req.RejectionReason, _ = ValidateRejectionReason(req.RejectionReason)
 	}
 
 	// Start transaction
@@ -284,34 +293,35 @@ func (a *App) ProcessRegistration(req ApprovalRequest) error {
 // ==============================================================================
 
 func validateRegistration(req RegistrationRequest) error {
-	// Student ID validation
-	if strings.TrimSpace(req.StudentID) == "" {
-		return fmt.Errorf("student ID is required")
-	}
-	if len(req.StudentID) < 4 || len(req.StudentID) > 50 {
-		return fmt.Errorf("student ID must be between 4 and 50 characters")
+	// Student ID validation (format: YYYY-NNNNN or WS-YYYY-NNN)
+	if err := ValidateStudentID(req.StudentID); err != nil {
+		return err
 	}
 
 	// Name validation
-	if strings.TrimSpace(req.FirstName) == "" {
-		return fmt.Errorf("first name is required")
+	if err := ValidateRequiredName(req.FirstName, "first name"); err != nil {
+		return err
 	}
-	if strings.TrimSpace(req.LastName) == "" {
-		return fmt.Errorf("last name is required")
+	if err := ValidateRequiredName(req.LastName, "last name"); err != nil {
+		return err
+	}
+	if req.MiddleName != "" {
+		if err := ValidateName(req.MiddleName, "middle name"); err != nil {
+			return err
+		}
 	}
 
 	// Email validation
-	if strings.TrimSpace(req.Email) == "" {
-		return fmt.Errorf("email is required")
-	}
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
-	if !emailRegex.MatchString(req.Email) {
-		return fmt.Errorf("invalid email format")
+	if err := ValidateEmail(req.Email); err != nil {
+		return err
 	}
 
 	// Contact number validation
 	if strings.TrimSpace(req.ContactNumber) == "" {
 		return fmt.Errorf("contact number is required")
+	}
+	if err := ValidateContactNumber(req.ContactNumber); err != nil {
+		return err
 	}
 	// Allow Philippine mobile numbers (11 digits starting with 09) or landlines
 	phoneRegex := regexp.MustCompile(`^(09\d{9}|\d{7,15})$`)
@@ -320,12 +330,9 @@ func validateRegistration(req RegistrationRequest) error {
 		return fmt.Errorf("invalid contact number format")
 	}
 
-	// Password validation
-	if strings.TrimSpace(req.Password) == "" {
-		return fmt.Errorf("password is required")
-	}
-	if len(req.Password) < 8 {
-		return fmt.Errorf("password must be at least 8 characters long")
+	// Password validation (strong policy)
+	if err := ValidateStrongPassword(req.Password); err != nil {
+		return err
 	}
 	if req.Password != req.ConfirmPassword {
 		return fmt.Errorf("passwords do not match")

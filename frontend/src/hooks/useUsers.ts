@@ -6,7 +6,7 @@ import {
   CreateUser,
   UpdateUser,
   DeleteUser,
-} from '../../wailsjs/go/main/App';
+} from '../../wailsjs/go/backend/App';
 
 interface User {
   id: number;

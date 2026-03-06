@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
-import Table from '../../components/Table';
 import AdminArchiveModal from '../../components/AdminArchiveModal';
 import {
   Search,
@@ -12,8 +11,9 @@ import {
 import {
   GetFeedback,
   ArchiveFeedback
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
+import { parseReportContext } from '../../utils/feedbackComments';
 import { Feedback } from './types';
 
 function Reports() {
@@ -41,6 +41,9 @@ function Reports() {
 
   // Toast
   const [toast, setToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
+
+  // View toggle: all, issue reports, or no-issue (compliance) reports
+  const [reportView, setReportView] = useState<'all' | 'issues' | 'no_issue'>('issues');
 
   useEffect(() => {
     loadReports();
@@ -76,24 +79,6 @@ function Reports() {
     setDateFilter('');
   };
 
-  const parseWorkingStudentMeta = (notes?: string) => {
-    if (!notes) {
-      return {
-        verification: 'N/A',
-        recommendation: 'N/A'
-      };
-    }
-
-    const lines = notes.split('\n').map((line) => line.trim());
-    const verificationLine = lines.find((line) => line.toLowerCase().startsWith('verification:'));
-    const recommendationLine = lines.find((line) => line.toLowerCase().startsWith('recommendation:'));
-
-    return {
-      verification: verificationLine ? verificationLine.replace(/^verification:\s*/i, '').trim() || 'N/A' : 'N/A',
-      recommendation: recommendationLine ? recommendationLine.replace(/^recommendation:\s*/i, '').trim() || 'N/A' : 'N/A'
-    };
-  };
-
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 5000);
@@ -123,7 +108,16 @@ function Reports() {
     }
   };
 
-  // Filter reports
+  const isNoIssueReport = (report: Feedback) => {
+    const allGood =
+      (report.equipment_condition || '').toLowerCase() === 'good' &&
+      (report.monitor_condition || '').toLowerCase() === 'good' &&
+      (report.keyboard_condition || '').toLowerCase() === 'good' &&
+      (report.mouse_condition || '').toLowerCase() === 'good';
+    const hasComment = !!(report.comments && report.comments.trim());
+    return allGood && !hasComment;
+  };
+
   const filteredReports = reports.filter(report => {
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch = !searchQuery || (
@@ -137,7 +131,13 @@ function Reports() {
       report.date_submitted && report.date_submitted.split(/[T\s]/)[0] === dateFilter
     );
 
-    return matchesSearch && matchesDate;
+    const noIssue = isNoIssueReport(report);
+    const matchesView =
+      reportView === 'all' ? true :
+      reportView === 'no_issue' ? noIssue :
+      !noIssue; // 'issues' view
+
+    return matchesSearch && matchesDate && matchesView;
   });
 
   // Pagination
@@ -182,7 +182,7 @@ function Reports() {
     <div>
       {/* Header Section */}
       <div className="mb-6">
-        <div className="flex justify-between items-start mb-6">
+        <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
             {selectedReportIDs.size > 0 && (
@@ -200,8 +200,8 @@ function Reports() {
           </Button>
         </div>
 
-        {/* Search Toolbar */}
-        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        {/* Search Toolbar + View Toggle */}
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
           <div className="flex flex-wrap gap-3 items-start">
             <div className="w-64 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -273,35 +273,47 @@ function Reports() {
               </button>
             )}
           </div>
-        </div>
-      </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4 flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div className="flex items-center gap-3">
-          <input
-            type="checkbox"
-            checked={allFilteredSelected}
-            ref={(input) => {
-              if (input) input.indeterminate = someFilteredSelected;
-            }}
-            onChange={toggleSelectAllFiltered}
-            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
-          />
-          <span className="text-sm font-medium text-gray-700">Select all visible</span>
-          {selectedReportIDs.size > 0 && (
-            <span className="text-xs text-gray-500">{selectedReportIDs.size} selected</span>
-          )}
+          {/* View toggle: Issues vs No-issue compliance */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <span className="text-xs font-medium text-gray-600 mr-1">Show:</span>
+            <div className="inline-flex rounded-lg border border-gray-300 bg-white overflow-hidden">
+              <button
+                type="button"
+                className={`px-3 py-1.5 text-xs font-medium border-r border-gray-300 ${
+                  reportView === 'issues'
+                    ? 'bg-primary-600 text-white'
+                    : 'text-gray-700 hover:bg-gray-50'
+                }`}
+                onClick={() => setReportView('issues')}
+              >
+                Issue reports
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1.5 text-xs font-medium border-r border-gray-300 ${
+                  reportView === 'no_issue'
+                    ? 'bg-primary-600 text-white'
+                    : 'text-gray-700 hover:bg-gray-50'
+                }`}
+                onClick={() => setReportView('no_issue')}
+              >
+                No-issue logs
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1.5 text-xs font-medium ${
+                  reportView === 'all'
+                    ? 'bg-primary-600 text-white'
+                    : 'text-gray-700 hover:bg-gray-50'
+                }`}
+                onClick={() => setReportView('all')}
+              >
+                All
+              </button>
+            </div>
+          </div>
         </div>
-
-        <Button
-          onClick={handleArchiveSelected}
-          variant="outline"
-          size="sm"
-          icon={<Archive className="h-4 w-4" />}
-          disabled={selectedReportIDs.size === 0 || archiving}
-        >
-          Archive Selected
-        </Button>
       </div>
 
       {/* Error Message */}
@@ -319,115 +331,148 @@ function Reports() {
       )}
 
       {/* Single Unified Table */}
-      <div>
-        <Table
-          columns={[
-            {
-              key: 'select',
-              label: 'Select',
-              width: '90px',
-              render: (report: Feedback) => (
-                <input
-                  type="checkbox"
-                  checked={selectedReportIDs.has(report.id)}
-                  onChange={() => toggleSelectReport(report.id)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
-                />
-              )
-            },
-            {
-              key: 'student_id_str',
-              label: 'Student ID',
-              render: (report: Feedback) => (
-                <span className="text-gray-700">{report.student_id_str}</span>
-              )
-            },
-            {
-              key: 'student_name',
-              label: 'Full Name',
-              render: (report: Feedback) => (
-                <span className="font-medium text-gray-900">{report.student_name}</span>
-              )
-            },
-            {
-              key: 'pc_number',
-              label: 'PC Number',
-              render: (report: Feedback) => (
-                <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                  {report.pc_number}
-                </span>
-              )
-            },
-            {
-              key: 'date_submitted',
-              label: 'Date',
-              render: (report: Feedback) => (
-                <span className="text-gray-600">
-                  {report.date_submitted ? new Date(report.date_submitted).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                  }) : 'N/A'}
-                </span>
-              )
-            },
-            {
-              key: 'verification',
-              label: 'Verification',
-              render: (report: Feedback) => {
-                const meta = parseWorkingStudentMeta(report.working_student_notes);
-                const normalized = meta.verification.toLowerCase();
-
-                let badgeClass = 'bg-gray-100 text-gray-700';
-                if (normalized.includes('confirmed')) {
-                  badgeClass = 'bg-green-100 text-green-700';
-                }
-                if (normalized.includes('not confirmed')) {
-                  badgeClass = 'bg-red-100 text-red-700';
-                }
-
-                return (
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${badgeClass}`}>
-                    {meta.verification}
-                  </span>
-                );
-              }
-            },
-            {
-              key: 'recommendation',
-              label: 'Recommendation',
-              render: (report: Feedback) => {
-                const meta = parseWorkingStudentMeta(report.working_student_notes);
-                return (
-                  <span className="text-sm text-gray-700">
-                    {meta.recommendation}
-                  </span>
-                );
-              }
-            },
-            {
-              key: 'forwarded_by_name',
-              label: 'Forwarded By',
-              render: (report: Feedback) => (
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-gray-900">{report.forwarded_by_name || 'Unknown'}</span>
-                  {report.forwarded_at && (
-                    <span className="text-xs text-gray-500">
-                      {new Date(report.forwarded_at).toLocaleString('en-US', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </span>
-                  )}
-                </div>
-              )
-            }
-          ]}
-          data={paginatedReports}
-          loading={loading}
-          emptyMessage="No equipment reports submitted"
-          hideEmptyIcon
-        />
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        {/* Batch action bar — shown when rows are selected */}
+        {selectedReportIDs.size > 0 && (
+          <div className="px-4 py-3 bg-primary-50 border-b border-primary-200 flex items-center justify-between">
+            <span className="text-sm text-gray-700">
+              <span className="font-semibold text-primary-900">{selectedReportIDs.size}</span> report{selectedReportIDs.size !== 1 ? 's' : ''} selected
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedReportIDs(new Set())}
+              >
+                Clear Selection
+              </Button>
+              <Button
+                onClick={handleArchiveSelected}
+                variant="primary"
+                size="sm"
+                icon={<Archive className="h-4 w-4" />}
+                disabled={archiving}
+              >
+                Archive ({selectedReportIDs.size})
+              </Button>
+            </div>
+          </div>
+        )}
+        <div className="overflow-x-auto">
+          <div className="max-h-[65vh] overflow-y-auto">
+            <table className="w-full divide-y divide-gray-200 table-fixed">
+              <colgroup>
+                <col style={{ width: '40px' }} />
+                <col style={{ width: '28%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '16%' }} />
+                <col style={{ width: '16%' }} />
+              </colgroup>
+              <thead className="bg-gray-50 sticky top-0 z-10">
+                <tr>
+                  <th className="px-3 py-3 text-left">
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      ref={(input) => { if (input) input.indeterminate = someFilteredSelected; }}
+                      onChange={toggleSelectAllFiltered}
+                      className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
+                    />
+                  </th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Student</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">PC / Origin</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Date</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Verified at</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Forwarded By</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {paginatedReports.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-500 font-medium">
+                      No equipment reports submitted
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedReports.map((report) => {
+                    const { reportedForAnotherPC, submittedFrom } = parseReportContext(report.comments);
+                    return (
+                      <tr
+                        key={report.id}
+                        className={`transition-colors ${
+                          isNoIssueReport(report) ? 'bg-white hover:bg-gray-50' : 'bg-red-50 hover:bg-red-100'
+                        }`}
+                      >
+                        <td className="px-3 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedReportIDs.has(report.id)}
+                            onChange={() => toggleSelectReport(report.id)}
+                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="text-sm font-medium text-gray-900 truncate">{report.student_name}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">{report.student_id_str}</div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium w-fit truncate max-w-full">
+                              {report.pc_number}
+                            </span>
+                            {(reportedForAnotherPC || submittedFrom) && (
+                              <span className="text-xs text-gray-500 truncate">
+                                {submittedFrom ? `from ${submittedFrom}` : 'Other PC'}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className="text-xs text-gray-600">
+                            {report.date_submitted ? new Date(report.date_submitted).toLocaleDateString('en-US', {
+                              month: 'short', day: 'numeric', year: '2-digit'
+                            }) : '—'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">
+                          {isNoIssueReport(report) ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 whitespace-nowrap">
+                              All Working
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 whitespace-nowrap">
+                              Has Issues
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className="text-xs text-gray-600">
+                            {report.verified_at
+                              ? new Date(report.verified_at).toLocaleString('en-US', {
+                                  month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                                })
+                              : '—'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <div className="text-sm font-medium text-gray-900 truncate">{report.forwarded_by_name || 'Unknown'}</div>
+                          {report.forwarded_at && (
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {new Date(report.forwarded_at).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
         {filteredReports.length > 0 && totalReportPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
             <div className="text-sm text-gray-600">

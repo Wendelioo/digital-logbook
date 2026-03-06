@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"database/sql"
@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // ==============================================================================
@@ -20,13 +22,22 @@ func (a *App) Login(username, password string) (*User, error) {
 		return nil, fmt.Errorf("database connection failed - please check database configuration")
 	}
 
+	if err := ValidateUsername(username); err != nil {
+		return nil, err
+	}
+	if err := ValidatePassword(password); err != nil {
+		return nil, err
+	}
+
 	var user User
 	var accountStatus string
 	var isActive bool
 	var createdAt time.Time
+	var updatedAt sql.NullTime
+	var storedPassword string
 
-	query := `SELECT id, username, password, user_type, account_status, is_active, created_at FROM users WHERE username = ?`
-	err := a.db.QueryRow(query, username).Scan(&user.ID, &user.Name, &user.Password, &user.Role, &accountStatus, &isActive, &createdAt)
+	query := `SELECT id, username, password, user_type, account_status, is_active, created_at, updated_at FROM users WHERE username = ?`
+	err := a.db.QueryRow(query, username).Scan(&user.ID, &user.Name, &storedPassword, &user.Role, &accountStatus, &isActive, &createdAt, &updatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("LOGIN ERROR: User '%s' not found", username)
@@ -36,8 +47,68 @@ func (a *App) Login(username, password string) (*User, error) {
 		return nil, err
 	}
 
-	if user.Password != password {
-		return nil, fmt.Errorf("invalid credentials")
+	// Support both hashed (bcrypt) and legacy plaintext passwords.
+	if strings.HasPrefix(storedPassword, "$2a$") || strings.HasPrefix(storedPassword, "$2b$") || strings.HasPrefix(storedPassword, "$2y$") {
+		if err := bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(password)); err != nil {
+			return nil, fmt.Errorf("invalid credentials")
+		}
+	} else {
+		// Legacy plaintext comparison; on success, upgrade to bcrypt hash.
+		if storedPassword != password {
+			return nil, fmt.Errorf("invalid credentials")
+		}
+		hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err == nil {
+			if _, err := a.db.Exec(`UPDATE users SET password = ? WHERE id = ?`, string(hashed), user.ID); err != nil {
+				log.Printf("Failed to upgrade password hash for user %d: %v", user.ID, err)
+			}
+		}
+	}
+
+	// Enforce 4-year validity for student accounts (including working students)
+	if user.Role == "student" || user.Role == "working_student" {
+		expiryDate := createdAt.AddDate(4, 0, 0)
+		if time.Now().After(expiryDate) {
+			if err := a.DeleteUser(user.ID); err != nil {
+				log.Printf("Failed to auto-delete expired student account %d: %v", user.ID, err)
+				return nil, fmt.Errorf("student account has expired and could not be removed automatically. Please contact your administrator.")
+			}
+			return nil, fmt.Errorf("student account has expired after 4 years and has been removed. Please register a new account.")
+		}
+	}
+
+	// Handle deactivated accounts with 30-day retention window
+	// During this period, login will reactivate the account; after 30 days it is deleted.
+	if accountStatus == "suspended" {
+		// Use updated_at as the deactivation timestamp; fall back to created_at if missing
+		lastChange := createdAt
+		if updatedAt.Valid {
+			lastChange = updatedAt.Time
+		}
+
+		retentionDeadline := lastChange.AddDate(0, 0, 30)
+		now := time.Now()
+
+		if now.After(retentionDeadline) {
+			if err := a.DeleteUser(user.ID); err != nil {
+				log.Printf("Failed to auto-delete deactivated account %d after 30 days: %v", user.ID, err)
+				return nil, fmt.Errorf("this account was deactivated more than 30 days ago and could not be removed automatically. Please contact your administrator.")
+			}
+			return nil, fmt.Errorf("this account was deactivated more than 30 days ago and has been permanently removed.")
+		}
+
+		// Within 30 days: reactivate the account on successful login
+		if _, err := a.db.Exec(`
+			UPDATE users
+			SET account_status = 'active', is_active = 1, updated_at = GETDATE()
+			WHERE id = ? AND account_status = 'suspended'
+		`, user.ID); err != nil {
+			log.Printf("Failed to reactivate deactivated account %d on login: %v", user.ID, err)
+			return nil, fmt.Errorf("failed to reactivate your account. Please contact your administrator.")
+		}
+
+		accountStatus = "active"
+		isActive = true
 	}
 
 	// Check account status
@@ -54,6 +125,8 @@ func (a *App) Login(username, password string) (*User, error) {
 	}
 
 	user.Created = formatTime(createdAt)
+	// Do not expose password hash or plaintext to the frontend
+	user.Password = ""
 
 	// Load role-specific profile
 	if err := a.loadUserProfile(&user); err != nil {
@@ -135,6 +208,15 @@ func (a *App) ChangePassword(username, oldPassword, newPassword string) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
+	if err := ValidateUsername(username); err != nil {
+		return err
+	}
+	if err := ValidatePassword(oldPassword); err != nil {
+		return err
+	}
+	if err := ValidateStrongPassword(newPassword); err != nil {
+		return err
+	}
 
 	var storedPassword string
 	if err := a.db.QueryRow(`SELECT password FROM users WHERE username = ?`, username).Scan(&storedPassword); err != nil {
@@ -144,11 +226,24 @@ func (a *App) ChangePassword(username, oldPassword, newPassword string) error {
 		return err
 	}
 
-	if storedPassword != oldPassword {
-		return fmt.Errorf("current password is incorrect")
+	// Support both hashed and legacy plaintext for the existing password.
+	if strings.HasPrefix(storedPassword, "$2a$") || strings.HasPrefix(storedPassword, "$2b$") || strings.HasPrefix(storedPassword, "$2y$") {
+		if err := bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(oldPassword)); err != nil {
+			return fmt.Errorf("current password is incorrect")
+		}
+	} else {
+		if storedPassword != oldPassword {
+			return fmt.Errorf("current password is incorrect")
+		}
 	}
 
-	if _, err := a.db.Exec(`UPDATE users SET password = ? WHERE username = ?`, newPassword, username); err != nil {
+	// Hash new password before saving
+	hashedNew, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash new password: %w", err)
+	}
+
+	if _, err := a.db.Exec(`UPDATE users SET password = ? WHERE username = ?`, string(hashedNew), username); err != nil {
 		log.Printf("Failed to update password for %s: %v", username, err)
 		return fmt.Errorf("failed to update password: %w", err)
 	}
@@ -166,13 +261,14 @@ func (a *App) ResetPasswordByRole(requesterUserID, targetUserID int, newPassword
 	if err := a.checkDB(); err != nil {
 		return err
 	}
-
-	newPassword = strings.TrimSpace(newPassword)
-	if newPassword == "" {
-		return fmt.Errorf("new password is required")
+	if err := ValidatePositiveID(requesterUserID, "requester user ID"); err != nil {
+		return err
 	}
-	if len(newPassword) < 6 {
-		return fmt.Errorf("new password must be at least 6 characters long")
+	if err := ValidatePositiveID(targetUserID, "target user ID"); err != nil {
+		return err
+	}
+	if err := ValidateStrongPassword(newPassword); err != nil {
+		return err
 	}
 
 	if requesterUserID == targetUserID {
@@ -204,14 +300,20 @@ func (a *App) ResetPasswordByRole(requesterUserID, targetUserID int, newPassword
 	case "admin":
 		isAllowed = targetRole == "student" || targetRole == "working_student" || targetRole == "teacher"
 	case "working_student":
-		isAllowed = targetRole == "student"
+		isAllowed = false
 	}
 
 	if !isAllowed {
 		return fmt.Errorf("you are not allowed to reset this account type")
 	}
 
-	if _, err := a.db.Exec(`UPDATE users SET password = ? WHERE id = ?`, newPassword, targetUserID); err != nil {
+	// Hash new password before saving
+	hashedNew, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash new password: %w", err)
+	}
+
+	if _, err := a.db.Exec(`UPDATE users SET password = ? WHERE id = ?`, string(hashedNew), targetUserID); err != nil {
 		log.Printf("Failed password reset requester=%d target=%d: %v", requesterUserID, targetUserID, err)
 		return fmt.Errorf("failed to reset password: %w", err)
 	}

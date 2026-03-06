@@ -13,7 +13,7 @@ import {
   UnarchiveAttendanceSheet,
   GetArchivedClasses,
   UnarchiveClass,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class } from './types';
 
@@ -168,7 +168,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
         const filePath = await ExportClasslistCSV(cls.class_id);
         alert(`Archived classlist exported successfully.\nFile saved to: ${filePath}`);
       } else {
-        const filePath = await (window as any).go.main.App.ExportClasslistPDF(cls.class_id);
+        const filePath = await (window as any).go.backend.App.ExportClasslistPDF(cls.class_id);
         alert(`Archived classlist PDF exported successfully.\nFile saved to: ${filePath}`);
       }
     } catch (error) {
@@ -189,10 +189,10 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
     try {
       const sessionId = Number(sheet.session_id) || 0;
       if (format === 'csv') {
-        const filePath = await (window as any).go.main.App.ExportArchivedAttendanceCSVByDate(sheet.class_id, sheet.date, sessionId);
+        const filePath = await (window as any).go.backend.App.ExportArchivedAttendanceCSVByDate(sheet.class_id, sheet.date, sessionId);
         alert(`Archived attendance sheet exported successfully.\nFile saved to: ${filePath}`);
       } else {
-        const filePath = await (window as any).go.main.App.ExportArchivedAttendancePDFByDate(sheet.class_id, sheet.date, sessionId);
+        const filePath = await (window as any).go.backend.App.ExportArchivedAttendancePDFByDate(sheet.class_id, sheet.date, sessionId);
         alert(`Archived attendance sheet exported successfully.\nFile saved to: ${filePath}`);
       }
     } catch (error) {
@@ -360,7 +360,8 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                             </div>
                             <button
                               onClick={() => {
-                                navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}`, {
+                                const sessionQuery = sheet.session_id ? `&sessionId=${sheet.session_id}` : '';
+                                navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}${sessionQuery}`, {
                                   state: {
                                     fromArchiveModal: true,
                                     returnToArchiveTab: 'attendance',

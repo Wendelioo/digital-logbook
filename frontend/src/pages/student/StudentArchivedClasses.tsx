@@ -14,7 +14,7 @@ import {
   GetStudentArchivedClasses,
   GetClassStudents,
   UnarchiveStudentEnrollment,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { CourseClass, ClasslistEntry, SemesterGroup } from './types';
 

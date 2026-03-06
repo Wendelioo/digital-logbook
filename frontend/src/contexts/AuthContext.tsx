@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Login, Logout, UnlockScreen, LockScreen, IsKioskMode } from '../../wailsjs/go/main/App';
+import { Login, Logout, UnlockScreen, LockScreen, IsKioskMode } from '../../wailsjs/go/backend/App';
 import type { User } from '../types';
 import { useInactivityDetection, useWindowUnload } from '../hooks/useInactivity';
 
@@ -8,6 +8,9 @@ declare global {
   interface Window {
     go?: {
       main?: {
+        App?: any;
+      };
+      backend?: {
         App?: any;
       };
     };
@@ -29,7 +32,7 @@ const RUNTIME_WAIT_TIMEOUT_MS = 5000;
 const RUNTIME_WAIT_INTERVAL_MS = 50;
 
 function isWailsRuntimeReady() {
-  return !!window.go?.main?.App;
+  return !!window.go?.backend?.App;
 }
 
 async function waitForWailsRuntime(timeoutMs = RUNTIME_WAIT_TIMEOUT_MS): Promise<boolean> {
@@ -53,8 +56,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
 
     const sendHeartbeat = () => {
-      if (!window.go?.main?.App?.TouchSession) return;
-      window.go.main.App.TouchSession(user.id).catch(() => {});
+      if (!window.go?.backend?.App?.TouchSession) return;
+      window.go.backend.App.TouchSession(user.id).catch(() => {});
     };
 
     sendHeartbeat();

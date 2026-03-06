@@ -8,96 +8,9 @@ import {
   Archive,
   Settings,
 } from 'lucide-react';
-import { ArchiveStudent, GetAllRegisteredStudents, ResetPasswordByRole } from '../../../wailsjs/go/main/App';
-import { ClassStudent, ViewStudentDetailsModalProps } from './types';
+import { ArchiveStudent, GetAllRegisteredStudents, ResetPasswordByRole } from '../../../wailsjs/go/backend/App';
+import { ClassStudent } from './types';
 import { useAuth } from '../../contexts/AuthContext';
-
-interface StudentRow {
-  id: string;
-  ctrlNo: number;
-  studentId: string;
-  fullName: string;
-}
-
-function ViewStudentDetailsModal({ student, isOpen, onClose }: ViewStudentDetailsModalProps) {
-  if (!isOpen || !student) return null;
-
-  const getFullName = () => {
-    return `${student.first_name}${student.middle_name ? ' ' + student.middle_name : ''} ${student.last_name}`;
-  };
-
-  return (
-    <div 
-      className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 relative">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
-          <Eye className="h-5 w-5 text-gray-700" />
-          <h3 className="text-lg font-semibold text-gray-900">Student Details</h3>
-        </div>
-
-        {/* Content */}
-        <div className="p-6">
-          <div className="flex gap-6">
-            {/* Left Section - Profile Picture */}
-            <div className="flex-shrink-0">
-              <div className="w-32 h-32 border-2 border-black rounded overflow-hidden bg-gray-100 flex items-center justify-center">
-                {(student as any).photo_url ? (
-                  <img 
-                    src={(student as any).photo_url} 
-                    alt={getFullName()} 
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gray-200">
-                    <Users className="h-12 w-12 text-gray-400" />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right Section - Details */}
-            <div className="flex-1 space-y-3">
-              <div>
-                <span className="text-sm font-semibold text-gray-700">Fullname:</span>
-                <span className="text-sm text-gray-900 ml-2">{getFullName()}</span>
-              </div>
-              <div>
-                <span className="text-sm font-semibold text-gray-700">Contact:</span>
-                <span className="text-sm text-gray-900 ml-2">{(student as any).contact_number || 'N/A'}</span>
-              </div>
-              <div>
-                <span className="text-sm font-semibold text-gray-700">Email:</span>
-                <span className="text-sm text-gray-900 ml-2">{(student as any).email || ''}</span>
-              </div>
-              <div>
-                <span className="text-sm font-semibold text-gray-700">Username:</span>
-                <span className="text-sm text-gray-900 ml-2">{student.student_id}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer - Close Button */}
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
-          <Button
-            variant="secondary"
-            onClick={onClose}
-            icon={<X className="h-4 w-4" />}
-          >
-            CLOSE
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function ManageUsers() {
   const { user: currentUser } = useAuth();
@@ -106,7 +19,6 @@ function ManageUsers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [viewingStudent, setViewingStudent] = useState<ClassStudent | null>(null);
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
@@ -260,18 +172,12 @@ function ManageUsers() {
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
                   <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
-                    Student ID
+                    Student Code
                   </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '220px' }}>
                     Full Name
                   </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
-                    Email
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
-                    Contact Number
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '140px' }}>
                     Actions
                   </th>
                 </tr>
@@ -285,21 +191,8 @@ function ManageUsers() {
                     <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
                       {student.last_name}, {student.first_name} {student.middle_name || ''}
                     </td>
-                    <td className="px-4 py-4 text-sm text-gray-700" style={{ wordBreak: 'break-word' }}>
-                      {(student as any).email || 'N/A'}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {(student as any).contact_number || 'N/A'}
-                    </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <Button
-                          onClick={() => setViewingStudent(student)}
-                          variant="outline"
-                          size="sm"
-                          icon={<Eye className="h-3 w-3" />}
-                          title="View"
-                        />
                         <Button
                           onClick={() => handleArchiveStudent(student)}
                           variant="outline"
@@ -373,13 +266,6 @@ function ManageUsers() {
           </div>
         )}
       </div>
-
-      {/* View Student Details Modal */}
-      <ViewStudentDetailsModal
-        student={viewingStudent}
-        isOpen={!!viewingStudent}
-        onClose={() => setViewingStudent(null)}
-      />
 
       <WorkingStudentArchivedStudentsModal
         isOpen={showArchiveModal}

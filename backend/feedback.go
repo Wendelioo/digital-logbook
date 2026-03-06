@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"database/sql"
@@ -18,10 +18,59 @@ import (
 // FEEDBACK MANAGEMENT
 // ==============================================================================
 
+const maxActiveFeedbackEntries = 10000
+
+// autoArchiveFeedbackIfNeeded checks the number of non-archived forwarded feedback rows
+// and, if a configured limit is exceeded, automatically archives the oldest day's feedback.
+func (a *App) autoArchiveFeedbackIfNeeded() error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	var activeCount int
+	if err := a.db.QueryRow(`
+		SELECT COUNT(*) 
+		FROM feedback 
+		WHERE status = 'forwarded' AND (is_archived = 0 OR is_archived IS NULL)
+	`).Scan(&activeCount); err != nil {
+		return fmt.Errorf("failed to count active feedback entries: %w", err)
+	}
+
+	if activeCount <= maxActiveFeedbackEntries {
+		return nil
+	}
+
+	// Find the oldest submitted date among unarchived forwarded feedback
+	var oldestDate time.Time
+	err := a.db.QueryRow(`
+		SELECT MIN(CAST(date_submitted AS DATE)) 
+		FROM feedback 
+		WHERE status = 'forwarded' AND (is_archived = 0 OR is_archived IS NULL)
+	`).Scan(&oldestDate)
+	if err != nil {
+		return fmt.Errorf("failed to find oldest feedback date: %w", err)
+	}
+
+	dateStr := oldestDate.Format("2006-01-02")
+	_, err = a.ArchiveFeedbackByDate(dateStr, 0)
+	if err != nil {
+		return fmt.Errorf("failed to auto-archive feedback for date %s: %w", dateStr, err)
+	}
+
+	log.Printf("autoArchiveFeedbackIfNeeded archived feedback for date %s to keep active feedback under limit", dateStr)
+	return nil
+}
+
 // GetFeedback returns all non-archived feedback that has been forwarded to admin
 func (a *App) GetFeedback() ([]Feedback, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
+	}
+
+	// Automatic archiving: when the number of non-archived forwarded feedback entries
+	// exceeds the configured limit, archive the oldest day's feedback.
+	if err := a.autoArchiveFeedbackIfNeeded(); err != nil {
+		log.Printf("autoArchiveFeedbackIfNeeded failed: %v", err)
 	}
 
 	// Only returns non-archived feedback (is_archived = 0 or NULL for backwards compatibility)
@@ -41,6 +90,8 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 			f.comments, 
 			f.date_submitted,
 			f.status,
+			f.verified_by_user_id,
+			f.verified_at,
 			f.forwarded_by_user_id,
 			f.forwarded_at,
 			f.working_student_notes,
@@ -70,13 +121,15 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 		var fb Feedback
 		var middleName, comments, studentIDStr, forwardedByName, workingStudentNotes sql.NullString
 		var dateSubmitted time.Time
+		var verifiedBy sql.NullInt64
+		var verifiedAt sql.NullTime
 		var forwardedBy sql.NullInt64
 		var forwardedAt sql.NullTime
 
 		err := rows.Scan(&fb.ID, &fb.StudentUserID, &studentIDStr, &fb.FirstName, &middleName, &fb.LastName,
 			&fb.PCNumber, &fb.EquipmentCondition, &fb.MonitorCondition,
 			&fb.KeyboardCondition, &fb.MouseCondition, &comments, &dateSubmitted, &fb.Status,
-			&forwardedBy, &forwardedAt, &workingStudentNotes, &forwardedByName)
+			&verifiedBy, &verifiedAt, &forwardedBy, &forwardedAt, &workingStudentNotes, &forwardedByName)
 		if err != nil {
 			continue
 		}
@@ -91,6 +144,14 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 		}
 		if comments.Valid {
 			fb.Comments = &comments.String
+		}
+		if verifiedBy.Valid {
+			v := int(verifiedBy.Int64)
+			fb.VerifiedByUserID = &v
+		}
+		if verifiedAt.Valid {
+			t := verifiedAt.Time.Format("2006-01-02 15:04:05")
+			fb.VerifiedAt = &t
 		}
 		if forwardedBy.Valid {
 			forwardedByInt := int(forwardedBy.Int64)
@@ -187,19 +248,35 @@ func (a *App) GetStudentFeedback(studentID int) ([]Feedback, error) {
 	return feedbacks, nil
 }
 
-// SaveEquipmentFeedback saves equipment feedback from a student
-func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, computerIssue, mouseStatus, mouseIssue, keyboardStatus, keyboardIssue, monitorStatus, monitorIssue, additionalComments string) error {
+// SaveEquipmentFeedback saves equipment feedback from a student.
+// optionalPCNumber: if non-empty, the report is for that PC (e.g. "PC-12"); otherwise the current machine's hostname is used.
+func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, computerIssue, mouseStatus, mouseIssue, keyboardStatus, keyboardIssue, monitorStatus, monitorIssue, additionalComments, optionalPCNumber string) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
-
-	// Get the hostname (PC number) of this device
-	hostname, err := os.Hostname()
-	if err != nil {
-		log.Printf("Failed to get hostname: %v", err)
-		hostname = "Unknown"
+	if err := ValidatePositiveID(userID, "user ID"); err != nil {
+		return err
 	}
-	pcNumber := hostname
+
+	// Sanitize and validate optional PC number
+	if strings.TrimSpace(optionalPCNumber) != "" {
+		pc, err := ValidatePCNumber(optionalPCNumber)
+		if err != nil {
+			return err
+		}
+		optionalPCNumber = pc
+	}
+
+	reportedForAnotherPC := strings.TrimSpace(optionalPCNumber) != ""
+	pcNumber := strings.TrimSpace(optionalPCNumber)
+	if pcNumber == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			log.Printf("Failed to get hostname: %v", err)
+			hostname = "Unknown"
+		}
+		pcNumber = hostname
+	}
 
 	// Determine equipment conditions based on status
 	// ENUM values: 'Good' + 'Minor Issue' + 'Not Working'
@@ -223,6 +300,14 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 		mouseCondition = "Not Working"
 	}
 
+	// Sanitize comment fields (length and control chars)
+	sanitizedComment := func(s string) string { out, _ := ValidateComments(s); return out }
+	computerIssue = sanitizedComment(computerIssue)
+	monitorIssue = sanitizedComment(monitorIssue)
+	keyboardIssue = sanitizedComment(keyboardIssue)
+	mouseIssue = sanitizedComment(mouseIssue)
+	additionalComments = sanitizedComment(additionalComments)
+
 	// Build detailed comments with all issues
 	var commentsParts []string
 	if computerIssue != "" {
@@ -239,6 +324,15 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 	}
 	if additionalComments != "" {
 		commentsParts = append(commentsParts, fmt.Sprintf("Additional: %s", additionalComments))
+	}
+	// When report is for another PC, record which machine submitted so it's visible in the UI
+	if reportedForAnotherPC {
+		submittedFrom, err := os.Hostname()
+		if err != nil {
+			log.Printf("Failed to get hostname for submitted-from: %v", err)
+			submittedFrom = "Unknown"
+		}
+		commentsParts = append(commentsParts, fmt.Sprintf("Submitted from: %s", submittedFrom))
 	}
 
 	combinedComments := ""
@@ -260,13 +354,18 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 		priority = "high"
 	}
 
+	// Workflow status:
+	// All feedback (with or without issues) starts as "pending" so that
+	// working students can review and then forward it to the admin.
+	status := "pending"
+
 	query := `INSERT INTO feedback (student_id, pc_number, 
 			  equipment_condition, monitor_condition, keyboard_condition, mouse_condition, 
-			  comments, priority, date_submitted) 
-			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE())`
+			  comments, priority, status, date_submitted) 
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE())`
 
-	_, err = a.db.Exec(query, userID, pcNumber,
-		equipmentCondition, monitorCondition, keyboardCondition, mouseCondition, nullString(combinedComments), priority)
+	_, err := a.db.Exec(query, userID, pcNumber,
+		equipmentCondition, monitorCondition, keyboardCondition, mouseCondition, nullString(combinedComments), priority, status)
 
 	if err != nil {
 		log.Printf("Failed to save equipment feedback: %v", err)
@@ -346,36 +445,141 @@ func (a *App) GetPendingFeedback() ([]Feedback, error) {
 	return feedbacks, nil
 }
 
-func hasVerificationDecision(notes string) bool {
-	normalized := strings.ToLower(strings.TrimSpace(notes))
-	if normalized == "" {
-		return false
+// GetConfirmedFeedback returns feedback that working student has confirmed (issue is true), ready to forward to admin
+func (a *App) GetConfirmedFeedback() ([]Feedback, error) {
+	if err := a.checkDB(); err != nil {
+		return nil, err
 	}
 
-	if !strings.Contains(normalized, "verification:") {
-		return false
+	query := `
+		SELECT 
+			f.id, 
+			f.student_id, 
+			COALESCE(s.student_id, 'N/A') as student_id_str,
+			s.first_name, 
+			s.middle_name, 
+			s.last_name, 
+			f.pc_number, 
+			f.equipment_condition, 
+			f.monitor_condition, 
+			f.keyboard_condition, 
+			f.mouse_condition, 
+			f.comments, 
+			f.date_submitted,
+			f.status,
+			f.verified_by_user_id,
+			f.verified_at,
+			f.working_student_notes
+		FROM feedback f
+		LEFT JOIN students s ON f.student_id = s.id
+		WHERE f.status = 'confirmed'
+		ORDER BY f.date_submitted DESC`
+	rows, err := a.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var feedbacks []Feedback
+	for rows.Next() {
+		var fb Feedback
+		var middleName, comments, studentIDStr, workingStudentNotes sql.NullString
+		var dateSubmitted time.Time
+		var verifiedBy sql.NullInt64
+		var verifiedAt sql.NullTime
+
+		err := rows.Scan(&fb.ID, &fb.StudentUserID, &studentIDStr, &fb.FirstName, &middleName, &fb.LastName,
+			&fb.PCNumber, &fb.EquipmentCondition, &fb.MonitorCondition,
+			&fb.KeyboardCondition, &fb.MouseCondition, &comments, &dateSubmitted, &fb.Status,
+			&verifiedBy, &verifiedAt, &workingStudentNotes)
+		if err != nil {
+			continue
+		}
+
+		if studentIDStr.Valid {
+			fb.StudentIDStr = studentIDStr.String
+		} else {
+			fb.StudentIDStr = "N/A"
+		}
+		if middleName.Valid {
+			fb.MiddleName = &middleName.String
+		}
+		if comments.Valid {
+			fb.Comments = &comments.String
+		}
+		if verifiedBy.Valid {
+			v := int(verifiedBy.Int64)
+			fb.VerifiedByUserID = &v
+		}
+		if verifiedAt.Valid {
+			t := verifiedAt.Time.Format("2006-01-02 15:04:05")
+			fb.VerifiedAt = &t
+		}
+		if workingStudentNotes.Valid {
+			fb.WorkingStudentNotes = &workingStudentNotes.String
+		}
+
+		fb.StudentName = fmt.Sprintf("%s, %s", fb.LastName, fb.FirstName)
+		if middleName.Valid {
+			fb.StudentName += " " + middleName.String
+		}
+		fb.DateSubmitted = dateSubmitted.Format("2006-01-02 15:04:05")
+
+		feedbacks = append(feedbacks, fb)
 	}
 
-	return strings.Contains(normalized, "confirmed") || strings.Contains(normalized, "not confirmed") || strings.Contains(normalized, "not_confirmed")
+	return feedbacks, nil
 }
 
-// ForwardFeedbackToAdmin forwards feedback from working student to admin
+// ConfirmFeedback sets working-student verification: issue confirmed (true) or rejected (not true). Only confirmed can be forwarded.
+func (a *App) ConfirmFeedback(feedbackID int, workingStudentID int, confirmed bool, notes string) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	status := "rejected"
+	if confirmed {
+		status = "confirmed"
+	}
+
+	query := `UPDATE feedback 
+			  SET status = ?, 
+			      verified_by_user_id = ?, 
+			      verified_at = GETDATE(), 
+			      working_student_notes = ?
+			  WHERE id = ? AND status = 'pending'`
+
+	result, err := a.db.Exec(query, status, workingStudentID, nullString(notes), feedbackID)
+	if err != nil {
+		log.Printf("Failed to confirm feedback %d: %v", feedbackID, err)
+		return fmt.Errorf("failed to confirm feedback: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("feedback not found or already verified")
+	}
+
+	log.Printf("Feedback %d %s by working student %d", feedbackID, status, workingStudentID)
+	return nil
+}
+
+// ForwardFeedbackToAdmin forwards feedback from working student to admin. Only feedback with status 'confirmed' can be forwarded.
 func (a *App) ForwardFeedbackToAdmin(feedbackID int, workingStudentID int, notes string) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
 
-	if !hasVerificationDecision(notes) {
-		return fmt.Errorf("verification decision is required before forwarding")
-	}
-
-	// Update feedback to forwarded status
+	// Update feedback to forwarded status (only if already confirmed by working student)
 	query := `UPDATE feedback 
 			  SET status = 'forwarded', 
 			      forwarded_by_user_id = ?, 
 			      forwarded_at = GETDATE(), 
 			      working_student_notes = ?
-			  WHERE id = ? AND status = 'pending'`
+			  WHERE id = ? AND status = 'confirmed'`
 
 	result, err := a.db.Exec(query, workingStudentID, nullString(notes), feedbackID)
 	if err != nil {
@@ -389,21 +593,17 @@ func (a *App) ForwardFeedbackToAdmin(feedbackID int, workingStudentID int, notes
 	}
 
 	if rowsAffected == 0 {
-		return fmt.Errorf("feedback not found or already forwarded")
+		return fmt.Errorf("feedback not found or not confirmed (only confirmed reports can be forwarded)")
 	}
 
 	log.Printf("Feedback %d forwarded to admin by working student %d", feedbackID, workingStudentID)
 	return nil
 }
 
-// ForwardMultipleFeedbackToAdmin forwards multiple feedback items from working student to admin in batch
+// ForwardMultipleFeedbackToAdmin forwards multiple confirmed feedback items from working student to admin in batch
 func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID int, notes string) (int, error) {
 	if err := a.checkDB(); err != nil {
 		return 0, err
-	}
-
-	if !hasVerificationDecision(notes) {
-		return 0, fmt.Errorf("verification decision is required before forwarding")
 	}
 
 	if len(feedbackIDs) == 0 {
@@ -424,13 +624,13 @@ func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID
 		args = append(args, id)
 	}
 
-	// Update all feedback items to forwarded status in a single query
+	// Update all feedback items to forwarded status (only those already confirmed)
 	query := fmt.Sprintf(`UPDATE feedback 
 			  SET status = 'forwarded', 
 			      forwarded_by_user_id = ?, 
 			      forwarded_at = GETDATE(), 
 			      working_student_notes = ?
-			  WHERE id IN (%s) AND status = 'pending'`, strings.Join(placeholders, ","))
+			  WHERE id IN (%s) AND status = 'confirmed'`, strings.Join(placeholders, ","))
 
 	result, err := a.db.Exec(query, args...)
 	if err != nil {
@@ -444,10 +644,59 @@ func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID
 	}
 
 	if rowsAffected == 0 {
-		return 0, fmt.Errorf("no feedback items were forwarded (may already be forwarded or not found)")
+		return 0, fmt.Errorf("no feedback items were forwarded (only confirmed reports can be forwarded)")
 	}
 
 	log.Printf("%d feedback items forwarded to admin by working student %d", rowsAffected, workingStudentID)
+	return int(rowsAffected), nil
+}
+
+// ConfirmAndForwardMultiple confirms and forwards multiple pending feedback items to admin in one step.
+// Use this so working students can batch "confirm & forward" (e.g. no-issue logs) without doing each one by one.
+func (a *App) ConfirmAndForwardMultiple(feedbackIDs []int, workingStudentID int, notes string) (int, error) {
+	if err := a.checkDB(); err != nil {
+		return 0, err
+	}
+
+	if len(feedbackIDs) == 0 {
+		return 0, fmt.Errorf("no feedback IDs provided")
+	}
+
+	placeholders := make([]string, len(feedbackIDs))
+	args := make([]interface{}, 0, len(feedbackIDs)+3)
+	args = append(args, workingStudentID)
+	args = append(args, nullString(notes))
+	args = append(args, workingStudentID)
+	for i, id := range feedbackIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(`UPDATE feedback 
+			  SET status = 'forwarded', 
+			      verified_by_user_id = ?, 
+			      verified_at = GETDATE(), 
+			      forwarded_by_user_id = ?, 
+			      forwarded_at = GETDATE(), 
+			      working_student_notes = ?
+			  WHERE id IN (%s) AND status = 'pending'`, strings.Join(placeholders, ","))
+
+	result, err := a.db.Exec(query, args...)
+	if err != nil {
+		log.Printf("Failed to confirm and forward multiple feedback: %v", err)
+		return 0, fmt.Errorf("failed to confirm and forward feedback: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	if rowsAffected == 0 {
+		return 0, fmt.Errorf("no feedback items were updated (only pending reports can be confirmed and forwarded)")
+	}
+
+	log.Printf("%d feedback items confirmed and forwarded to admin by working student %d", rowsAffected, workingStudentID)
 	return int(rowsAffected), nil
 }
 
@@ -1004,6 +1253,12 @@ func (a *App) ArchiveFeedback(feedbackIDs []int, adminUserID int) (int, error) {
 	if len(feedbackIDs) == 0 {
 		return 0, fmt.Errorf("no feedback IDs provided")
 	}
+	if err := ValidatePositiveIDs(feedbackIDs, "feedback ID"); err != nil {
+		return 0, err
+	}
+	if err := ValidatePositiveID(adminUserID, "admin user ID"); err != nil {
+		return 0, err
+	}
 
 	// Build placeholders for the IN clause
 	placeholders := make([]string, len(feedbackIDs))
@@ -1047,6 +1302,9 @@ func (a *App) UnarchiveFeedback(feedbackIDs []int) (int, error) {
 
 	if len(feedbackIDs) == 0 {
 		return 0, fmt.Errorf("no feedback IDs provided")
+	}
+	if err := ValidatePositiveIDs(feedbackIDs, "feedback ID"); err != nil {
+		return 0, err
 	}
 
 	// Build placeholders for the IN clause

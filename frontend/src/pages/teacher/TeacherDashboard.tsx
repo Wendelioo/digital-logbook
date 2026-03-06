@@ -9,10 +9,12 @@ import {
   Calendar,
   Library,
   ClipboardCheck,
+  PauseCircle,
+  Archive,
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
 import { Class } from './types';
@@ -40,6 +42,20 @@ function DashboardOverview() {
       ...prev,
     ].slice(0, 10));
   };
+  const upsertNotification = (id: string, message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
+    setNotifications((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      return [
+        {
+          id,
+          message,
+          createdAt: Date.now(),
+          tone,
+        },
+        ...next,
+      ].slice(0, 10);
+    });
+  };
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -59,7 +75,7 @@ function DashboardOverview() {
 
         let nextOpenSessionsToday = 0;
         try {
-          const sessions = await (window as any).go.main.App.GetTeacherAttendanceSessions(user.id);
+          const sessions = await (window as any).go.backend.App.GetTeacherAttendanceSessions(user.id);
           const today = new Date().toISOString().split('T')[0];
           const openToday = (sessions || []).filter((session: any) =>
             session.attendance_date === today && session.status === 'open'
@@ -74,6 +90,13 @@ function DashboardOverview() {
 
         const nextActiveClasses = nextClasses.filter(cls => cls.is_active).length;
         const nextTotalStudents = nextClasses.reduce((sum, cls) => sum + cls.enrolled_count, 0);
+        upsertNotification(
+          'teacher-open-sessions',
+          `Open attendance sessions today: ${nextOpenSessionsToday}.`,
+          nextOpenSessionsToday > 0 ? 'warning' : 'success'
+        );
+        upsertNotification('teacher-active-classes', `Active classes: ${nextActiveClasses}.`, 'info');
+        upsertNotification('teacher-total-students', `Enrolled students: ${nextTotalStudents}.`, 'info');
         const previous = previousMetricsRef.current;
 
         if (!previous) {
@@ -125,7 +148,9 @@ function DashboardOverview() {
   }, [user?.id]);
 
   const totalStudents = classes.reduce((sum, cls) => sum + cls.enrolled_count, 0);
-  const activeClasses = classes.filter(cls => cls.is_active).length;
+  const activeClasses = classes.filter(cls => cls.is_active && !cls.is_archived).length;
+  const inactiveClasses = classes.filter(cls => !cls.is_active && !cls.is_archived).length;
+  const archivedClasses = classes.filter(cls => cls.is_archived).length;
 
   return (
     <div className="p-6">
@@ -146,7 +171,7 @@ function DashboardOverview() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
         {/* Quick Stats */}
         <div className="md:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard
               title="Active Classes"
               value={activeClasses}
@@ -160,10 +185,16 @@ function DashboardOverview() {
               color="green"
             />
             <StatCard
-              title="Classes"
-              value={activeClasses}
-              icon={<Calendar className="h-6 w-6" />}
-              color="purple"
+              title="Inactive Classes"
+              value={inactiveClasses}
+              icon={<PauseCircle className="h-6 w-6" />}
+              color="yellow"
+            />
+            <StatCard
+              title="Archived Classes"
+              value={archivedClasses}
+              icon={<Archive className="h-6 w-6" />}
+              color="indigo"
             />
           </div>
 
@@ -230,7 +261,7 @@ function DashboardOverview() {
                   </div>
                 </Link>
                 <Link
-                  to="classes"
+                  to="class-management"
                   className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border-2 border-gray-200 rounded-lg hover:border-green-500 hover:shadow-md transition-all duration-200"
                 >
                   <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-500 transition-colors duration-200">
@@ -246,15 +277,17 @@ function DashboardOverview() {
           </Card>
         </div>
 
-        <Card className="h-fit">
-          <CardHeader title="Notifications" />
-          <CardBody>
-            <DashboardNotifications
-              items={notifications}
-              emptyMessage="No new class or attendance updates."
-            />
-          </CardBody>
-        </Card>
+        <div className="md:border-l md:border-gray-300 md:pl-6">
+          <Card className="h-fit">
+            <CardHeader title="Notifications" />
+            <CardBody>
+              <DashboardNotifications
+                items={notifications}
+                emptyMessage="No new class or attendance updates."
+              />
+            </CardBody>
+          </Card>
+        </div>
       </div>
 
     </div>

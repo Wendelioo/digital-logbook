@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, XCircle, Clock, User, Mail, Phone, Calendar } from 'lucide-react';
-import { GetPendingRegistrations, ProcessRegistration } from '../../wailsjs/go/main/App';
+import { GetPendingRegistrations, ProcessRegistration } from '../../wailsjs/go/backend/App';
 import Button from '../components/Button';
 import { Card } from '../components/Card';
-import { main } from '../../wailsjs/go/models';
+import { backend } from '../../wailsjs/go/models';
 
-type PendingRegistration = main.PendingRegistration;
+type PendingRegistration = backend.PendingRegistration;
 
 interface PendingRegistrationsProps {
   workingStudentUserId: number;

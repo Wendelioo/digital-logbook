@@ -17,7 +17,7 @@ import {
   JoinClassByEDPCode,
   GetClassStudents,
   ArchiveStudentEnrollment,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { CourseClass, ClasslistEntry } from './types';
 
@@ -311,7 +311,7 @@ function MyClasses() {
                 <p className="text-sm text-gray-600">Enter the EDP Code to join a class</p>
               </div>
 
-              <form onSubmit={handleJoinClass} className="space-y-4">
+              <form onSubmit={handleJoinClass} className="space-y-4" noValidate>
                 <div>
                   <label htmlFor="edpCode" className="block text-sm font-medium text-gray-700 mb-2">
                     EDP Code

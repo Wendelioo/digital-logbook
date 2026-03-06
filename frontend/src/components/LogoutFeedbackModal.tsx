@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Monitor, Mouse, Keyboard, Computer, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, CheckCircle2 } from 'lucide-react';
 
 interface LogoutFeedbackModalProps {
   onClose: () => void;
@@ -24,20 +24,58 @@ interface FeedbackData {
 
 interface EquipmentItemProps {
   label: string;
-  icon: React.ReactNode;
   value: { status: 'yes' | 'no' | null; issue: string };
   onChange: (value: { status: 'yes' | 'no' | null; issue: string }) => void;
+  issueOnly?: boolean;
 }
 
-function EquipmentItem({ label, icon, value, onChange }: EquipmentItemProps) {
+function EquipmentItem({ label, value, onChange, issueOnly = false }: EquipmentItemProps) {
+  if (issueOnly) {
+    const checked = value.status === 'no';
+    return (
+      <div className={`border rounded-xl p-4 transition-all duration-200 ${
+        checked ? 'border-red-200 bg-red-50/50' : 'border-gray-200 bg-white'
+      }`}>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(e) => {
+              if (e.target.checked) {
+                onChange({ status: 'no', issue: value.issue });
+              } else {
+                onChange({ status: 'yes', issue: '' });
+              }
+            }}
+            className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer"
+          />
+          <span className={`font-medium text-sm ${
+            checked ? 'text-red-800' : 'text-gray-700'
+          }`}>{label} has a problem</span>
+        </label>
+        {checked && (
+          <div className="mt-3">
+            <input
+              type="text"
+              value={value.issue}
+              onChange={(e) => onChange({ status: 'no', issue: e.target.value })}
+              placeholder={`Describe the ${label.toLowerCase()} issue...`}
+              className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const isComplete = value.status !== null && (value.status === 'yes' || (value.status === 'no' && value.issue.trim()));
-  
+
   return (
     <div className={`relative border rounded-xl p-4 transition-all duration-200 ${
-      value.status === 'yes' 
-        ? 'border-green-200 bg-green-50/50' 
-        : value.status === 'no' 
-        ? 'border-red-200 bg-red-50/50' 
+      value.status === 'yes'
+        ? 'border-green-200 bg-green-50/50'
+        : value.status === 'no'
+        ? 'border-red-200 bg-red-50/50'
         : 'border-gray-200 bg-white hover:border-gray-300'
     }`}>
       {/* Status Indicator */}
@@ -52,24 +90,7 @@ function EquipmentItem({ label, icon, value, onChange }: EquipmentItemProps) {
       </div>
 
       {/* Equipment Header */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className={`p-2.5 rounded-lg ${
-          value.status === 'yes' 
-            ? 'bg-green-100' 
-            : value.status === 'no' 
-            ? 'bg-red-100' 
-            : 'bg-gray-50'
-        }`}>
-          <div className={`h-5 w-5 ${
-            value.status === 'yes' 
-              ? 'text-green-600' 
-              : value.status === 'no' 
-              ? 'text-red-600' 
-              : 'text-gray-500'
-          }`}>
-            {icon}
-          </div>
-        </div>
+      <div className="mb-4">
         <h4 className="font-medium text-gray-900">{label}</h4>
       </div>
 
@@ -132,33 +153,57 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
     additionalComments: ''
   });
 
+  const isOtherPC = feedback.reportingContext === 'other_pc';
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (mode === 'logout') {
-      // Validate that all equipment status are selected
-      if (!feedback.computer.status || !feedback.mouse.status ||
-          !feedback.keyboard.status || !feedback.monitor.status) {
-        alert('Please answer all equipment questions');
-        return;
-      }
-
-      // Validate that if "No" is selected, an issue description is provided
-      if (feedback.computer.status === 'no' && !feedback.computer.issue.trim()) {
-        alert('Please describe the issue with the Computer');
-        return;
-      }
-      if (feedback.mouse.status === 'no' && !feedback.mouse.issue.trim()) {
-        alert('Please describe the issue with the Mouse');
-        return;
-      }
-      if (feedback.keyboard.status === 'no' && !feedback.keyboard.issue.trim()) {
-        alert('Please describe the issue with the Keyboard');
-        return;
-      }
-      if (feedback.monitor.status === 'no' && !feedback.monitor.issue.trim()) {
-        alert('Please describe the issue with the Monitor');
-        return;
+      if (isOtherPC) {
+        if (!feedback.targetPCNumber.trim()) {
+          alert('Please enter the lab and PC number you are reporting for.');
+          return;
+        }
+        const hasIssue = [feedback.computer, feedback.mouse, feedback.keyboard, feedback.monitor]
+          .some(eq => eq.status === 'no' && eq.issue.trim());
+        if (!hasIssue) {
+          alert('Please select at least one equipment with a problem and describe the issue.');
+          return;
+        }
+        const items = [
+          { eq: feedback.computer, name: 'Computer' },
+          { eq: feedback.mouse, name: 'Mouse' },
+          { eq: feedback.keyboard, name: 'Keyboard' },
+          { eq: feedback.monitor, name: 'Monitor' },
+        ];
+        for (const { eq, name } of items) {
+          if (eq.status === 'no' && !eq.issue.trim()) {
+            alert(`Please describe the issue with the ${name}.`);
+            return;
+          }
+        }
+      } else {
+        if (!feedback.computer.status || !feedback.mouse.status ||
+            !feedback.keyboard.status || !feedback.monitor.status) {
+          alert('Please answer all equipment questions');
+          return;
+        }
+        if (feedback.computer.status === 'no' && !feedback.computer.issue.trim()) {
+          alert('Please describe the issue with the Computer');
+          return;
+        }
+        if (feedback.mouse.status === 'no' && !feedback.mouse.issue.trim()) {
+          alert('Please describe the issue with the Mouse');
+          return;
+        }
+        if (feedback.keyboard.status === 'no' && !feedback.keyboard.issue.trim()) {
+          alert('Please describe the issue with the Keyboard');
+          return;
+        }
+        if (feedback.monitor.status === 'no' && !feedback.monitor.issue.trim()) {
+          alert('Please describe the issue with the Monitor');
+          return;
+        }
       }
     }
 
@@ -168,7 +213,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
     }
 
     if (feedback.reportingContext === 'other_pc' && !feedback.targetPCNumber.trim()) {
-      alert('Please enter the PC number you are reporting for.');
+      alert('Please enter the lab and PC number you are reporting for.');
       return;
     }
 
@@ -188,9 +233,18 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
     feedback.monitor.status !== null && (feedback.monitor.status === 'yes' || feedback.monitor.issue.trim())
   ].filter(Boolean).length;
 
-  const progress = mode === 'logout' ? (logoutCompletedItems / 4) * 100 : 100;
+  const progress = mode === 'logout' && !isOtherPC ? (logoutCompletedItems / 4) * 100 : 100;
+
+  const otherPcCanSubmit =
+    feedback.targetPCNumber.trim().length > 0 &&
+    [feedback.computer, feedback.mouse, feedback.keyboard, feedback.monitor].some(
+      eq => eq.status === 'no' && eq.issue.trim().length > 0
+    );
+
   const canSubmit = mode === 'logout'
-    ? progress === 100
+    ? isOtherPC
+      ? otherPcCanSubmit
+      : progress === 100
     : feedback.issueDescription.trim().length > 0 &&
       (feedback.reportingContext === 'current_pc' || feedback.targetPCNumber.trim().length > 0);
 
@@ -210,7 +264,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
                 {mode === 'logout' ? 'Please verify all equipment status' : 'Report equipment issues immediately'}
               </p>
               
-              {mode === 'logout' && (
+              {mode === 'logout' && !isOtherPC && (
                 <div className="mt-4">
                   <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
                     <span className="font-medium">{logoutCompletedItems} of 4 completed</span>
@@ -236,7 +290,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-8">
+        <form onSubmit={handleSubmit} className="p-8" noValidate>
           {mode === 'manual' && (
             <div className="border border-gray-200 rounded-xl p-4 mb-6 bg-gray-50">
               <h4 className="text-sm font-semibold text-gray-800 mb-3">Reporting Context</h4>
@@ -275,12 +329,12 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-2">Target PC Number {feedback.reportingContext === 'other_pc' ? '*' : '(Optional)'}</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-2">Lab & PC Number {feedback.reportingContext === 'other_pc' ? '*' : '(Optional)'}</label>
                   <input
                     type="text"
                     value={feedback.targetPCNumber}
                     onChange={(e) => setFeedback({ ...feedback, targetPCNumber: e.target.value })}
-                    placeholder="e.g. PC-12"
+                    placeholder="e.g. CL1-PC01"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
@@ -316,35 +370,114 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
           )}
 
           {mode === 'logout' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <EquipmentItem
-                label="Computer"
-                icon={<Computer />}
-                value={feedback.computer}
-                onChange={(value) => setFeedback({ ...feedback, computer: value })}
-              />
-
-              <EquipmentItem
-                label="Mouse"
-                icon={<Mouse />}
-                value={feedback.mouse}
-                onChange={(value) => setFeedback({ ...feedback, mouse: value })}
-              />
-
-              <EquipmentItem
-                label="Keyboard"
-                icon={<Keyboard />}
-                value={feedback.keyboard}
-                onChange={(value) => setFeedback({ ...feedback, keyboard: value })}
-              />
-
-              <EquipmentItem
-                label="Monitor"
-                icon={<Monitor />}
-                value={feedback.monitor}
-                onChange={(value) => setFeedback({ ...feedback, monitor: value })}
-              />
-            </div>
+            <>
+              <div className="border border-gray-200 rounded-xl p-4 mb-6 bg-gray-50">
+                <h4 className="text-sm font-semibold text-gray-800 mb-3">Reporting for</h4>
+                <div className="flex flex-wrap items-center gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="reportingContext"
+                      checked={feedback.reportingContext === 'current_pc'}
+                      onChange={() => setFeedback({
+                        ...feedback,
+                        reportingContext: 'current_pc',
+                        targetPCNumber: '',
+                        computer: { status: null, issue: '' },
+                        mouse: { status: null, issue: '' },
+                        keyboard: { status: null, issue: '' },
+                        monitor: { status: null, issue: '' },
+                      })}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">This PC (the one I used)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="reportingContext"
+                      checked={feedback.reportingContext === 'other_pc'}
+                      onChange={() => setFeedback({
+                        ...feedback,
+                        reportingContext: 'other_pc',
+                        computer: { status: 'yes', issue: '' },
+                        mouse: { status: 'yes', issue: '' },
+                        keyboard: { status: 'yes', issue: '' },
+                        monitor: { status: 'yes', issue: '' },
+                      })}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-gray-700">Another PC</span>
+                  </label>
+                </div>
+                {isOtherPC && (
+                  <div className="mt-3">
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">Lab &amp; PC Number <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      value={feedback.targetPCNumber}
+                      onChange={(e) => setFeedback({ ...feedback, targetPCNumber: e.target.value })}
+                      placeholder="e.g. CL1-PC01"
+                      className="w-56 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                )}
+              </div>
+              {isOtherPC ? (
+                <div className="mb-6">
+                  <p className="text-xs text-gray-500 mb-3">Check any equipment that has a problem on that PC:</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <EquipmentItem
+                      label="Computer"
+                      value={feedback.computer}
+                      onChange={(value) => setFeedback({ ...feedback, computer: value })}
+                      issueOnly
+                    />
+                    <EquipmentItem
+                      label="Mouse"
+                      value={feedback.mouse}
+                      onChange={(value) => setFeedback({ ...feedback, mouse: value })}
+                      issueOnly
+                    />
+                    <EquipmentItem
+                      label="Keyboard"
+                      value={feedback.keyboard}
+                      onChange={(value) => setFeedback({ ...feedback, keyboard: value })}
+                      issueOnly
+                    />
+                    <EquipmentItem
+                      label="Monitor"
+                      value={feedback.monitor}
+                      onChange={(value) => setFeedback({ ...feedback, monitor: value })}
+                      issueOnly
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                  <EquipmentItem
+                    label="Computer"
+                    value={feedback.computer}
+                    onChange={(value) => setFeedback({ ...feedback, computer: value })}
+                  />
+                  <EquipmentItem
+                    label="Mouse"
+                    value={feedback.mouse}
+                    onChange={(value) => setFeedback({ ...feedback, mouse: value })}
+                  />
+                  <EquipmentItem
+                    label="Keyboard"
+                    value={feedback.keyboard}
+                    onChange={(value) => setFeedback({ ...feedback, keyboard: value })}
+                  />
+                  <EquipmentItem
+                    label="Monitor"
+                    value={feedback.monitor}
+                    onChange={(value) => setFeedback({ ...feedback, monitor: value })}
+                  />
+                </div>
+              )}
+            </>
           ) : (
             <div className="border border-gray-200 rounded-xl p-4 mb-6 bg-white">
               <h4 className="text-sm font-semibold text-gray-800 mb-3">Issue Details</h4>

@@ -14,7 +14,7 @@ import {
   ExportArchivedLogSheetPDF,
   ExportArchivedFeedbackSheetCSV,
   ExportArchivedFeedbackSheetPDF
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { LoginLog, Feedback } from './types';
 
 export type ArchiveTab = 'archived-logs' | 'reports';

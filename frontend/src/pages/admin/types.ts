@@ -1,4 +1,4 @@
-import { main } from '../../../wailsjs/go/models';
+import { backend } from '../../../wailsjs/go/models';
 
 export interface DashboardStats {
   total_students: number;
@@ -43,7 +43,7 @@ export interface LoginLog {
 }
 
 // Use the generated Feedback model from main
-export type Feedback = main.Feedback;
+export type Feedback = backend.Feedback;
 
 // Archive sheet types
 export interface ArchivedLogSheet {

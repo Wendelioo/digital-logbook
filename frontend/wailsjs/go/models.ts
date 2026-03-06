@@ -1,4 +1,4 @@
-export namespace main {
+export namespace backend {
 	
 	export class AdminDashboard {
 	    total_students: number;
@@ -449,6 +449,8 @@ export namespace main {
 	    date_submitted: string;
 	    status: string;
 	    priority: string;
+	    verified_by_user_id?: number;
+	    verified_at?: string;
 	    forwarded_by_user_id?: number;
 	    forwarded_by_name?: string;
 	    forwarded_at?: string;
@@ -476,6 +478,8 @@ export namespace main {
 	        this.date_submitted = source["date_submitted"];
 	        this.status = source["status"];
 	        this.priority = source["priority"];
+	        this.verified_by_user_id = source["verified_by_user_id"];
+	        this.verified_at = source["verified_at"];
 	        this.forwarded_by_user_id = source["forwarded_by_user_id"];
 	        this.forwarded_by_name = source["forwarded_by_name"];
 	        this.forwarded_at = source["forwarded_at"];

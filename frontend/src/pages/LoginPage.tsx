@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { User, Lock, Eye, EyeOff, UserPlus, Settings } from 'lucide-react';
-import { CreateUser, GetDepartments } from '../../wailsjs/go/main/App';
-import { main } from '../../wailsjs/go/models';
+import { CreateUser, GetDepartments } from '../../wailsjs/go/backend/App';
+import { backend } from '../../wailsjs/go/models';
 import Button from '../components/Button';
 import { InputField } from '../components/Form';
 import backgroundImage from '../assets/background/background.jpg';
 import RegistrationModal from './RegistrationPage';
 
-type Department = main.Department;
+type Department = backend.Department;
 
 const roleRoutes: { [key: string]: string } = {
   student: '/student',
@@ -234,7 +234,7 @@ function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-5">
+          <form onSubmit={handleLogin} className="space-y-5" noValidate>
             {/* Username/ID Field */}
             <div>
               <label htmlFor="username" className="block text-sm font-semibold text-gray-800 mb-2.5">
@@ -279,8 +279,8 @@ function LoginPage() {
               </div>
             </div>
 
-            {/* Remember Me */}
-            <div className="pt-1">
+            {/* Remember Me + Forgot Password Info */}
+            <div className="pt-1 flex items-center justify-between">
               <label className="flex items-center cursor-pointer group">
                 <input 
                   type="checkbox" 
@@ -290,6 +290,20 @@ function LoginPage() {
                   Remember me
                 </span>
               </label>
+              <button
+                type="button"
+                className="text-xs font-medium text-teal-600 hover:text-teal-700 underline decoration-dotted decoration-1"
+                onClick={() => {
+                  alert(
+                    'Forgot your password?\n\n' +
+                    '- Students: Please contact the teacher handling your class so they can request a password reset.\n' +
+                    '- Teachers and admins: Please contact the system administrator.\n\n' +
+                    'For security reasons, passwords cannot be reset directly on this screen.'
+                  );
+                }}
+              >
+                Forgot password?
+              </button>
             </div>
 
             {/* Submit Button */}

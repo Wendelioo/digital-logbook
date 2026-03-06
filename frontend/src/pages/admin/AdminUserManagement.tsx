@@ -30,8 +30,9 @@ import {
   ArchiveUser,
   GetArchivedUsers,
   UnarchiveUser,
-  ResetPasswordByRole
-} from '../../../wailsjs/go/main/App';
+  ResetPasswordByRole,
+  DeactivateTeacher,
+} from '../../../wailsjs/go/backend/App';
 import { User as UserType, Department } from './types';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -341,14 +342,24 @@ function UserManagement() {
         return;
       }
 
+      const ID_REGEX = /^\d{7}$/;
+
       if (formData.role === 'working_student' || formData.role === 'student') {
         if (!formData.studentId) {
           showNotification('error', `Student ID is required for ${formData.role === 'student' ? 'Students' : 'Working Students'}`);
           return;
         }
-      } else if (formData.role === 'teacher') {
+        if (!ID_REGEX.test(formData.studentId.trim())) {
+          showNotification('error', 'Invalid student ID — must be exactly 7 digits (e.g. 2211172)');
+          return;
+        }
+      } else if (formData.role === 'teacher' || formData.role === 'admin') {
         if (!formData.employeeId) {
-          showNotification('error', 'Employee ID is required for Teachers');
+          showNotification('error', `Employee ID is required for ${formData.role === 'admin' ? 'Admins' : 'Teachers'}`);
+          return;
+        }
+        if (!ID_REGEX.test(formData.employeeId.trim())) {
+          showNotification('error', 'Invalid employee ID — must be exactly 7 digits (e.g. 2211172)');
           return;
         }
       }
@@ -447,19 +458,20 @@ function UserManagement() {
   };
 
   const handleDelete = async (id: number) => {
-    if (confirm('Are you sure you want to delete this user?')) {
-      try {
-        await DeleteUser(id);
-        showNotification('success', 'User deleted successfully!');
-        loadUsers();
-        if (showArchivedModal) {
-          loadArchivedUsers();
-        }
-      } catch (error) {
-        console.error('Failed to delete user:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Failed to delete user. Please try again.';
-        showNotification('error', errorMessage);
+    if (!confirm('Are you sure you want to delete this user permanently? This cannot be undone.')) {
+      return;
+    }
+    try {
+      await DeleteUser(id);
+      showNotification('success', 'User deleted successfully!');
+      loadUsers();
+      if (showArchivedModal) {
+        loadArchivedUsers();
       }
+    } catch (error) {
+      console.error('Failed to delete user:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete user. Please try again.';
+      showNotification('error', errorMessage);
     }
   };
 
@@ -661,7 +673,7 @@ function UserManagement() {
         title={editingUser ? `Edit ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}` : `Add New ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}`}
         size="lg"
       >
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
           {/* Role Selection - Only shown when adding new user */}
           {!editingUser && (
             <div>
@@ -1085,11 +1097,24 @@ function UserManagement() {
                     )}
                     {user.role === 'teacher' ? (
                       <Button
-                        onClick={() => handleDelete(user.id)}
-                        variant="danger"
+                        onClick={async () => {
+                          if (!confirm('Deactivate this teacher account? It will become inactive but remain for records and can be restored within 30 days.')) {
+                            return;
+                          }
+                          try {
+                            await DeactivateTeacher(user.id);
+                            showNotification('success', 'Teacher account deactivated.');
+                            loadUsers();
+                          } catch (error) {
+                            console.error('Failed to deactivate teacher:', error);
+                            const errorMessage = error instanceof Error ? error.message : 'Failed to deactivate teacher account. Please try again.';
+                            showNotification('error', errorMessage);
+                          }
+                        }}
+                        variant="outline"
                         size="sm"
-                        icon={<Trash2 className="h-3 w-3" />}
-                        title="Delete"
+                        icon={<Archive className="h-3 w-3" />}
+                        title="Deactivate"
                       />
                     ) : (
                       <Button

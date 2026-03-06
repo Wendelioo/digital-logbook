@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { UpdateUserPhoto, ChangePassword, SaveEquipmentFeedback, UpdateUser } from '../../wailsjs/go/main/App';
+import { UpdateUserPhoto, ChangePassword, SaveEquipmentFeedback, UpdateUser } from '../../wailsjs/go/backend/App';
 import { compressImage, isImageFile, isValidFileSize } from '../utils/imageUtils';
 import { 
   User,
@@ -12,7 +12,6 @@ import {
   UserCircle,
   Menu,
   X as XIcon,
-  AlertCircle,
 } from 'lucide-react';
 import LogoutFeedbackModal from './LogoutFeedbackModal';
 
@@ -163,7 +162,12 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
         }
       }
       
-      // Call the backend function to save feedback
+      // When reporting for another PC, pass its number; otherwise backend uses current machine hostname
+      const optionalPCNumber =
+        feedbackData.reportingContext === 'other_pc' && feedbackData.targetPCNumber?.trim()
+          ? feedbackData.targetPCNumber.trim()
+          : '';
+
       await SaveEquipmentFeedback(
         user.id,
         user.name,
@@ -175,7 +179,8 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
         keyboardIssue,
         monitorStatus,
         monitorIssue,
-        additionalComments
+        additionalComments,
+        optionalPCNumber
       );
       
       console.log('Feedback saved successfully');
@@ -202,11 +207,6 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
   const handleFeedbackCancel = () => {
     setShowFeedbackModal(false);
-  };
-
-  const handleOpenQuickReport = () => {
-    setFeedbackMode('manual');
-    setShowFeedbackModal(true);
   };
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -287,8 +287,24 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       return;
     }
 
-    if (newPassword.length < 6) {
-      setPasswordError('New password must be at least 6 characters long');
+    if (newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters long');
+      return;
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      setPasswordError('New password must include at least one uppercase letter');
+      return;
+    }
+    if (!/[a-z]/.test(newPassword)) {
+      setPasswordError('New password must include at least one lowercase letter');
+      return;
+    }
+    if (!/[0-9]/.test(newPassword)) {
+      setPasswordError('New password must include at least one number');
+      return;
+    }
+    if (!/[^A-Za-z0-9]/.test(newPassword)) {
+      setPasswordError('New password must include at least one special character');
       return;
     }
 
@@ -733,17 +749,6 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
               </div>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            {user?.role === 'student' && (
-              <button
-                onClick={handleOpenQuickReport}
-                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border border-danger-200 text-danger-700 bg-danger-50 hover:bg-danger-100 transition-colors"
-              >
-                <AlertCircle className="w-4 h-4" />
-                Report Issue Now
-              </button>
-            )}
-          </div>
         </header>
 
         {/* PAGE CONTENT */}
@@ -867,7 +872,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
                   {/* Profile Information - Role Specific */}
                   {(user?.role === 'student' || user?.role === 'working_student') && (
-                    <form onSubmit={handleSaveProfile} className="space-y-5">
+                    <form onSubmit={handleSaveProfile} className="space-y-5" noValidate>
                       {profileError && (
                         <div className="bg-danger-50 border-l-4 border-danger-500 p-4 rounded-lg">
                           <p className="text-sm text-danger-700">{profileError}</p>
@@ -949,6 +954,46 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                         </div>
                       </div>
 
+                      {/* Account Information */}
+                      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Account Information</h5>
+                        <dl className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Account Created</dt>
+                            <dd className="mt-1 text-sm text-gray-900">
+                              {user?.created
+                                ? (() => {
+                                    const d = new Date(user.created.replace(' ', 'T'));
+                                    return Number.isNaN(d.getTime())
+                                      ? user.created
+                                      : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                                  })()
+                                : 'Not available'}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Account Validity</dt>
+                            <dd className="mt-1 text-sm text-gray-900">
+                              {user?.created
+                                ? (() => {
+                                    const d = new Date(user.created.replace(' ', 'T'));
+                                    if (Number.isNaN(d.getTime())) return 'Not available';
+                                    const expiry = new Date(d);
+                                    expiry.setFullYear(expiry.getFullYear() + 4);
+                                    const isExpired = expiry.getTime() < Date.now();
+                                    return (
+                                      <span className={isExpired ? 'text-red-600 font-medium' : ''}>
+                                        {expiry.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                                        {isExpired && ' (Expired)'}
+                                      </span>
+                                    );
+                                  })()
+                                : 'Not available'}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+
                       <div className="flex justify-end gap-3 pt-4">
                         {!editingProfile ? (
                           <button
@@ -1012,7 +1057,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                   )}
                 </div>
               ) : (
-                <form onSubmit={handlePasswordChange} className="space-y-5">
+                <form onSubmit={handlePasswordChange} className="space-y-5" noValidate>
                   {passwordError && (
                     <div className="bg-danger-50 border-l-4 border-danger-500 p-4 rounded-lg">
                       <p className="text-sm text-danger-700">{passwordError}</p>
@@ -1049,7 +1094,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                       required
                     />
-                    <p className="text-xs text-gray-500 mt-1">Must be at least 6 characters</p>
+                    <p className="text-xs text-gray-500 mt-1">Min. 8 characters with uppercase, lowercase, number &amp; special character</p>
                   </div>
 
                   <div>

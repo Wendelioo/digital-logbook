@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"context"
@@ -175,7 +175,9 @@ type Feedback struct {
 	Comments            *string `json:"comments,omitempty"`
 	DateSubmitted       string  `json:"date_submitted"`
 	Status              string  `json:"status"`
-	Priority            string  `json:"priority"` // New: Issue priority (low/medium/high/critical)
+	Priority            string  `json:"priority"` // Issue priority (low/medium/high/critical)
+	VerifiedByUserID    *int    `json:"verified_by_user_id,omitempty"`
+	VerifiedAt          *string `json:"verified_at,omitempty"`
 	ForwardedByUserID   *int    `json:"forwarded_by_user_id,omitempty"`
 	ForwardedByName     *string `json:"forwarded_by_name,omitempty"`
 	ForwardedAt         *string `json:"forwarded_at,omitempty"`

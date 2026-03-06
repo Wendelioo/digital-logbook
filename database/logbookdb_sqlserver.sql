@@ -235,8 +235,10 @@ CREATE TABLE feedback (
     mouse_condition NVARCHAR(20) DEFAULT 'Good' CHECK (mouse_condition IN ('Good', 'Minor Issue', 'Not Working')),
     comments NVARCHAR(MAX),
     working_student_notes NVARCHAR(MAX),
-    status NVARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'forwarded', 'resolved')),
+    status NVARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'rejected', 'forwarded', 'resolved')),
     priority NVARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
+    verified_by_user_id INT,
+    verified_at DATETIME,
     forwarded_by_user_id INT,
     forwarded_at DATETIME,
     date_submitted DATETIME DEFAULT GETDATE(),
@@ -246,6 +248,7 @@ CREATE TABLE feedback (
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME DEFAULT GETDATE(),
     FOREIGN KEY (student_id) REFERENCES students(id),
+    FOREIGN KEY (verified_by_user_id) REFERENCES users(id),
     FOREIGN KEY (forwarded_by_user_id) REFERENCES users(id),
     FOREIGN KEY (archived_by_user_id) REFERENCES users(id)
 );

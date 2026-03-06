@@ -46,22 +46,26 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
   // Group logs by archive date (we'll extract from login_time for demo)
   useEffect(() => {
     const grouped: GroupedLogs = {};
-    
-    archivedLogs.forEach(log => {
-      // Extract date from login_time (format: "2006-01-02 15:04:05")
-      const date = log.login_time.split(' ')[0];
-      if (!grouped[date]) {
-        grouped[date] = [];
-      }
-      grouped[date].push(log);
-    });
+    try {
+      (archivedLogs || []).forEach(log => {
+        const raw = log?.login_time;
+        const date = typeof raw === 'string' ? raw.split(' ')[0] : '';
+        if (!date) return;
+        if (!grouped[date]) {
+          grouped[date] = [];
+        }
+        grouped[date].push(log);
+      });
 
-    setGroupedLogs(grouped);
-    
-    // Auto-expand first group
-    const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
-    if (dates.length > 0) {
-      setExpandedGroups(new Set([dates[0]]));
+      setGroupedLogs(grouped);
+
+      const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+      if (dates.length > 0) {
+        setExpandedGroups(new Set([dates[0]]));
+      }
+    } catch (err) {
+      console.error('ArchivedLogsView: failed to group logs', err);
+      setGroupedLogs({});
     }
   }, [archivedLogs]);
 
@@ -111,16 +115,23 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
   };
 
   const handleRestore = async () => {
-    if (selectedLogs.size === 0) return;
-    await onRestore(Array.from(selectedLogs));
-    setSelectedLogs(new Set());
+    if (selectedLogs.size === 0 || !onRestore) return;
+    try {
+      await onRestore(Array.from(selectedLogs));
+      setSelectedLogs(new Set());
+    } catch (err) {
+      console.error('Failed to restore logs:', err);
+    }
   };
 
   const handleDelete = async () => {
     if (!onDelete || selectedLogs.size === 0) return;
-    if (confirm(`Are you sure you want to permanently delete ${selectedLogs.size} log(s)?`)) {
+    if (!confirm(`Are you sure you want to permanently delete ${selectedLogs.size} log(s)?`)) return;
+    try {
       await onDelete(Array.from(selectedLogs));
       setSelectedLogs(new Set());
+    } catch (err) {
+      console.error('Failed to delete logs:', err);
     }
   };
 
