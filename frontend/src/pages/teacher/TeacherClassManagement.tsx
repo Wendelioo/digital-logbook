@@ -15,7 +15,7 @@ import {
   CloseClass,
   ReopenClass,
   ArchiveClass,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class } from './types';
 

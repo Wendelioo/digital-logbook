@@ -17,7 +17,7 @@ import {
   GetTeacherClassesByUserID,
   GetActiveAttendanceSheets,
   OpenClassAttendance,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class } from './types';
 
@@ -201,7 +201,7 @@ function AttendanceClassSelection() {
     const loadSessions = async () => {
       if (!user?.id) return;
       try {
-        const sessions = await (window as any).go.main.App.GetTeacherAttendanceSessions(user.id);
+        const sessions = await (window as any).go.backend.App.GetTeacherAttendanceSessions(user.id);
         setAttendanceSessions(sessions || []);
       } catch (err) {
         console.error('Failed to load attendance sessions:', err);
@@ -241,7 +241,7 @@ function AttendanceClassSelection() {
 
       const durationMinutes = Number(classDuration);
       const graceMinutes = Number(gracePeriod);
-      const createdSession = await (window as any).go.main.App.CreateAttendanceSession(
+      const createdSession = await (window as any).go.backend.App.CreateAttendanceSession(
         classId,
         today,
         '',
@@ -280,7 +280,7 @@ function AttendanceClassSelection() {
     setSessionBusyId(session.session_id);
     setNotice(null);
     try {
-      await (window as any).go.main.App.SaveAttendanceSession(session.session_id, user?.id || 0);
+      await (window as any).go.backend.App.SaveAttendanceSession(session.session_id, user?.id || 0);
       setNotice({ type: 'success', text: 'Attendance saved successfully.' });
       setRefreshKey(prev => prev + 1);
     } catch (error) {
@@ -298,7 +298,7 @@ function AttendanceClassSelection() {
     setSessionBusyId(session.session_id);
     setNotice(null);
     try {
-      await (window as any).go.main.App.RenameAttendanceSession(session.session_id, newName.trim(), user?.id || 0);
+      await (window as any).go.backend.App.RenameAttendanceSession(session.session_id, newName.trim(), user?.id || 0);
       setRefreshKey(prev => prev + 1);
     } catch (error) {
       console.error('Failed to rename session:', error);
@@ -312,9 +312,9 @@ function AttendanceClassSelection() {
     setNotice(null);
     try {
       if (sheet.session_id) {
-        await (window as any).go.main.App.ArchiveAttendanceSession(sheet.session_id, user?.id || 0);
+        await (window as any).go.backend.App.ArchiveAttendanceSession(sheet.session_id, user?.id || 0);
       } else {
-        await (window as any).go.main.App.ArchiveAttendanceSheet(sheet.class_id, sheet.date);
+        await (window as any).go.backend.App.ArchiveAttendanceSheet(sheet.class_id, sheet.date);
       }
       setRefreshKey(prev => prev + 1);
       setNotice({ type: 'success', text: 'Attendance archived successfully.' });

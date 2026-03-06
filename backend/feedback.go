@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"database/sql"
@@ -18,10 +18,59 @@ import (
 // FEEDBACK MANAGEMENT
 // ==============================================================================
 
+const maxActiveFeedbackEntries = 10000
+
+// autoArchiveFeedbackIfNeeded checks the number of non-archived forwarded feedback rows
+// and, if a configured limit is exceeded, automatically archives the oldest day's feedback.
+func (a *App) autoArchiveFeedbackIfNeeded() error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	var activeCount int
+	if err := a.db.QueryRow(`
+		SELECT COUNT(*) 
+		FROM feedback 
+		WHERE status = 'forwarded' AND (is_archived = 0 OR is_archived IS NULL)
+	`).Scan(&activeCount); err != nil {
+		return fmt.Errorf("failed to count active feedback entries: %w", err)
+	}
+
+	if activeCount <= maxActiveFeedbackEntries {
+		return nil
+	}
+
+	// Find the oldest submitted date among unarchived forwarded feedback
+	var oldestDate time.Time
+	err := a.db.QueryRow(`
+		SELECT MIN(CAST(date_submitted AS DATE)) 
+		FROM feedback 
+		WHERE status = 'forwarded' AND (is_archived = 0 OR is_archived IS NULL)
+	`).Scan(&oldestDate)
+	if err != nil {
+		return fmt.Errorf("failed to find oldest feedback date: %w", err)
+	}
+
+	dateStr := oldestDate.Format("2006-01-02")
+	_, err = a.ArchiveFeedbackByDate(dateStr, 0)
+	if err != nil {
+		return fmt.Errorf("failed to auto-archive feedback for date %s: %w", dateStr, err)
+	}
+
+	log.Printf("autoArchiveFeedbackIfNeeded archived feedback for date %s to keep active feedback under limit", dateStr)
+	return nil
+}
+
 // GetFeedback returns all non-archived feedback that has been forwarded to admin
 func (a *App) GetFeedback() ([]Feedback, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
+	}
+
+	// Automatic archiving: when the number of non-archived forwarded feedback entries
+	// exceeds the configured limit, archive the oldest day's feedback.
+	if err := a.autoArchiveFeedbackIfNeeded(); err != nil {
+		log.Printf("autoArchiveFeedbackIfNeeded failed: %v", err)
 	}
 
 	// Only returns non-archived feedback (is_archived = 0 or NULL for backwards compatibility)
@@ -305,13 +354,18 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 		priority = "high"
 	}
 
+	// Workflow status:
+	// All feedback (with or without issues) starts as "pending" so that
+	// working students can review and then forward it to the admin.
+	status := "pending"
+
 	query := `INSERT INTO feedback (student_id, pc_number, 
 			  equipment_condition, monitor_condition, keyboard_condition, mouse_condition, 
-			  comments, priority, date_submitted) 
-			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, GETDATE())`
+			  comments, priority, status, date_submitted) 
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE())`
 
 	_, err := a.db.Exec(query, userID, pcNumber,
-		equipmentCondition, monitorCondition, keyboardCondition, mouseCondition, nullString(combinedComments), priority)
+		equipmentCondition, monitorCondition, keyboardCondition, mouseCondition, nullString(combinedComments), priority, status)
 
 	if err != nil {
 		log.Printf("Failed to save equipment feedback: %v", err)
@@ -594,6 +648,55 @@ func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID
 	}
 
 	log.Printf("%d feedback items forwarded to admin by working student %d", rowsAffected, workingStudentID)
+	return int(rowsAffected), nil
+}
+
+// ConfirmAndForwardMultiple confirms and forwards multiple pending feedback items to admin in one step.
+// Use this so working students can batch "confirm & forward" (e.g. no-issue logs) without doing each one by one.
+func (a *App) ConfirmAndForwardMultiple(feedbackIDs []int, workingStudentID int, notes string) (int, error) {
+	if err := a.checkDB(); err != nil {
+		return 0, err
+	}
+
+	if len(feedbackIDs) == 0 {
+		return 0, fmt.Errorf("no feedback IDs provided")
+	}
+
+	placeholders := make([]string, len(feedbackIDs))
+	args := make([]interface{}, 0, len(feedbackIDs)+3)
+	args = append(args, workingStudentID)
+	args = append(args, nullString(notes))
+	args = append(args, workingStudentID)
+	for i, id := range feedbackIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	query := fmt.Sprintf(`UPDATE feedback 
+			  SET status = 'forwarded', 
+			      verified_by_user_id = ?, 
+			      verified_at = GETDATE(), 
+			      forwarded_by_user_id = ?, 
+			      forwarded_at = GETDATE(), 
+			      working_student_notes = ?
+			  WHERE id IN (%s) AND status = 'pending'`, strings.Join(placeholders, ","))
+
+	result, err := a.db.Exec(query, args...)
+	if err != nil {
+		log.Printf("Failed to confirm and forward multiple feedback: %v", err)
+		return 0, fmt.Errorf("failed to confirm and forward feedback: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+
+	if rowsAffected == 0 {
+		return 0, fmt.Errorf("no feedback items were updated (only pending reports can be confirmed and forwarded)")
+	}
+
+	log.Printf("%d feedback items confirmed and forwarded to admin by working student %d", rowsAffected, workingStudentID)
 	return int(rowsAffected), nil
 }
 

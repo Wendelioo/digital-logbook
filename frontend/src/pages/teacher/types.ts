@@ -5,15 +5,15 @@ import {
   BookOpen,
 } from 'lucide-react';
 import React from 'react';
-import { main } from '../../../wailsjs/go/models';
+import { backend } from '../../../wailsjs/go/models';
 
 // Use the generated models from the backend
-export type Class = main.CourseClass;
-export type ClasslistEntry = main.ClasslistEntry;
-export type Attendance = main.Attendance;
-export type ClassStudent = main.ClassStudent;
-export type User = main.User;
-export type Subject = main.Subject;
+export type Class = backend.CourseClass;
+export type ClasslistEntry = backend.ClasslistEntry;
+export type Attendance = backend.Attendance;
+export type ClassStudent = backend.ClassStudent;
+export type User = backend.User;
+export type Subject = backend.Subject;
 
 // Helper function to get subject icon and color
 export function getSubjectIconAndColor(subjectCode: string, subjectName: string) {

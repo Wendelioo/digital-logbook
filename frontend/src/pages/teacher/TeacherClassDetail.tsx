@@ -19,7 +19,7 @@ import {
   UnenrollStudentFromClassByIDs,
   GetTeacherClassesByUserID,
   GetClassByID,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class, ClasslistEntry, ClassStudent } from './types';
 

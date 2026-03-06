@@ -12,7 +12,7 @@ import {
 import {
   GetAllLogs,
   ArchiveSelectedLogs
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { LoginLog } from './types';
 

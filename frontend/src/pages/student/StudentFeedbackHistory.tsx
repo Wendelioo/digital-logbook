@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   GetStudentFeedback,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { parseReportContext } from '../../utils/feedbackComments';
 import { Feedback } from './types';

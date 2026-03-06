@@ -17,9 +17,9 @@ import {
   GetStudentLoginLogs,
   GetStudentOpenAttendanceSessions,
   StudentTimeIn,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
-import { main } from '../../../wailsjs/go/models';
+import { backend } from '../../../wailsjs/go/models';
 import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
 import { StudentDashboardData, LoginLog } from './types';
 
@@ -39,7 +39,7 @@ interface AttendanceSession {
 
 function DashboardOverview() {
   const { user } = useAuth();
-  const [dashboardData, setDashboardData] = useState<StudentDashboardData>(new main.StudentDashboard({
+  const [dashboardData, setDashboardData] = useState<StudentDashboardData>(new backend.StudentDashboard({
     attendance: [],
     today_log: undefined
   }));
@@ -86,6 +86,7 @@ function DashboardOverview() {
       ...prev,
     ].slice(0, 10));
   };
+
   const upsertNotification = (id: string, message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
     setNotifications((prev) => {
       const next = prev.filter((item) => item.id !== id);
@@ -253,13 +254,7 @@ function DashboardOverview() {
     <div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
         <div className="md:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard
-              title="Attendance Rate"
-              value={`${dashboardData.attendance_rate?.toFixed(1) || 0}%`}
-              icon={<CheckCircle className="h-6 w-6" />}
-              color="green"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <StatCard
               title="Current PC Used"
               value={dashboardData.currently_logged_in ? (dashboardData.current_pc_number || 'Logged In') : 'Not Logged In'}
@@ -436,16 +431,6 @@ function DashboardOverview() {
 
         <div className="space-y-6 md:border-l md:border-gray-300 md:pl-6">
           <Card className="h-fit">
-            <CardHeader title="Notifications" />
-            <CardBody>
-              <DashboardNotifications
-                items={notifications}
-                emptyMessage="No new attendance notifications."
-              />
-            </CardBody>
-          </Card>
-
-          <Card className="h-fit">
             <CardHeader title="Attendance Today" />
             <CardBody>
               {openSessions.length > 0 ? (
@@ -530,6 +515,17 @@ function DashboardOverview() {
               )}
             </CardBody>
           </Card>
+
+          <Card className="h-fit">
+            <CardHeader title="Notifications" />
+            <CardBody>
+              <DashboardNotifications
+                items={notifications}
+                emptyMessage="No new attendance notifications."
+              />
+            </CardBody>
+          </Card>
+
         </div>
       </div>
     </div>

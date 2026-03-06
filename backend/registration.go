@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"database/sql"
@@ -29,14 +29,14 @@ type RegistrationRequest struct {
 
 // PendingRegistration represents a registration awaiting approval
 type PendingRegistration struct {
-	UserID        int       `json:"user_id"`
-	StudentID     string    `json:"student_id"`
-	LastName      string    `json:"last_name"`
-	FirstName     string    `json:"first_name"`
-	MiddleName    *string   `json:"middle_name"`
-	ContactNumber string `json:"contact_number"`
-	Email         string `json:"email"`
-	SubmittedAt   string `json:"submitted_at"`
+	UserID        int     `json:"user_id"`
+	StudentID     string  `json:"student_id"`
+	LastName      string  `json:"last_name"`
+	FirstName     string  `json:"first_name"`
+	MiddleName    *string `json:"middle_name"`
+	ContactNumber string  `json:"contact_number"`
+	Email         string  `json:"email"`
+	SubmittedAt   string  `json:"submitted_at"`
 }
 
 // ApprovalRequest represents an approval/rejection action
@@ -201,10 +201,10 @@ func (a *App) GetPendingRegistrations() ([]PendingRegistration, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan registration: %v", err)
 		}
-		
+
 		// Format time field as string
 		reg.SubmittedAt = submittedAt.Format("2006-01-02 15:04:05")
-		
+
 		registrations = append(registrations, reg)
 	}
 
@@ -293,15 +293,9 @@ func (a *App) ProcessRegistration(req ApprovalRequest) error {
 // ==============================================================================
 
 func validateRegistration(req RegistrationRequest) error {
-	// Student ID validation
-	if strings.TrimSpace(req.StudentID) == "" {
-		return fmt.Errorf("student ID is required")
-	}
+	// Student ID validation (format: YYYY-NNNNN or WS-YYYY-NNN)
 	if err := ValidateStudentID(req.StudentID); err != nil {
 		return err
-	}
-	if len(strings.TrimSpace(req.StudentID)) < 4 {
-		return fmt.Errorf("student ID must be at least 4 characters")
 	}
 
 	// Name validation
@@ -336,12 +330,9 @@ func validateRegistration(req RegistrationRequest) error {
 		return fmt.Errorf("invalid contact number format")
 	}
 
-	// Password validation
-	if err := ValidatePassword(req.Password); err != nil {
+	// Password validation (strong policy)
+	if err := ValidateStrongPassword(req.Password); err != nil {
 		return err
-	}
-	if len(req.Password) < 8 {
-		return fmt.Errorf("password must be at least 8 characters long")
 	}
 	if req.Password != req.ConfirmPassword {
 		return fmt.Errorf("passwords do not match")

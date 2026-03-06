@@ -7,14 +7,12 @@ import {
   ClipboardList,
   FileText,
   UserPlus,
-  GraduationCap,
   BarChart3,
   AlertCircle,
-  UserCheck,
 } from 'lucide-react';
 import {
   GetAdminDashboard
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
 import { DashboardStats } from './types';
 
@@ -164,21 +162,15 @@ function DashboardOverview() {
               icon={<Users className="h-6 w-6" />}
               color="indigo"
             />
-            <StatCard
-              title="Active Users Now"
-              value={stats.active_users_now}
-              icon={<UserCheck className="h-6 w-6" />}
-              color="purple"
-            />
           </div>
 
           <Card>
-            <CardHeader title="Currently Active Users by Role" />
+            <CardHeader title="Online Users" />
             <CardBody>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="flex items-center p-4 bg-blue-50 rounded-lg">
                   <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
-                    <GraduationCap className="h-6 w-6 text-blue-600" />
+                    <User className="h-6 w-6 text-blue-600" />
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Students Online</p>
@@ -196,7 +188,7 @@ function DashboardOverview() {
                 </div>
                 <div className="flex items-center p-4 bg-indigo-50 rounded-lg">
                   <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mr-4">
-                    <Users className="h-6 w-6 text-indigo-600" />
+                    <User className="h-6 w-6 text-indigo-600" />
                   </div>
                   <div>
                     <p className="text-sm text-gray-600">Working Students Online</p>

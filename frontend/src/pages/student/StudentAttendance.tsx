@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import Button from '../../components/Button';
 import { CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { GetStudentOpenAttendanceSessions, StudentTimeIn } from '../../../wailsjs/go/main/App';
+import { GetStudentOpenAttendanceSessions, StudentTimeIn } from '../../../wailsjs/go/backend/App';
 
 interface AttendanceSession {
   session_id: number;

@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"fmt"
@@ -68,7 +68,7 @@ func ValidateUsername(username string) error {
 	return nil
 }
 
-// ValidatePassword validates password for login/creation.
+// ValidatePassword validates password for login/creation (basic checks only).
 func ValidatePassword(password string) error {
 	if password == "" {
 		return fmt.Errorf("password is required")
@@ -79,6 +79,43 @@ func ValidatePassword(password string) error {
 	if ContainsControlOrNull(password) {
 		return fmt.Errorf("password contains invalid characters")
 	}
+	return nil
+}
+
+// ValidateStrongPassword enforces strong password requirements for new accounts and password changes.
+// Requirements:
+// - Minimum length 8
+// - At least one uppercase letter
+// - At least one lowercase letter
+// - At least one digit
+// - At least one special character (non letter/digit)
+func ValidateStrongPassword(password string) error {
+	if err := ValidatePassword(password); err != nil {
+		return err
+	}
+
+	if len(password) < 8 {
+		return fmt.Errorf("password must be at least 8 characters long")
+	}
+
+	var hasUpper, hasLower, hasDigit, hasSpecial bool
+	for _, r := range password {
+		switch {
+		case unicode.IsUpper(r):
+			hasUpper = true
+		case unicode.IsLower(r):
+			hasLower = true
+		case unicode.IsDigit(r):
+			hasDigit = true
+		case unicode.IsPunct(r) || unicode.IsSymbol(r):
+			hasSpecial = true
+		}
+	}
+
+	if !hasUpper || !hasLower || !hasDigit || !hasSpecial {
+		return fmt.Errorf("password must include uppercase, lowercase, number, and special character")
+	}
+
 	return nil
 }
 
@@ -134,26 +171,37 @@ func ValidateContactNumber(contact string) error {
 	return nil
 }
 
-// ValidateStudentID validates student ID (length, no control chars).
+// sevenDigitIDRegex matches a valid 7-digit numeric ID (e.g. 2211172).
+var sevenDigitIDRegex = regexp.MustCompile(`^\d{7}$`)
+
+// ValidateStudentID validates student ID format and length.
+// Accepted format: exactly 7 digits (e.g. 2211172).
 func ValidateStudentID(studentID string) error {
 	s := strings.TrimSpace(studentID)
-	if len(s) > MaxLenStudentID {
-		return fmt.Errorf("student ID must be at most %d characters", MaxLenStudentID)
+	if s == "" {
+		return fmt.Errorf("student ID is required")
 	}
 	if ContainsControlOrNull(s) {
 		return fmt.Errorf("student ID contains invalid characters")
 	}
+	if !sevenDigitIDRegex.MatchString(s) {
+		return fmt.Errorf("invalid student ID — must be exactly 7 digits (e.g. 2211172)")
+	}
 	return nil
 }
 
-// ValidateEmployeeID validates employee/teacher ID.
+// ValidateEmployeeID validates employee/teacher/admin ID.
+// Accepted format: exactly 7 digits (e.g. 2211172).
 func ValidateEmployeeID(employeeID string) error {
 	s := strings.TrimSpace(employeeID)
-	if len(s) > MaxLenEmployeeID {
-		return fmt.Errorf("employee ID must be at most %d characters", MaxLenEmployeeID)
+	if s == "" {
+		return fmt.Errorf("employee ID is required")
 	}
 	if ContainsControlOrNull(s) {
 		return fmt.Errorf("employee ID contains invalid characters")
+	}
+	if !sevenDigitIDRegex.MatchString(s) {
+		return fmt.Errorf("invalid employee ID — must be exactly 7 digits (e.g. 2211172)")
 	}
 	return nil
 }

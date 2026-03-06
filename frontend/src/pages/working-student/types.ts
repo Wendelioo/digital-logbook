@@ -1,10 +1,10 @@
-import { main } from '../../../wailsjs/go/models';
+import { backend } from '../../../wailsjs/go/models';
 
 // Use generated types
-export type ClassStudent = main.ClassStudent;
-export type Department = main.Department;
-export type User = main.User;
-export type Feedback = main.Feedback;
+export type ClassStudent = backend.ClassStudent;
+export type Department = backend.Department;
+export type User = backend.User;
+export type Feedback = backend.Feedback;
 
 // ArchivedStudent represents a graduated student scheduled for deletion
 export interface ArchivedStudent {

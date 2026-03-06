@@ -1,11 +1,11 @@
-import { main } from '../../../wailsjs/go/models';
+import { backend } from '../../../wailsjs/go/models';
 
 // Use the generated models from the backend
-export type Attendance = main.Attendance;
-export type StudentDashboardData = main.StudentDashboard;
-export type Feedback = main.Feedback;
-export type CourseClass = main.CourseClass;
-export type ClasslistEntry = main.ClasslistEntry;
+export type Attendance = backend.Attendance;
+export type StudentDashboardData = backend.StudentDashboard;
+export type Feedback = backend.Feedback;
+export type CourseClass = backend.CourseClass;
+export type ClasslistEntry = backend.ClasslistEntry;
 
 // LoginLog interface matching the JSON structure from backend
 export interface LoginLog {

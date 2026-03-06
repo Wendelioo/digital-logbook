@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"database/sql"
@@ -81,11 +81,12 @@ func (a *App) OpenClassAttendance(classID int, date string) ([]Attendance, error
 				WHERE class_id = ? AND attendance_date = ? AND status = 'open' AND COALESCE(is_archived, 0) = 0
 				ORDER BY session_id DESC
 			`, classID, date).Scan(&openSessionID)
-			if errSession == nil {
+			switch errSession {
+			case nil:
 				if ensureErr := a.ensureAttendanceRowsForSession(openSessionID, classID, date); ensureErr != nil {
 					log.Printf("Failed to ensure attendance rows for existing session %d: %v", openSessionID, ensureErr)
 				}
-			} else if errSession == sql.ErrNoRows {
+			case sql.ErrNoRows:
 				// No open session: create one so students get Time In
 				var teacherID int
 				if errTeacher := a.db.QueryRow(`SELECT teacher_id FROM classes WHERE class_id = ?`, classID).Scan(&teacherID); errTeacher != nil {

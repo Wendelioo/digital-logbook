@@ -9,10 +9,12 @@ import {
   Calendar,
   Library,
   ClipboardCheck,
+  PauseCircle,
+  Archive,
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
 import { Class } from './types';
@@ -73,7 +75,7 @@ function DashboardOverview() {
 
         let nextOpenSessionsToday = 0;
         try {
-          const sessions = await (window as any).go.main.App.GetTeacherAttendanceSessions(user.id);
+          const sessions = await (window as any).go.backend.App.GetTeacherAttendanceSessions(user.id);
           const today = new Date().toISOString().split('T')[0];
           const openToday = (sessions || []).filter((session: any) =>
             session.attendance_date === today && session.status === 'open'
@@ -146,7 +148,9 @@ function DashboardOverview() {
   }, [user?.id]);
 
   const totalStudents = classes.reduce((sum, cls) => sum + cls.enrolled_count, 0);
-  const activeClasses = classes.filter(cls => cls.is_active).length;
+  const activeClasses = classes.filter(cls => cls.is_active && !cls.is_archived).length;
+  const inactiveClasses = classes.filter(cls => !cls.is_active && !cls.is_archived).length;
+  const archivedClasses = classes.filter(cls => cls.is_archived).length;
 
   return (
     <div className="p-6">
@@ -167,7 +171,7 @@ function DashboardOverview() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
         {/* Quick Stats */}
         <div className="md:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard
               title="Active Classes"
               value={activeClasses}
@@ -181,10 +185,16 @@ function DashboardOverview() {
               color="green"
             />
             <StatCard
-              title="Classes"
-              value={activeClasses}
-              icon={<Calendar className="h-6 w-6" />}
-              color="purple"
+              title="Inactive Classes"
+              value={inactiveClasses}
+              icon={<PauseCircle className="h-6 w-6" />}
+              color="yellow"
+            />
+            <StatCard
+              title="Archived Classes"
+              value={archivedClasses}
+              icon={<Archive className="h-6 w-6" />}
+              color="indigo"
             />
           </div>
 

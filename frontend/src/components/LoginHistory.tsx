@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
-import { GetStudentLoginLogs } from '../../wailsjs/go/main/App';
+import { useEffect, useRef, useState } from 'react';
+import { GetStudentLoginLogs } from '../../wailsjs/go/backend/App';
 import { useAuth } from '../contexts/AuthContext';
 import Button from './Button';
-import { Search, X, SlidersHorizontal } from 'lucide-react';
+import { Search, X, Filter } from 'lucide-react';
+
+type StatusFilter = 'all' | 'active' | 'completed';
 
 interface LoginLog {
   id: number;
@@ -19,14 +21,11 @@ interface LoginHistoryProps {
   showStatus?: boolean;
   /** Whether to show pagination controls (default: true) */
   showPagination?: boolean;
-  /** Whether to use dropdown filter UI vs inline (default: false for inline) */
-  useDropdownFilter?: boolean;
 }
 
 export default function LoginHistory({ 
   showStatus = true, 
   showPagination = true,
-  useDropdownFilter = false 
 }: LoginHistoryProps) {
   const { user } = useAuth();
   const [logs, setLogs] = useState<LoginLog[]>([]);
@@ -34,11 +33,23 @@ export default function LoginHistory({
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('all');
   const [error, setError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [entriesPerPage, setEntriesPerPage] = useState(10);
-  const [autoDeleteDays, setAutoDeleteDays] = useState<number>(30);
   const [showFilters, setShowFilters] = useState(false);
+  const filterPanelRef = useRef<HTMLDivElement>(null);
+
+  // Close filter panel when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
+        setShowFilters(false);
+      }
+    };
+    if (showFilters) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showFilters]);
 
   useEffect(() => {
     const load = async () => {
@@ -69,6 +80,11 @@ export default function LoginHistory({
     if (selectedDate) {
       f = f.filter(l => new Date(l.login_time).toDateString() === selectedDate.toDateString());
     }
+    if (selectedStatus === 'active') {
+      f = f.filter(l => !l.logout_time);
+    } else if (selectedStatus === 'completed') {
+      f = f.filter(l => !!l.logout_time);
+    }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       f = f.filter(l => 
@@ -78,7 +94,7 @@ export default function LoginHistory({
     }
     setFiltered(f);
     setCurrentPage(1);
-  }, [logs, selectedDate, searchQuery]);
+  }, [logs, selectedDate, selectedStatus, searchQuery]);
 
   // Pagination calculations
   const totalPages = Math.ceil(filtered.length / entriesPerPage);
@@ -90,10 +106,11 @@ export default function LoginHistory({
 
   const clearFilters = () => {
     setSelectedDate(null);
+    setSelectedStatus('all');
     setSearchQuery('');
   };
 
-  const activeFilterCount = selectedDate ? 1 : 0;
+  const activeFilterCount = (selectedDate ? 1 : 0) + (selectedStatus !== 'all' ? 1 : 0);
 
   if (loading) {
     return (
@@ -105,21 +122,8 @@ export default function LoginHistory({
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Login History</h2>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-700">Auto-delete logs after:</span>
-          <select
-            value={autoDeleteDays}
-            onChange={(e) => setAutoDeleteDays(Number(e.target.value))}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-          >
-            <option value={30}>30 days</option>
-            <option value={60}>60 days</option>
-            <option value={90}>90 days</option>
-            <option value={180}>180 days</option>
-          </select>
-        </div>
       </div>
 
       <div className="mb-6 bg-white shadow rounded-lg p-4">
@@ -149,7 +153,7 @@ export default function LoginHistory({
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search..."
+                placeholder="Search by PC or date..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -165,67 +169,122 @@ export default function LoginHistory({
               )}
             </div>
 
-            {useDropdownFilter ? (
-              <div className="relative">
-                <Button
-                  onClick={() => setShowFilters(!showFilters)}
-                  variant={showFilters ? 'primary' : 'outline'}
-                  icon={<SlidersHorizontal className="h-5 w-5" />}
-                  className={showFilters ? 'bg-primary-50 border-primary-500 text-primary-700' : ''}
-                >
-                  Filters
-                  {activeFilterCount > 0 && (
-                    <span className="ml-1 px-2 py-0.5 bg-primary-500 text-white rounded-full text-xs">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </Button>
+            {/* Funnel filter button + dropdown panel */}
+            <div className="relative" ref={filterPanelRef}>
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`inline-flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                  showFilters || activeFilterCount > 0
+                    ? 'bg-primary-50 border-primary-400 text-primary-700'
+                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+                title="Filter logs"
+              >
+                <Filter className="h-4 w-4" />
+                <span>Filter</span>
+                {activeFilterCount > 0 && (
+                  <span className="inline-flex items-center justify-center w-5 h-5 bg-primary-500 text-white rounded-full text-xs font-semibold">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
 
-                {showFilters && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                    <div className="p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <label className="text-sm font-medium text-gray-700">Filter by Date:</label>
+              {showFilters && (
+                <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-xl shadow-xl z-20">
+                  {/* Panel header */}
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                    <div className="flex items-center gap-2">
+                      <Filter className="h-4 w-4 text-primary-600" />
+                      <span className="text-sm font-semibold text-gray-800">Filter Logs</span>
+                    </div>
+                    {activeFilterCount > 0 && (
+                      <button
+                        onClick={() => { setSelectedDate(null); setSelectedStatus('all'); }}
+                        className="text-xs text-primary-600 hover:text-primary-800 font-medium underline"
+                      >
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="p-4 space-y-5">
+                    {/* By Date */}
+                    <div>
+                      <div className="mb-1">
+                        <span className="text-sm font-medium text-gray-800">By Date</span>
+                        <p className="text-xs text-gray-500 mt-0.5">Filter logs by the date you logged in to the lab.</p>
                       </div>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-xs text-gray-600 mb-1">Select Date</label>
-                          <input
-                            type="date"
-                            value={selectedDate ? selectedDate.toISOString().split('T')[0] : ''}
-                            onChange={(e) => setSelectedDate(e.target.value ? new Date(e.target.value) : null)}
-                            max={new Date().toISOString().split('T')[0]}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                          />
-                        </div>
-                        {selectedDate && (
-                          <Button
-                            onClick={() => setSelectedDate(null)}
-                            variant="secondary"
-                            size="sm"
-                            className="w-full text-xs text-gray-600 hover:text-gray-900 underline text-left !p-1"
+                      <input
+                        type="date"
+                        value={selectedDate ? selectedDate.toISOString().split('T')[0] : ''}
+                        onChange={(e) => setSelectedDate(e.target.value ? new Date(e.target.value) : null)}
+                        max={new Date().toISOString().split('T')[0]}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      />
+                    </div>
+
+                    {/* By Status */}
+                    <div>
+                      <div className="mb-2">
+                        <span className="text-sm font-medium text-gray-800">By Session Status</span>
+                        <p className="text-xs text-gray-500 mt-0.5">Show only active sessions (still logged in) or completed sessions (logged out).</p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(['all', 'active', 'completed'] as StatusFilter[]).map((s) => (
+                          <button
+                            key={s}
+                            onClick={() => setSelectedStatus(s)}
+                            className={`py-1.5 rounded-lg text-xs font-medium border capitalize transition-colors ${
+                              selectedStatus === s
+                                ? s === 'active'
+                                  ? 'bg-green-50 border-green-400 text-green-700'
+                                  : s === 'completed'
+                                  ? 'bg-gray-100 border-gray-400 text-gray-700'
+                                  : 'bg-primary-50 border-primary-400 text-primary-700'
+                                : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                            }`}
                           >
-                            Clear Date Filter
-                          </Button>
-                        )}
+                            {s === 'all' ? 'All' : s === 'active' ? '🟢 Active' : '✓ Completed'}
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="relative">
-                <input
-                  type="date"
-                  value={selectedDate ? selectedDate.toISOString().split('T')[0] : ''}
-                  onChange={(e) => setSelectedDate(e.target.value ? new Date(e.target.value) : null)}
-                  className="border border-gray-300 rounded-md px-3 py-2 text-sm"
-                />
-              </div>
-            )}
 
-            {(searchQuery || selectedDate) && (
-              <Button onClick={clearFilters} variant="outline">
+                    {/* Active filter chips */}
+                    {activeFilterCount > 0 && (
+                      <div className="pt-2 border-t border-gray-100">
+                        <p className="text-xs text-gray-500 mb-2">Active filters:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedDate && (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary-50 border border-primary-200 text-primary-700 rounded-full text-xs">
+                              Date: {selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              <button onClick={() => setSelectedDate(null)} className="hover:text-primary-900">
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          )}
+                          {selectedStatus !== 'all' && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs border ${
+                              selectedStatus === 'active'
+                                ? 'bg-green-50 border-green-200 text-green-700'
+                                : 'bg-gray-100 border-gray-200 text-gray-700'
+                            }`}>
+                              {selectedStatus === 'active' ? 'Active only' : 'Completed only'}
+                              <button onClick={() => setSelectedStatus('all')} className="hover:opacity-75">
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {(searchQuery || activeFilterCount > 0) && (
+              <Button onClick={clearFilters} variant="outline" size="sm">
                 Clear All
               </Button>
             )}
@@ -272,17 +331,8 @@ export default function LoginHistory({
                 {currentRecords.map((log) => (
                   <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                          </svg>
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {log.pc_number || <span className="text-gray-400 italic">Unknown</span>}
-                          </div>
-                        </div>
+                      <div className="text-sm font-medium text-gray-900">
+                        {log.pc_number || <span className="text-gray-400 italic">Unknown</span>}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">

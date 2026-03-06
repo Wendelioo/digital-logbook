@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Eye, EyeOff, AlertCircle } from 'lucide-react';
-import { SubmitRegistration } from '../../wailsjs/go/main/App';
+import { SubmitRegistration } from '../../wailsjs/go/backend/App';
 
 interface RegistrationModalProps {
   isOpen: boolean;
@@ -33,12 +33,21 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
     setError('');
   };
 
+  // Valid format: exactly 7 digits (e.g. 2211172)
+  const STUDENT_ID_REGEX = /^\d{7}$/;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     // Frontend validation
+    if (!STUDENT_ID_REGEX.test(formData.student_id.trim())) {
+      setError('Invalid student ID — must be exactly 7 digits (e.g. 2211172).');
+      setLoading(false);
+      return;
+    }
+
     if (formData.password !== formData.confirm_password) {
       setError('Passwords do not match');
       setLoading(false);
@@ -133,7 +142,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
           )}
 
           {/* Registration Form */}
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             {/* Student ID */}
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Student Identification</label>
@@ -148,8 +157,10 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                   value={formData.student_id}
                   onChange={handleChange}
                   required
+                  placeholder="e.g. 2024-00001 or WS-2024-001"
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                 />
+                <p className="mt-1 text-xs text-gray-400">Format: YYYY-NNNNN (regular) or WS-YYYY-NNN (working student)</p>
               </div>
             </div>
 

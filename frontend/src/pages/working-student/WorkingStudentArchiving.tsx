@@ -13,7 +13,7 @@ import {
   GetArchivedStudents,
   UnarchiveStudent,
   DeleteExpiredStudents,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { User, ArchivedStudent } from './types';
 

@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"database/sql"
@@ -18,10 +18,56 @@ import (
 // LOGIN LOG QUERIES
 // ==============================================================================
 
+const maxActiveLogEntries = 50000
+
+// autoArchiveLogsIfNeeded checks the number of non-archived log entries and,
+// if a configured limit is exceeded, automatically archives the oldest logs by date.
+func (a *App) autoArchiveLogsIfNeeded() error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	var activeCount int
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE is_archived = 0 OR is_archived IS NULL`).Scan(&activeCount); err != nil {
+		return fmt.Errorf("failed to count active log entries: %w", err)
+	}
+
+	if activeCount <= maxActiveLogEntries {
+		return nil
+	}
+
+	// Find the oldest login date that is still unarchived.
+	var oldestDate time.Time
+	err := a.db.QueryRow(`
+		SELECT MIN(CAST(login_time AS DATE)) 
+		FROM log_entries 
+		WHERE is_archived = 0 OR is_archived IS NULL`,
+	).Scan(&oldestDate)
+	if err != nil {
+		return fmt.Errorf("failed to find oldest log date: %w", err)
+	}
+
+	dateStr := oldestDate.Format("2006-01-02")
+	// Archive the oldest date worth of logs; this uses existing archival logic.
+	_, err = a.ArchiveLogsByDate(dateStr, 0)
+	if err != nil {
+		return fmt.Errorf("failed to auto-archive logs for date %s: %w", dateStr, err)
+	}
+
+	log.Printf("autoArchiveLogsIfNeeded archived logs for date %s to keep active log entries under limit", dateStr)
+	return nil
+}
+
 // GetTodayLogs returns only today's non-archived login logs
 func (a *App) GetTodayLogs() ([]LoginLog, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
+	}
+
+	// Automatic archiving: when total non-archived log entries exceed the limit,
+	// archive the oldest logs by date to keep the active table bounded.
+	if err := a.autoArchiveLogsIfNeeded(); err != nil {
+		log.Printf("autoArchiveLogsIfNeeded failed: %v", err)
 	}
 
 	query := `

@@ -12,9 +12,9 @@ import {
   CheckCircle,
   XCircle,
 } from 'lucide-react';
-import { GetWorkingStudentDashboard, GetStudentDashboard, GetStudentOpenAttendanceSessions, StudentTimeIn } from '../../../wailsjs/go/main/App';
+import { GetWorkingStudentDashboard, GetStudentDashboard, GetStudentOpenAttendanceSessions, StudentTimeIn } from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
-import { main } from '../../../wailsjs/go/models';
+import { backend } from '../../../wailsjs/go/models';
 import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
 import { DashboardStats } from './types';
 
@@ -42,7 +42,7 @@ function DashboardOverview() {
     today_registrations: 0,
     active_students_now: 0
   });
-  const [studentDashboard, setStudentDashboard] = useState<main.StudentDashboard>(new main.StudentDashboard({
+  const [studentDashboard, setStudentDashboard] = useState<backend.StudentDashboard>(new backend.StudentDashboard({
     attendance: [],
     attendance_rate: 0,
     currently_logged_in: false,
@@ -399,7 +399,7 @@ function DashboardOverview() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">Equipment Reports</h3>
+                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">Feedback</h3>
                       {stats.pending_feedback > 0 && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] sm:text-xs font-medium bg-red-100 text-red-800">
                           {stats.pending_feedback}

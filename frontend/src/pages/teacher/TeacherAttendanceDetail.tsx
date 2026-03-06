@@ -13,7 +13,7 @@ import {
   UpdateAttendanceRecord,
   ArchiveAttendanceSheet,
   GetClassByID,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class, Attendance } from './types';
 
@@ -50,7 +50,7 @@ function AttendanceManagementDetail() {
     }
 
     try {
-      const sessions = await (window as any).go.main.App.GetTeacherAttendanceSessions(user.id);
+      const sessions = await (window as any).go.backend.App.GetTeacherAttendanceSessions(user.id);
       const routeSessionId = Number(searchParams.get('sessionId') || '');
       const hasRouteSessionId = !Number.isNaN(routeSessionId) && routeSessionId > 0;
 
@@ -96,7 +96,7 @@ function AttendanceManagementDetail() {
     setExportingAttendance(true);
     setNotice(null);
     try {
-      const filePath = await (window as any).go.main.App.ExportAttendanceCSVByDate(classId, selectedDate);
+      const filePath = await (window as any).go.backend.App.ExportAttendanceCSVByDate(classId, selectedDate);
       setNotice({ type: 'success', text: `Attendance exported successfully. File saved to: ${filePath}` });
     } catch (error) {
       console.error('Failed to export attendance:', error);
@@ -119,7 +119,7 @@ function AttendanceManagementDetail() {
     
     try {
       if (sessionId && user?.id) {
-        await (window as any).go.main.App.UpdateSessionAttendanceRecord(
+        await (window as any).go.backend.App.UpdateSessionAttendanceRecord(
           sessionId,
           record.student_user_id,
           user.id,
@@ -206,7 +206,7 @@ function AttendanceManagementDetail() {
       const meta = await loadSessionMeta(selectedClass.class_id, selectedDate);
 
       if (meta.sessionId && user?.id) {
-        records = await (window as any).go.main.App.GetSessionAttendance(meta.sessionId, user.id);
+        records = await (window as any).go.backend.App.GetSessionAttendance(meta.sessionId, user.id);
       } else if (selectedDate === today) {
         records = await OpenClassAttendance(selectedClass.class_id, selectedDate);
       } else {
