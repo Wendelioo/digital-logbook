@@ -794,6 +794,259 @@ func (a *App) ExportFeedbackPDF() (string, error) {
 }
 
 // ==============================================================================
+// FEEDBACK RANGE EXPORT FUNCTIONS
+// ==============================================================================
+
+// GetFeedbackRangeCount returns the count of non-archived forwarded feedback within a date range.
+func (a *App) GetFeedbackRangeCount(startDate, endDate string) (int, error) {
+	if err := a.checkDB(); err != nil {
+		return 0, err
+	}
+	var count int
+	err := a.db.QueryRow(`
+		SELECT COUNT(*) FROM feedback
+		WHERE status = 'forwarded' AND (is_archived = 0 OR is_archived IS NULL)
+		AND CAST(date_submitted AS DATE) BETWEEN ? AND ?`,
+		startDate, endDate,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count feedback in range: %w", err)
+	}
+	return count, nil
+}
+
+// getFeedbackByDateRange fetches non-archived forwarded feedback within a date range.
+func (a *App) getFeedbackByDateRange(startDate, endDate string) ([]Feedback, error) {
+	query := `
+		SELECT
+			f.id, f.student_id,
+			COALESCE(s.student_id, 'N/A') as student_id_str,
+			s.first_name, s.middle_name, s.last_name,
+			f.pc_number, f.equipment_condition, f.monitor_condition,
+			f.keyboard_condition, f.mouse_condition, f.comments,
+			f.date_submitted, f.status,
+			f.verified_by_user_id, f.verified_at,
+			f.forwarded_by_user_id, f.forwarded_at, f.working_student_notes,
+			COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, '') +
+				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END +
+				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, '') +
+				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL
+					THEN ' ' + COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name)
+					ELSE '' END
+			as forwarded_by_name
+		FROM feedback f
+		LEFT JOIN students s ON f.student_id = s.id
+		LEFT JOIN users u_fwd ON f.forwarded_by_user_id = u_fwd.id
+		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
+		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.id AND u_fwd.user_type = 'admin'
+		WHERE f.status = 'forwarded' AND (f.is_archived = 0 OR f.is_archived IS NULL)
+		AND CAST(f.date_submitted AS DATE) BETWEEN ? AND ?
+		ORDER BY f.date_submitted DESC`
+
+	rows, err := a.db.Query(query, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query feedback by range: %w", err)
+	}
+	defer rows.Close()
+
+	var feedbacks []Feedback
+	for rows.Next() {
+		var fb Feedback
+		var middleName, comments, studentIDStr, forwardedByName, workingStudentNotes sql.NullString
+		var dateSubmitted time.Time
+		var verifiedBy sql.NullInt64
+		var verifiedAt sql.NullTime
+		var forwardedBy sql.NullInt64
+		var forwardedAt sql.NullTime
+
+		if err := rows.Scan(&fb.ID, &fb.StudentUserID, &studentIDStr, &fb.FirstName, &middleName, &fb.LastName,
+			&fb.PCNumber, &fb.EquipmentCondition, &fb.MonitorCondition,
+			&fb.KeyboardCondition, &fb.MouseCondition, &comments, &dateSubmitted, &fb.Status,
+			&verifiedBy, &verifiedAt, &forwardedBy, &forwardedAt, &workingStudentNotes, &forwardedByName); err != nil {
+			continue
+		}
+		if studentIDStr.Valid {
+			fb.StudentIDStr = studentIDStr.String
+		} else {
+			fb.StudentIDStr = "N/A"
+		}
+		if middleName.Valid {
+			fb.MiddleName = &middleName.String
+		}
+		if comments.Valid {
+			fb.Comments = &comments.String
+		}
+		if verifiedBy.Valid {
+			v := int(verifiedBy.Int64)
+			fb.VerifiedByUserID = &v
+		}
+		if verifiedAt.Valid {
+			t := verifiedAt.Time.Format("2006-01-02 15:04:05")
+			fb.VerifiedAt = &t
+		}
+		if forwardedBy.Valid {
+			v := int(forwardedBy.Int64)
+			fb.ForwardedByUserID = &v
+		}
+		if forwardedAt.Valid {
+			s := forwardedAt.Time.Format("2006-01-02 15:04:05")
+			fb.ForwardedAt = &s
+		}
+		if forwardedByName.Valid && forwardedByName.String != "" {
+			fb.ForwardedByName = &forwardedByName.String
+		}
+		if workingStudentNotes.Valid {
+			fb.WorkingStudentNotes = &workingStudentNotes.String
+		}
+		fb.StudentName = fmt.Sprintf("%s, %s", fb.LastName, fb.FirstName)
+		if middleName.Valid {
+			fb.StudentName += " " + middleName.String
+		}
+		fb.DateSubmitted = dateSubmitted.Format("2006-01-02 15:04:05")
+		feedbacks = append(feedbacks, fb)
+	}
+	return feedbacks, nil
+}
+
+// ExportFeedbackCSVByRange exports feedback within a date range to CSV.
+func (a *App) ExportFeedbackCSVByRange(startDate, endDate string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+	feedbacks, err := a.getFeedbackByDateRange(startDate, endDate)
+	if err != nil {
+		return "", err
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("feedback_%s_to_%s_%s.csv", startDate, endDate, time.Now().Format("150405")))
+	file, err := os.Create(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	writer.Write([]string{"ID", "Student Name", "Student ID", "PC Number", "Equipment", "Monitor", "Keyboard", "Mouse", "Status", "Date Submitted", "Forwarded By"})
+	for _, fb := range feedbacks {
+		comments := ""
+		if fb.Comments != nil {
+			comments = *fb.Comments
+		}
+		fwdBy := ""
+		if fb.ForwardedByName != nil {
+			fwdBy = *fb.ForwardedByName
+		}
+		_ = comments
+		writer.Write([]string{
+			strconv.Itoa(fb.ID), fb.StudentName, fb.StudentIDStr, fb.PCNumber,
+			fb.EquipmentCondition, fb.MonitorCondition, fb.KeyboardCondition, fb.MouseCondition,
+			fb.Status, fb.DateSubmitted, fwdBy,
+		})
+	}
+	return filename, nil
+}
+
+// ExportFeedbackPDFByRange exports feedback within a date range to PDF.
+func (a *App) ExportFeedbackPDFByRange(startDate, endDate string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+	feedbacks, err := a.getFeedbackByDateRange(startDate, endDate)
+	if err != nil {
+		return "", err
+	}
+
+	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf.AddPage()
+	pdf.SetFont("Arial", "B", 14)
+	pdf.Cell(0, 10, fmt.Sprintf("Equipment Reports: %s to %s", startDate, endDate))
+	pdf.Ln(12)
+
+	pdf.SetFont("Arial", "B", 8)
+	pdf.SetFillColor(31, 56, 100)
+	pdf.SetTextColor(255, 255, 255)
+	cols := []struct {
+		label string
+		width float64
+	}{
+		{"Student Name", 55}, {"Student ID", 28}, {"PC", 20}, {"Equipment", 25}, {"Monitor", 25}, {"Keyboard", 25}, {"Mouse", 25}, {"Status", 20}, {"Date", 40}, {"Forwarded By", 37},
+	}
+	for _, c := range cols {
+		pdf.CellFormat(c.width, 7, c.label, "1", 0, "", true, 0, "")
+	}
+	pdf.Ln(-1)
+
+	pdf.SetFont("Arial", "", 7)
+	pdf.SetTextColor(0, 0, 0)
+	for i, fb := range feedbacks {
+		if i%2 == 0 {
+			pdf.SetFillColor(255, 255, 255)
+		} else {
+			pdf.SetFillColor(220, 230, 241)
+		}
+		fwdBy := ""
+		if fb.ForwardedByName != nil {
+			fwdBy = *fb.ForwardedByName
+		}
+		pdf.CellFormat(55, 6, fb.StudentName, "1", 0, "", true, 0, "")
+		pdf.CellFormat(28, 6, fb.StudentIDStr, "1", 0, "", true, 0, "")
+		pdf.CellFormat(20, 6, fb.PCNumber, "1", 0, "", true, 0, "")
+		pdf.CellFormat(25, 6, fb.EquipmentCondition, "1", 0, "", true, 0, "")
+		pdf.CellFormat(25, 6, fb.MonitorCondition, "1", 0, "", true, 0, "")
+		pdf.CellFormat(25, 6, fb.KeyboardCondition, "1", 0, "", true, 0, "")
+		pdf.CellFormat(25, 6, fb.MouseCondition, "1", 0, "", true, 0, "")
+		pdf.CellFormat(20, 6, fb.Status, "1", 0, "", true, 0, "")
+		pdf.CellFormat(40, 6, fb.DateSubmitted, "1", 0, "", true, 0, "")
+		pdf.CellFormat(37, 6, fwdBy, "1", 0, "", true, 0, "")
+		pdf.Ln(-1)
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("feedback_%s_to_%s_%s.pdf", startDate, endDate, time.Now().Format("150405")))
+	err = pdf.OutputFileAndClose(filename)
+	return filename, err
+}
+
+// ExportFeedbackDOCXByRange exports feedback within a date range to DOCX.
+func (a *App) ExportFeedbackDOCXByRange(startDate, endDate string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+	feedbacks, err := a.getFeedbackByDateRange(startDate, endDate)
+	if err != nil {
+		return "", err
+	}
+
+	headers := []string{"Student Name", "Student ID", "PC", "Equipment", "Monitor", "Keyboard", "Mouse", "Date Submitted", "Forwarded By"}
+	var rows [][]string
+	for _, fb := range feedbacks {
+		fwdBy := ""
+		if fb.ForwardedByName != nil {
+			fwdBy = *fb.ForwardedByName
+		}
+		rows = append(rows, []string{fb.StudentName, fb.StudentIDStr, fb.PCNumber,
+			fb.EquipmentCondition, fb.MonitorCondition, fb.KeyboardCondition, fb.MouseCondition,
+			fb.DateSubmitted, fwdBy})
+	}
+
+	data, err := generateDocx(fmt.Sprintf("Equipment Reports: %s to %s", startDate, endDate), headers, rows)
+	if err != nil {
+		return "", err
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("feedback_%s_to_%s_%s.docx", startDate, endDate, time.Now().Format("150405")))
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return "", fmt.Errorf("failed to write docx: %w", err)
+	}
+	return filename, nil
+}
+
+// ==============================================================================
 // FEEDBACK ARCHIVE FUNCTIONS (DOCUMENT-BASED)
 // ==============================================================================
 

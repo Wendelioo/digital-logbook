@@ -4,20 +4,25 @@ import AdminArchiveModal from '../../components/AdminArchiveModal';
 import {
   Search,
   X,
-  SlidersHorizontal,
   Archive,
-  AlertCircle
+  AlertCircle,
+  Download,
+  FileText,
+  FileSpreadsheet,
+  FileType,
+  Filter
 } from 'lucide-react';
 import {
   GetFeedback,
-  ArchiveFeedback
+  GetFeedbackRangeCount,
+  ExportFeedbackCSVByRange,
+  ExportFeedbackPDFByRange,
+  ExportFeedbackDOCXByRange
 } from '../../../wailsjs/go/backend/App';
-import { useAuth } from '../../contexts/AuthContext';
 import { parseReportContext } from '../../utils/feedbackComments';
 import { Feedback } from './types';
 
 function Reports() {
-  const { user } = useAuth();
   const [reports, setReports] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -28,19 +33,22 @@ function Reports() {
 
   // General search
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Filters
+  const [dateFilter, setDateFilter] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  // Date filter only
-  const [dateFilter, setDateFilter] = useState('');
-
-  // Archive functionality
-  const [archiving, setArchiving] = useState(false);
-  const [showArchiveModal, setShowArchiveModal] = useState(false);
-  const [archiveModalTab, setArchiveModalTab] = useState<'archived-logs' | 'reports'>('reports');
-  const [selectedReportIDs, setSelectedReportIDs] = useState<Set<number>>(new Set());
-
-  // Toast
-  const [toast, setToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
+  // Export modal
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportStart, setExportStart] = useState('');
+  const [exportEnd, setExportEnd] = useState('');
+  const [exportCount, setExportCount] = useState<number | null>(null);
+  const [exportCountLoading, setExportCountLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportToast, setExportToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
   // View toggle: all, issue reports, or no-issue (compliance) reports
   const [reportView, setReportView] = useState<'all' | 'issues' | 'no_issue'>('issues');
@@ -74,38 +82,47 @@ function Reports() {
     }
   };
 
+  const activeFilterCount = [dateFilter, filterStatus].filter(Boolean).length;
+
   const clearFilters = () => {
     setSearchQuery('');
     setDateFilter('');
+    setFilterStatus('');
+    setShowFilters(false);
   };
 
-  const showToast = (type: 'success' | 'error', message: string) => {
-    setToast({ type, message });
-    setTimeout(() => setToast(null), 5000);
-  };
-
-  const handleArchiveSelected = async () => {
-    const ids = Array.from(selectedReportIDs);
-    if (ids.length === 0) {
-      showToast('error', 'No reports to archive.');
-      return;
-    }
-    if (!user) return;
-    
-    setArchiving(true);
+  const applyExportRange = async () => {
+    if (!exportStart || !exportEnd) return;
+    setExportCountLoading(true);
     try {
-      await ArchiveFeedback(ids, user.id);
-      showToast('success', `${ids.length} report${ids.length === 1 ? '' : 's'} archived.`);
-      setSelectedReportIDs(new Set());
-      await loadReports();
-      setArchiveModalTab('reports');
-      setShowArchiveModal(true);
-    } catch (error) {
-      console.error('Failed to archive report:', error);
-      showToast('error', 'Failed to archive equipment report');
+      const count = await GetFeedbackRangeCount(exportStart, exportEnd);
+      setExportCount(count);
+    } catch {
+      setExportCount(0);
     } finally {
-      setArchiving(false);
+      setExportCountLoading(false);
     }
+  };
+
+  const handleExport = async (format: 'pdf' | 'csv' | 'docx') => {
+    if (!exportStart || !exportEnd) return;
+    setExporting(true);
+    try {
+      let filename = '';
+      if (format === 'pdf') filename = await ExportFeedbackPDFByRange(exportStart, exportEnd);
+      else if (format === 'csv') filename = await ExportFeedbackCSVByRange(exportStart, exportEnd);
+      else filename = await ExportFeedbackDOCXByRange(exportStart, exportEnd);
+      showExportToast('success', `Exported to Downloads: ${filename.split(/[\\/]/).pop()}`);
+    } catch {
+      showExportToast('error', 'Export failed. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const showExportToast = (type: 'success' | 'error', message: string) => {
+    setExportToast({ type, message });
+    setTimeout(() => setExportToast(null), 5000);
   };
 
   const isNoIssueReport = (report: Feedback) => {
@@ -131,13 +148,15 @@ function Reports() {
       report.date_submitted && report.date_submitted.split(/[T\s]/)[0] === dateFilter
     );
 
+    const matchesStatus = !filterStatus || report.status === filterStatus;
+
     const noIssue = isNoIssueReport(report);
     const matchesView =
       reportView === 'all' ? true :
       reportView === 'no_issue' ? noIssue :
       !noIssue; // 'issues' view
 
-    return matchesSearch && matchesDate && matchesView;
+    return matchesSearch && matchesDate && matchesStatus && matchesView;
   });
 
   // Pagination
@@ -145,30 +164,6 @@ function Reports() {
   const reportsStartIndex = (reportsPage - 1) * reportsPerPage;
   const reportsEndIndex = reportsStartIndex + reportsPerPage;
   const paginatedReports = filteredReports.slice(reportsStartIndex, reportsEndIndex);
-
-  const filteredReportIDs = filteredReports.map((report) => report.id);
-  const allFilteredSelected = filteredReportIDs.length > 0 && filteredReportIDs.every((id) => selectedReportIDs.has(id));
-  const someFilteredSelected = filteredReportIDs.some((id) => selectedReportIDs.has(id)) && !allFilteredSelected;
-
-  const toggleSelectAllFiltered = () => {
-    const next = new Set(selectedReportIDs);
-    if (allFilteredSelected) {
-      filteredReportIDs.forEach((id) => next.delete(id));
-    } else {
-      filteredReportIDs.forEach((id) => next.add(id));
-    }
-    setSelectedReportIDs(next);
-  };
-
-  const toggleSelectReport = (id: number) => {
-    const next = new Set(selectedReportIDs);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
-    setSelectedReportIDs(next);
-  };
 
   if (loading) {
     return (
@@ -180,16 +175,22 @@ function Reports() {
 
   return (
     <div>
+      {/* Export Toast */}
+      {exportToast && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border ${
+          exportToast.type === 'success'
+            ? 'bg-green-50 border-green-200 text-green-800'
+            : 'bg-red-50 border-red-200 text-red-800'
+        } animate-slideIn`}>
+          <span className="font-medium">{exportToast.message}</span>
+        </div>
+      )}
+
       {/* Header Section */}
       <div className="mb-6">
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
-            {selectedReportIDs.size > 0 && (
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-primary-100 text-primary-700">
-                {selectedReportIDs.size} selected
-              </span>
-            )}
           </div>
           <Button
             onClick={() => setShowArchiveModal(true)}
@@ -200,13 +201,14 @@ function Reports() {
           </Button>
         </div>
 
-        {/* Search Toolbar + View Toggle */}
+        {/* Search + Export Toolbar + View Toggle */}
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
-          <div className="flex flex-wrap gap-3 items-start">
+          <div className="flex items-center justify-end gap-2">
             <div className="w-64 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
               type="text"
+              placeholder="Search student, ID, PC..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -221,57 +223,88 @@ function Reports() {
             )}
             </div>
 
+            {/* Filter button */}
             <div className="relative">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors ${showFilters
-                ? 'bg-primary-50 border-primary-500 text-primary-700'
-                : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              <button
+                onClick={() => setShowFilters(v => !v)}
+                title="Filters"
+                className={`relative flex items-center gap-1.5 px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
+                  showFilters || activeFilterCount > 0
+                    ? 'border-primary-500 bg-primary-50 text-primary-700'
+                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                 }`}
-            >
-              <SlidersHorizontal className="h-5 w-5" />
-              Filters
-              {dateFilter && (
-                <span className="ml-1 px-2 py-0.5 bg-primary-500 text-white rounded-full text-xs">
-                  1
-                </span>
-              )}
-            </button>
+              >
+                <Filter className="h-4 w-4" />
+                {activeFilterCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary-600 text-[10px] font-bold text-white">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
 
-            {/* Dropdown Filters Panel */}
-            {showFilters && (
-              <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="text-sm font-medium text-gray-700">Filter by Date:</label>
-                    {dateFilter && (
+              {showFilters && (
+                <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-gray-200 bg-white shadow-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-gray-700">Filters</span>
+                    {activeFilterCount > 0 && (
                       <button
-                        onClick={() => setDateFilter('')}
-                        className="text-xs text-gray-600 hover:text-gray-900 underline"
+                        onClick={() => { setDateFilter(''); setFilterStatus(''); }}
+                        className="text-xs text-primary-600 hover:underline"
                       >
-                        Clear
+                        Clear filters
                       </button>
                     )}
                   </div>
-                  <input
-                    type="date"
-                    value={dateFilter}
-                    onChange={(e) => setDateFilter(e.target.value)}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
+
+                  {/* Date filter */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                    <div className="relative">
+                      <input
+                        type="date"
+                        value={dateFilter}
+                        onChange={(e) => setDateFilter(e.target.value)}
+                        className="w-full pr-8 py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      />
+                      {dateFilter && (
+                        <button
+                          onClick={() => setDateFilter('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Status filter */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    >
+                      <option value="">All statuses</option>
+                      <option value="pending">Pending</option>
+                      <option value="confirmed">Confirmed</option>
+                      <option value="rejected">Rejected</option>
+                      <option value="forwarded">Forwarded</option>
+                    </select>
+                  </div>
+
                 </div>
-              </div>
-            )}
+              )}
             </div>
 
-            {(searchQuery || dateFilter) && (
-              <button
-                onClick={clearFilters}
-                className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Clear All
-              </button>
-            )}
+            <button
+              onClick={() => { setShowExportModal(true); setExportCount(null); }}
+              title="Export"
+              className="flex items-center gap-1.5 px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
+            >
+              <Download className="h-4 w-4" />
+              <span>Export</span>
+            </button>
           </div>
 
           {/* View toggle: Issues vs No-issue compliance */}
@@ -332,55 +365,19 @@ function Reports() {
 
       {/* Single Unified Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {/* Batch action bar — shown when rows are selected */}
-        {selectedReportIDs.size > 0 && (
-          <div className="px-4 py-3 bg-primary-50 border-b border-primary-200 flex items-center justify-between">
-            <span className="text-sm text-gray-700">
-              <span className="font-semibold text-primary-900">{selectedReportIDs.size}</span> report{selectedReportIDs.size !== 1 ? 's' : ''} selected
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSelectedReportIDs(new Set())}
-              >
-                Clear Selection
-              </Button>
-              <Button
-                onClick={handleArchiveSelected}
-                variant="primary"
-                size="sm"
-                icon={<Archive className="h-4 w-4" />}
-                disabled={archiving}
-              >
-                Archive ({selectedReportIDs.size})
-              </Button>
-            </div>
-          </div>
-        )}
         <div className="overflow-x-auto">
           <div className="max-h-[65vh] overflow-y-auto">
             <table className="w-full divide-y divide-gray-200 table-fixed">
               <colgroup>
-                <col style={{ width: '40px' }} />
                 <col style={{ width: '28%' }} />
                 <col style={{ width: '16%' }} />
                 <col style={{ width: '10%' }} />
                 <col style={{ width: '10%' }} />
-                <col style={{ width: '16%' }} />
-                <col style={{ width: '16%' }} />
+                <col style={{ width: '18%' }} />
+                <col style={{ width: '18%' }} />
               </colgroup>
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th className="px-3 py-3 text-left">
-                    <input
-                      type="checkbox"
-                      checked={allFilteredSelected}
-                      ref={(input) => { if (input) input.indeterminate = someFilteredSelected; }}
-                      onChange={toggleSelectAllFiltered}
-                      className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
-                    />
-                  </th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Student</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">PC / Origin</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Date</th>
@@ -392,7 +389,7 @@ function Reports() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedReports.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-500 font-medium">
+                    <td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-500 font-medium">
                       No equipment reports submitted
                     </td>
                   </tr>
@@ -406,14 +403,6 @@ function Reports() {
                           isNoIssueReport(report) ? 'bg-white hover:bg-gray-50' : 'bg-red-50 hover:bg-red-100'
                         }`}
                       >
-                        <td className="px-3 py-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedReportIDs.has(report.id)}
-                            onChange={() => toggleSelectReport(report.id)}
-                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
-                          />
-                        </td>
                         <td className="px-3 py-3">
                           <div className="text-sm font-medium text-gray-900 truncate">{report.student_name}</div>
                           <div className="text-xs text-gray-500 mt-0.5">{report.student_id_str}</div>
@@ -510,22 +499,110 @@ function Reports() {
         )}
       </div>
 
-      {/* Archive Toast */}
-      {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border ${
-          toast.type === 'success' 
-            ? 'bg-green-50 border-green-200 text-green-800' 
-            : 'bg-red-50 border-red-200 text-red-800'
-        } animate-slideIn`}>
-          <span className="font-medium">{toast.message}</span>
-        </div>
-      )}
-
       <AdminArchiveModal
         isOpen={showArchiveModal}
         onClose={() => setShowArchiveModal(false)}
-        initialTab={archiveModalTab}
+        initialTab="reports"
       />
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Export Equipment Reports</h3>
+              </div>
+              <button onClick={() => setShowExportModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-5">
+              {/* Date Range */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-500 mb-1">From</label>
+                    <input
+                      type="date"
+                      value={exportStart}
+                      onChange={(e) => { setExportStart(e.target.value); setExportCount(null); }}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <span className="text-gray-400 mt-4">—</span>
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-500 mb-1">To</label>
+                    <input
+                      type="date"
+                      value={exportEnd}
+                      onChange={(e) => { setExportEnd(e.target.value); setExportCount(null); }}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={applyExportRange}
+                  disabled={!exportStart || !exportEnd || exportCountLoading}
+                  className="mt-2 w-full py-2 rounded-lg border border-primary-500 text-primary-700 text-sm font-medium hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {exportCountLoading ? 'Checking...' : 'Apply Range'}
+                </button>
+              </div>
+
+              {/* Record count preview */}
+              {exportCount !== null && (
+                <div className={`rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2 ${
+                  exportCount > 0 ? 'bg-primary-50 text-primary-800 border border-primary-200' : 'bg-yellow-50 text-yellow-800 border border-yellow-200'
+                }`}>
+                  <FileSpreadsheet className="h-4 w-4 flex-shrink-0" />
+                  {exportCount > 0
+                    ? `${exportCount} report${exportCount !== 1 ? 's' : ''} found in this range`
+                    : 'No reports found for this date range'}
+                </div>
+              )}
+
+              {/* Export Format */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Export Format</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => handleExport('pdf')}
+                    disabled={!exportStart || !exportEnd || exporting || exportCount === 0}
+                    className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <FileText className="h-6 w-6" />
+                    <span className="text-xs font-semibold">PDF</span>
+                  </button>
+                  <button
+                    onClick={() => handleExport('csv')}
+                    disabled={!exportStart || !exportEnd || exporting || exportCount === 0}
+                    className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-green-200 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <FileSpreadsheet className="h-6 w-6" />
+                    <span className="text-xs font-semibold">CSV</span>
+                  </button>
+                  <button
+                    onClick={() => handleExport('docx')}
+                    disabled={!exportStart || !exportEnd || exporting || exportCount === 0}
+                    className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <FileType className="h-6 w-6" />
+                    <span className="text-xs font-semibold">DOCX</span>
+                  </button>
+                </div>
+                {exporting && (
+                  <p className="mt-2 text-xs text-center text-gray-500">Exporting, please wait...</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -7,18 +7,23 @@ import {
   Search,
   X,
   AlertCircle,
-  Archive
+  Archive,
+  Download,
+  FileText,
+  FileSpreadsheet,
+  FileType,
+  Filter
 } from 'lucide-react';
 import {
   GetAllLogs,
-  ArchiveSelectedLogs
+  GetLogsRangeCount,
+  ExportLogsCSVByRange,
+  ExportLogsPDFByRange,
+  ExportLogsDOCXByRange
 } from '../../../wailsjs/go/backend/App';
-import { useAuth } from '../../contexts/AuthContext';
 import { LoginLog } from './types';
 
 function ViewLogs() {
-  const { user } = useAuth();
-  
   // All logs
   const [logs, setLogs] = useState<LoginLog[]>([]);
   
@@ -31,13 +36,21 @@ function ViewLogs() {
   const [error, setError] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Toast notification
-  const [toast, setToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
-
-  const [archiving, setArchiving] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
-  const [archiveModalTab, setArchiveModalTab] = useState<'archived-logs' | 'reports'>('archived-logs');
-  const [selectedLogIDs, setSelectedLogIDs] = useState<Set<number>>(new Set());
+
+  // Filters
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterUserType, setFilterUserType] = useState('');
+  const [filterDate, setFilterDate] = useState('');
+
+  // Export modal
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportStart, setExportStart] = useState('');
+  const [exportEnd, setExportEnd] = useState('');
+  const [exportCount, setExportCount] = useState<number | null>(null);
+  const [exportCountLoading, setExportCountLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportToast, setExportToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
   // Load all logs on mount
   useEffect(() => {
@@ -63,35 +76,6 @@ function ViewLogs() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleArchiveSelected = async () => {
-    const ids = Array.from(selectedLogIDs);
-    if (ids.length === 0) {
-      showToast('error', 'No log entries to archive.');
-      return;
-    }
-    if (!user) return;
-    
-    setArchiving(true);
-    try {
-      await ArchiveSelectedLogs(ids, user.id);
-      showToast('success', `${ids.length} log entr${ids.length === 1 ? 'y' : 'ies'} archived.`);
-      setSelectedLogIDs(new Set());
-      await loadLogs();
-      setArchiveModalTab('archived-logs');
-      setShowArchiveModal(true);
-    } catch (error) {
-      console.error('Failed to archive log:', error);
-      showToast('error', 'Failed to archive log entry');
-    } finally {
-      setArchiving(false);
-    }
-  };
-
-  const showToast = (type: 'success' | 'error', message: string) => {
-    setToast({ type, message });
-    setTimeout(() => setToast(null), 5000);
   };
 
   const formatTime = (timeStr: string) => {
@@ -120,41 +104,55 @@ function ViewLogs() {
 
   const clearSearch = () => setSearchQuery('');
 
+  const activeFilterCount = [filterUserType, filterDate].filter(Boolean).length;
+  const clearFilters = () => { setFilterUserType(''); setFilterDate(''); };
+
+  const applyExportRange = async () => {
+    if (!exportStart || !exportEnd) return;
+    setExportCountLoading(true);
+    try {
+      const count = await GetLogsRangeCount(exportStart, exportEnd);
+      setExportCount(count);
+    } catch {
+      setExportCount(0);
+    } finally {
+      setExportCountLoading(false);
+    }
+  };
+
+  const handleExport = async (format: 'pdf' | 'csv' | 'docx') => {
+    if (!exportStart || !exportEnd) return;
+    setExporting(true);
+    try {
+      let filename = '';
+      if (format === 'pdf') filename = await ExportLogsPDFByRange(exportStart, exportEnd);
+      else if (format === 'csv') filename = await ExportLogsCSVByRange(exportStart, exportEnd);
+      else filename = await ExportLogsDOCXByRange(exportStart, exportEnd);
+      showExportToast('success', `Exported to Downloads: ${filename.split(/[\\/]/).pop()}`);
+    } catch (err) {
+      showExportToast('error', 'Export failed. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const showExportToast = (type: 'success' | 'error', message: string) => {
+    setExportToast({ type, message });
+    setTimeout(() => setExportToast(null), 5000);
+  };
+
   const filteredLogs = logs.filter((log) => {
     const searchLower = searchQuery.toLowerCase();
-    if (!searchLower) return true;
-
-    return (
+    const matchesSearch = !searchLower || (
       log.user_name?.toLowerCase().includes(searchLower) ||
       log.user_id_number?.toLowerCase().includes(searchLower) ||
       log.user_type?.toLowerCase().includes(searchLower) ||
       (log.pc_number || '').toLowerCase().includes(searchLower)
     );
+    const matchesType = !filterUserType || log.user_type === filterUserType;
+    const matchesDate = !filterDate || (log.login_time && log.login_time.split(/[T\s]/)[0] === filterDate);
+    return matchesSearch && matchesType && matchesDate;
   });
-
-  const filteredLogIDs = filteredLogs.map((log) => log.id);
-  const allFilteredSelected = filteredLogIDs.length > 0 && filteredLogIDs.every((id) => selectedLogIDs.has(id));
-  const someFilteredSelected = filteredLogIDs.some((id) => selectedLogIDs.has(id)) && !allFilteredSelected;
-
-  const toggleSelectAllFiltered = () => {
-    const next = new Set(selectedLogIDs);
-    if (allFilteredSelected) {
-      filteredLogIDs.forEach((id) => next.delete(id));
-    } else {
-      filteredLogIDs.forEach((id) => next.add(id));
-    }
-    setSelectedLogIDs(next);
-  };
-
-  const toggleSelectLog = (id: number) => {
-    const next = new Set(selectedLogIDs);
-    if (next.has(id)) {
-      next.delete(id);
-    } else {
-      next.add(id);
-    }
-    setSelectedLogIDs(next);
-  };
 
   if (loading) {
     return (
@@ -172,14 +170,14 @@ function ViewLogs() {
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-8">
-      {/* Toast Notification */}
-      {toast && (
+      {/* Export Toast */}
+      {exportToast && (
         <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border ${
-          toast.type === 'success' 
-            ? 'bg-green-50 border-green-200 text-green-800' 
+          exportToast.type === 'success'
+            ? 'bg-green-50 border-green-200 text-green-800'
             : 'bg-red-50 border-red-200 text-red-800'
         } animate-slideIn`}>
-          <span className="font-medium">{toast.message}</span>
+          <span className="font-medium">{exportToast.message}</span>
         </div>
       )}
 
@@ -187,11 +185,6 @@ function ViewLogs() {
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h1 className="text-3xl font-bold text-gray-900">Log Entries</h1>
-          {selectedLogIDs.size > 0 && (
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-primary-100 text-primary-700">
-              {selectedLogIDs.size} selected
-            </span>
-          )}
         </div>
         <Button
           onClick={() => setShowArchiveModal(true)}
@@ -202,13 +195,14 @@ function ViewLogs() {
         </Button>
       </div>
 
-      {/* Search Toolbar */}
+      {/* Search + Export Toolbar */}
       <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-        <div className="flex flex-wrap gap-3 items-start">
+        <div className="flex items-center justify-end gap-2">
           <div className="w-64 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
               type="text"
+              placeholder="Search name, ID, type, PC..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -222,35 +216,80 @@ function ViewLogs() {
               </button>
             )}
           </div>
-        </div>
-      </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <input
-            type="checkbox"
-            checked={allFilteredSelected}
-            ref={(input) => {
-              if (input) input.indeterminate = someFilteredSelected;
-            }}
-            onChange={toggleSelectAllFiltered}
-            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
-          />
-          <span className="text-sm font-medium text-gray-700">Select all visible</span>
-          {selectedLogIDs.size > 0 && (
-            <span className="text-xs text-gray-500">{selectedLogIDs.size} selected</span>
-          )}
-        </div>
+          {/* Filter button */}
+          <div className="relative">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-1.5 px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
+                showFilters || activeFilterCount > 0
+                  ? 'bg-primary-50 border-primary-500 text-primary-700'
+                  : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+                <Filter className="h-4 w-4" />
+              {activeFilterCount > 0 && (
+                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary-500 text-white text-xs font-bold">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
 
-        <Button
-          onClick={handleArchiveSelected}
-          variant="outline"
-          size="sm"
-          icon={<Archive className="h-4 w-4" />}
-          disabled={selectedLogIDs.size === 0 || archiving}
-        >
-          Archive Selected
-        </Button>
+            {showFilters && (
+              <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg z-50">
+                <div className="p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-gray-800">Filters</span>
+                    {activeFilterCount > 0 && (
+                      <button onClick={clearFilters} className="text-xs text-primary-600 hover:underline">Clear all</button>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">User Type</label>
+                    <select
+                      value={filterUserType}
+                      onChange={(e) => setFilterUserType(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      <option value="">All types</option>
+                      <option value="student">Student</option>
+                      <option value="teacher">Teacher</option>
+                      <option value="working_student">Working Student</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={filterDate}
+                        onChange={(e) => setFilterDate(e.target.value)}
+                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                      {filterDate && (
+                        <button onClick={() => setFilterDate('')} className="text-gray-400 hover:text-gray-600">
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() => { setShowExportModal(true); setExportCount(null); }}
+            title="Export"
+            className="flex items-center gap-1.5 px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            <span>Export</span>
+          </button>
+        </div>
       </div>
 
       {/* Error Message */}
@@ -267,19 +306,6 @@ function ViewLogs() {
       <div>
         <Table
           columns={[
-            {
-              key: 'select',
-              label: 'Select',
-              width: '90px',
-              render: (log: LoginLog) => (
-                <input
-                  type="checkbox"
-                  checked={selectedLogIDs.has(log.id)}
-                  onChange={() => toggleSelectLog(log.id)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
-                />
-              )
-            },
             {
               key: 'user_name',
               label: 'Name',
@@ -387,8 +413,107 @@ function ViewLogs() {
       <AdminArchiveModal
         isOpen={showArchiveModal}
         onClose={() => setShowArchiveModal(false)}
-        initialTab={archiveModalTab}
+        initialTab="archived-logs"
       />
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Export Log Entries</h3>
+              </div>
+              <button onClick={() => setShowExportModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-5">
+              {/* Date Range */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-500 mb-1">From</label>
+                    <input
+                      type="date"
+                      value={exportStart}
+                      onChange={(e) => { setExportStart(e.target.value); setExportCount(null); }}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <span className="text-gray-400 mt-4">—</span>
+                  <div className="flex-1">
+                    <label className="block text-xs text-gray-500 mb-1">To</label>
+                    <input
+                      type="date"
+                      value={exportEnd}
+                      onChange={(e) => { setExportEnd(e.target.value); setExportCount(null); }}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                </div>
+                <button
+                  onClick={applyExportRange}
+                  disabled={!exportStart || !exportEnd || exportCountLoading}
+                  className="mt-2 w-full py-2 rounded-lg border border-primary-500 text-primary-700 text-sm font-medium hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {exportCountLoading ? 'Checking...' : 'Apply Range'}
+                </button>
+              </div>
+
+              {/* Record count preview */}
+              {exportCount !== null && (
+                <div className={`rounded-lg px-4 py-3 text-sm font-medium flex items-center gap-2 ${
+                  exportCount > 0 ? 'bg-primary-50 text-primary-800 border border-primary-200' : 'bg-yellow-50 text-yellow-800 border border-yellow-200'
+                }`}>
+                  <FileSpreadsheet className="h-4 w-4 flex-shrink-0" />
+                  {exportCount > 0
+                    ? `${exportCount} record${exportCount !== 1 ? 's' : ''} found in this range`
+                    : 'No records found for this date range'}
+                </div>
+              )}
+
+              {/* Export Format */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Export Format</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => handleExport('pdf')}
+                    disabled={!exportStart || !exportEnd || exporting || exportCount === 0}
+                    className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <FileText className="h-6 w-6" />
+                    <span className="text-xs font-semibold">PDF</span>
+                  </button>
+                  <button
+                    onClick={() => handleExport('csv')}
+                    disabled={!exportStart || !exportEnd || exporting || exportCount === 0}
+                    className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-green-200 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <FileSpreadsheet className="h-6 w-6" />
+                    <span className="text-xs font-semibold">CSV</span>
+                  </button>
+                  <button
+                    onClick={() => handleExport('docx')}
+                    disabled={!exportStart || !exportEnd || exporting || exportCount === 0}
+                    className="flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <FileType className="h-6 w-6" />
+                    <span className="text-xs font-semibold">DOCX</span>
+                  </button>
+                </div>
+                {exporting && (
+                  <p className="mt-2 text-xs text-center text-gray-500">Exporting, please wait...</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -764,6 +764,229 @@ func (a *App) ExportLogsPDF() (string, error) {
 }
 
 // ==============================================================================
+// LOGIN LOG RANGE EXPORT FUNCTIONS
+// ==============================================================================
+
+// GetLogsRangeCount returns the count of non-archived log entries within a date range.
+func (a *App) GetLogsRangeCount(startDate, endDate string) (int, error) {
+	if err := a.checkDB(); err != nil {
+		return 0, err
+	}
+	var count int
+	err := a.db.QueryRow(`
+		SELECT COUNT(*) FROM log_entries
+		WHERE (is_archived = 0 OR is_archived IS NULL)
+		AND CAST(login_time AS DATE) BETWEEN ? AND ?`,
+		startDate, endDate,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count logs in range: %w", err)
+	}
+	return count, nil
+}
+
+// getLogsByDateRange fetches non-archived log entries within a date range.
+func (a *App) getLogsByDateRange(startDate, endDate string) ([]LoginLog, error) {
+	query := `
+		SELECT
+			ll.id, ll.user_id,
+			COALESCE(u.user_type, 'unknown') as user_type,
+			ll.pc_number, ll.login_time, ll.logout_time,
+			COALESCE(
+				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
+					THEN s.last_name + ', ' + s.first_name +
+						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
+					ELSE NULL END,
+				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
+					THEN t.last_name + ', ' + t.first_name +
+						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
+					ELSE NULL END,
+				CASE WHEN adm.last_name IS NOT NULL AND adm.first_name IS NOT NULL
+					THEN adm.last_name + ', ' + adm.first_name +
+						CASE WHEN adm.middle_name IS NOT NULL THEN ' ' + adm.middle_name ELSE '' END
+					ELSE NULL END,
+				u.username
+			) as full_name,
+			COALESCE(s.student_id, t.teacher_id, adm.admin_id, u.username) as user_id_number
+		FROM log_entries ll
+		JOIN users u ON ll.user_id = u.id
+		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
+		LEFT JOIN admins adm ON u.id = adm.id AND u.user_type = 'admin'
+		WHERE (ll.is_archived = 0 OR ll.is_archived IS NULL)
+		AND CAST(ll.login_time AS DATE) BETWEEN ? AND ?
+		ORDER BY ll.login_time DESC`
+
+	rows, err := a.db.Query(query, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query logs by range: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []LoginLog
+	for rows.Next() {
+		var logEntry LoginLog
+		var pcNumber sql.NullString
+		var loginTime time.Time
+		var logoutTime sql.NullTime
+		var userIDNumber sql.NullString
+
+		if err := rows.Scan(&logEntry.ID, &logEntry.UserID, &logEntry.UserType, &pcNumber, &loginTime, &logoutTime, &logEntry.UserName, &userIDNumber); err != nil {
+			continue
+		}
+		logEntry.LoginTime = loginTime.Format("2006-01-02 15:04:05")
+		if pcNumber.Valid {
+			logEntry.PCNumber = &pcNumber.String
+		}
+		if logoutTime.Valid {
+			s := logoutTime.Time.Format("2006-01-02 15:04:05")
+			logEntry.LogoutTime = &s
+		}
+		if userIDNumber.Valid {
+			logEntry.UserIDNumber = userIDNumber.String
+		} else {
+			logEntry.UserIDNumber = logEntry.UserName
+		}
+		logs = append(logs, logEntry)
+	}
+	return logs, nil
+}
+
+// ExportLogsCSVByRange exports log entries within a date range to CSV.
+func (a *App) ExportLogsCSVByRange(startDate, endDate string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+	logs, err := a.getLogsByDateRange(startDate, endDate)
+	if err != nil {
+		return "", err
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("log_entries_%s_to_%s_%s.csv", startDate, endDate, time.Now().Format("150405")))
+	file, err := os.Create(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	writer.Write([]string{"ID", "Name", "ID Number", "User Type", "PC Number", "Login Time", "Logout Time"})
+	for _, l := range logs {
+		pc := ""
+		if l.PCNumber != nil {
+			pc = *l.PCNumber
+		}
+		logout := ""
+		if l.LogoutTime != nil {
+			logout = *l.LogoutTime
+		}
+		writer.Write([]string{strconv.Itoa(l.ID), l.UserName, l.UserIDNumber, l.UserType, pc, l.LoginTime, logout})
+	}
+	return filename, nil
+}
+
+// ExportLogsPDFByRange exports log entries within a date range to PDF.
+func (a *App) ExportLogsPDFByRange(startDate, endDate string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+	logs, err := a.getLogsByDateRange(startDate, endDate)
+	if err != nil {
+		return "", err
+	}
+
+	pdf := gofpdf.New("L", "mm", "A4", "")
+	pdf.AddPage()
+	pdf.SetFont("Arial", "B", 14)
+	pdf.Cell(0, 10, fmt.Sprintf("Log Entries Report: %s to %s", startDate, endDate))
+	pdf.Ln(12)
+
+	pdf.SetFont("Arial", "B", 9)
+	pdf.SetFillColor(31, 56, 100)
+	pdf.SetTextColor(255, 255, 255)
+	cols := []struct {
+		label string
+		width float64
+	}{
+		{"Name", 55}, {"ID Number", 35}, {"User Type", 30}, {"PC Number", 30}, {"Login Time", 50}, {"Logout Time", 50},
+	}
+	for _, c := range cols {
+		pdf.CellFormat(c.width, 7, c.label, "1", 0, "", true, 0, "")
+	}
+	pdf.Ln(-1)
+
+	pdf.SetFont("Arial", "", 8)
+	pdf.SetTextColor(0, 0, 0)
+	for i, l := range logs {
+		if i%2 == 0 {
+			pdf.SetFillColor(255, 255, 255)
+		} else {
+			pdf.SetFillColor(220, 230, 241)
+		}
+		pc := ""
+		if l.PCNumber != nil {
+			pc = *l.PCNumber
+		}
+		logout := ""
+		if l.LogoutTime != nil {
+			logout = *l.LogoutTime
+		}
+		pdf.CellFormat(55, 6, l.UserName, "1", 0, "", true, 0, "")
+		pdf.CellFormat(35, 6, l.UserIDNumber, "1", 0, "", true, 0, "")
+		pdf.CellFormat(30, 6, strings.ReplaceAll(l.UserType, "_", " "), "1", 0, "", true, 0, "")
+		pdf.CellFormat(30, 6, pc, "1", 0, "", true, 0, "")
+		pdf.CellFormat(50, 6, l.LoginTime, "1", 0, "", true, 0, "")
+		pdf.CellFormat(50, 6, logout, "1", 0, "", true, 0, "")
+		pdf.Ln(-1)
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("log_entries_%s_to_%s_%s.pdf", startDate, endDate, time.Now().Format("150405")))
+	err = pdf.OutputFileAndClose(filename)
+	return filename, err
+}
+
+// ExportLogsDOCXByRange exports log entries within a date range to DOCX.
+func (a *App) ExportLogsDOCXByRange(startDate, endDate string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+	logs, err := a.getLogsByDateRange(startDate, endDate)
+	if err != nil {
+		return "", err
+	}
+
+	headers := []string{"Name", "ID Number", "User Type", "PC Number", "Login Time", "Logout Time"}
+	var rows [][]string
+	for _, l := range logs {
+		pc := ""
+		if l.PCNumber != nil {
+			pc = *l.PCNumber
+		}
+		logout := ""
+		if l.LogoutTime != nil {
+			logout = *l.LogoutTime
+		}
+		rows = append(rows, []string{l.UserName, l.UserIDNumber, strings.ReplaceAll(l.UserType, "_", " "), pc, l.LoginTime, logout})
+	}
+
+	data, err := generateDocx(fmt.Sprintf("Log Entries: %s to %s", startDate, endDate), headers, rows)
+	if err != nil {
+		return "", err
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("log_entries_%s_to_%s_%s.docx", startDate, endDate, time.Now().Format("150405")))
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return "", fmt.Errorf("failed to write docx: %w", err)
+	}
+	return filename, nil
+}
+
+// ==============================================================================
 // LOGIN LOG ARCHIVE FUNCTIONS (DOCUMENT-BASED)
 // ==============================================================================
 
