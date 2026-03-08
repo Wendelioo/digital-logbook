@@ -6,6 +6,7 @@ import {
   Library,
   CalendarPlus,
   ClipboardList,
+  KeyRound,
 } from 'lucide-react';
 import LoginHistory from '../../components/LoginHistory';
 import DashboardOverview from './TeacherDashboard';
@@ -14,6 +15,7 @@ import CreateClasslist from './TeacherCreateClasslist';
 import ClassManagementDetail from './TeacherClassDetail';
 import AttendanceClassSelection from './TeacherAttendanceSelection';
 import AttendanceManagementDetail from './TeacherAttendanceDetail';
+import TeacherPasswordResets from './TeacherPasswordResets';
 
 function TeacherDashboard() {
   const location = useLocation();
@@ -22,6 +24,7 @@ function TeacherDashboard() {
     { name: 'Dashboard', href: '/teacher', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/teacher' },
     { name: 'Class Management', href: '/teacher/class-management', icon: <Library className="h-5 w-5" />, current: location.pathname.startsWith('/teacher/class-management') },
     { name: 'Attendance', href: '/teacher/attendance', icon: <CalendarPlus className="h-5 w-5" />, current: location.pathname.startsWith('/teacher/attendance') && !location.pathname.includes('/stored') },
+    { name: 'Password Resets', href: '/teacher/password-resets', icon: <KeyRound className="h-5 w-5" />, current: location.pathname === '/teacher/password-resets' },
     { name: 'Login History', href: '/teacher/login-history', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/teacher/login-history' },
   ];
 
@@ -34,6 +37,7 @@ function TeacherDashboard() {
         <Route path="class-management/:id" element={<ClassManagementDetail />} />
         <Route path="attendance/:id" element={<AttendanceManagementDetail />} />
         <Route path="attendance" element={<AttendanceClassSelection />} />
+        <Route path="password-resets" element={<TeacherPasswordResets />} />
         <Route path="login-history" element={<LoginHistory showStatus={false} />} />
         <Route path="stored-attendance" element={<Navigate to="/teacher/attendance" replace />} />
       </Routes>

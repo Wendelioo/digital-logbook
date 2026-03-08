@@ -588,9 +588,13 @@ function MyClasses() {
                   <thead>
                     <tr className="bg-gray-50">
                       <th className="px-1 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '25px' }}>No.</th>
-                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>Student ID</th>
+                      {(user?.role === 'teacher' || user?.role === 'admin') && (
+                        <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>Student ID</th>
+                      )}
                       <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase">Name</th>
-                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '200px' }}>Email</th>
+                      {(user?.role === 'teacher' || user?.role === 'admin') && (
+                        <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '200px' }}>Email</th>
+                      )}
                       <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Status</th>
                     </tr>
                   </thead>
@@ -599,7 +603,7 @@ function MyClasses() {
                   <tbody className="bg-white text-xs">
                     {loadingClasslist && classlistStudents.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-6 py-12 text-center">
+                        <td colSpan={user?.role === 'teacher' || user?.role === 'admin' ? 5 : 3} className="px-6 py-12 text-center">
                           <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary-600 mb-2" />
                           <p className="text-gray-500 text-sm">Loading students...</p>
                         </td>
@@ -610,15 +614,19 @@ function MyClasses() {
                           <td className="px-1 py-1.5 text-center font-medium text-gray-900">
                             {index + 1}
                           </td>
-                          <td className="px-1 py-1.5 font-medium text-gray-900 text-xs">
-                            {student.student_code}
-                          </td>
+                          {(user?.role === 'teacher' || user?.role === 'admin') && (
+                            <td className="px-1 py-1.5 font-medium text-gray-900 text-xs">
+                              {student.student_code}
+                            </td>
+                          )}
                           <td className="px-1 py-1.5 text-gray-900">
                             {student.last_name}, {student.first_name} {student.middle_name ? student.middle_name.charAt(0) + '.' : ''}
                           </td>
-                          <td className="px-1 py-1.5 text-gray-700">
-                            {student.email || '—'}
-                          </td>
+                          {(user?.role === 'teacher' || user?.role === 'admin') && (
+                            <td className="px-1 py-1.5 text-gray-700">
+                              {student.email || '—'}
+                            </td>
+                          )}
                           <td className="px-1 py-1.5">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${student.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                               {student.status || 'active'}
@@ -628,7 +636,7 @@ function MyClasses() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={5} className="px-6 py-8 text-center">
+                        <td colSpan={user?.role === 'teacher' || user?.role === 'admin' ? 5 : 3} className="px-6 py-8 text-center">
                           <Users className="mx-auto h-10 w-10 text-gray-400 mb-2" />
                           <p className="text-gray-500 text-sm">No students enrolled</p>
                         </td>

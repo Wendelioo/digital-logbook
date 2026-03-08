@@ -32,6 +32,7 @@ import {
   UnarchiveUser,
   ResetPasswordByRole,
   DeactivateTeacher,
+  DeleteExpiredDeactivatedUsers,
 } from '../../../wailsjs/go/backend/App';
 import { User as UserType, Department } from './types';
 import { useAuth } from '../../contexts/AuthContext';
@@ -181,6 +182,7 @@ function UserManagement() {
   const [showArchivedModal, setShowArchivedModal] = useState(false);
   const [archivedUsers, setArchivedUsers] = useState<UserType[]>([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
+  const [deleteExpiredLoading, setDeleteExpiredLoading] = useState(false);
 
   // Excel-like table state: sorting, filtering, selection, pagination
   type SortKey = 'name' | 'role' | 'created';
@@ -505,6 +507,40 @@ function UserManagement() {
       console.error('Failed to restore archived user:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to restore account. Please try again.';
       showNotification('error', errorMessage);
+    }
+  };
+
+  const handleDeleteArchivedUser = async (user: UserType) => {
+    const name = user.first_name && user.last_name
+      ? `${user.first_name} ${user.last_name}`
+      : user.name;
+    if (!confirm(`Permanently delete ${name}? This cannot be undone.`)) return;
+    try {
+      await DeleteUser(user.id);
+      showNotification('success', 'Account deleted permanently.');
+      loadArchivedUsers();
+      loadUsers();
+    } catch (error) {
+      console.error('Failed to delete archived user:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete account. Please try again.';
+      showNotification('error', errorMessage);
+    }
+  };
+
+  const handleDeleteExpiredDeactivated = async (days: number) => {
+    if (!confirm(`Permanently delete all accounts that have been deactivated for more than ${days} days? This cannot be undone.`)) return;
+    setDeleteExpiredLoading(true);
+    try {
+      const count = await DeleteExpiredDeactivatedUsers(days);
+      showNotification('success', `${count} expired deactivated account(s) deleted permanently.`);
+      loadArchivedUsers();
+      loadUsers();
+    } catch (error) {
+      console.error('Failed to delete expired deactivated users:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete expired accounts. Please try again.';
+      showNotification('error', errorMessage);
+    } finally {
+      setDeleteExpiredLoading(false);
     }
   };
 
@@ -953,6 +989,26 @@ function UserManagement() {
             <p className="text-gray-500">No archived accounts found.</p>
           </div>
         ) : (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+              <span>Permanently delete accounts deactivated for:</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleDeleteExpiredDeactivated(30)}
+                disabled={deleteExpiredLoading}
+              >
+                {deleteExpiredLoading ? '…' : '30+ days'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleDeleteExpiredDeactivated(365)}
+                disabled={deleteExpiredLoading}
+              >
+                365+ days
+              </Button>
+            </div>
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
             <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
@@ -986,6 +1042,14 @@ function UserManagement() {
                           icon={<ArchiveRestore className="h-4 w-4" />}
                           title="Restore"
                         />
+                        <Button
+                          onClick={() => handleDeleteArchivedUser(user)}
+                          variant="danger"
+                          size="sm"
+                          className="h-9 w-9 px-0 py-0"
+                          icon={<Trash2 className="h-4 w-4" />}
+                          title="Delete permanently"
+                        />
                       </div>
                     </td>
                   </tr>
@@ -993,6 +1057,7 @@ function UserManagement() {
               </tbody>
             </table>
             </div>
+          </div>
           </div>
         )}
       </Modal>
@@ -1116,7 +1181,7 @@ function UserManagement() {
                         icon={<Archive className="h-3 w-3" />}
                         title="Deactivate"
                       />
-                    ) : (
+                    ) : user.role !== 'admin' ? (
                       <Button
                         onClick={() => handleArchive(user)}
                         variant="outline"
@@ -1124,7 +1189,7 @@ function UserManagement() {
                         icon={<Archive className="h-3 w-3" />}
                         title="Archive"
                       />
-                    )}
+                    ) : null}
                   </div>
                 )
               }

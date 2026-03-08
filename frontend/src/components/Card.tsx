@@ -30,7 +30,7 @@ export const Card: React.FC<CardProps> = ({
 
 /* ===== CARD HEADER ===== */
 interface CardHeaderProps {
-  title: string;
+  title: React.ReactNode;
   subtitle?: string;
   action?: React.ReactNode;
   className?: string;

@@ -334,19 +334,6 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	return dashboard, nil
 }
 
-// ==============================================================================
-// TEACHER DASHBOARD
-// ==============================================================================
-
-// TeacherDashboard represents teacher dashboard data
-type TeacherDashboard struct {
-	Classes              []CourseClass `json:"classes"`
-	Attendance           []Attendance  `json:"attendance"`
-	TotalAttendanceWeek  int           `json:"total_attendance_week"`
-	TotalAttendanceMonth int           `json:"total_attendance_month"`
-	TodayClasses         []CourseClass `json:"today_classes"`
-}
-
 // Subject represents a course/subject
 type Subject struct {
 	Code          string  `json:"code"`
@@ -406,129 +393,6 @@ type Attendance struct {
 	RecordedByName string  `json:"recorded_by_name"`
 	IsArchived     bool    `json:"is_archived"`
 	IsEditable     bool    `json:"is_editable"`
-}
-
-// GetTeacherDashboard returns teacher dashboard data
-func (a *App) GetTeacherDashboard(teacherUserID int) (TeacherDashboard, error) {
-	var dashboard TeacherDashboard
-
-	if err := a.checkDB(); err != nil {
-		return dashboard, err
-	}
-
-	// Get classes for this teacher
-	classes, err := a.GetTeacherClasses(teacherUserID)
-	if err != nil {
-		return dashboard, err
-	}
-	dashboard.Classes = classes
-
-	// Get attendance for these classes (recent records)
-	if len(classes) > 0 {
-		// Get attendance from the last 7 days for all classes
-		classIDs := make([]int, len(classes))
-		for i, class := range classes {
-			classIDs[i] = class.ID
-		}
-
-		attendance, err := a.GetRecentAttendance(classIDs, 7)
-		if err != nil {
-			log.Printf("Failed to get recent attendance: %v", err)
-		} else {
-			dashboard.Attendance = attendance
-		}
-
-		// Count attendance records this week
-		a.db.QueryRow(`
-			SELECT COUNT(*) FROM attendance 
-			WHERE class_id IN (`+strings.Repeat("?,", len(classIDs)-1)+`?) 
-			AND attendance_date >= DATEADD(DAY, -7, CAST(GETDATE() AS DATE))
-		`, convertToInterfaceSlice(classIDs)...).Scan(&dashboard.TotalAttendanceWeek)
-
-		// Count attendance records this month
-		a.db.QueryRow(`
-			SELECT COUNT(*) FROM attendance 
-			WHERE class_id IN (`+strings.Repeat("?,", len(classIDs)-1)+`?) 
-			AND attendance_date >= DATEADD(DAY, -30, CAST(GETDATE() AS DATE))
-		`, convertToInterfaceSlice(classIDs)...).Scan(&dashboard.TotalAttendanceMonth)
-	}
-
-	// Filter today's classes (simplified - returns all active classes)
-	dashboard.TodayClasses = classes
-
-	return dashboard, nil
-}
-
-// Helper function to convert int slice to interface slice for variadic SQL args
-func convertToInterfaceSlice(nums []int) []interface{} {
-	result := make([]interface{}, len(nums))
-	for i, v := range nums {
-		result[i] = v
-	}
-	return result
-}
-
-// GetRecentAttendance gets attendance records for given class IDs within the last N days
-func (a *App) GetRecentAttendance(classIDs []int, days int) ([]Attendance, error) {
-	if err := a.checkDB(); err != nil {
-		return nil, err
-	}
-
-	if len(classIDs) == 0 {
-		return []Attendance{}, nil
-	}
-
-	// Build query with placeholders for class IDs
-	placeholders := make([]string, len(classIDs))
-	args := make([]interface{}, len(classIDs)+1)
-	for i, id := range classIDs {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	args[len(classIDs)] = days
-
-	query := fmt.Sprintf(`
-		SELECT 
-			a.id, a.class_id, c.subject_code, s.name, c.section, c.schedule,
-			a.student_id, st.student_id, 
-			COALESCE(u.first_name, '') + ' ' + COALESCE(u.middle_name, '') + ' ' + COALESCE(u.last_name, '') as student_name,
-			a.attendance_date, a.status, a.remarks,
-			a.recorded_by,
-			COALESCE(rec.first_name, '') + ' ' + COALESCE(rec.middle_name, '') + ' ' + COALESCE(rec.last_name, '') as recorded_by_name
-		FROM attendance a
-		JOIN classlist c ON a.class_id = c.id
-		JOIN subjects s ON c.subject_code = s.code
-		JOIN students st ON a.student_id = st.id
-		JOIN users u ON st.id = u.id
-		LEFT JOIN users rec ON a.recorded_by = rec.id
-		WHERE a.class_id IN (%s)
-		AND a.attendance_date >= DATEADD(DAY, -?, CAST(GETDATE() AS DATE))
-		ORDER BY a.attendance_date DESC
-	`, strings.Join(placeholders, ","))
-
-	rows, err := a.db.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var attendance []Attendance
-	for rows.Next() {
-		var att Attendance
-		err := rows.Scan(
-			&att.ID, &att.ClassID, &att.SubjectCode, &att.SubjectName, &att.Section, &att.Schedule,
-			&att.StudentUserID, &att.StudentID, &att.StudentName,
-			&att.AttendanceDate, &att.Status, &att.Remarks,
-			&att.RecordedBy, &att.RecordedByName,
-		)
-		if err != nil {
-			log.Printf("Failed to scan attendance: %v", err)
-			continue
-		}
-		attendance = append(attendance, att)
-	}
-
-	return attendance, nil
 }
 
 // ==============================================================================
@@ -673,11 +537,12 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 
 // WorkingStudentDashboard represents working student dashboard data
 type WorkingStudentDashboard struct {
-	StudentsRegistered int `json:"students_registered"`
-	ClasslistsCreated  int `json:"classlists_created"`
-	PendingFeedback    int `json:"pending_feedback"`
-	TodayRegistrations int `json:"today_registrations"`
-	ActiveStudentsNow  int `json:"active_students_now"`
+	StudentsRegistered   int `json:"students_registered"`
+	ClasslistsCreated    int `json:"classlists_created"`
+	PendingFeedback      int `json:"pending_feedback"`
+	TodayRegistrations   int `json:"today_registrations"`
+	ActiveStudentsNow    int `json:"active_students_now"`
+	PendingRegistrations int `json:"pending_registrations"`
 }
 
 // GetWorkingStudentDashboard returns working student dashboard data
@@ -724,6 +589,9 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
 			)
 	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.ActiveStudentsNow)
+
+	// Count pending registrations
+	a.db.QueryRow(`SELECT COUNT(*) FROM users WHERE account_status = 'pending'`).Scan(&dashboard.PendingRegistrations)
 
 	return dashboard, nil
 }

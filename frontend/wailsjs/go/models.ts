@@ -84,52 +84,6 @@ export namespace backend {
 	        this.late_count = source["late_count"];
 	    }
 	}
-	export class ArchivedFeedbackSheet {
-	    date: string;
-	    total_reports: number;
-	    good_count: number;
-	    issue_count: number;
-	    unique_pcs: number;
-	    unique_students: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new ArchivedFeedbackSheet(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.date = source["date"];
-	        this.total_reports = source["total_reports"];
-	        this.good_count = source["good_count"];
-	        this.issue_count = source["issue_count"];
-	        this.unique_pcs = source["unique_pcs"];
-	        this.unique_students = source["unique_students"];
-	    }
-	}
-	export class ArchivedLogSheet {
-	    date: string;
-	    total_logins: number;
-	    student_count: number;
-	    teacher_count: number;
-	    admin_count: number;
-	    working_student_count: number;
-	    unique_pcs: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new ArchivedLogSheet(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.date = source["date"];
-	        this.total_logins = source["total_logins"];
-	        this.student_count = source["student_count"];
-	        this.teacher_count = source["teacher_count"];
-	        this.admin_count = source["admin_count"];
-	        this.working_student_count = source["working_student_count"];
-	        this.unique_pcs = source["unique_pcs"];
-	    }
-	}
 	export class ArchivedStudent {
 	    user_id: number;
 	    student_id: string;
@@ -512,6 +466,34 @@ export namespace backend {
 	        this.logout_time = source["logout_time"];
 	    }
 	}
+	export class PasswordResetRequest {
+	    id: number;
+	    student_user_id: number;
+	    student_name: string;
+	    student_code: string;
+	    subject_code: string;
+	    subject_name: string;
+	    status: string;
+	    requested_at: string;
+	    resolved_at: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PasswordResetRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.student_user_id = source["student_user_id"];
+	        this.student_name = source["student_name"];
+	        this.student_code = source["student_code"];
+	        this.subject_code = source["subject_code"];
+	        this.subject_name = source["subject_name"];
+	        this.status = source["status"];
+	        this.requested_at = source["requested_at"];
+	        this.resolved_at = source["resolved_at"];
+	    }
+	}
 	export class PendingRegistration {
 	    user_id: number;
 	    student_id: string;
@@ -604,65 +586,23 @@ export namespace backend {
 		    return a;
 		}
 	}
-	export class Subject {
-	    code: string;
-	    name: string;
+	export class TeacherOption {
 	    teacher_user_id: number;
-	    teacher_name?: string;
-	    description?: string;
-	    created_at: string;
+	    full_name: string;
+	    subject_code: string;
+	    subject_name: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new Subject(source);
+	        return new TeacherOption(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.code = source["code"];
-	        this.name = source["name"];
 	        this.teacher_user_id = source["teacher_user_id"];
-	        this.teacher_name = source["teacher_name"];
-	        this.description = source["description"];
-	        this.created_at = source["created_at"];
+	        this.full_name = source["full_name"];
+	        this.subject_code = source["subject_code"];
+	        this.subject_name = source["subject_name"];
 	    }
-	}
-	export class TeacherDashboard {
-	    classes: CourseClass[];
-	    attendance: Attendance[];
-	    total_attendance_week: number;
-	    total_attendance_month: number;
-	    today_classes: CourseClass[];
-	
-	    static createFrom(source: any = {}) {
-	        return new TeacherDashboard(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.classes = this.convertValues(source["classes"], CourseClass);
-	        this.attendance = this.convertValues(source["attendance"], Attendance);
-	        this.total_attendance_week = source["total_attendance_week"];
-	        this.total_attendance_month = source["total_attendance_month"];
-	        this.today_classes = this.convertValues(source["today_classes"], CourseClass);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 	export class User {
 	    id: number;
@@ -710,6 +650,7 @@ export namespace backend {
 	    pending_feedback: number;
 	    today_registrations: number;
 	    active_students_now: number;
+	    pending_registrations: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new WorkingStudentDashboard(source);
@@ -722,6 +663,7 @@ export namespace backend {
 	        this.pending_feedback = source["pending_feedback"];
 	        this.today_registrations = source["today_registrations"];
 	        this.active_students_now = source["active_students_now"];
+	        this.pending_registrations = source["pending_registrations"];
 	    }
 	}
 

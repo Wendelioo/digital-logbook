@@ -325,13 +325,15 @@ func (a *App) DeleteUser(id int) error {
 }
 
 // DeleteExpiredDeactivatedUsers permanently deletes accounts that have been deactivated
-// (suspended) for more than 30 days. Intended to be run periodically by an administrator.
-func (a *App) DeleteExpiredDeactivatedUsers() (int, error) {
+// (suspended) for more than the given number of days. Intended to be run by an administrator
+// (e.g. after 30 days for students, 365 days for teachers who might return).
+func (a *App) DeleteExpiredDeactivatedUsers(days int) (int, error) {
 	if err := a.checkDB(); err != nil {
 		return 0, err
 	}
-
-	const days = 30
+	if days < 1 {
+		days = 30
+	}
 
 	rows, err := a.db.Query(`
 		SELECT id
@@ -377,7 +379,7 @@ func (a *App) DeleteExpiredDeactivatedUsers() (int, error) {
 		return 0, fmt.Errorf("failed to get affected row count: %w", err)
 	}
 
-	log.Printf("Deleted %d expired deactivated user account(s)", affected)
+	log.Printf("Deleted %d expired deactivated user account(s) (deactivated >%d days)", affected, days)
 	return int(affected), nil
 }
 
@@ -486,7 +488,7 @@ func (a *App) UnarchiveUser(id int) error {
 	return nil
 }
 
-// GetArchivedUsers returns archived accounts for admin review
+// GetArchivedUsers returns archived/deactivated accounts for admin review (admins, teachers, students).
 func (a *App) GetArchivedUsers() ([]User, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
@@ -501,6 +503,16 @@ func (a *App) GetArchivedUsers() ([]User, error) {
 		FROM users u
 		JOIN admins a ON u.id = a.id
 		WHERE (u.is_active = 0 OR u.account_status = 'suspended')
+		UNION ALL
+		SELECT 
+			u.id, u.username, u.user_type, u.updated_at,
+			t.first_name, t.middle_name, t.last_name,
+			t.teacher_id, NULL as student_id,
+			t.email, t.contact_number, t.department_code
+		FROM users u
+		JOIN teachers t ON u.id = t.id
+		WHERE u.user_type = 'teacher'
+		  AND (u.is_active = 0 OR u.account_status = 'suspended')
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.updated_at,
@@ -697,48 +709,6 @@ func getColumnValue(record []string, colIdx int, found bool) string {
 		return strings.TrimSpace(record[colIdx])
 	}
 	return ""
-}
-
-// ==============================================================================
-// PROFILE PHOTO MANAGEMENT
-// ==============================================================================
-
-// UpdateUserProfilePhoto updates the profile photo for a user
-// Accepts Base64-encoded image data (with or without data URL prefix)
-// Stores the data URL directly in the database.
-func (a *App) UpdateUserProfilePhoto(userID int, imageBase64 string) error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	// Ensure it has data URL prefix
-	photoDataURL := imageBase64
-	if !strings.HasPrefix(imageBase64, "data:") {
-		photoDataURL = "data:image/jpeg;base64," + imageBase64
-	}
-
-	err := a.SaveProfilePhoto(userID, photoDataURL)
-	if err != nil {
-		return fmt.Errorf("failed to update profile photo: %w", err)
-	}
-
-	log.Printf("Profile photo updated for user ID %d", userID)
-	return nil
-}
-
-// DeleteUserProfilePhoto removes the profile photo for a user
-func (a *App) DeleteUserProfilePhoto(userID int) error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	err := a.DeleteProfilePhoto(userID)
-	if err != nil {
-		return fmt.Errorf("failed to delete profile photo: %w", err)
-	}
-
-	log.Printf("Profile photo deleted for user ID %d", userID)
-	return nil
 }
 
 // ==============================================================================
@@ -957,63 +927,6 @@ func (a *App) DeleteExpiredStudents() (int, error) {
 	}
 
 	return int(rowsAffected), nil
-}
-
-// DeleteExpiredStudentAccounts permanently deletes student and working_student accounts
-// that are at least 4 years old based on their user account creation date.
-// This should be called periodically (e.g., daily) as an additional safety net
-// beyond the login-time expiry checks.
-func (a *App) DeleteExpiredStudentAccounts() (int, error) {
-	if err := a.checkDB(); err != nil {
-		return 0, err
-	}
-
-	// Find student/working_student users whose account age is >= 4 years
-	rows, err := a.db.Query(`
-		SELECT id
-		FROM users
-		WHERE user_type IN ('student', 'working_student')
-		  AND created_at <= DATEADD(YEAR, -4, GETDATE())
-	`)
-	if err != nil {
-		return 0, fmt.Errorf("failed to query expired student accounts: %w", err)
-	}
-	defer rows.Close()
-
-	var ids []int
-	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err != nil {
-			return 0, fmt.Errorf("failed to scan expired student account id: %w", err)
-		}
-		ids = append(ids, id)
-	}
-
-	if len(ids) == 0 {
-		return 0, nil
-	}
-
-	placeholders := "?"
-	args := make([]interface{}, len(ids))
-	args[0] = ids[0]
-	for i := 1; i < len(ids); i++ {
-		placeholders += ",?"
-		args[i] = ids[i]
-	}
-
-	deleteQuery := fmt.Sprintf(`DELETE FROM users WHERE id IN (%s)`, placeholders)
-	result, err := a.db.Exec(deleteQuery, args...)
-	if err != nil {
-		return 0, fmt.Errorf("failed to delete expired student accounts: %w", err)
-	}
-
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get affected row count: %w", err)
-	}
-
-	log.Printf("Deleted %d student/working_student account(s) that reached 4-year validity", affected)
-	return int(affected), nil
 }
 
 // GetActiveStudentsForArchiving returns active students that can be archived

@@ -104,7 +104,6 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Pending Student Registrations</h2>
-          <p className="text-gray-600 mt-1">Review and approve student registration requests</p>
         </div>
         <button
           onClick={loadRegistrations}
@@ -123,9 +122,7 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
       {registrations.length === 0 ? (
         <Card>
           <div className="text-center py-12">
-            <Clock className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">No Pending Registrations</h3>
-            <p className="text-gray-500">All registration requests have been processed.</p>
+            <p className="text-gray-500">No Pending Registrations</p>
           </div>
         </Card>
       ) : (

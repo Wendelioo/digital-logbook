@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { UpdateUserPhoto, ChangePassword, SaveEquipmentFeedback, UpdateUser } from '../../wailsjs/go/backend/App';
+import { UpdateUserPhoto, ChangePassword, SaveEquipmentFeedback, UpdateUser, GetPendingFeedback, GetPendingRegistrations } from '../../wailsjs/go/backend/App';
 import { compressImage, isImageFile, isValidFileSize } from '../utils/imageUtils';
 import { 
   User,
@@ -41,6 +41,9 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackMode, setFeedbackMode] = useState<'logout' | 'manual'>('logout');
+  const [showPendingTasksModal, setShowPendingTasksModal] = useState(false);
+  const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0);
+  const [pendingRegistrationsCount, setPendingRegistrationsCount] = useState(0);
   const [activeTab, setActiveTab] = useState<'profile' | 'password'>('profile');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>(user?.photo_url || '');
@@ -76,9 +79,34 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleLogout = async () => {
-    // Show feedback modal ONLY for regular students
     if (user?.role === 'student') {
+      // Show feedback modal ONLY for regular students
       setShowLogoutConfirmModal(true);
+    } else if (user?.role === 'working_student') {
+      // Block logout if there are pending tasks to review
+      try {
+        const [pendingFeedback, pendingRegs] = await Promise.all([
+          GetPendingFeedback().catch(() => []),
+          GetPendingRegistrations().catch(() => []),
+        ]);
+        const feedbackCount = pendingFeedback?.length ?? 0;
+        const regsCount = pendingRegs?.length ?? 0;
+        if (feedbackCount > 0 || regsCount > 0) {
+          setPendingFeedbackCount(feedbackCount);
+          setPendingRegistrationsCount(regsCount);
+          setShowPendingTasksModal(true);
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to check pending tasks:', error);
+      }
+      try {
+        await logout();
+        navigate('/login');
+      } catch (error) {
+        console.error('Logout error:', error);
+        navigate('/login');
+      }
     } else {
       try {
         await logout();
@@ -1180,6 +1208,45 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                   </div>
                 </form>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Tasks Modal (for working students) */}
+      {showPendingTasksModal && (
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[10001]">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-warning-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-warning-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Pending Tasks</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              You still have pending tasks that need to be resolved before logging out:
+            </p>
+            <ul className="text-sm text-gray-700 mb-6 space-y-2">
+              {pendingFeedbackCount > 0 && (
+                <li className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-warning-500 flex-shrink-0" />
+                  <span><span className="font-semibold text-warning-700">{pendingFeedbackCount}</span> equipment report{pendingFeedbackCount !== 1 ? 's' : ''} awaiting review</span>
+                </li>
+              )}
+              {pendingRegistrationsCount > 0 && (
+                <li className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-warning-500 flex-shrink-0" />
+                  <span><span className="font-semibold text-warning-700">{pendingRegistrationsCount}</span> registration{pendingRegistrationsCount !== 1 ? 's' : ''} awaiting approval</span>
+                </li>
+              )}
+            </ul>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowPendingTasksModal(false)}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+              >
+                OK, I'll Review Them
+              </button>
             </div>
           </div>
         </div>

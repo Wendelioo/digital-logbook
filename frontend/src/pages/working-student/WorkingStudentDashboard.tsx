@@ -40,7 +40,8 @@ function DashboardOverview() {
     students_registered: 0,
     pending_feedback: 0,
     today_registrations: 0,
-    active_students_now: 0
+    active_students_now: 0,
+    pending_registrations: 0,
   });
   const [studentDashboard, setStudentDashboard] = useState<backend.StudentDashboard>(new backend.StudentDashboard({
     attendance: [],
@@ -149,9 +150,11 @@ function DashboardOverview() {
           'info'
         );
         upsertNotification(
-          'working-active-students',
-          `Students online: ${data.active_students_now}.`,
-          'info'
+          'working-pending-registrations',
+          data.pending_registrations > 0
+            ? `${data.pending_registrations} registration(s) pending approval.`
+            : 'No pending registrations.',
+          data.pending_registrations > 0 ? 'warning' : 'success'
         );
 
         const previous = previousStatsRef.current;
@@ -170,8 +173,12 @@ function DashboardOverview() {
             pushNotification(`Today's registrations changed to ${data.today_registrations}.`, 'info');
           }
 
-          if (data.active_students_now !== previous.active_students_now) {
-            pushNotification(`Students online changed to ${data.active_students_now}.`, 'info');
+          if (data.pending_registrations !== previous.pending_registrations) {
+            if (data.pending_registrations > previous.pending_registrations) {
+              pushNotification(`${data.pending_registrations} registration(s) pending approval.`, 'warning');
+            } else {
+              pushNotification('Pending registrations queue has been reduced.', 'success');
+            }
           }
         }
 
@@ -236,8 +243,8 @@ function DashboardOverview() {
               color="yellow"
             />
             <StatCard
-              title="Active Students Now"
-              value={stats.active_students_now}
+              title="Pending Registrations"
+              value={stats.pending_registrations}
               icon={<UserCheck className="h-6 w-6" />}
               color="green"
             />
@@ -430,16 +437,6 @@ function DashboardOverview() {
 
         <div className="md:border-l md:border-gray-300 md:pl-6 space-y-6">
           <Card className="h-fit">
-            <CardHeader title="Notifications" />
-            <CardBody>
-              <DashboardNotifications
-                items={notifications}
-                emptyMessage="No new working-student alerts."
-              />
-            </CardBody>
-          </Card>
-
-          <Card className="h-fit">
             <CardHeader title="Attendance Today" />
             <CardBody>
               {openSessions.length > 0 ? (
@@ -522,6 +519,16 @@ function DashboardOverview() {
                   No open attendance sessions for your classes.
                 </p>
               )}
+            </CardBody>
+          </Card>
+
+          <Card className="h-fit">
+            <CardHeader title="Notifications" />
+            <CardBody>
+              <DashboardNotifications
+                items={notifications}
+                emptyMessage="No new working-student alerts."
+              />
             </CardBody>
           </Card>
         </div>

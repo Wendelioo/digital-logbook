@@ -198,11 +198,6 @@ func (a *App) Logout(userID int) error {
 	return nil
 }
 
-// RecordTimeoutLogout records logout time for timed-out sessions
-func (a *App) RecordTimeoutLogout(userID int) error {
-	return a.Logout(userID)
-}
-
 // ChangePassword updates a user's password
 func (a *App) ChangePassword(username, oldPassword, newPassword string) error {
 	if err := a.checkDB(); err != nil {
@@ -320,6 +315,312 @@ func (a *App) ResetPasswordByRole(requesterUserID, targetUserID int, newPassword
 
 	log.Printf("Password reset successful requester=%d (%s) target=%d (%s)", requesterUserID, requesterRole, targetUserID, targetRole)
 	return nil
+}
+
+// ==============================================================================
+// PASSWORD RESET REQUEST METHODS
+// ==============================================================================
+
+// TeacherOption is returned to the frontend so the student can choose a teacher.
+type TeacherOption struct {
+	TeacherUserID int    `json:"teacher_user_id"`
+	FullName      string `json:"full_name"`
+	SubjectCode   string `json:"subject_code"`
+	SubjectName   string `json:"subject_name"`
+}
+
+// PasswordResetRequest is returned to the teacher dashboard.
+type PasswordResetRequest struct {
+	ID            int    `json:"id"`
+	StudentUserID int    `json:"student_user_id"`
+	StudentName   string `json:"student_name"`
+	StudentCode   string `json:"student_code"`
+	SubjectCode   string `json:"subject_code"`
+	SubjectName   string `json:"subject_name"`
+	Status        string `json:"status"`
+	RequestedAt   string `json:"requested_at"`
+	ResolvedAt    string `json:"resolved_at"`
+}
+
+// GetStudentTeachers returns all teachers belonging to a student's active classes.
+// Identifies the student by either users.username or students.student_id (institutional ID).
+func (a *App) GetStudentTeachers(studentCode string) ([]TeacherOption, error) {
+	if err := a.checkDB(); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(studentCode) == "" {
+		return nil, fmt.Errorf("student ID is required")
+	}
+	code := strings.TrimSpace(studentCode)
+
+	// One row per teacher (same teacher may handle many classes); show teacher name only
+	rows, err := a.db.Query(`
+		SELECT u.id,
+		       COALESCE(t.last_name + ', ' + t.first_name, u.username) AS full_name,
+		       '' AS subject_code,
+		       '' AS subject_name
+		FROM users u
+		LEFT JOIN teachers t ON t.id = u.id
+		JOIN classes c ON c.teacher_id = u.id
+		JOIN classlist cl ON cl.class_id = c.class_id
+		JOIN users su ON su.id = cl.student_id
+		LEFT JOIN students st ON st.id = su.id
+		WHERE su.user_type IN ('student','working_student')
+		  AND (su.username = ? OR st.student_id = ?)
+		  AND c.is_active = 1
+		  AND COALESCE(c.is_archived, 0) = 0
+		  AND cl.status NOT IN ('dropped', 'archived')
+		GROUP BY u.id, t.last_name, t.first_name, u.username
+	`, code, code)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch teachers: %w", err)
+	}
+	defer rows.Close()
+
+	var options []TeacherOption
+	for rows.Next() {
+		var t TeacherOption
+		if err := rows.Scan(&t.TeacherUserID, &t.FullName, &t.SubjectCode, &t.SubjectName); err != nil {
+			continue
+		}
+		options = append(options, t)
+	}
+	return options, nil
+}
+
+// RequestPasswordReset submits a password reset request on behalf of a student.
+// The new password is hashed immediately; the plaintext is never persisted.
+func (a *App) RequestPasswordReset(studentCode string, teacherUserID int, newPassword string) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(studentCode) == "" {
+		return fmt.Errorf("student ID is required")
+	}
+	if err := ValidatePositiveID(teacherUserID, "teacher ID"); err != nil {
+		return err
+	}
+	if err := ValidateStrongPassword(newPassword); err != nil {
+		return err
+	}
+
+	// Resolve student by username or institutional student_id (students.student_id)
+	code := strings.TrimSpace(studentCode)
+	var studentUserID int
+	if err := a.db.QueryRow(`
+		SELECT u.id FROM users u
+		LEFT JOIN students st ON st.id = u.id
+		WHERE u.user_type IN ('student','working_student')
+		  AND (u.username = ? OR st.student_id = ?)
+	`, code, code).Scan(&studentUserID); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("student account not found")
+		}
+		return fmt.Errorf("failed to look up student: %w", err)
+	}
+
+	// Verify the teacher actually teaches this student
+	var count int
+	if err := a.db.QueryRow(`
+		SELECT COUNT(*) FROM classes c
+		JOIN classlist cl ON cl.class_id = c.class_id
+		WHERE c.teacher_id = ?
+		  AND cl.student_id = ?
+		  AND c.is_active = 1
+		  AND COALESCE(c.is_archived, 0) = 0
+	`, teacherUserID, studentUserID).Scan(&count); err != nil {
+		return fmt.Errorf("failed to verify teacher-student relationship: %w", err)
+	}
+	if count == 0 {
+		return fmt.Errorf("selected teacher does not have an active class with this student")
+	}
+
+	// Cancel any existing pending request to this teacher before inserting a new one
+	if _, err := a.db.Exec(`
+		DELETE FROM password_reset_requests
+		WHERE student_user_id = ? AND teacher_user_id = ? AND status = 'pending'
+	`, studentUserID, teacherUserID); err != nil {
+		log.Printf("Failed to clear old pending reset request for student=%d teacher=%d: %v", studentUserID, teacherUserID, err)
+	}
+
+	// Hash the new password now — teacher never sees or stores a plaintext password
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to process password: %w", err)
+	}
+
+	if _, err := a.db.Exec(`
+		INSERT INTO password_reset_requests (student_user_id, teacher_user_id, new_password_hash, status, requested_at)
+		VALUES (?, ?, ?, 'pending', GETDATE())
+	`, studentUserID, teacherUserID, string(hashed)); err != nil {
+		log.Printf("Failed to insert password reset request student=%d teacher=%d: %v", studentUserID, teacherUserID, err)
+		return fmt.Errorf("failed to submit reset request: %w", err)
+	}
+
+	log.Printf("Password reset request submitted: student=%d teacher=%d", studentUserID, teacherUserID)
+	return nil
+}
+
+// GetPendingPasswordResets returns all pending reset requests directed at a teacher.
+func (a *App) GetPendingPasswordResets(teacherUserID int) ([]PasswordResetRequest, error) {
+	if err := a.checkDB(); err != nil {
+		return nil, err
+	}
+	if err := ValidatePositiveID(teacherUserID, "teacher ID"); err != nil {
+		return nil, err
+	}
+
+	rows, err := a.db.Query(`
+		SELECT r.id, r.student_user_id, u.username,
+		       COALESCE(s.first_name + ' ' + s.last_name, u.username) AS student_name,
+		       c.subject_code, COALESCE(c.descriptive_title, sub.description, '') AS subject_name,
+		       r.status,
+		       CONVERT(VARCHAR(19), r.requested_at, 120) AS requested_at
+		FROM password_reset_requests r
+		JOIN users u ON u.id = r.student_user_id
+		LEFT JOIN students s ON s.id = r.student_user_id
+		JOIN classes c ON c.teacher_id = r.teacher_user_id
+		JOIN classlist cl ON cl.class_id = c.class_id AND cl.student_id = r.student_user_id
+		LEFT JOIN subjects sub ON sub.subject_code = c.subject_code
+		WHERE r.teacher_user_id = ?
+		  AND r.status = 'pending'
+		ORDER BY r.requested_at DESC
+	`, teacherUserID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch reset requests: %w", err)
+	}
+	defer rows.Close()
+
+	var requests []PasswordResetRequest
+	for rows.Next() {
+		var req PasswordResetRequest
+		if err := rows.Scan(&req.ID, &req.StudentUserID, &req.StudentCode, &req.StudentName,
+			&req.SubjectCode, &req.SubjectName, &req.Status, &req.RequestedAt); err != nil {
+			continue
+		}
+		requests = append(requests, req)
+	}
+	return requests, nil
+}
+
+// ApprovePasswordReset approves a student's password reset request.
+// The teacher only confirms identity — the hashed password was set by the student.
+func (a *App) ApprovePasswordReset(teacherUserID, requestID int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+	if err := ValidatePositiveID(teacherUserID, "teacher ID"); err != nil {
+		return err
+	}
+	if err := ValidatePositiveID(requestID, "request ID"); err != nil {
+		return err
+	}
+
+	var studentUserID int
+	var passwordHash string
+	var status string
+	if err := a.db.QueryRow(`
+		SELECT student_user_id, new_password_hash, status
+		FROM password_reset_requests
+		WHERE id = ? AND teacher_user_id = ?
+	`, requestID, teacherUserID).Scan(&studentUserID, &passwordHash, &status); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("reset request not found or not assigned to you")
+		}
+		return fmt.Errorf("failed to fetch reset request: %w", err)
+	}
+	if status != "pending" {
+		return fmt.Errorf("request has already been %s", status)
+	}
+
+	// Apply the pre-hashed password to the student's account
+	if _, err := a.db.Exec(`UPDATE users SET password = ? WHERE id = ?`, passwordHash, studentUserID); err != nil {
+		log.Printf("Failed to apply password reset for student=%d: %v", studentUserID, err)
+		return fmt.Errorf("failed to apply password reset: %w", err)
+	}
+
+	// Mark request as approved
+	if _, err := a.db.Exec(`
+		UPDATE password_reset_requests
+		SET status = 'approved', resolved_at = GETDATE()
+		WHERE id = ?
+	`, requestID); err != nil {
+		log.Printf("Failed to mark reset request %d as approved: %v", requestID, err)
+	}
+
+	log.Printf("Password reset approved: request=%d student=%d teacher=%d", requestID, studentUserID, teacherUserID)
+	return nil
+}
+
+// RejectPasswordReset rejects a student's password reset request.
+func (a *App) RejectPasswordReset(teacherUserID, requestID int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+	if err := ValidatePositiveID(teacherUserID, "teacher ID"); err != nil {
+		return err
+	}
+	if err := ValidatePositiveID(requestID, "request ID"); err != nil {
+		return err
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE password_reset_requests
+		SET status = 'rejected', resolved_at = GETDATE()
+		WHERE id = ? AND teacher_user_id = ? AND status = 'pending'
+	`, requestID, teacherUserID)
+	if err != nil {
+		return fmt.Errorf("failed to reject request: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("request not found, not assigned to you, or already resolved")
+	}
+	log.Printf("Password reset rejected: request=%d teacher=%d", requestID, teacherUserID)
+	return nil
+}
+
+// GetPasswordResetHistory returns the last 50 resolved (approved/rejected) reset requests for a teacher.
+func (a *App) GetPasswordResetHistory(teacherUserID int) ([]PasswordResetRequest, error) {
+	if err := a.checkDB(); err != nil {
+		return nil, err
+	}
+	if err := ValidatePositiveID(teacherUserID, "teacher ID"); err != nil {
+		return nil, err
+	}
+
+	rows, err := a.db.Query(`
+		SELECT TOP 50 r.id, r.student_user_id, u.username,
+		       COALESCE(s.first_name + ' ' + s.last_name, u.username) AS student_name,
+		       c.subject_code, COALESCE(c.descriptive_title, sub.description, '') AS subject_name,
+		       r.status,
+		       CONVERT(VARCHAR(19), r.requested_at, 120) AS requested_at,
+		       COALESCE(CONVERT(VARCHAR(19), r.resolved_at, 120), '') AS resolved_at
+		FROM password_reset_requests r
+		JOIN users u ON u.id = r.student_user_id
+		LEFT JOIN students s ON s.id = r.student_user_id
+		JOIN classes c ON c.teacher_id = r.teacher_user_id
+		JOIN classlist cl ON cl.class_id = c.class_id AND cl.student_id = r.student_user_id
+		LEFT JOIN subjects sub ON sub.subject_code = c.subject_code
+		WHERE r.teacher_user_id = ?
+		  AND r.status != 'pending'
+		ORDER BY r.resolved_at DESC
+	`, teacherUserID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch password reset history: %w", err)
+	}
+	defer rows.Close()
+
+	var requests []PasswordResetRequest
+	for rows.Next() {
+		var req PasswordResetRequest
+		if err := rows.Scan(&req.ID, &req.StudentUserID, &req.StudentCode, &req.StudentName,
+			&req.SubjectCode, &req.SubjectName, &req.Status, &req.RequestedAt, &req.ResolvedAt); err != nil {
+			continue
+		}
+		requests = append(requests, req)
+	}
+	return requests, nil
 }
 
 // ==============================================================================

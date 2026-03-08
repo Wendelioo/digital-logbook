@@ -5,12 +5,16 @@ import {
   Eye,
   ArchiveRestore,
   Download,
+  FileText,
+  FileSpreadsheet,
+  FileType,
 } from 'lucide-react';
 import {
   ExportClasslistCSV,
+  ExportClasslistPDF,
+  ExportClasslistDOCX,
   GetArchivedAttendanceSheets,
   UnarchiveAttendanceSession,
-  UnarchiveAttendanceSheet,
   GetArchivedClasses,
   UnarchiveClass,
 } from '../../../wailsjs/go/backend/App';
@@ -23,9 +27,10 @@ interface AttendanceArchiveProps {
   initialTab?: AttendanceArchiveTab;
   hideHeader?: boolean;
   onClassUnarchived?: () => void;
+  onAttendanceUnarchived?: () => void;
 }
 
-function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarchived }: AttendanceArchiveProps) {
+function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarchived, onAttendanceUnarchived }: AttendanceArchiveProps) {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -41,8 +46,8 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
   const [filteredAttendance, setFilteredAttendance] = useState<any[]>([]);
   const [unarchivingAttendance, setUnarchivingAttendance] = useState<string | null>(null);
   const [downloadingAttendance, setDownloadingAttendance] = useState<string | null>(null);
-  const [downloadMenuKey, setDownloadMenuKey] = useState<string | null>(null);
-  
+  const [attendanceExportDropdown, setAttendanceExportDropdown] = useState<{ key: string; top: number; left: number } | null>(null);
+
   // Classes state
   const [archivedClasses, setArchivedClasses] = useState<Class[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
@@ -52,8 +57,8 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
   const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
   const [unarchivingClass, setUnarchivingClass] = useState<number | null>(null);
   const [downloadingClasslist, setDownloadingClasslist] = useState<number | null>(null);
-  const [classDownloadMenuKey, setClassDownloadMenuKey] = useState<string | null>(null);
-  
+  const [classExportDropdown, setClassExportDropdown] = useState<{ classId: number; top: number; left: number } | null>(null);
+
   useEffect(() => {
     if (initialTab) {
       setActiveTab(initialTab);
@@ -134,14 +139,20 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
     const key = sessionId ? `${classId}-${date}-${sessionId}` : `${classId}-${date}`;
     setUnarchivingAttendance(key);
     try {
-      if (sessionId && user?.id) {
-        await UnarchiveAttendanceSession(sessionId, user.id);
+      // Only unarchive the specific sheet (session) you chose — never by date, so we never restore others.
+      const sid = sessionId != null ? Number(sessionId) : 0;
+      if (sid > 0 && user?.id != null) {
+        await UnarchiveAttendanceSession(sid, Number(user.id));
       } else {
-        await UnarchiveAttendanceSheet(classId, date);
+        alert('Cannot restore: this sheet has no session. Only individual sheets can be restored.');
+        return;
       }
       await loadArchivedSheets();
+      onAttendanceUnarchived?.();
     } catch (error) {
       console.error('Failed to restore:', error);
+      const msg = error instanceof Error ? error.message : 'Failed to unarchive attendance. Please try again.';
+      alert(msg);
     } finally {
       setUnarchivingAttendance(null);
     }
@@ -160,17 +171,19 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
     }
   };
 
-  const handleDownloadArchivedClasslist = async (cls: Class, format: 'csv' | 'pdf') => {
+  const handleDownloadArchivedClasslist = async (cls: Class, format: 'csv' | 'pdf' | 'docx') => {
     setDownloadingClasslist(cls.class_id);
-    setClassDownloadMenuKey(null);
+    setClassExportDropdown(null);
     try {
+      let filePath: string;
       if (format === 'csv') {
-        const filePath = await ExportClasslistCSV(cls.class_id);
-        alert(`Archived classlist exported successfully.\nFile saved to: ${filePath}`);
+        filePath = await ExportClasslistCSV(cls.class_id);
+      } else if (format === 'pdf') {
+        filePath = await ExportClasslistPDF(cls.class_id);
       } else {
-        const filePath = await (window as any).go.backend.App.ExportClasslistPDF(cls.class_id);
-        alert(`Archived classlist PDF exported successfully.\nFile saved to: ${filePath}`);
+        filePath = await ExportClasslistDOCX(cls.class_id);
       }
+      alert(`Archived classlist exported successfully.\nFile saved to: ${filePath}`);
     } catch (error) {
       console.error('Failed to download archived classlist:', error);
       alert('Failed to download archived classlist. Please try again.');
@@ -181,20 +194,22 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
 
   const getSheetKey = (sheet: any) => (sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`);
 
-  const handleDownloadArchivedAttendance = async (sheet: any, format: 'csv' | 'pdf') => {
+  const handleDownloadArchivedAttendance = async (sheet: any, format: 'csv' | 'pdf' | 'docx') => {
     const key = sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`;
 
     setDownloadingAttendance(key);
-    setDownloadMenuKey(null);
+    setAttendanceExportDropdown(null);
     try {
       const sessionId = Number(sheet.session_id) || 0;
+      let filePath: string;
       if (format === 'csv') {
-        const filePath = await (window as any).go.backend.App.ExportArchivedAttendanceCSVByDate(sheet.class_id, sheet.date, sessionId);
-        alert(`Archived attendance sheet exported successfully.\nFile saved to: ${filePath}`);
+        filePath = await (window as any).go.backend.App.ExportArchivedAttendanceCSVByDate(sheet.class_id, sheet.date, sessionId);
+      } else if (format === 'pdf') {
+        filePath = await (window as any).go.backend.App.ExportArchivedAttendancePDFByDate(sheet.class_id, sheet.date, sessionId);
       } else {
-        const filePath = await (window as any).go.backend.App.ExportArchivedAttendancePDFByDate(sheet.class_id, sheet.date, sessionId);
-        alert(`Archived attendance sheet exported successfully.\nFile saved to: ${filePath}`);
+        filePath = await (window as any).go.backend.App.ExportAttendanceDOCXByDate(sheet.class_id, sheet.date);
       }
+      alert(`Archived attendance sheet exported successfully.\nFile saved to: ${filePath}`);
     } catch (error) {
       console.error('Failed to download archived attendance:', error);
       alert('Failed to download archived attendance. Please try again.');
@@ -234,6 +249,74 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
 
   return (
     <div className="flex flex-col h-full p-6">
+      {/* Fixed export dropdowns (so CSV/PDF/DOCX are not clipped by overflow) */}
+      {attendanceExportDropdown && (() => {
+        const sheet = filteredAttendance.find((s) => getSheetKey(s) === attendanceExportDropdown.key);
+        if (!sheet) return null;
+        return (
+          <div
+            style={{ position: 'fixed', top: attendanceExportDropdown.top, left: attendanceExportDropdown.left, zIndex: 9999 }}
+            className="w-44 bg-white border border-gray-200 rounded-lg shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => { setAttendanceExportDropdown(null); handleDownloadArchivedAttendance(sheet, 'csv'); }}
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-t-lg"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+              Export CSV
+            </button>
+            <button
+              onClick={() => { setAttendanceExportDropdown(null); handleDownloadArchivedAttendance(sheet, 'pdf'); }}
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+            >
+              <FileText className="h-3.5 w-3.5 text-rose-600" />
+              Export PDF
+            </button>
+            <button
+              onClick={() => { setAttendanceExportDropdown(null); handleDownloadArchivedAttendance(sheet, 'docx'); }}
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-b-lg"
+            >
+              <FileType className="h-3.5 w-3.5 text-blue-600" />
+              Export DOCX
+            </button>
+          </div>
+        );
+      })()}
+      {classExportDropdown && (() => {
+        const cls = filteredClasses.find((c) => c.class_id === classExportDropdown.classId);
+        if (!cls) return null;
+        return (
+          <div
+            style={{ position: 'fixed', top: classExportDropdown.top, left: classExportDropdown.left, zIndex: 9999 }}
+            className="w-44 bg-white border border-gray-200 rounded-lg shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => { setClassExportDropdown(null); handleDownloadArchivedClasslist(cls, 'csv'); }}
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-t-lg"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+              Export CSV
+            </button>
+            <button
+              onClick={() => { setClassExportDropdown(null); handleDownloadArchivedClasslist(cls, 'pdf'); }}
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+            >
+              <FileText className="h-3.5 w-3.5 text-rose-600" />
+              Export PDF
+            </button>
+            <button
+              onClick={() => { setClassExportDropdown(null); handleDownloadArchivedClasslist(cls, 'docx'); }}
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-b-lg"
+            >
+              <FileType className="h-3.5 w-3.5 text-blue-600" />
+              Export DOCX
+            </button>
+          </div>
+        );
+      })()}
+
       {/* Header Section */}
       {!hideHeader && (
         <div className="flex-shrink-0 mb-4">
@@ -329,36 +412,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                           <div className="flex items-center justify-center gap-2">
-                            <div className="relative">
-                              <button
-                                onClick={() => {
-                                  const key = getSheetKey(sheet);
-                                  setDownloadMenuKey((current) => (current === key ? null : key));
-                                }}
-                                className="h-9 w-9 inline-flex items-center justify-center text-emerald-600 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
-                                disabled={downloadingAttendance === getSheetKey(sheet)}
-                                title="Download"
-                              >
-                                <Download className="h-4 w-4" />
-                              </button>
-                              {downloadMenuKey === getSheetKey(sheet) && (
-                                <div className="absolute right-0 bottom-full mb-1 z-20 w-28 rounded-md border border-gray-200 bg-white shadow-lg">
-                                  <button
-                                    onClick={() => handleDownloadArchivedAttendance(sheet, 'csv')}
-                                    className="block w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
-                                  >
-                                    Download CSV
-                                  </button>
-                                  <button
-                                    onClick={() => handleDownloadArchivedAttendance(sheet, 'pdf')}
-                                    className="block w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
-                                  >
-                                    Download PDF
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                            <button
+                            <Button
                               onClick={() => {
                                 const sessionQuery = sheet.session_id ? `&sessionId=${sheet.session_id}` : '';
                                 navigate(`/teacher/attendance/${sheet.class_id}?date=${sheet.date}${sessionQuery}`, {
@@ -368,19 +422,39 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                                   },
                                 });
                               }}
-                              className="h-9 w-9 inline-flex items-center justify-center text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
-                              title="View"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </button>
-                            <button
+                              variant="outline"
+                              size="sm"
+                              className="text-gray-600 bg-gray-50 hover:bg-gray-100"
+                              icon={<Eye className="h-3 w-3" />}
+                              title="View Attendance"
+                            />
+                            <Button
                               onClick={() => handleUnarchiveAttendance(sheet.class_id, sheet.date, sheet.session_id)}
-                              className="h-9 w-9 inline-flex items-center justify-center text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
-                              disabled={unarchivingAttendance === (sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`)}
+                              variant="outline"
+                              size="sm"
+                              className="text-green-600 hover:bg-green-50"
+                              icon={<ArchiveRestore className="h-3 w-3" />}
                               title="Restore"
-                            >
-                              <ArchiveRestore className="h-4 w-4" />
-                            </button>
+                              disabled={unarchivingAttendance === (sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`)}
+                            />
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                const key = getSheetKey(sheet);
+                                setAttendanceExportDropdown(
+                                  attendanceExportDropdown?.key === key
+                                    ? null
+                                    : { key, top: rect.bottom + 4, left: rect.right - 176 }
+                                );
+                              }}
+                              variant="outline"
+                              size="sm"
+                              className="text-gray-600 hover:bg-gray-100"
+                              icon={<Download className="h-3 w-3" />}
+                              title="Export"
+                              disabled={downloadingAttendance === getSheetKey(sheet)}
+                            />
                           </div>
                         </td>
                       </tr>
@@ -522,55 +596,45 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
                           <div className="flex items-center justify-center gap-2">
-                            <div className="relative">
-                              <button
-                                onClick={() => {
-                                  const key = `class-${cls.class_id}`;
-                                  setClassDownloadMenuKey((current) => (current === key ? null : key));
-                                }}
-                                className="h-9 w-9 inline-flex items-center justify-center text-emerald-600 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg transition-colors disabled:opacity-50"
-                                disabled={downloadingClasslist === cls.class_id}
-                                title="Download"
-                              >
-                                <Download className="h-4 w-4" />
-                              </button>
-                              {classDownloadMenuKey === `class-${cls.class_id}` && (
-                                <div className="absolute right-0 bottom-full mb-1 z-20 w-28 rounded-md border border-gray-200 bg-white shadow-lg">
-                                  <button
-                                    onClick={() => handleDownloadArchivedClasslist(cls, 'csv')}
-                                    className="block w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
-                                  >
-                                    Download CSV
-                                  </button>
-                                  <button
-                                    onClick={() => handleDownloadArchivedClasslist(cls, 'pdf')}
-                                    className="block w-full px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-50"
-                                  >
-                                    Download PDF
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                            <button
+                            <Button
                               onClick={() => navigate(`/teacher/class-management/${cls.class_id}?mode=view`, {
                                 state: {
                                   fromArchiveModal: true,
                                   returnToArchiveTab: 'classes',
                                 },
                               })}
-                              className="h-9 w-9 inline-flex items-center justify-center text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
+                              variant="outline"
+                              size="sm"
+                              className="text-gray-600 bg-gray-50 hover:bg-gray-100"
+                              icon={<Eye className="h-3 w-3" />}
                               title="View"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </button>
-                            <button
+                            />
+                            <Button
                               onClick={() => handleUnarchiveClass(cls.class_id)}
-                              className="h-9 w-9 inline-flex items-center justify-center text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
-                              disabled={unarchivingClass === cls.class_id}
+                              variant="outline"
+                              size="sm"
+                              className="text-green-600 hover:bg-green-50"
+                              icon={<ArchiveRestore className="h-3 w-3" />}
                               title="Restore"
-                            >
-                              <ArchiveRestore className="h-4 w-4" />
-                            </button>
+                              disabled={unarchivingClass === cls.class_id}
+                            />
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                setClassExportDropdown(
+                                  classExportDropdown?.classId === cls.class_id
+                                    ? null
+                                    : { classId: cls.class_id, top: rect.bottom + 4, left: rect.right - 176 }
+                                );
+                              }}
+                              variant="outline"
+                              size="sm"
+                              className="text-gray-600 hover:bg-gray-100"
+                              icon={<Download className="h-3 w-3" />}
+                              title="Export"
+                              disabled={downloadingClasslist === cls.class_id}
+                            />
                           </div>
                         </td>
                       </tr>

@@ -25,6 +25,7 @@ export interface DashboardStats {
   pending_feedback: number;
   today_registrations: number;
   active_students_now: number;
+  pending_registrations: number;
 }
 
 export interface ViewStudentDetailsModalProps {

@@ -2,6 +2,7 @@
 USE logbookdb;
 GO
 
+IF OBJECT_ID('password_reset_requests', 'U') IS NOT NULL DROP TABLE password_reset_requests;
 IF OBJECT_ID('registration_approvals', 'U') IS NOT NULL DROP TABLE registration_approvals;
 IF OBJECT_ID('feedback', 'U') IS NOT NULL DROP TABLE feedback;
 IF OBJECT_ID('user_session_heartbeats', 'U') IS NOT NULL DROP TABLE user_session_heartbeats;
@@ -269,6 +270,23 @@ CREATE TABLE registration_approvals (
 );
 GO
 
+CREATE TABLE password_reset_requests (
+    id                  INT IDENTITY(1,1) PRIMARY KEY,
+    student_user_id     INT NOT NULL,
+    teacher_user_id     INT NOT NULL,
+    new_password_hash   NVARCHAR(255) NOT NULL,
+    status              NVARCHAR(20) NOT NULL DEFAULT 'pending'
+                            CHECK (status IN ('pending', 'approved', 'rejected')),
+    requested_at        DATETIME DEFAULT GETDATE(),
+    resolved_at         DATETIME NULL,
+    CONSTRAINT fk_prr_student FOREIGN KEY (student_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_prr_teacher FOREIGN KEY (teacher_user_id) REFERENCES users(id)
+);
+GO
+
+CREATE INDEX idx_prr_student_id ON password_reset_requests(student_user_id);
+CREATE INDEX idx_prr_teacher_id ON password_reset_requests(teacher_user_id);
+CREATE INDEX idx_prr_status ON password_reset_requests(status);
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_user_type ON users(user_type);
 CREATE INDEX idx_log_entries_user_id ON log_entries(user_id);

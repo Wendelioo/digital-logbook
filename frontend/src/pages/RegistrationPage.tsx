@@ -8,6 +8,7 @@ import {
   Phone,
   Mail,
   Lock,
+  Check,
 } from 'lucide-react';
 import { SubmitRegistration } from '../../wailsjs/go/backend/App';
 
@@ -50,60 +51,119 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
     setError('');
   };
 
-  // Valid format: exactly 7 digits (e.g. 2211172)
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const name = e.target.name as keyof typeof formData;
+    setFieldErrors((prev) => ({
+      ...prev,
+      ...validateAllFields(formData, name),
+    }));
+  };
+
+  // Validation constants (aligned with backend)
+  const MAX_LEN_NAME = 100;
+  const MAX_LEN_EMAIL = 254;
+  const MAX_LEN_CONTACT = 30;
+  const MAX_LEN_PASSWORD = 256;
+  const MAX_LEN_STUDENT_ID = 50;
   const STUDENT_ID_REGEX = /^\d{7}$/;
+  const EMAIL_REGEX = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+  // Philippine mobile 09 + 9 digits, or 7–15 digits for landline (backend: cleaned of spaces/dashes)
+  const PHONE_REGEX = /^(09\d{9}|\d{7,15})$/;
+
+  const hasControlOrNull = (s: string) => /[\x00-\x1F\x7F]/.test(s);
 
   const validateAllFields = (
     values: typeof formData,
     touchedField?: keyof typeof formData
   ): Partial<Record<keyof typeof formData, string>> => {
-    const errors: Partial<Record<keyof typeof formData, string>> = { ...(touchedField ? fieldErrors : {}) };
+    const errors: Partial<Record<keyof typeof formData, string>> = touchedField ? { ...fieldErrors } : {};
 
     const fieldsToValidate: (keyof typeof formData)[] = touchedField
       ? [touchedField]
       : ['student_id', 'first_name', 'last_name', 'middle_name', 'contact_number', 'email', 'password', 'confirm_password'];
 
     fieldsToValidate.forEach((field) => {
-      const value = values[field]?.trim?.() ?? values[field];
+      const raw = values[field];
+      const value = typeof raw === 'string' ? raw.trim() : String(raw ?? '');
       let message = '';
 
       switch (field) {
         case 'student_id':
           if (!value) {
             message = 'Student ID is required.';
+          } else if (value.length > MAX_LEN_STUDENT_ID) {
+            message = `Student ID must be at most ${MAX_LEN_STUDENT_ID} characters.`;
+          } else if (hasControlOrNull(value)) {
+            message = 'Student ID contains invalid characters.';
           } else if (!STUDENT_ID_REGEX.test(value)) {
-            message = 'Student ID must be exactly 7 digits.';
+            message = 'Student ID must be exactly 7 digits (e.g. 2211172).';
           }
           break;
         case 'first_name':
           if (!value) {
             message = 'First name is required.';
+          } else if (value.length > MAX_LEN_NAME) {
+            message = `First name must be at most ${MAX_LEN_NAME} characters.`;
+          } else if (hasControlOrNull(value)) {
+            message = 'First name contains invalid characters.';
           }
           break;
         case 'last_name':
           if (!value) {
             message = 'Last name is required.';
+          } else if (value.length > MAX_LEN_NAME) {
+            message = `Last name must be at most ${MAX_LEN_NAME} characters.`;
+          } else if (hasControlOrNull(value)) {
+            message = 'Last name contains invalid characters.';
+          }
+          break;
+        case 'middle_name':
+          if (value.length > MAX_LEN_NAME) {
+            message = `Middle name must be at most ${MAX_LEN_NAME} characters.`;
+          } else if (value && hasControlOrNull(value)) {
+            message = 'Middle name contains invalid characters.';
           }
           break;
         case 'contact_number':
           if (!value) {
             message = 'Contact number is required.';
-          } else if (!/^\d{10,}$/.test(value)) {
-            message = 'Contact number must have at least 10 digits.';
+          } else {
+            const cleaned = value.replace(/[\s\-]/g, '');
+            if (cleaned.length > MAX_LEN_CONTACT) {
+              message = `Contact number must be at most ${MAX_LEN_CONTACT} characters.`;
+            } else if (hasControlOrNull(value)) {
+              message = 'Contact number contains invalid characters.';
+            } else if (!PHONE_REGEX.test(cleaned)) {
+              message = 'Use a valid mobile (e.g. 09XXXXXXXXX) or landline (7–15 digits).';
+            }
           }
           break;
         case 'email':
           if (!value) {
             message = 'Email address is required.';
-          } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+          } else if (value.length > MAX_LEN_EMAIL) {
+            message = `Email must be at most ${MAX_LEN_EMAIL} characters.`;
+          } else if (hasControlOrNull(value)) {
+            message = 'Email contains invalid characters.';
+          } else if (!EMAIL_REGEX.test(value)) {
             message = 'Please enter a valid email address.';
           }
           break;
         case 'password':
           if (!value) {
             message = 'Password is required.';
-          } else if (String(value).length < 8) {
+          } else if (value.length > MAX_LEN_PASSWORD) {
+            message = `Password must be at most ${MAX_LEN_PASSWORD} characters.`;
+          } else if (value.length < 8) {
             message = 'Password must be at least 8 characters.';
+          } else if (!/[A-Z]/.test(value)) {
+            message = 'Password must include at least one uppercase letter.';
+          } else if (!/[a-z]/.test(value)) {
+            message = 'Password must include at least one lowercase letter.';
+          } else if (!/[0-9]/.test(value)) {
+            message = 'Password must include at least one number.';
+          } else if (!/[^A-Za-z0-9]/.test(value)) {
+            message = 'Password must include at least one special character (!@#$%...).';
           }
           break;
         case 'confirm_password':
@@ -112,10 +172,6 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
           } else if (value !== values.password) {
             message = 'Passwords do not match.';
           }
-          break;
-        case 'middle_name':
-          // Optional field – no validation for now
-          message = '';
           break;
         default:
           break;
@@ -131,6 +187,17 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
     return errors;
   };
 
+  // For password checklist UI (same rules as backend)
+  const pwRules = {
+    length: formData.password.length >= 8,
+    upper: /[A-Z]/.test(formData.password),
+    lower: /[a-z]/.test(formData.password),
+    number: /[0-9]/.test(formData.password),
+    special: /[^A-Za-z0-9]/.test(formData.password),
+  };
+  const pwValid = Object.values(pwRules).every(Boolean);
+  const pwMatch = formData.password === formData.confirm_password && formData.confirm_password.length > 0;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -139,8 +206,13 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
     const errors = validateAllFields(formData);
     setFieldErrors(errors);
 
-    if (Object.values(errors).some(Boolean)) {
+    if (Object.keys(errors).length > 0) {
       setError('Please correct the errors in the form.');
+      setLoading(false);
+      return;
+    }
+    if (!pwValid || !pwMatch) {
+      setError('Please meet all password requirements and ensure passwords match.');
       setLoading(false);
       return;
     }
@@ -243,8 +315,10 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                     name="student_id"
                     value={formData.student_id}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     required
-                    placeholder="Enter your student ID"
+                    maxLength={MAX_LEN_STUDENT_ID}
+                    autoComplete="off"
                     className={`w-full pl-10 pr-3.5 py-2.5 text-sm border rounded-lg focus:ring-2 ${
                       fieldErrors.student_id
                         ? 'border-red-400 focus:ring-red-500 focus:border-red-500'
@@ -282,7 +356,9 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                     name="first_name"
                     value={formData.first_name}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     required
+                    maxLength={MAX_LEN_NAME}
                     className={`w-full px-3.5 py-2.5 text-sm border rounded-lg focus:ring-2 ${
                       fieldErrors.first_name
                         ? 'border-red-400 focus:ring-red-500 focus:border-red-500'
@@ -303,7 +379,9 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                     name="last_name"
                     value={formData.last_name}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     required
+                    maxLength={MAX_LEN_NAME}
                     className={`w-full px-3.5 py-2.5 text-sm border rounded-lg focus:ring-2 ${
                       fieldErrors.last_name
                         ? 'border-red-400 focus:ring-red-500 focus:border-red-500'
@@ -324,8 +402,17 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                     name="middle_name"
                     value={formData.middle_name}
                     onChange={handleChange}
-                    className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    onBlur={handleBlur}
+                    maxLength={MAX_LEN_NAME}
+                    className={`w-full px-3.5 py-2.5 text-sm border rounded-lg focus:ring-2 focus:border-primary-500 ${
+                      fieldErrors.middle_name
+                        ? 'border-red-400 focus:ring-red-500'
+                        : 'border-gray-300 focus:ring-primary-500'
+                    }`}
                   />
+                  {fieldErrors.middle_name && (
+                    <p className="mt-1 text-xs text-red-600">{fieldErrors.middle_name}</p>
+                  )}
                 </div>
               </div>
             </section>
@@ -354,7 +441,9 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                       name="contact_number"
                       value={formData.contact_number}
                       onChange={handleChange}
+                      onBlur={handleBlur}
                       required
+                      maxLength={MAX_LEN_CONTACT}
                       className={`w-full pl-10 pr-3.5 py-2.5 text-sm border rounded-lg focus:ring-2 ${
                         fieldErrors.contact_number
                           ? 'border-red-400 focus:ring-red-500 focus:border-red-500'
@@ -378,7 +467,9 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                       name="email"
                       value={formData.email}
                       onChange={handleChange}
+                      onBlur={handleBlur}
                       required
+                      maxLength={MAX_LEN_EMAIL}
                       className={`w-full pl-10 pr-3.5 py-2.5 text-sm border rounded-lg focus:ring-2 ${
                         fieldErrors.email
                           ? 'border-red-400 focus:ring-red-500 focus:border-red-500'
@@ -418,8 +509,11 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                       name="password"
                       value={formData.password}
                       onChange={handleChange}
+                      onBlur={handleBlur}
                       required
                       minLength={8}
+                      maxLength={MAX_LEN_PASSWORD}
+                      autoComplete="new-password"
                       className={`w-full pl-10 pr-10 py-2.5 text-sm border rounded-lg focus:ring-2 ${
                         fieldErrors.password
                           ? 'border-red-400 focus:ring-red-500 focus:border-red-500'
@@ -435,6 +529,25 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+                  {formData.password.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {[
+                        { ok: pwRules.length, label: 'At least 8 characters' },
+                        { ok: pwRules.upper, label: 'Uppercase letter (A–Z)' },
+                        { ok: pwRules.lower, label: 'Lowercase letter (a–z)' },
+                        { ok: pwRules.number, label: 'Number (0–9)' },
+                        { ok: pwRules.special, label: 'Special character (!@#$%...)' },
+                      ].map((r) => (
+                        <li
+                          key={r.label}
+                          className={`flex items-center gap-1.5 text-xs ${r.ok ? 'text-green-600' : 'text-gray-400'}`}
+                        >
+                          <Check className={`h-3 w-3 flex-shrink-0 ${r.ok ? 'text-green-500' : 'text-gray-300'}`} />
+                          {r.label}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {fieldErrors.password && (
                     <p className="mt-1 text-xs text-red-600">{fieldErrors.password}</p>
                   )}
@@ -450,8 +563,11 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                       name="confirm_password"
                       value={formData.confirm_password}
                       onChange={handleChange}
+                      onBlur={handleBlur}
                       required
                       minLength={8}
+                      maxLength={MAX_LEN_PASSWORD}
+                      autoComplete="new-password"
                       className={`w-full pl-10 pr-10 py-2.5 text-sm border rounded-lg focus:ring-2 ${
                         fieldErrors.confirm_password
                           ? 'border-red-400 focus:ring-red-500 focus:border-red-500'
@@ -486,7 +602,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
               </button>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !pwValid || !pwMatch}
                 className="inline-flex items-center justify-center px-6 py-2.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-semibold shadow-sm"
               >
                 {loading ? (

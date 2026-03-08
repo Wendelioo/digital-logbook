@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
+  GetPendingPasswordResets,
 } from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
@@ -30,6 +31,17 @@ function DashboardOverview() {
   const [error, setError] = useState<string>('');
   const [notifications, setNotifications] = useState<DashboardNotificationItem[]>([]);
   const previousMetricsRef = useRef<{ activeClasses: number; totalStudents: number; openSessionsToday: number } | null>(null);
+
+  // Pending password reset count (for the quick-link card)
+  const [pendingResetCount, setPendingResetCount] = useState(0);
+
+  const loadResetCount = async () => {
+    if (!user?.id) return;
+    try {
+      const data = await GetPendingPasswordResets(user.id);
+      setPendingResetCount((data || []).length);
+    } catch { /* non-critical */ }
+  };
 
   const pushNotification = (message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
     setNotifications((prev) => [
@@ -66,12 +78,11 @@ function DashboardOverview() {
 
       setLoading(true);
       try {
-        // Note: user.id should be the teacher's database ID from teachers table
-        console.log('Loading classes for teacher ID:', user.id);
         const classesData = await GetTeacherClassesByUserID(user.id);
-        console.log('Classes data received:', classesData);
-        const nextClasses = classesData || [];
-        setClasses(nextClasses);
+        // Only update classes when we got a valid array (avoid clearing list on null/failed response)
+        if (Array.isArray(classesData)) {
+          setClasses(classesData);
+        }
 
         let nextOpenSessionsToday = 0;
         try {
@@ -88,6 +99,7 @@ function DashboardOverview() {
           setOpenSessionsToday(0);
         }
 
+        const nextClasses = Array.isArray(classesData) ? classesData : [];
         const nextActiveClasses = nextClasses.filter(cls => cls.is_active).length;
         const nextTotalStudents = nextClasses.reduce((sum, cls) => sum + cls.enrolled_count, 0);
         upsertNotification(
@@ -145,6 +157,13 @@ function DashboardOverview() {
       window.removeEventListener('focus', loadDashboard);
       window.removeEventListener(AUTH_STATUS_CHANGED_EVENT, loadDashboard);
     };
+  }, [user?.id]);
+
+  // Poll reset count every 15 seconds
+  useEffect(() => {
+    loadResetCount();
+    const interval = setInterval(loadResetCount, 15000);
+    return () => clearInterval(interval);
   }, [user?.id]);
 
   const totalStudents = classes.reduce((sum, cls) => sum + cls.enrolled_count, 0);
@@ -277,7 +296,38 @@ function DashboardOverview() {
           </Card>
         </div>
 
-        <div className="md:border-l md:border-gray-300 md:pl-6">
+        <div className="md:border-l md:border-gray-300 md:pl-6 space-y-6">
+          {/* Password Reset Requests - link card */}
+          <Card>
+            <CardHeader
+              title={
+                <span className="flex items-center gap-2">
+                  Password Resets
+                  {pendingResetCount > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-orange-500 text-white text-xs font-bold">
+                      {pendingResetCount}
+                    </span>
+                  )}
+                </span>
+              }
+            />
+            <CardBody>
+              {pendingResetCount > 0 ? (
+                <p className="text-sm text-gray-600 mb-3">
+                  You have <span className="font-semibold text-orange-600">{pendingResetCount}</span> student password reset request{pendingResetCount !== 1 ? 's' : ''} waiting for your approval.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-500 mb-3">No pending password reset requests.</p>
+              )}
+              <Link
+                to="password-resets"
+                className="inline-flex items-center px-4 py-2 text-sm font-semibold bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors"
+              >
+                Manage Requests
+              </Link>
+            </CardBody>
+          </Card>
+
           <Card className="h-fit">
             <CardHeader title="Notifications" />
             <CardBody>

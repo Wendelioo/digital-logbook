@@ -6,14 +6,11 @@ import {
   Eye,
   X,
   Archive,
-  Settings,
 } from 'lucide-react';
-import { ArchiveStudent, GetAllRegisteredStudents, ResetPasswordByRole } from '../../../wailsjs/go/backend/App';
+import { ArchiveStudent, GetAllRegisteredStudents } from '../../../wailsjs/go/backend/App';
 import { ClassStudent } from './types';
-import { useAuth } from '../../contexts/AuthContext';
 
 function ManageUsers() {
-  const { user: currentUser } = useAuth();
   const [students, setStudents] = useState<ClassStudent[]>([]);
   const [filteredStudents, setFilteredStudents] = useState<ClassStudent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,40 +41,6 @@ function ManageUsers() {
     } catch (error) {
       console.error('Failed to archive student:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to archive student.';
-      setError(errorMessage);
-    }
-  };
-
-  const handleResetStudentPassword = async (student: ClassStudent) => {
-    if (!currentUser) {
-      setError('Current session not found. Please login again.');
-      return;
-    }
-
-    const newPassword = window.prompt(`Set new password for ${student.first_name} ${student.last_name}:`);
-    if (newPassword === null) return;
-
-    const trimmedPassword = newPassword.trim();
-    if (!trimmedPassword) {
-      setError('New password is required.');
-      return;
-    }
-
-    const confirmPassword = window.prompt('Confirm new password:');
-    if (confirmPassword === null) return;
-
-    if (trimmedPassword !== confirmPassword.trim()) {
-      setError('Passwords do not match.');
-      return;
-    }
-
-    try {
-      await ResetPasswordByRole(currentUser.id, student.id, trimmedPassword);
-      setError('');
-      alert('Password reset successful.');
-    } catch (error) {
-      console.error('Failed to reset student password:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to reset password.';
       setError(errorMessage);
     }
   };
@@ -168,16 +131,13 @@ function ManageUsers() {
         </div>
         <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
           {currentStudents.length > 0 ? (
-            <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+            <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'fixed' }}>
               <thead className="bg-gray-50 sticky top-0 z-10">
                 <tr>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
-                    Student Code
-                  </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '220px' }}>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Full Name
                   </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '140px' }}>
+                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ width: '120px' }}>
                     Actions
                   </th>
                 </tr>
@@ -185,13 +145,10 @@ function ManageUsers() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {currentStudents.map((student) => (
                   <tr key={student.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {student.student_id}
-                    </td>
-                    <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
+                    <td className="px-4 py-4 text-sm text-gray-900 text-left align-middle truncate">
                       {student.last_name}, {student.first_name} {student.middle_name || ''}
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
+                    <td className="px-4 py-4 text-left align-middle whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <Button
                           onClick={() => handleArchiveStudent(student)}
@@ -199,13 +156,6 @@ function ManageUsers() {
                           size="sm"
                           icon={<Archive className="h-3 w-3" />}
                           title="Archive"
-                        />
-                        <Button
-                          onClick={() => handleResetStudentPassword(student)}
-                          variant="outline"
-                          size="sm"
-                          icon={<Settings className="h-3 w-3" />}
-                          title="Reset Password"
                         />
                       </div>
                     </td>
