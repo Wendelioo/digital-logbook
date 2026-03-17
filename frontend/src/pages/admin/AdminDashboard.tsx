@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardBody, StatCard } from '../../components/Card';
 import {
@@ -8,17 +8,20 @@ import {
   FileText,
   UserPlus,
   BarChart3,
-  AlertCircle,
 } from 'lucide-react';
 import {
   GetAdminDashboard
 } from '../../../wailsjs/go/backend/App';
-import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
+import { BackendDashboardNotifications } from '../../components/DashboardNotifications';
 import { DashboardStats } from './types';
+import { useAuth } from '../../contexts/AuthContext';
+import { useNotifications } from '../../contexts/NotificationContext';
 
 const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
 
 function DashboardOverview() {
+  const { user } = useAuth();
+  const { notifications } = useNotifications();
   const [stats, setStats] = useState<DashboardStats>({
     total_students: 0,
     total_teachers: 0,
@@ -30,87 +33,15 @@ function DashboardOverview() {
     working_students_logged_in: 0,
     today_logins: 0,
     today_new_users: 0,
-    locked_accounts: 0,
     pending_feedback: 0
   });
   const [loading, setLoading] = useState(true);
-  const [notifications, setNotifications] = useState<DashboardNotificationItem[]>([]);
-  const previousStatsRef = useRef<DashboardStats | null>(null);
-
-  const pushNotification = (message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
-    setNotifications((prev) => [
-      {
-        id: `${Date.now()}-${Math.random()}`,
-        message,
-        createdAt: Date.now(),
-        tone,
-      },
-      ...prev,
-    ].slice(0, 10));
-  };
-  const upsertNotification = (id: string, message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
-    setNotifications((prev) => {
-      const next = prev.filter((item) => item.id !== id);
-      return [
-        {
-          id,
-          message,
-          createdAt: Date.now(),
-          tone,
-        },
-        ...next,
-      ].slice(0, 10);
-    });
-  };
 
   useEffect(() => {
     const loadStats = async () => {
       try {
         const data = await GetAdminDashboard();
         setStats(data);
-        upsertNotification('admin-active-users', `Active users now: ${data.active_users_now}.`, 'info');
-        upsertNotification(
-          'admin-pending-feedback',
-          data.pending_feedback > 0
-            ? `${data.pending_feedback} feedback report(s) pending action.`
-            : 'No pending feedback reports.',
-          data.pending_feedback > 0 ? 'warning' : 'success'
-        );
-        upsertNotification(
-          'admin-locked-accounts',
-          data.locked_accounts > 0
-            ? `${data.locked_accounts} locked account(s) need review.`
-            : 'No locked accounts awaiting review.',
-          data.locked_accounts > 0 ? 'warning' : 'success'
-        );
-        upsertNotification('admin-today-logins', `Today's logins: ${data.today_logins}.`, 'info');
-
-        const previous = previousStatsRef.current;
-        if (!previous) {
-          pushNotification('Admin dashboard is connected and receiving live updates.', 'success');
-        } else {
-          if (data.locked_accounts !== previous.locked_accounts) {
-            if (data.locked_accounts > previous.locked_accounts) {
-              pushNotification(`${data.locked_accounts} locked account(s) now require review.`, 'warning');
-            } else {
-              pushNotification('Locked account count decreased after review.', 'success');
-            }
-          }
-
-          if (data.pending_feedback !== previous.pending_feedback) {
-            if (data.pending_feedback > previous.pending_feedback) {
-              pushNotification(`${data.pending_feedback} feedback report(s) are pending action.`, 'warning');
-            } else {
-              pushNotification('Pending feedback queue has been reduced.', 'success');
-            }
-          }
-
-          if (data.active_users_now !== previous.active_users_now) {
-            pushNotification(`Active users changed to ${data.active_users_now}.`, 'info');
-          }
-        }
-
-        previousStatsRef.current = data;
       } catch (error) {
         console.error('Failed to load dashboard stats:', error);
       } finally {
@@ -139,13 +70,33 @@ function DashboardOverview() {
     );
   }
 
+  const totalUserAccounts =
+    stats.total_students + stats.total_teachers + stats.working_students;
+
+  const forwardedIssueAlerts = notifications.filter(
+    (notification) =>
+      notification.category === 'feedback' &&
+      notification.tone === 'warning' &&
+      !notification.is_read
+  ).length;
+
   return (
     <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Welcome back, {user?.first_name || user?.name}!</h2>
+        <p className="text-sm text-gray-500">Here's what's going on today.</p>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
         <div className="md:col-span-2 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <StatCard
-              title="Total Students"
+              title="All User Accounts"
+              value={totalUserAccounts}
+              icon={<Users className="h-6 w-6" />}
+              color="purple"
+            />
+            <StatCard
+              title="Students"
               value={stats.total_students}
               icon={<Users className="h-6 w-6" />}
               color="blue"
@@ -228,34 +179,6 @@ function DashboardOverview() {
                 </div>
               </CardBody>
             </Card>
-
-            <Card>
-              <CardHeader title="Critical Alerts" />
-              <CardBody>
-                <div className="space-y-4">
-                  <Link 
-                    to="users"
-                    className="flex items-center justify-between p-3 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
-                  >
-                    <div className="flex items-center">
-                      <AlertCircle className="h-5 w-5 text-red-600 mr-3" />
-                      <span className="text-sm font-medium text-gray-700">Locked Accounts</span>
-                    </div>
-                    <span className="text-lg font-bold text-red-600">{stats.locked_accounts}</span>
-                  </Link>
-                  <Link
-                    to="reports"
-                    className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors"
-                  >
-                    <div className="flex items-center">
-                      <FileText className="h-5 w-5 text-yellow-600 mr-3" />
-                      <span className="text-sm font-medium text-gray-700">Pending Feedback</span>
-                    </div>
-                    <span className="text-lg font-bold text-yellow-600">{stats.pending_feedback}</span>
-                  </Link>
-                </div>
-              </CardBody>
-            </Card>
           </div>
 
           <Card>
@@ -303,13 +226,30 @@ function DashboardOverview() {
           </Card>
         </div>
 
-        <div className="md:border-l md:border-gray-300 md:pl-6">
+        <div className="md:border-l md:border-gray-300 md:pl-6 space-y-6">
+          <Card className="h-fit">
+            <CardHeader title="Critical Alerts" />
+            <CardBody>
+              <div className="space-y-4">
+                <Link
+                  to="reports"
+                  className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors"
+                >
+                  <div className="flex items-center">
+                    <FileText className="h-5 w-5 text-yellow-600 mr-3" />
+                    <span className="text-sm font-medium text-gray-700">Forwarded Feedback Issues</span>
+                  </div>
+                  <span className="text-lg font-bold text-yellow-600">{forwardedIssueAlerts}</span>
+                </Link>
+              </div>
+            </CardBody>
+          </Card>
+
           <Card className="h-fit">
             <CardHeader title="Notifications" />
             <CardBody>
-              <DashboardNotifications
-                items={notifications}
-                emptyMessage="No new admin alerts."
+              <BackendDashboardNotifications
+                emptyMessage="No new notifications."
               />
             </CardBody>
           </Card>

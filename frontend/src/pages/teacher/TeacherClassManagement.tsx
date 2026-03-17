@@ -24,6 +24,7 @@ import {
   ExportClasslistPDF,
   ExportClasslistDOCX,
 } from '../../../wailsjs/go/backend/App';
+import { openExportSaveDialog, defaultClasslistFilename, type ExportFormat } from '../../utils/exportSaveDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class } from './types';
 
@@ -37,7 +38,8 @@ function ClassManagement() {
   const [error, setError] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive' | 'archived'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [pendingStatusFilter, setPendingStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -99,7 +101,6 @@ function ClassManagement() {
 
     if (statusFilter !== 'all') {
       filtered = filtered.filter(cls => {
-        if (statusFilter === 'archived') return cls.is_archived;
         if (statusFilter === 'active') return cls.is_active && !cls.is_archived;
         if (statusFilter === 'inactive') return !cls.is_active && !cls.is_archived;
         return true;
@@ -171,15 +172,21 @@ function ClassManagement() {
     setTimeout(() => setExportToast(null), 5000);
   };
 
-  const handleExportClasslist = async (classId: number, format: 'csv' | 'pdf' | 'docx') => {
+  const handleExportClasslist = async (classId: number, format: ExportFormat) => {
     setExportingId(classId);
     try {
+      const ext = format;
+      const savePath = await openExportSaveDialog('Save classlist', defaultClasslistFilename(ext), format);
+      if (!savePath) {
+        setExportingId(null);
+        return;
+      }
       const filename = format === 'csv'
-        ? await ExportClasslistCSV(classId)
+        ? await ExportClasslistCSV(classId, savePath)
         : format === 'pdf'
-          ? await ExportClasslistPDF(classId)
-          : await ExportClasslistDOCX(classId);
-      showExportToast('success', `Exported to Downloads: ${filename.split(/[\\/]/).pop()}`);
+          ? await ExportClasslistPDF(classId, savePath)
+          : await ExportClasslistDOCX(classId, savePath);
+      showExportToast('success', `Saved: ${filename.split(/[\\/]/).pop()}`);
     } catch (err) {
       showExportToast('error', 'Export failed. Please try again.');
     } finally {
@@ -309,7 +316,13 @@ function ClassManagement() {
             {/* Filter toggle button */}
             <div className="relative">
               <button
-                onClick={() => setShowFilters(!showFilters)}
+                onClick={() => {
+                  const nextOpen = !showFilters;
+                  if (nextOpen) {
+                    setPendingStatusFilter(statusFilter);
+                  }
+                  setShowFilters(nextOpen);
+                }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-sm font-medium transition-colors ${
                   showFilters || statusFilter !== 'all'
                     ? 'bg-primary-50 border-primary-500 text-primary-700'
@@ -317,6 +330,7 @@ function ClassManagement() {
                 }`}
               >
                 <Filter className="h-4 w-4" />
+                <span>Filter</span>
                 {statusFilter !== 'all' && (
                   <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary-500 text-white text-xs font-bold">
                     1
@@ -341,15 +355,39 @@ function ClassManagement() {
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
                       <select
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive' | 'archived')}
+                        value={pendingStatusFilter}
+                        onChange={(e) => setPendingStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                       >
                         <option value="all">All</option>
                         <option value="active">Active</option>
-                        <option value="inactive">Closed</option>
-                        <option value="archived">Archived</option>
+                        <option value="inactive">Inactive</option>
                       </select>
+                    </div>
+
+                    {/* Apply & Clear */}
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingStatusFilter('all');
+                          setStatusFilter('all');
+                          setShowFilters(false);
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatusFilter(pendingStatusFilter);
+                          setShowFilters(false);
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-primary-600 rounded-lg hover:bg-primary-700"
+                      >
+                        Apply
+                      </button>
                     </div>
                   </div>
                 </div>

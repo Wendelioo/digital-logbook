@@ -2,23 +2,19 @@ package backend
 
 import (
 	"database/sql"
-	"encoding/csv"
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/jung-kurt/gofpdf"
 )
 
 // ==============================================================================
 // FEEDBACK MANAGEMENT
 // ==============================================================================
 
-const maxActiveFeedbackEntries = 10000
+const maxActiveFeedbackEntries = 500
 
 // autoArchiveFeedbackIfNeeded checks the number of non-archived forwarded feedback rows
 // and, if a configured limit is exceeded, automatically archives the oldest day's feedback.
@@ -373,6 +369,13 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 	}
 
 	log.Printf("Equipment feedback saved for user %d", userID)
+
+	// Notify all working students about new feedback
+	go a.createNotificationForRole("working_student", "feedback",
+		"New Equipment Feedback",
+		fmt.Sprintf("New feedback submitted for %s.", pcNumber),
+		"info", notifRef("feedback"), nil)
+
 	return nil
 }
 
@@ -597,6 +600,13 @@ func (a *App) ForwardFeedbackToAdmin(feedbackID int, workingStudentID int, notes
 	}
 
 	log.Printf("Feedback %d forwarded to admin by working student %d", feedbackID, workingStudentID)
+
+	// Notify all admins about forwarded feedback
+	go a.createNotificationForRole("admin", "feedback",
+		"Feedback Issue Forwarded",
+		fmt.Sprintf("Feedback issue #%d forwarded for admin review.", feedbackID),
+		"warning", notifRef("feedback"), notifRefID(feedbackID))
+
 	return nil
 }
 
@@ -648,6 +658,13 @@ func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID
 	}
 
 	log.Printf("%d feedback items forwarded to admin by working student %d", rowsAffected, workingStudentID)
+
+	// Notify all admins about the batch forward
+	go a.createNotificationForRole("admin", "feedback",
+		"Feedback Issues Forwarded",
+		fmt.Sprintf("%d feedback issue report(s) forwarded for admin review.", rowsAffected),
+		"warning", notifRef("feedback"), nil)
+
 	return int(rowsAffected), nil
 }
 
@@ -697,6 +714,13 @@ func (a *App) ConfirmAndForwardMultiple(feedbackIDs []int, workingStudentID int,
 	}
 
 	log.Printf("%d feedback items confirmed and forwarded to admin by working student %d", rowsAffected, workingStudentID)
+
+	// Notify all admins about the confirm-and-forward batch
+	go a.createNotificationForRole("admin", "feedback",
+		"Feedback Issues Forwarded",
+		fmt.Sprintf("%d feedback issue report(s) confirmed and forwarded for admin review.", rowsAffected),
+		"warning", notifRef("feedback"), nil)
+
 	return int(rowsAffected), nil
 }
 
@@ -816,8 +840,223 @@ func (a *App) getFeedbackByDateRange(startDate, endDate string) ([]Feedback, err
 	return feedbacks, nil
 }
 
+func parseFeedbackExportTimestamp(value string) (time.Time, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return time.Time{}, false
+	}
+
+	formats := []string{
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+		time.RFC3339,
+		"2006-01-02",
+	}
+
+	for _, format := range formats {
+		parsed, err := time.Parse(format, trimmed)
+		if err == nil {
+			return parsed, true
+		}
+	}
+
+	return time.Time{}, false
+}
+
+func formatFeedbackExportDate(value string) string {
+	parsed, ok := parseFeedbackExportTimestamp(value)
+	if !ok {
+		return value
+	}
+	return parsed.Format("01/02/2006")
+}
+
+func formatFeedbackExportDateTime(value *string) string {
+	if value == nil {
+		return ""
+	}
+	parsed, ok := parseFeedbackExportTimestamp(*value)
+	if !ok {
+		return *value
+	}
+	return parsed.Format("01/02 3:04 PM")
+}
+
+func formatFeedbackForwardedTime(value *string) string {
+	if value == nil {
+		return ""
+	}
+	parsed, ok := parseFeedbackExportTimestamp(*value)
+	if !ok {
+		return ""
+	}
+	return parsed.Format("3:04 PM")
+}
+
+func feedbackHasNoIssue(fb Feedback) bool {
+	comments := ""
+	if fb.Comments != nil {
+		comments = strings.TrimSpace(*fb.Comments)
+	}
+
+	return strings.EqualFold(fb.EquipmentCondition, "good") &&
+		strings.EqualFold(fb.MonitorCondition, "good") &&
+		strings.EqualFold(fb.KeyboardCondition, "good") &&
+		strings.EqualFold(fb.MouseCondition, "good") &&
+		comments == ""
+}
+
+func feedbackIssueCount(fb Feedback) int {
+	count := 0
+	for _, condition := range []string{fb.EquipmentCondition, fb.MonitorCondition, fb.KeyboardCondition, fb.MouseCondition} {
+		if !strings.EqualFold(strings.TrimSpace(condition), "good") {
+			count++
+		}
+	}
+	return count
+}
+
+func feedbackStatusLabel(fb Feedback) string {
+	issues := feedbackIssueCount(fb)
+	if issues == 0 {
+		return "No Issues"
+	}
+	if issues == 1 {
+		return "1 Issue"
+	}
+	return fmt.Sprintf("%d Issues", issues)
+}
+
+func feedbackSubmittedFrom(comments *string) string {
+	if comments == nil {
+		return ""
+	}
+	trimmed := strings.TrimSpace(*comments)
+	if trimmed == "" {
+		return ""
+	}
+
+	marker := "Submitted from:"
+	start := strings.Index(trimmed, marker)
+	if start == -1 {
+		return ""
+	}
+
+	remaining := strings.TrimSpace(trimmed[start+len(marker):])
+	if remaining == "" {
+		return ""
+	}
+
+	for _, separator := range []string{";", "\n", "\r"} {
+		if index := strings.Index(remaining, separator); index >= 0 {
+			remaining = remaining[:index]
+			break
+		}
+	}
+
+	return strings.TrimSpace(remaining)
+}
+
+func feedbackStudentDisplay(fb Feedback) string {
+	studentID := strings.TrimSpace(fb.StudentIDStr)
+	if studentID == "" || studentID == "N/A" {
+		return fb.StudentName
+	}
+	return fmt.Sprintf("%s (%s)", fb.StudentName, studentID)
+}
+
+func feedbackPCOriginDisplay(fb Feedback) string {
+	submittedFrom := feedbackSubmittedFrom(fb.Comments)
+	if submittedFrom != "" {
+		return fmt.Sprintf("%s (from %s)", fb.PCNumber, submittedFrom)
+	}
+	return fb.PCNumber
+}
+
+func feedbackForwardedByDisplay(fb Feedback) string {
+	name := "Unknown"
+	if fb.ForwardedByName != nil && strings.TrimSpace(*fb.ForwardedByName) != "" {
+		name = strings.TrimSpace(*fb.ForwardedByName)
+	}
+
+	forwardedTime := formatFeedbackForwardedTime(fb.ForwardedAt)
+	if forwardedTime == "" {
+		return name
+	}
+	return fmt.Sprintf("%s (%s)", name, forwardedTime)
+}
+
+func buildActiveFeedbackExportRows(feedbacks []Feedback) [][]string {
+	rows := make([][]string, 0, len(feedbacks))
+	for _, fb := range feedbacks {
+		rows = append(rows, []string{
+			feedbackStudentDisplay(fb),
+			feedbackPCOriginDisplay(fb),
+			formatFeedbackExportDate(fb.DateSubmitted),
+			feedbackStatusLabel(fb),
+			formatFeedbackExportDateTime(fb.VerifiedAt),
+			feedbackForwardedByDisplay(fb),
+		})
+	}
+	return rows
+}
+
+func buildArchivedFeedbackExportRows(feedbacks []Feedback) [][]string {
+	rows := make([][]string, 0, len(feedbacks))
+	for _, fb := range feedbacks {
+		rows = append(rows, []string{
+			formatFeedbackExportDate(fb.DateSubmitted),
+			fb.StudentIDStr,
+			fb.StudentName,
+			fb.PCNumber,
+			fb.EquipmentCondition,
+			fb.MonitorCondition,
+			fb.KeyboardCondition,
+			fb.MouseCondition,
+		})
+	}
+	return rows
+}
+
+func buildActiveFeedbackExportDocument(startDate, endDate string, feedbacks []Feedback) printableExportDocument {
+	rows := buildActiveFeedbackExportRows(feedbacks)
+	return printableExportDocument{
+		Title:            "Equipment Reports",
+		Subtitle:         fmt.Sprintf("Date Range: %s to %s", startDate, endDate),
+		Details:          nil,
+		TableTitle:       "EQUIPMENT REPORTS",
+		TableNote:        "",
+		Headers:          []string{"Student", "PC / Origin", "Date", "Status", "Verified At", "Forwarded By"},
+		Rows:             rows,
+		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
+		ColumnWidths:     []float64{58, 40, 24, 24, 28, 38},
+		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L"},
+		Orientation:      "P",
+		GeneratedAt:      time.Now(),
+	}
+}
+
+func buildArchivedFeedbackExportDocument(date string, feedbacks []Feedback) printableExportDocument {
+	rows := buildArchivedFeedbackExportRows(feedbacks)
+	return printableExportDocument{
+		Title:            "Equipment Reports",
+		Subtitle:         fmt.Sprintf("Date: %s", date),
+		Details:          nil,
+		TableTitle:       "EQUIPMENT REPORTS",
+		TableNote:        "",
+		Headers:          []string{"Date", "Student ID", "Full Name", "PC", "System", "Monitor", "Keyboard", "Mouse"},
+		Rows:             rows,
+		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
+		ColumnWidths:     []float64{24, 22, 46, 18, 20, 20, 20, 20},
+		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L", "L", "L"},
+		Orientation:      "P",
+		GeneratedAt:      time.Now(),
+	}
+}
+
 // ExportFeedbackCSVByRange exports feedback within a date range to CSV.
-func (a *App) ExportFeedbackCSVByRange(startDate, endDate string) (string, error) {
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportFeedbackCSVByRange(startDate, endDate string, savePath string) (string, error) {
 	if err := a.checkDB(); err != nil {
 		return "", err
 	}
@@ -826,39 +1065,19 @@ func (a *App) ExportFeedbackCSVByRange(startDate, endDate string) (string, error
 		return "", err
 	}
 
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("feedback_%s_to_%s_%s.csv", startDate, endDate, time.Now().Format("150405")))
-	file, err := os.Create(filename)
-	if err != nil {
+	defaultName := fmt.Sprintf("feedback_%s_to_%s_%s.csv", startDate, endDate, time.Now().Format("150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	doc := buildActiveFeedbackExportDocument(startDate, endDate, feedbacks)
+
+	if err := writePrintableCSV(filename, doc); err != nil {
 		return "", err
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	writer.Write([]string{"ID", "Student Name", "Student ID", "PC Number", "Equipment", "Monitor", "Keyboard", "Mouse", "Status", "Date Submitted", "Forwarded By"})
-	for _, fb := range feedbacks {
-		comments := ""
-		if fb.Comments != nil {
-			comments = *fb.Comments
-		}
-		fwdBy := ""
-		if fb.ForwardedByName != nil {
-			fwdBy = *fb.ForwardedByName
-		}
-		_ = comments
-		writer.Write([]string{
-			strconv.Itoa(fb.ID), fb.StudentName, fb.StudentIDStr, fb.PCNumber,
-			fb.EquipmentCondition, fb.MonitorCondition, fb.KeyboardCondition, fb.MouseCondition,
-			fb.Status, fb.DateSubmitted, fwdBy,
-		})
 	}
 	return filename, nil
 }
 
 // ExportFeedbackPDFByRange exports feedback within a date range to PDF.
-func (a *App) ExportFeedbackPDFByRange(startDate, endDate string) (string, error) {
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportFeedbackPDFByRange(startDate, endDate string, savePath string) (string, error) {
 	if err := a.checkDB(); err != nil {
 		return "", err
 	}
@@ -867,59 +1086,18 @@ func (a *App) ExportFeedbackPDFByRange(startDate, endDate string) (string, error
 		return "", err
 	}
 
-	pdf := gofpdf.New("L", "mm", "A4", "")
-	pdf.AddPage()
-	pdf.SetFont("Arial", "B", 14)
-	pdf.Cell(0, 10, fmt.Sprintf("Equipment Reports: %s to %s", startDate, endDate))
-	pdf.Ln(12)
-
-	pdf.SetFont("Arial", "B", 8)
-	pdf.SetFillColor(31, 56, 100)
-	pdf.SetTextColor(255, 255, 255)
-	cols := []struct {
-		label string
-		width float64
-	}{
-		{"Student Name", 55}, {"Student ID", 28}, {"PC", 20}, {"Equipment", 25}, {"Monitor", 25}, {"Keyboard", 25}, {"Mouse", 25}, {"Status", 20}, {"Date", 40}, {"Forwarded By", 37},
+	defaultName := fmt.Sprintf("feedback_%s_to_%s_%s.pdf", startDate, endDate, time.Now().Format("150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	doc := buildActiveFeedbackExportDocument(startDate, endDate, feedbacks)
+	if err := writePrintablePDF(filename, doc); err != nil {
+		return "", err
 	}
-	for _, c := range cols {
-		pdf.CellFormat(c.width, 7, c.label, "1", 0, "", true, 0, "")
-	}
-	pdf.Ln(-1)
-
-	pdf.SetFont("Arial", "", 7)
-	pdf.SetTextColor(0, 0, 0)
-	for i, fb := range feedbacks {
-		if i%2 == 0 {
-			pdf.SetFillColor(255, 255, 255)
-		} else {
-			pdf.SetFillColor(220, 230, 241)
-		}
-		fwdBy := ""
-		if fb.ForwardedByName != nil {
-			fwdBy = *fb.ForwardedByName
-		}
-		pdf.CellFormat(55, 6, fb.StudentName, "1", 0, "", true, 0, "")
-		pdf.CellFormat(28, 6, fb.StudentIDStr, "1", 0, "", true, 0, "")
-		pdf.CellFormat(20, 6, fb.PCNumber, "1", 0, "", true, 0, "")
-		pdf.CellFormat(25, 6, fb.EquipmentCondition, "1", 0, "", true, 0, "")
-		pdf.CellFormat(25, 6, fb.MonitorCondition, "1", 0, "", true, 0, "")
-		pdf.CellFormat(25, 6, fb.KeyboardCondition, "1", 0, "", true, 0, "")
-		pdf.CellFormat(25, 6, fb.MouseCondition, "1", 0, "", true, 0, "")
-		pdf.CellFormat(20, 6, fb.Status, "1", 0, "", true, 0, "")
-		pdf.CellFormat(40, 6, fb.DateSubmitted, "1", 0, "", true, 0, "")
-		pdf.CellFormat(37, 6, fwdBy, "1", 0, "", true, 0, "")
-		pdf.Ln(-1)
-	}
-
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("feedback_%s_to_%s_%s.pdf", startDate, endDate, time.Now().Format("150405")))
-	err = pdf.OutputFileAndClose(filename)
-	return filename, err
+	return filename, nil
 }
 
 // ExportFeedbackDOCXByRange exports feedback within a date range to DOCX.
-func (a *App) ExportFeedbackDOCXByRange(startDate, endDate string) (string, error) {
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportFeedbackDOCXByRange(startDate, endDate string, savePath string) (string, error) {
 	if err := a.checkDB(); err != nil {
 		return "", err
 	}
@@ -928,25 +1106,15 @@ func (a *App) ExportFeedbackDOCXByRange(startDate, endDate string) (string, erro
 		return "", err
 	}
 
-	headers := []string{"Student Name", "Student ID", "PC", "Equipment", "Monitor", "Keyboard", "Mouse", "Date Submitted", "Forwarded By"}
-	var rows [][]string
-	for _, fb := range feedbacks {
-		fwdBy := ""
-		if fb.ForwardedByName != nil {
-			fwdBy = *fb.ForwardedByName
-		}
-		rows = append(rows, []string{fb.StudentName, fb.StudentIDStr, fb.PCNumber,
-			fb.EquipmentCondition, fb.MonitorCondition, fb.KeyboardCondition, fb.MouseCondition,
-			fb.DateSubmitted, fwdBy})
-	}
+	doc := buildActiveFeedbackExportDocument(startDate, endDate, feedbacks)
 
-	data, err := generateDocx(fmt.Sprintf("Equipment Reports: %s to %s", startDate, endDate), headers, rows)
+	data, err := generatePrintableDocx(doc)
 	if err != nil {
 		return "", err
 	}
 
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("feedback_%s_to_%s_%s.docx", startDate, endDate, time.Now().Format("150405")))
+	defaultName := fmt.Sprintf("feedback_%s_to_%s_%s.docx", startDate, endDate, time.Now().Format("150405"))
+	filename := resolveExportPath(savePath, defaultName)
 	if err := os.WriteFile(filename, data, 0644); err != nil {
 		return "", fmt.Errorf("failed to write docx: %w", err)
 	}
@@ -1087,8 +1255,9 @@ func (a *App) ArchiveFeedbackByDate(date string, adminUserID int) (int, error) {
 	return int(rowsAffected), nil
 }
 
-// ExportArchivedFeedbackSheetCSV exports archived feedback for a specific date to CSV
-func (a *App) ExportArchivedFeedbackSheetCSV(date string) (string, error) {
+// ExportArchivedFeedbackSheetCSV exports archived feedback for a specific date to CSV.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportArchivedFeedbackSheetCSV(date string, savePath string) (string, error) {
 	feedbacks, err := a.GetArchivedFeedbackByDate(date)
 	if err != nil {
 		return "", err
@@ -1098,47 +1267,20 @@ func (a *App) ExportArchivedFeedbackSheetCSV(date string) (string, error) {
 		return "", fmt.Errorf("no archived feedback for date %s", date)
 	}
 
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("equipment_reports_%s.csv", date))
+	defaultName := fmt.Sprintf("equipment_reports_%s.csv", date)
+	filename := resolveExportPath(savePath, defaultName)
+	doc := buildArchivedFeedbackExportDocument(date, feedbacks)
 
-	file, err := os.Create(filename)
-	if err != nil {
+	if err := writePrintableCSV(filename, doc); err != nil {
 		return "", err
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	// Write header
-	writer.Write([]string{"ID", "Student Name", "Student ID", "PC Number", "Equipment", "Monitor", "Keyboard", "Mouse", "Comments", "Date"})
-
-	// Write data
-	for _, fb := range feedbacks {
-		comments := ""
-		if fb.Comments != nil {
-			comments = *fb.Comments
-		}
-
-		writer.Write([]string{
-			strconv.Itoa(fb.ID),
-			fb.StudentName,
-			fb.StudentIDStr,
-			fb.PCNumber,
-			fb.EquipmentCondition,
-			fb.MonitorCondition,
-			fb.KeyboardCondition,
-			fb.MouseCondition,
-			comments,
-			fb.DateSubmitted,
-		})
 	}
 
 	return filename, nil
 }
 
-// ExportArchivedFeedbackSheetPDF exports archived feedback for a specific date to PDF
-func (a *App) ExportArchivedFeedbackSheetPDF(date string) (string, error) {
+// ExportArchivedFeedbackSheetPDF exports archived feedback for a specific date to PDF.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportArchivedFeedbackSheetPDF(date string, savePath string) (string, error) {
 	feedbacks, err := a.GetArchivedFeedbackByDate(date)
 	if err != nil {
 		return "", err
@@ -1148,44 +1290,40 @@ func (a *App) ExportArchivedFeedbackSheetPDF(date string) (string, error) {
 		return "", fmt.Errorf("no archived feedback for date %s", date)
 	}
 
-	pdf := gofpdf.New("P", "mm", "A4", "")
-	pdf.AddPage()
-	pdf.SetFont("Arial", "B", 16)
-	pdf.Cell(0, 10, fmt.Sprintf("Equipment Feedback Report - %s", date))
-	pdf.Ln(12)
+	defaultName := fmt.Sprintf("equipment_reports_%s.pdf", date)
+	filename := resolveExportPath(savePath, defaultName)
+	doc := buildArchivedFeedbackExportDocument(date, feedbacks)
+	if err := writePrintablePDF(filename, doc); err != nil {
+		return "", err
+	}
+	return filename, nil
+}
 
-	pdf.SetFont("Arial", "", 10)
-	pdf.Cell(0, 6, fmt.Sprintf("Generated: %s", time.Now().Format("January 02, 2006 3:04 PM")))
-	pdf.Ln(10)
-
-	pdf.SetFont("Arial", "B", 8)
-	pdf.Cell(15, 7, "ID")
-	pdf.Cell(45, 7, "Student Name")
-	pdf.Cell(25, 7, "PC Number")
-	pdf.Cell(30, 7, "Equipment")
-	pdf.Cell(30, 7, "Monitor")
-	pdf.Cell(30, 7, "Keyboard")
-	pdf.Cell(30, 7, "Mouse")
-	pdf.Cell(60, 7, "Date")
-	pdf.Ln(-1)
-
-	pdf.SetFont("Arial", "", 7)
-	for _, fb := range feedbacks {
-		pdf.Cell(15, 6, strconv.Itoa(fb.ID))
-		pdf.Cell(45, 6, truncateString(fb.StudentName, 22))
-		pdf.Cell(25, 6, fb.PCNumber)
-		pdf.Cell(30, 6, fb.EquipmentCondition)
-		pdf.Cell(30, 6, fb.MonitorCondition)
-		pdf.Cell(30, 6, fb.KeyboardCondition)
-		pdf.Cell(30, 6, fb.MouseCondition)
-		pdf.Cell(60, 6, fb.DateSubmitted)
-		pdf.Ln(-1)
+// ExportArchivedFeedbackSheetDOCX exports archived feedback for a specific date to DOCX.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportArchivedFeedbackSheetDOCX(date string, savePath string) (string, error) {
+	feedbacks, err := a.GetArchivedFeedbackByDate(date)
+	if err != nil {
+		return "", err
 	}
 
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("equipment_reports_%s.pdf", date))
-	err = pdf.OutputFileAndClose(filename)
-	return filename, err
+	if len(feedbacks) == 0 {
+		return "", fmt.Errorf("no archived feedback for date %s", date)
+	}
+	doc := buildArchivedFeedbackExportDocument(date, feedbacks)
+
+	data, err := generatePrintableDocx(doc)
+	if err != nil {
+		return "", err
+	}
+
+	defaultName := fmt.Sprintf("equipment_reports_%s.docx", date)
+	filename := resolveExportPath(savePath, defaultName)
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return "", fmt.Errorf("failed to write docx: %w", err)
+	}
+
+	return filename, nil
 }
 
 // Legacy function kept for backwards compatibility - returns all archived feedback

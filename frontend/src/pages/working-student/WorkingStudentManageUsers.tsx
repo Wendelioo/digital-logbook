@@ -1,13 +1,6 @@
 import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
-import WorkingStudentArchivedStudentsModal from '../../components/WorkingStudentArchivedStudentsModal';
-import {
-  Users,
-  Eye,
-  X,
-  Archive,
-} from 'lucide-react';
-import { ArchiveStudent, GetAllRegisteredStudents } from '../../../wailsjs/go/backend/App';
+import { GetAllRegisteredStudents } from '../../../wailsjs/go/backend/App';
 import { ClassStudent } from './types';
 
 function ManageUsers() {
@@ -18,7 +11,6 @@ function ManageUsers() {
   const [searchTerm, setSearchTerm] = useState('');
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [showArchiveModal, setShowArchiveModal] = useState(false);
 
   const loadStudents = async () => {
     try {
@@ -31,17 +23,6 @@ function ManageUsers() {
       setError('Unable to load students from server.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleArchiveStudent = async (student: ClassStudent) => {
-    try {
-      await ArchiveStudent(student.id);
-      await loadStudents();
-    } catch (error) {
-      console.error('Failed to archive student:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to archive student.';
-      setError(errorMessage);
     }
   };
 
@@ -82,15 +63,8 @@ function ManageUsers() {
 
   return (
     <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Student Management</h2>
-        <Button
-          onClick={() => setShowArchiveModal(true)}
-          variant="outline"
-          icon={<Archive className="h-4 w-4" />}
-        >
-          Archive
-        </Button>
       </div>
 
       {error && (
@@ -137,9 +111,6 @@ function ManageUsers() {
                   <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Full Name
                   </th>
-                  <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ width: '120px' }}>
-                    Actions
-                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
@@ -147,17 +118,6 @@ function ManageUsers() {
                   <tr key={student.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-4 text-sm text-gray-900 text-left align-middle truncate">
                       {student.last_name}, {student.first_name} {student.middle_name || ''}
-                    </td>
-                    <td className="px-4 py-4 text-left align-middle whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          onClick={() => handleArchiveStudent(student)}
-                          variant="outline"
-                          size="sm"
-                          icon={<Archive className="h-3 w-3" />}
-                          title="Archive"
-                        />
-                      </div>
                     </td>
                   </tr>
                 ))}
@@ -216,11 +176,6 @@ function ManageUsers() {
           </div>
         )}
       </div>
-
-      <WorkingStudentArchivedStudentsModal
-        isOpen={showArchiveModal}
-        onClose={() => setShowArchiveModal(false)}
-      />
     </div>
   );
 }

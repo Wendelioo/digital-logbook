@@ -3,7 +3,18 @@ import { Card, CardHeader, CardBody } from './Card';
 import Table from './Table';
 import Button from './Button';
 import { Badge } from './Badge';
-import { ChevronRight, ChevronDown, ArchiveRestore, Trash2, Download, Calendar, Eye } from 'lucide-react';
+import {
+  ChevronRight,
+  ChevronDown,
+  ArchiveRestore,
+  Trash2,
+  Download,
+  Calendar,
+  Eye,
+  Search,
+  X,
+  Filter,
+} from 'lucide-react';
 
 interface LoginLog {
   id: number;
@@ -43,11 +54,54 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
-  // Group logs by archive date (we'll extract from login_time for demo)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterUserType, setFilterUserType] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [pendingFilterUserType, setPendingFilterUserType] = useState('');
+  const [pendingFilterDateFrom, setPendingFilterDateFrom] = useState('');
+  const [pendingFilterDateTo, setPendingFilterDateTo] = useState('');
+
+  const activeFilterCount = [filterUserType, filterDateFrom, filterDateTo].filter(
+    Boolean
+  ).length;
+
+  const clearFilters = () => {
+    setFilterUserType('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+    setPendingFilterUserType('');
+    setPendingFilterDateFrom('');
+    setPendingFilterDateTo('');
+    setShowFilters(false);
+    setCurrentPage(1);
+  };
+
+  // Group logs by archive date (we'll extract from login_time for demo),
+  // applying search and filters similar to the active logs table.
   useEffect(() => {
     const grouped: GroupedLogs = {};
     try {
-      (archivedLogs || []).forEach(log => {
+      const searchLower = searchQuery.toLowerCase();
+
+      (archivedLogs || []).forEach((log) => {
+        const matchesSearch =
+          !searchLower ||
+          log.user_name?.toLowerCase().includes(searchLower) ||
+          log.user_id_number?.toLowerCase().includes(searchLower) ||
+          log.user_type?.toLowerCase().includes(searchLower) ||
+          (log.pc_number || '').toLowerCase().includes(searchLower);
+
+        const logDate = log.login_time ? log.login_time.split(/[T\s]/)[0] : '';
+        const matchesDate =
+          (!filterDateFrom || logDate >= filterDateFrom) &&
+          (!filterDateTo || logDate <= filterDateTo);
+
+        const matchesType = !filterUserType || log.user_type === filterUserType;
+
+        if (!matchesSearch || !matchesDate || !matchesType) return;
+
         const raw = log?.login_time;
         const date = typeof raw === 'string' ? raw.split(' ')[0] : '';
         if (!date) return;
@@ -62,12 +116,15 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
       const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
       if (dates.length > 0) {
         setExpandedGroups(new Set([dates[0]]));
+      } else {
+        setExpandedGroups(new Set());
       }
+      setCurrentPage(1);
     } catch (err) {
       console.error('ArchivedLogsView: failed to group logs', err);
       setGroupedLogs({});
     }
-  }, [archivedLogs]);
+  }, [archivedLogs, searchQuery, filterUserType, filterDateFrom, filterDateTo]);
 
   const toggleGroup = (date: string) => {
     const newExpanded = new Set(expandedGroups);
@@ -82,10 +139,9 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
   const formatArchiveDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', { 
-      weekday: 'long', 
       year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+      month: '2-digit', 
+      day: '2-digit' 
     });
   };
 
@@ -103,7 +159,7 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
   };
 
   const calculateDuration = (loginTime: string, logoutTime?: string) => {
-    if (!logoutTime) return 'Active';
+    if (!logoutTime) return '';
     
     const login = new Date(loginTime.replace(' ', 'T'));
     const logout = new Date(logoutTime.replace(' ', 'T'));
@@ -176,78 +232,226 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Header with Actions and Pagination */}
-      <div className="flex items-center justify-between">
-        {selectedLogs.size > 0 ? (
-          <div className="flex gap-3">
-            <Button
-              variant="success"
-              onClick={handleRestore}
-              icon={<ArchiveRestore className="h-4 w-4" />}
-            >
-              Restore ({selectedLogs.size})
-            </Button>
-            {onDelete && (
+      {/* Search + Filter Toolbar */}
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          {selectedLogs.size > 0 ? (
+            <div className="flex gap-3">
               <Button
-                variant="danger"
-                onClick={handleDelete}
-                icon={<Trash2 className="h-4 w-4" />}
+                variant="success"
+                onClick={handleRestore}
+                icon={<ArchiveRestore className="h-4 w-4" />}
               >
-                Delete ({selectedLogs.size})
+                Restore ({selectedLogs.size})
               </Button>
-            )}
-          </div>
-        ) : (
-          <div></div>
-        )}
+              {onDelete && (
+                <Button
+                  variant="danger"
+                  onClick={handleDelete}
+                  icon={<Trash2 className="h-4 w-4" />}
+                >
+                  Delete ({selectedLogs.size})
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div />
+          )}
 
-        {/* Pagination Controls at Top */}
-        {totalPages > 1 && (
-          <div className="flex justify-center items-center gap-2">
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                if (
-                  page === 1 ||
-                  page === totalPages ||
-                  (page >= currentPage - 1 && page <= currentPage + 1)
-                ) {
-                  return (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={`px-3 py-2 text-sm font-medium rounded-lg ${
-                        currentPage === page
-                          ? 'bg-primary-600 text-white'
-                          : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  );
-                } else if (page === currentPage - 2 || page === currentPage + 2) {
-                  return <span key={page} className="px-2 text-gray-500">...</span>;
-                }
-                return null;
-              })}
+          <div className="flex items-center gap-2">
+            <div className="w-64 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search name, ID, type, PC..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              )}
             </div>
 
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
+            <div className="relative">
+              <button
+              onClick={() => {
+                const nextOpen = !showFilters;
+                if (nextOpen) {
+                  setPendingFilterUserType(filterUserType);
+                  setPendingFilterDateFrom(filterDateFrom);
+                  setPendingFilterDateTo(filterDateTo);
+                }
+                setShowFilters(nextOpen);
+              }}
+                className={`flex items-center gap-1.5 px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
+                  showFilters || activeFilterCount > 0
+                    ? 'bg-primary-50 border-primary-500 text-primary-700'
+                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Filter className="h-4 w-4" />
+                <span>Filter</span>
+                {activeFilterCount > 0 && (
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary-500 text-white text-xs font-bold">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+
+              {showFilters && (
+                <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg z-50">
+                  <div className="p-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-gray-800">
+                        Filters
+                      </span>
+                      {activeFilterCount > 0 && (
+                        <button
+                          onClick={clearFilters}
+                          className="text-xs text-primary-600 hover:underline"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Date Range
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1 min-w-0">
+                          <input
+                            type="date"
+                            value={pendingFilterDateFrom}
+                            onChange={(e) => setPendingFilterDateFrom(e.target.value)}
+                            className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                        </div>
+                        <span className="text-xs font-medium text-gray-500 shrink-0">
+                          to
+                        </span>
+                        <div className="relative flex-1 min-w-0">
+                          <input
+                            type="date"
+                            value={pendingFilterDateTo}
+                            onChange={(e) => setPendingFilterDateTo(e.target.value)}
+                            className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        User Type
+                      </label>
+                      <select
+                        value={pendingFilterUserType}
+                        onChange={(e) => setPendingFilterUserType(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      >
+                        <option value="">All types</option>
+                        <option value="student">Student</option>
+                        <option value="teacher">Teacher</option>
+                        <option value="working_student">Working Student</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearFilters();
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFilterUserType(pendingFilterUserType);
+                          setFilterDateFrom(pendingFilterDateFrom);
+                          setFilterDateTo(pendingFilterDateTo);
+                          setCurrentPage(1);
+                          setShowFilters(false);
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-primary-600 rounded-lg hover:bg-primary-700"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        )}
+
+          {/* Pagination Controls at Top */}
+          {totalPages > 1 && (
+            <div className="flex justify-center items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                  (page) => {
+                    if (
+                      page === 1 ||
+                      page === totalPages ||
+                      (page >= currentPage - 1 && page <= currentPage + 1)
+                    ) {
+                      return (
+                        <button
+                          key={page}
+                          onClick={() => setCurrentPage(page)}
+                          className={`px-3 py-2 text-sm font-medium rounded-lg ${
+                            currentPage === page
+                              ? 'bg-primary-600 text-white'
+                              : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      );
+                    }
+                    if (page === currentPage - 2 || page === currentPage + 2) {
+                      return (
+                        <span key={page} className="px-2 text-gray-500">
+                          ...
+                        </span>
+                      );
+                    }
+                    return null;
+                  }
+                )}
+              </div>
+
+              <button
+                onClick={() =>
+                  setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+                }
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Archive Groups */}
@@ -393,7 +597,7 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
                                 {formatTime(log.login_time)}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                {log.logout_time ? formatTime(log.logout_time) : 'Active'}
+                                {log.logout_time ? formatTime(log.logout_time) : ''}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                                 {calculateDuration(log.login_time, log.logout_time)}

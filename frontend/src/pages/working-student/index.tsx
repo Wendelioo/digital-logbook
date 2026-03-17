@@ -57,7 +57,7 @@ function WorkingStudentDashboard() {
         <Route path="attendance" element={<StudentAttendance />} />
         <Route path="my-classes" element={<MyClasses />} />
         <Route path="my-archived-classes" element={<ArchivedClasses />} />
-        <Route path="login-history" element={<LoginHistory showStatus={false} />} />
+        <Route path="login-history" element={<LoginHistory />} />
       </Routes>
     </Layout>
   );

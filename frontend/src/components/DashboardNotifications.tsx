@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bell, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { useNotifications, type BackendNotification } from '../contexts/NotificationContext';
 
 export interface DashboardNotificationItem {
   id: string;
@@ -76,4 +77,26 @@ export default function DashboardNotifications({ items, emptyMessage }: Dashboar
       )}
     </div>
   );
+}
+
+interface BackendDashboardNotificationsProps {
+  category?: string;
+  emptyMessage: string;
+}
+
+export function BackendDashboardNotifications({ category, emptyMessage }: BackendDashboardNotificationsProps) {
+  const { notifications } = useNotifications();
+
+  const filtered = category
+    ? notifications.filter(n => n.category === category)
+    : notifications;
+
+  const items: DashboardNotificationItem[] = filtered.map(n => ({
+    id: String(n.id),
+    message: n.message,
+    createdAt: new Date(n.created_at).getTime(),
+    tone: n.tone as DashboardNotificationItem['tone'],
+  }));
+
+  return <DashboardNotifications items={items} emptyMessage={emptyMessage} />;
 }

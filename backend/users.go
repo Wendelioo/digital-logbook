@@ -172,14 +172,16 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 		searchPattern, searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
 	}
 
+	// Wrap the UNION ALL in a subquery so the user_type filter applies to all
+	// branches, not just the last one.
+	outerQuery := `SELECT * FROM (` + query + `) AS combined_results`
 	if userType != "" {
-		query += ` AND user_type = ?`
+		outerQuery += ` WHERE user_type = ?`
 		args = append(args, userType)
 	}
+	outerQuery += ` ORDER BY created_at DESC`
 
-	query += ` ORDER BY created_at DESC`
-
-	rows, err := a.db.Query(query, args...)
+	rows, err := a.db.Query(outerQuery, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -927,6 +929,319 @@ func (a *App) DeleteExpiredStudents() (int, error) {
 	}
 
 	return int(rowsAffected), nil
+}
+
+// ==============================================================================
+// ACCOUNT ACTIVITY STATUS MANAGEMENT
+// ==============================================================================
+
+// ensureActivityTrackingColumns ensures the deactivated_at and deleted_at columns
+// exist in the users table. Called at startup as a lightweight auto-migration.
+func (a *App) ensureActivityTrackingColumns() error {
+	_, err := a.db.Exec(`
+		IF NOT EXISTS (
+			SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'deactivated_at'
+		)
+		BEGIN
+			ALTER TABLE users ADD deactivated_at DATETIME NULL
+		END
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to ensure deactivated_at column: %w", err)
+	}
+
+	_, err = a.db.Exec(`
+		IF NOT EXISTS (
+			SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'deleted_at'
+		)
+		BEGIN
+			ALTER TABLE users ADD deleted_at DATETIME NULL
+		END
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to ensure deleted_at column: %w", err)
+	}
+
+	return nil
+}
+
+// GetUsersByActivityStatus returns users filtered by activity status with last-login info.
+//
+// statusFilter values:
+//
+//	"active"      – is_active = 1, account_status = 'active', not soft-deleted
+//	"archived"    – manually suspended (is_active = 0, deactivated_at IS NULL)
+//	"deactivated" – auto-deactivated after 6+ months of inactivity
+//	"deleted"     – soft-deleted (inactive 4+ years, pending permanent removal)
+func (a *App) GetUsersByActivityStatus(statusFilter string) ([]User, error) {
+	if err := a.checkDB(); err != nil {
+		return nil, err
+	}
+
+	var condition string
+	switch statusFilter {
+	case "active":
+		condition = `up.is_active = 1 AND up.account_status = 'active' AND up.deleted_at IS NULL`
+	case "archived":
+		condition = `up.is_active = 0 AND up.deleted_at IS NULL AND up.deactivated_at IS NULL`
+	case "deactivated":
+		condition = `up.is_active = 0 AND up.deactivated_at IS NOT NULL AND up.deleted_at IS NULL`
+	case "deleted":
+		condition = `up.deleted_at IS NOT NULL`
+	default:
+		return nil, fmt.Errorf("invalid status filter: %s", statusFilter)
+	}
+
+	// Build CTE query: profile UNION + last-login sub-query
+	query := fmt.Sprintf(`
+		WITH UserProfiles AS (
+			SELECT
+				u.id, u.username, u.user_type, u.created_at,
+				a.first_name, a.middle_name, a.last_name,
+				a.admin_id AS employee_id,
+				CAST(NULL AS NVARCHAR(50)) AS student_id,
+				a.email, a.contact_number,
+				CAST(NULL AS NVARCHAR(20)) AS department_code,
+				u.deactivated_at, u.deleted_at, u.is_active, u.account_status
+			FROM users u
+			JOIN admins a ON u.id = a.id
+			WHERE u.user_type = 'admin'
+
+			UNION ALL
+
+			SELECT
+				u.id, u.username, u.user_type, u.created_at,
+				t.first_name, t.middle_name, t.last_name,
+				t.teacher_id AS employee_id,
+				CAST(NULL AS NVARCHAR(50)) AS student_id,
+				t.email, t.contact_number, t.department_code,
+				u.deactivated_at, u.deleted_at, u.is_active, u.account_status
+			FROM users u
+			JOIN teachers t ON u.id = t.id
+			WHERE u.user_type = 'teacher'
+
+			UNION ALL
+
+			SELECT
+				u.id, u.username, u.user_type, u.created_at,
+				s.first_name, s.middle_name, s.last_name,
+				CAST(NULL AS NVARCHAR(50)) AS employee_id, s.student_id,
+				s.email, s.contact_number,
+				CAST(NULL AS NVARCHAR(20)) AS department_code,
+				u.deactivated_at, u.deleted_at, u.is_active, u.account_status
+			FROM users u
+			JOIN students s ON u.id = s.id
+			WHERE u.user_type IN ('student', 'working_student')
+		),
+		LastLogins AS (
+			SELECT user_id, MAX(login_time) AS last_login_at
+			FROM log_entries
+			GROUP BY user_id
+		)
+		SELECT
+			up.id, up.username, up.user_type, up.created_at,
+			up.first_name, up.middle_name, up.last_name,
+			up.employee_id, up.student_id,
+			up.email, up.contact_number, up.department_code,
+			ll.last_login_at, up.deactivated_at, up.deleted_at
+		FROM UserProfiles up
+		LEFT JOIN LastLogins ll ON up.id = ll.user_id
+		WHERE %s
+		ORDER BY COALESCE(ll.last_login_at, up.created_at) DESC
+	`, condition)
+
+	rows, err := a.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query users by activity status: %w", err)
+	}
+	defer rows.Close()
+
+	return a.scanUsersWithActivity(rows)
+}
+
+// scanUsersWithActivity scans rows from GetUsersByActivityStatus query into User structs.
+func (a *App) scanUsersWithActivity(rows *sql.Rows) ([]User, error) {
+	var users []User
+	for rows.Next() {
+		var user User
+		var createdAt time.Time
+		var firstName, middleName, lastName sql.NullString
+		var employeeID, studentID sql.NullString
+		var email, contactNumber, departmentCode sql.NullString
+		var lastLoginAt, deactivatedAt, deletedAt sql.NullTime
+
+		err := rows.Scan(
+			&user.ID, &user.Name, &user.Role, &createdAt,
+			&firstName, &middleName, &lastName,
+			&employeeID, &studentID,
+			&email, &contactNumber, &departmentCode,
+			&lastLoginAt, &deactivatedAt, &deletedAt,
+		)
+		if err != nil {
+			log.Printf("Error scanning user with activity: %v", err)
+			continue
+		}
+
+		user.Created = createdAt.Format("2006-01-02 15:04:05")
+
+		if firstName.Valid {
+			user.FirstName = &firstName.String
+		}
+		if middleName.Valid {
+			user.MiddleName = &middleName.String
+		}
+		if lastName.Valid {
+			user.LastName = &lastName.String
+		}
+		if employeeID.Valid {
+			user.EmployeeID = &employeeID.String
+		}
+		if studentID.Valid {
+			user.StudentID = &studentID.String
+		}
+		if email.Valid {
+			user.Email = &email.String
+		}
+		if contactNumber.Valid {
+			user.ContactNumber = &contactNumber.String
+		}
+		if departmentCode.Valid {
+			user.DepartmentCode = &departmentCode.String
+		}
+
+		if lastLoginAt.Valid {
+			formatted := lastLoginAt.Time.Format("2006-01-02 15:04:05")
+			user.LastLoginAt = &formatted
+			user.LastLoginAgo = timeAgo(lastLoginAt.Time)
+		} else {
+			user.LastLoginAgo = "Never logged in"
+		}
+
+		if deactivatedAt.Valid {
+			formatted := deactivatedAt.Time.Format("2006-01-02 15:04:05")
+			user.DeactivatedAt = &formatted
+		}
+
+		if deletedAt.Valid {
+			formatted := deletedAt.Time.Format("2006-01-02 15:04:05")
+			user.DeletedAt = &formatted
+			user.ActivityStatus = "deleted"
+		} else if user.Name == "" || !deactivatedAt.Valid {
+			user.ActivityStatus = "archived"
+		}
+
+		if user.ActivityStatus == "" {
+			if deactivatedAt.Valid {
+				user.ActivityStatus = "deactivated"
+			} else {
+				user.ActivityStatus = "active"
+			}
+		}
+
+		a.loadUserPhotoURL(&user)
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
+// RunInactivityCheck scans all non-admin users and:
+//   - Deactivates accounts with no login for 6+ months (sets deactivated_at)
+//   - Soft-deletes accounts deactivated for 4+ years (sets deleted_at)
+//
+// Returns a map with keys "deactivated" and "deleted" reporting counts,
+// and an error if either step fails.
+func (a *App) RunInactivityCheck() (map[string]int, error) {
+	if err := a.checkDB(); err != nil {
+		return nil, err
+	}
+
+	// Step 1: auto-deactivate accounts inactive for 6+ months
+	deactivateResult, err := a.db.Exec(`
+		UPDATE users
+		SET is_active      = 0,
+		    account_status = 'suspended',
+		    deactivated_at = GETDATE(),
+		    updated_at     = GETDATE()
+		WHERE id IN (
+			SELECT u.id
+			FROM users u
+			LEFT JOIN (
+				SELECT user_id, MAX(login_time) AS last_login_at
+				FROM log_entries
+				GROUP BY user_id
+			) ll ON u.id = ll.user_id
+			WHERE u.user_type != 'admin'
+			  AND u.is_active    = 1
+			  AND u.deleted_at  IS NULL
+			  AND (
+			      (ll.last_login_at IS NOT NULL AND ll.last_login_at <= DATEADD(MONTH, -6, GETDATE()))
+			   OR (ll.last_login_at IS NULL      AND u.created_at    <= DATEADD(MONTH, -6, GETDATE()))
+			  )
+		)
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to deactivate inactive accounts: %w", err)
+	}
+	deactivated, _ := deactivateResult.RowsAffected()
+
+	// Step 2: soft-delete accounts that have been deactivated for 4+ years
+	softDeleteResult, err := a.db.Exec(`
+		UPDATE users
+		SET deleted_at  = GETDATE(),
+		    updated_at  = GETDATE()
+		WHERE is_active       = 0
+		  AND deactivated_at IS NOT NULL
+		  AND deleted_at     IS NULL
+		  AND deactivated_at <= DATEADD(YEAR, -4, GETDATE())
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to soft-delete expired accounts: %w", err)
+	}
+	softDeleted, _ := softDeleteResult.RowsAffected()
+
+	log.Printf("Inactivity check complete: %d account(s) deactivated, %d account(s) flagged for deletion",
+		deactivated, softDeleted)
+
+	return map[string]int{
+		"deactivated": int(deactivated),
+		"deleted":     int(softDeleted),
+	}, nil
+}
+
+// ReactivateUser restores a deactivated (or soft-deleted) account back to active.
+// Only admins should be allowed to call this.
+func (a *App) ReactivateUser(id int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	result, err := a.db.Exec(`
+		UPDATE users
+		SET is_active      = 1,
+		    account_status = 'active',
+		    deactivated_at = NULL,
+		    deleted_at     = NULL,
+		    updated_at     = GETDATE()
+		WHERE id = ?
+		  AND (is_active = 0 OR account_status != 'active')
+	`, id)
+	if err != nil {
+		return fmt.Errorf("failed to reactivate user: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return fmt.Errorf("user not found or already active")
+	}
+
+	log.Printf("Admin reactivated user with ID: %d", id)
+	return nil
 }
 
 // GetActiveStudentsForArchiving returns active students that can be archived

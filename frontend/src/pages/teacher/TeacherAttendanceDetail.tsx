@@ -11,9 +11,12 @@ import {
   OpenClassAttendance,
   GetClassAttendance,
   UpdateAttendanceRecord,
-  ArchiveAttendanceSheet,
   GetClassByID,
+  ExportAttendanceCSVByDate,
+  ExportAttendanceCSVBySession,
+  ExportArchivedAttendanceCSVByDate,
 } from '../../../wailsjs/go/backend/App';
+import { openExportSaveDialog, defaultAttendanceFilename } from '../../utils/exportSaveDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class, Attendance } from './types';
 
@@ -31,7 +34,6 @@ function AttendanceManagementDetail() {
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [error, setError] = useState<string>('');
   const [hasSelectedDate, setHasSelectedDate] = useState(!!initialDate);
-  const [archiving, setArchiving] = useState(false);
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [sessionStatus, setSessionStatus] = useState<'open' | 'closed' | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<{[key: string]: boolean}>({});
@@ -93,10 +95,21 @@ function AttendanceManagementDetail() {
       return;
     }
 
+    const isArchivedView = attendanceRecords.length > 0 && attendanceRecords[0]?.is_archived;
+    const defaultName = defaultAttendanceFilename(selectedDate, 'csv', isArchivedView);
+    const savePath = await openExportSaveDialog('Save attendance', defaultName, 'csv');
+    if (!savePath) return;
+
     setExportingAttendance(true);
     setNotice(null);
     try {
-      const filePath = await (window as any).go.backend.App.ExportAttendanceCSVByDate(classId, selectedDate);
+      const filePath = isArchivedView
+        ? sessionId && sessionId > 0
+          ? await ExportArchivedAttendanceCSVByDate(classId, selectedDate, sessionId, savePath)
+          : await ExportArchivedAttendanceCSVByDate(classId, selectedDate, 0, savePath)
+        : sessionId && sessionId > 0
+          ? await ExportAttendanceCSVBySession(classId, selectedDate, sessionId, savePath)
+          : await ExportAttendanceCSVByDate(classId, selectedDate, savePath);
       setNotice({ type: 'success', text: `Attendance exported successfully. File saved to: ${filePath}` });
     } catch (error) {
       console.error('Failed to export attendance:', error);
@@ -237,31 +250,6 @@ function AttendanceManagementDetail() {
     navigate('/teacher/attendance');
   };
 
-  const handleArchive = async () => {
-    if (!selectedClass || !selectedDate) return;
-    
-    // Cannot archive today's attendance
-    if (selectedDate === today) {
-      setNotice({ type: 'error', text: "Cannot archive today's attendance. Only past attendance can be archived." });
-      return;
-    }
-
-    setArchiving(true);
-    setNotice(null);
-    try {
-      await ArchiveAttendanceSheet(selectedClass.class_id, selectedDate);
-      navigate('/teacher/attendance', { replace: true });
-    } catch (error) {
-      console.error('Failed to archive attendance:', error);
-      setNotice({
-        type: 'error',
-        text: 'Failed to archive attendance. ' + (error instanceof Error ? error.message : 'Please try again.'),
-      });
-    } finally {
-      setArchiving(false);
-    }
-  };
-
   if (loading && !selectedClass) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -362,10 +350,10 @@ function AttendanceManagementDetail() {
                   )}
                 </div>
                 <p className="text-xs text-gray-600 mt-1">
-                  {new Date(selectedDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                  {new Date(selectedDate).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}
                 </p>
               </div>
-              {/* Export and Archive actions */}
+              {/* Export actions */}
               <div className="flex justify-end gap-2">
                 {attendanceRecords.length > 0 && attendanceRecords[0].is_archived && (
                   <Button
@@ -377,20 +365,6 @@ function AttendanceManagementDetail() {
                     title="Export to CSV"
                   >
                     Export CSV
-                  </Button>
-                )}
-                {/* Archive button - only for past dates */}
-                {selectedDate !== today && attendanceRecords.length > 0 && !attendanceRecords[0].is_archived && (
-                  <Button
-                    onClick={handleArchive}
-                    variant="outline"
-                    size="sm"
-                    className="text-orange-600 hover:bg-orange-50"
-                    icon={<Archive className="h-4 w-4" />}
-                    disabled={archiving}
-                    title="Archive this attendance"
-                  >
-                    Archive
                   </Button>
                 )}
               </div>

@@ -93,7 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Handle inactivity and window close
+  // Handle inactivity timeout — calls backend to record logout, then clears local session
   const handleAutoLogout = useCallback(async () => {
     if (logoutInProgressRef.current) {
       return;
@@ -101,7 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     logoutInProgressRef.current = true;
     try {
-      if (user && window.go?.main?.App) {
+      if (user && window.go?.backend?.App) {
         await Logout(user.id);
       }
     } catch (error) {
@@ -120,8 +120,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [clearLocalSession, user]);
 
+  // Handle window/app close — only clears local session.
+  // The Go OnBeforeClose + OnShutdown hooks reliably handle DB session cleanup
+  // on the backend side, so no async backend call is needed here.
+  const handleWindowClose = useCallback(() => {
+    clearLocalSession();
+  }, [clearLocalSession]);
+
   useInactivityDetection(handleAutoLogout, !!user);
-  useWindowUnload(handleAutoLogout, !!user);
+  useWindowUnload(handleWindowClose, !!user);
 
   const login = async (username: string, password: string): Promise<User> => {
     logoutInProgressRef.current = false;
@@ -170,7 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     logoutInProgressRef.current = true;
     try {
-      if (user && window.go?.main?.App) {
+      if (user && window.go?.backend?.App) {
         await Logout(user.id);
       }
     } catch (error) {

@@ -44,7 +44,6 @@ function EquipmentReports() {
   const [confirmDecision, setConfirmDecision] = useState<'confirm' | 'reject' | null>(null);
   const [confirmNotes, setConfirmNotes] = useState('');
   const [confirming, setConfirming] = useState(false);
-  const [reportView, setReportView] = useState<'all' | 'issues' | 'no_issue'>('issues');
 
   useEffect(() => {
     loadAllFeedback();
@@ -90,12 +89,15 @@ function EquipmentReports() {
     return allGood && !hasComment;
   };
 
-  const visibleFeedbackList = currentList.filter((report) => {
-    const noIssue = isNoIssueReport(report);
-    if (reportView === 'all') return true;
-    if (reportView === 'no_issue') return noIssue;
-    return !noIssue;
-  });
+  const countIssues = (report: Feedback): number =>
+    [
+      report.equipment_condition,
+      report.monitor_condition,
+      report.keyboard_condition,
+      report.mouse_condition,
+    ].filter(c => c && c.toLowerCase() !== 'good').length;
+
+  const visibleFeedbackList = currentList;
 
   const handleConfirmClick = (feedback: Feedback, decision: 'confirm' | 'reject') => {
     setConfirmFeedback(feedback);
@@ -240,12 +242,10 @@ function EquipmentReports() {
 
   return (
     <div>
-      {/* Header Section */}
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
       </div>
 
-      {/* Notification */}
       {notification && (
         <div className={`fixed top-4 right-4 z-50 max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out ${
           notification.type === 'success' ? 'border-l-4 border-green-400' : 'border-l-4 border-red-400'
@@ -297,10 +297,8 @@ function EquipmentReports() {
         </div>
       )}
 
-      {/* Section Controls Card */}
       <div className="mb-4 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
         <div className="px-4 py-3 flex flex-wrap items-center gap-3 justify-between border-b border-gray-100">
-          {/* Section Tabs */}
           <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-100">
             <button
               type="button"
@@ -332,48 +330,8 @@ function EquipmentReports() {
             </button>
           </div>
 
-          {/* View Filter */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-500">Show:</span>
-            <div className="inline-flex rounded-lg border border-gray-300 bg-white overflow-hidden">
-              <button
-                type="button"
-                className={`px-3 py-1.5 text-xs font-medium border-r border-gray-300 transition-colors ${
-                  reportView === 'issues'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
-                onClick={() => setReportView('issues')}
-              >
-                Issue Reports
-              </button>
-              <button
-                type="button"
-                className={`px-3 py-1.5 text-xs font-medium border-r border-gray-300 transition-colors ${
-                  reportView === 'no_issue'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
-                onClick={() => setReportView('no_issue')}
-              >
-                No-Issue Logs
-              </button>
-              <button
-                type="button"
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  reportView === 'all'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
-                onClick={() => setReportView('all')}
-              >
-                All
-              </button>
-            </div>
-          </div>
         </div>
 
-        {/* Summary Row */}
         <div className="px-4 py-2 bg-gray-50 flex items-center gap-4 text-sm text-gray-500">
           <span>
             <span className="font-semibold text-gray-700">{visibleFeedbackList.length}</span>
@@ -393,7 +351,6 @@ function EquipmentReports() {
         </div>
       ) : (
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          {/* Batch Actions Bar - "Awaiting": Confirm & forward selected; "Verified": Forward selected */}
           {selectedFeedbackIds.size > 0 && (
             <div className="px-6 py-3 bg-blue-50 border-b border-blue-200 flex items-center justify-between">
               <div className="text-sm text-gray-700">
@@ -511,30 +468,33 @@ function EquipmentReports() {
                       <td className="px-3 py-3">
                         <div className="text-xs text-gray-700">
                           {feedback.date_submitted ? new Date(feedback.date_submitted).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: '2-digit'
+                            month: '2-digit',
+                            day: '2-digit',
+                            year: 'numeric'
                           }) : '-'}
                         </div>
                       </td>
                       <td className="px-3 py-3">
-                        {isNoIssueReport(feedback) ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 whitespace-nowrap">
-                            All Working
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 whitespace-nowrap">
-                            Has Issues
-                          </span>
-                        )}
+                        {(() => {
+                          const n = countIssues(feedback);
+                          return n === 0 ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 whitespace-nowrap">
+                              No Issues
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 whitespace-nowrap">
+                              {n} {n === 1 ? 'Issue' : 'Issues'}
+                            </span>
+                          );
+                        })()}
                       </td>
                       {sectionTab === 'ready_to_forward' && (
                         <td className="px-3 py-3">
                           <span className="text-xs text-gray-600 whitespace-nowrap">
                             {feedback.verified_at
                               ? new Date(feedback.verified_at).toLocaleString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
+                                  month: '2-digit',
+                                  day: '2-digit',
                                   hour: '2-digit',
                                   minute: '2-digit'
                                 })
@@ -606,7 +566,6 @@ function EquipmentReports() {
         </div>
       )}
 
-      {/* Forward Modal */}
       {showForwardModal && selectedFeedback && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
@@ -637,7 +596,6 @@ function EquipmentReports() {
             </div>
 
             <div className="px-8 pb-8">
-              {/* Feedback Summary */}
               <div className="bg-gray-50 rounded-lg p-4 mb-6">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Report Summary</h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
@@ -733,7 +691,6 @@ function EquipmentReports() {
                 />
               </div>
 
-              {/* Actions */}
               <div className="flex justify-end gap-3">
                 <Button
                   variant="outline"
@@ -755,7 +712,6 @@ function EquipmentReports() {
         </div>
       )}
 
-      {/* Confirm / Reject Modal */}
       {showConfirmModal && confirmFeedback && confirmDecision && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
@@ -847,7 +803,6 @@ function EquipmentReports() {
         </div>
       )}
 
-      {/* Batch Forward Modal */}
       {showBatchForwardModal && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
@@ -878,7 +833,6 @@ function EquipmentReports() {
             </div>
 
             <div className="px-8 pb-8">
-              {/* Selected Reports Summary */}
               <div className="bg-gray-50 rounded-lg p-4 mb-6 max-h-48 overflow-y-auto">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Selected Reports</h4>
                 <div className="space-y-2">
@@ -913,7 +867,6 @@ function EquipmentReports() {
                 />
               </div>
 
-              {/* Actions */}
               <div className="flex justify-end gap-3">
                 <Button
                   variant="outline"
@@ -1021,7 +974,6 @@ function EquipmentReports() {
         </div>
       )}
 
-      {/* Report Details Modal */}
       {showDetailsModal && selectedReportForDetails && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
@@ -1052,9 +1004,7 @@ function EquipmentReports() {
                 </div>
               </div>
 
-              {/* Report Information */}
               <div className="space-y-6">
-                {/* Student Information */}
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h4 className="text-sm font-semibold text-gray-700 mb-3">Student Information</h4>
                   <div className="grid grid-cols-2 gap-4 text-sm">
@@ -1086,8 +1036,8 @@ function EquipmentReports() {
                       <p className="font-medium text-gray-900">
                         {selectedReportForDetails.date_submitted ? new Date(selectedReportForDetails.date_submitted).toLocaleString('en-US', {
                           year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
                           hour: '2-digit',
                           minute: '2-digit'
                         }) : '-'}
@@ -1158,7 +1108,6 @@ function EquipmentReports() {
                 )}
               </div>
 
-              {/* Close Button */}
               <div className="mt-6 flex justify-end">
                 <Button
                   variant="outline"

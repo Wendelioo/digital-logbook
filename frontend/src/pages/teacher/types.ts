@@ -13,7 +13,6 @@ export type ClasslistEntry = backend.ClasslistEntry;
 export type Attendance = backend.Attendance;
 export type ClassStudent = backend.ClassStudent;
 export type User = backend.User;
-export type Subject = backend.Subject;
 
 // Helper function to get subject icon and color
 export function getSubjectIconAndColor(subjectCode: string, subjectName: string) {

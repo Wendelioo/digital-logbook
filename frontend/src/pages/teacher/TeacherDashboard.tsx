@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { StatCard } from '../../components/Card';
 import { Card, CardHeader, CardBody } from '../../components/Card';
@@ -17,7 +17,7 @@ import {
   GetPendingPasswordResets,
 } from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
-import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
+import { BackendDashboardNotifications } from '../../components/DashboardNotifications';
 import { Class } from './types';
 
 const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
@@ -29,8 +29,6 @@ function DashboardOverview() {
   const [openSessionsToday, setOpenSessionsToday] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
-  const [notifications, setNotifications] = useState<DashboardNotificationItem[]>([]);
-  const previousMetricsRef = useRef<{ activeClasses: number; totalStudents: number; openSessionsToday: number } | null>(null);
 
   // Pending password reset count (for the quick-link card)
   const [pendingResetCount, setPendingResetCount] = useState(0);
@@ -41,32 +39,6 @@ function DashboardOverview() {
       const data = await GetPendingPasswordResets(user.id);
       setPendingResetCount((data || []).length);
     } catch { /* non-critical */ }
-  };
-
-  const pushNotification = (message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
-    setNotifications((prev) => [
-      {
-        id: `${Date.now()}-${Math.random()}`,
-        message,
-        createdAt: Date.now(),
-        tone,
-      },
-      ...prev,
-    ].slice(0, 10));
-  };
-  const upsertNotification = (id: string, message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
-    setNotifications((prev) => {
-      const next = prev.filter((item) => item.id !== id);
-      return [
-        {
-          id,
-          message,
-          createdAt: Date.now(),
-          tone,
-        },
-        ...next,
-      ].slice(0, 10);
-    });
   };
 
   useEffect(() => {
@@ -98,44 +70,6 @@ function DashboardOverview() {
           nextOpenSessionsToday = 0;
           setOpenSessionsToday(0);
         }
-
-        const nextClasses = Array.isArray(classesData) ? classesData : [];
-        const nextActiveClasses = nextClasses.filter(cls => cls.is_active).length;
-        const nextTotalStudents = nextClasses.reduce((sum, cls) => sum + cls.enrolled_count, 0);
-        upsertNotification(
-          'teacher-open-sessions',
-          `Open attendance sessions today: ${nextOpenSessionsToday}.`,
-          nextOpenSessionsToday > 0 ? 'warning' : 'success'
-        );
-        upsertNotification('teacher-active-classes', `Active classes: ${nextActiveClasses}.`, 'info');
-        upsertNotification('teacher-total-students', `Enrolled students: ${nextTotalStudents}.`, 'info');
-        const previous = previousMetricsRef.current;
-
-        if (!previous) {
-          pushNotification('Teacher dashboard is connected and receiving live updates.', 'success');
-        } else {
-          if (nextOpenSessionsToday !== previous.openSessionsToday) {
-            if (nextOpenSessionsToday > previous.openSessionsToday) {
-              pushNotification(`${nextOpenSessionsToday} attendance session(s) are now open.`, 'warning');
-            } else {
-              pushNotification('Open attendance sessions were closed or completed.', 'success');
-            }
-          }
-
-          if (nextActiveClasses !== previous.activeClasses) {
-            pushNotification(`Active classes changed to ${nextActiveClasses}.`, 'info');
-          }
-
-          if (nextTotalStudents !== previous.totalStudents) {
-            pushNotification(`Enrolled students updated to ${nextTotalStudents}.`, 'info');
-          }
-        }
-
-        previousMetricsRef.current = {
-          activeClasses: nextActiveClasses,
-          totalStudents: nextTotalStudents,
-          openSessionsToday: nextOpenSessionsToday,
-        };
 
         setError('');
       } catch (error) {
@@ -186,6 +120,11 @@ function DashboardOverview() {
           <p>Loading your dashboard data...</p>
         </div>
       )}
+
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Welcome back, {user?.first_name || user?.name}!</h2>
+        <p className="text-sm text-gray-500">Here's what's going on today.</p>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
         {/* Quick Stats */}
@@ -331,9 +270,8 @@ function DashboardOverview() {
           <Card className="h-fit">
             <CardHeader title="Notifications" />
             <CardBody>
-              <DashboardNotifications
-                items={notifications}
-                emptyMessage="No new class or attendance updates."
+              <BackendDashboardNotifications
+                emptyMessage="No new notifications."
               />
             </CardBody>
           </Card>

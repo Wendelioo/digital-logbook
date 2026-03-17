@@ -20,6 +20,7 @@ import {
   GetTeacherClassesByUserID,
   GetClassByID,
 } from '../../../wailsjs/go/backend/App';
+import { openExportSaveDialog, defaultClasslistFilename } from '../../utils/exportSaveDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class, ClasslistEntry, ClassStudent } from './types';
 
@@ -54,7 +55,12 @@ function ClassManagementDetail() {
   const handleExportClasslist = async (classId: number) => {
     setExportingClasslist(true);
     try {
-      const filePath = await ExportClasslistCSV(classId);
+      const savePath = await openExportSaveDialog('Save classlist', defaultClasslistFilename('csv'), 'csv');
+      if (!savePath) {
+        setExportingClasslist(false);
+        return;
+      }
+      const filePath = await ExportClasslistCSV(classId, savePath);
       alert(`Classlist exported successfully!\nFile saved to: ${filePath}`);
     } catch (error) {
       console.error('Failed to export classlist:', error);

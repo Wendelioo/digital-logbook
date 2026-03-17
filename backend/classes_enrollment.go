@@ -2,16 +2,12 @@ package backend
 
 import (
 	"database/sql"
-	"encoding/csv"
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
-
-	"github.com/jung-kurt/gofpdf"
 )
 
 // ==============================================================================
@@ -509,10 +505,12 @@ func (a *App) UnarchiveStudentEnrollment(studentUserID int, classID int) error {
 // CLASSLIST EXPORT
 // ==============================================================================
 
-// ExportClasslistCSV exports the classlist (enrolled students) for a class to CSV
-func (a *App) ExportClasslistCSV(classID int) (string, error) {
+// buildClasslistPrintableDocument prepares a printableExportDocument and metadata
+// for all enrolled students in a class. It is used by the different export
+// formats (CSV, PDF, DOCX) so the export logic lives in one place.
+func (a *App) buildClasslistPrintableDocument(classID int) (printableExportDocument, string, int, error) {
 	if err := a.checkDB(); err != nil {
-		return "", err
+		return printableExportDocument{}, "", 0, err
 	}
 
 	var subjectCode string
@@ -533,7 +531,7 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 	`
 	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName, &semester, &schoolYear)
 	if err != nil {
-		log.Printf("Failed to get class info for export: %v", err)
+		log.Printf("Failed to get class info for classlist export: %v", err)
 		subjectCode = fmt.Sprintf("class_%d", classID)
 		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
 	}
@@ -550,7 +548,7 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 
 	rows, err := a.db.Query(query, classID)
 	if err != nil {
-		return "", err
+		return printableExportDocument{}, "", 0, err
 	}
 	defer rows.Close()
 
@@ -567,11 +565,10 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 	for rows.Next() {
 		var s StudentRecord
 		var middleName, email, contactNumber sql.NullString
-		err := rows.Scan(
+		if err := rows.Scan(
 			&s.StudentID, &s.FirstName, &middleName, &s.LastName,
 			&email, &contactNumber,
-		)
-		if err != nil {
+		); err != nil {
 			continue
 		}
 		if middleName.Valid {
@@ -585,18 +582,6 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 		}
 		students = append(students, s)
 	}
-
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("classlist_%s_%s.csv", subjectCode, time.Now().Format("20060102_150405")))
-
-	file, err := os.Create(filename)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
 
 	subjectNameValue := "N/A"
 	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
@@ -623,17 +608,7 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 		schoolYearValue = schoolYear.String
 	}
 
-	writer.Write([]string{"CLASS LIST"})
-	writer.Write([]string{fmt.Sprintf("School Year %s • %s", schoolYearValue, semesterValue)})
-	writer.Write([]string{""})
-	writer.Write([]string{"CLASS INFORMATION"})
-	writer.Write([]string{"Subject Code", subjectCode, "Schedule", scheduleValue})
-	writer.Write([]string{"Subject Name", subjectNameValue, "Room", roomValue})
-	writer.Write([]string{"Instructor", teacherValue})
-	writer.Write([]string{""})
-	writer.Write([]string{"STUDENTS LIST"})
-	writer.Write([]string{"No.", "Student ID", "Name", "Email", "Contact"})
-
+	var exportRows [][]string
 	for index, s := range students {
 		middleInitial := ""
 		if strings.TrimSpace(s.MiddleName) != "" {
@@ -642,14 +617,14 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 		fullName := fmt.Sprintf("%s, %s%s", s.LastName, s.FirstName, middleInitial)
 		email := s.Email
 		if strings.TrimSpace(email) == "" {
-			email = "—"
+			email = ""
 		}
 		contact := s.ContactNumber
 		if strings.TrimSpace(contact) == "" {
-			contact = "—"
+			contact = ""
 		}
 
-		writer.Write([]string{
+		exportRows = append(exportRows, []string{
 			fmt.Sprintf("%d", index+1),
 			s.StudentID,
 			fullName,
@@ -658,310 +633,81 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 		})
 	}
 
-	log.Printf("Classlist exported to CSV: %s (%d students)", filename, len(students))
+	doc := printableExportDocument{
+		Title:    "CLASS LIST",
+		Subtitle: fmt.Sprintf("School Year %s - %s", schoolYearValue, semesterValue),
+		Details: []printableExportField{
+			{Label: "Subject Code", Value: subjectCode},
+			{Label: "Subject Name", Value: subjectNameValue},
+			{Label: "Instructor", Value: teacherValue},
+			{Label: "Schedule", Value: scheduleValue},
+			{Label: "Room", Value: roomValue},
+		},
+		TableTitle:       "STUDENTS LIST",
+		TableNote:        fmt.Sprintf("Total: %d", len(exportRows)),
+		Headers:          []string{"NO.", "STUDENT ID", "NAME", "EMAIL", "CONTACT"},
+		Rows:             exportRows,
+		Footer:           []printableExportField{{Label: "Total Students", Value: fmt.Sprintf("%d", len(exportRows))}},
+		ColumnWidths:     []float64{12, 28, 60, 55, 35},
+		ColumnAlignments: []string{"C", "L", "L", "L", "L"},
+		Orientation:      "P",
+		GeneratedAt:      time.Now(),
+	}
+
+	return doc, subjectCode, len(exportRows), nil
+}
+
+// ExportClasslistCSV exports the classlist (enrolled students) for a class to CSV.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportClasslistCSV(classID int, savePath string) (string, error) {
+	doc, subjectCode, studentCount, err := a.buildClasslistPrintableDocument(classID)
+	if err != nil {
+		return "", err
+	}
+	defaultName := fmt.Sprintf("classlist_%s_%s.csv", subjectCode, time.Now().Format("20060102_150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	if err := writePrintableCSV(filename, doc); err != nil {
+		return "", err
+	}
+
+	log.Printf("Classlist exported to CSV: %s (%d students)", filename, studentCount)
 	return filename, nil
 }
 
-// ExportClasslistPDF exports the classlist (enrolled students) for a class to PDF
-func (a *App) ExportClasslistPDF(classID int) (string, error) {
-	if err := a.checkDB(); err != nil {
-		return "", err
-	}
-
-	var subjectCode string
-	var subjectName, schedule, room, teacherName, semester, schoolYear sql.NullString
-	classQuery := `
-		SELECT
-			c.subject_code,
-			s.description,
-			c.schedule,
-			c.room,
-			(t.last_name + ', ' + t.first_name) as teacher_name,
-			c.semester,
-			c.school_year
-		FROM classes c
-		JOIN subjects s ON c.subject_code = s.subject_code
-		LEFT JOIN teachers t ON c.teacher_id = t.id
-		WHERE c.class_id = ?
-	`
-	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName, &semester, &schoolYear)
-	if err != nil {
-		log.Printf("Failed to get class info for PDF export: %v", err)
-		subjectCode = fmt.Sprintf("class_%d", classID)
-		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
-	}
-
-	query := `
-		SELECT 
-			stu.student_id, stu.first_name, stu.middle_name, stu.last_name,
-			stu.email, stu.contact_number
-		FROM classlist cl
-		JOIN students stu ON cl.student_id = stu.id
-		WHERE cl.class_id = ?
-		ORDER BY stu.last_name, stu.first_name
-	`
-
-	rows, err := a.db.Query(query, classID)
+// ExportClasslistPDF exports the classlist (enrolled students) for a class to PDF.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportClasslistPDF(classID int, savePath string) (string, error) {
+	doc, subjectCode, studentCount, err := a.buildClasslistPrintableDocument(classID)
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
-
-	type StudentRecord struct {
-		StudentID     string
-		FirstName     string
-		MiddleName    string
-		LastName      string
-		Email         string
-		ContactNumber string
-	}
-
-	var students []StudentRecord
-	for rows.Next() {
-		var s StudentRecord
-		var middleName, email, contactNumber sql.NullString
-		err := rows.Scan(
-			&s.StudentID, &s.FirstName, &middleName, &s.LastName,
-			&email, &contactNumber,
-		)
-		if err != nil {
-			continue
-		}
-		if middleName.Valid {
-			s.MiddleName = middleName.String
-		}
-		if email.Valid {
-			s.Email = email.String
-		}
-		if contactNumber.Valid {
-			s.ContactNumber = contactNumber.String
-		}
-		students = append(students, s)
-	}
-
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("classlist_%s_%s.pdf", subjectCode, time.Now().Format("20060102_150405")))
-
-	pdf := gofpdf.New("P", "mm", "A4", "")
-	pdf.SetMargins(10, 10, 10)
-	pdf.SetAutoPageBreak(true, 10)
-	pdf.AddPage()
-
-	subjectNameValue := "N/A"
-	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
-		subjectNameValue = subjectName.String
-	}
-	scheduleValue := "N/A"
-	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
-		scheduleValue = schedule.String
-	}
-	roomValue := "N/A"
-	if room.Valid && strings.TrimSpace(room.String) != "" {
-		roomValue = room.String
-	}
-	teacherValue := "N/A"
-	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
-		teacherValue = teacherName.String
-	}
-	semesterValue := "N/A"
-	if semester.Valid && strings.TrimSpace(semester.String) != "" {
-		semesterValue = semester.String
-	}
-	schoolYearValue := "N/A"
-	if schoolYear.Valid && strings.TrimSpace(schoolYear.String) != "" {
-		schoolYearValue = schoolYear.String
-	}
-
-	truncate := func(value string, max int) string {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			return "—"
-		}
-		runes := []rune(trimmed)
-		if len(runes) <= max {
-			return trimmed
-		}
-		if max <= 1 {
-			return string(runes[:max])
-		}
-		return string(runes[:max-1]) + "…"
-	}
-
-	pdf.SetFont("Arial", "B", 14)
-	pdf.Cell(0, 8, "CLASS LIST")
-	pdf.Ln(9)
-	pdf.SetFont("Arial", "", 10)
-	pdf.Cell(0, 6, fmt.Sprintf("School Year %s • %s", schoolYearValue, semesterValue))
-	pdf.Ln(6)
-	pdf.SetFont("Arial", "B", 10)
-	pdf.Cell(0, 6, "CLASS INFORMATION")
-	pdf.Ln(7)
-	pdf.SetFont("Arial", "", 10)
-	pdf.CellFormat(30, 6, "Subject Code:", "", 0, "L", false, 0, "")
-	pdf.CellFormat(70, 6, subjectCode, "", 0, "L", false, 0, "")
-	pdf.CellFormat(25, 6, "Schedule:", "", 0, "L", false, 0, "")
-	pdf.CellFormat(65, 6, scheduleValue, "", 1, "L", false, 0, "")
-	pdf.CellFormat(30, 6, "Subject Name:", "", 0, "L", false, 0, "")
-	pdf.CellFormat(70, 6, subjectNameValue, "", 0, "L", false, 0, "")
-	pdf.CellFormat(25, 6, "Room:", "", 0, "L", false, 0, "")
-	pdf.CellFormat(65, 6, roomValue, "", 1, "L", false, 0, "")
-	pdf.CellFormat(30, 6, "Instructor:", "", 0, "L", false, 0, "")
-	pdf.CellFormat(160, 6, teacherValue, "", 1, "L", false, 0, "")
-	pdf.Ln(2)
-	pdf.SetFont("Arial", "B", 10)
-	pdf.CellFormat(120, 6, "STUDENTS LIST", "", 0, "L", false, 0, "")
-	pdf.CellFormat(70, 6, fmt.Sprintf("Total: %d", len(students)), "", 1, "R", false, 0, "")
-	pdf.Ln(1)
-
-	pdf.SetFont("Arial", "B", 9)
-	pdf.CellFormat(12, 7, "#", "1", 0, "C", false, 0, "")
-	pdf.CellFormat(28, 7, "Student ID", "1", 0, "C", false, 0, "")
-	pdf.CellFormat(60, 7, "Name", "1", 0, "C", false, 0, "")
-	pdf.CellFormat(55, 7, "Email", "1", 0, "C", false, 0, "")
-	pdf.CellFormat(35, 7, "Contact", "1", 1, "C", false, 0, "")
-
-	pdf.SetFont("Arial", "", 9)
-	for index, s := range students {
-		middleInitial := ""
-		if s.MiddleName != "" {
-			middleInitial = fmt.Sprintf(" %s.", strings.ToUpper(string(s.MiddleName[0])))
-		}
-		fullName := fmt.Sprintf("%s, %s%s", s.LastName, s.FirstName, middleInitial)
-
-		pdf.CellFormat(12, 7, fmt.Sprintf("%d", index+1), "1", 0, "C", false, 0, "")
-		pdf.CellFormat(28, 7, s.StudentID, "1", 0, "L", false, 0, "")
-		pdf.CellFormat(60, 7, truncate(fullName, 34), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(55, 7, truncate(s.Email, 30), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(35, 7, truncate(s.ContactNumber, 20), "1", 1, "L", false, 0, "")
-	}
-
-	if err := pdf.OutputFileAndClose(filename); err != nil {
+	defaultName := fmt.Sprintf("classlist_%s_%s.pdf", subjectCode, time.Now().Format("20060102_150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	if err := writePrintablePDF(filename, doc); err != nil {
 		return "", err
 	}
 
-	log.Printf("Classlist exported to PDF: %s (%d students)", filename, len(students))
+	log.Printf("Classlist exported to PDF: %s (%d students)", filename, studentCount)
 	return filename, nil
 }
 
-// ExportClasslistDOCX exports the classlist for a class to DOCX
-func (a *App) ExportClasslistDOCX(classID int) (string, error) {
-	if err := a.checkDB(); err != nil {
-		return "", err
-	}
-
-	var subjectCode string
-	var subjectName, schedule, room, teacherName, semester, schoolYear sql.NullString
-	classQuery := `
-		SELECT
-			c.subject_code,
-			s.description,
-			c.schedule,
-			c.room,
-			(t.last_name + ', ' + t.first_name) as teacher_name,
-			c.semester,
-			c.school_year
-		FROM classes c
-		JOIN subjects s ON c.subject_code = s.subject_code
-		LEFT JOIN teachers t ON c.teacher_id = t.id
-		WHERE c.class_id = ?
-	`
-	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName, &semester, &schoolYear)
-	if err != nil {
-		log.Printf("Failed to get class info for DOCX export: %v", err)
-		subjectCode = fmt.Sprintf("class_%d", classID)
-		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
-	}
-
-	query := `
-		SELECT 
-			stu.student_id, stu.first_name, stu.middle_name, stu.last_name,
-			stu.email, stu.contact_number
-		FROM classlist cl
-		JOIN students stu ON cl.student_id = stu.id
-		WHERE cl.class_id = ?
-		ORDER BY stu.last_name, stu.first_name
-	`
-	rows, err := a.db.Query(query, classID)
+// ExportClasslistDOCX exports the classlist for a class to DOCX.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportClasslistDOCX(classID int, savePath string) (string, error) {
+	doc, subjectCode, studentCount, err := a.buildClasslistPrintableDocument(classID)
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
-
-	type StudentRecord struct {
-		StudentID, FirstName, MiddleName, LastName, Email, ContactNumber string
-	}
-	var students []StudentRecord
-	for rows.Next() {
-		var s StudentRecord
-		var middleName, email, contactNumber sql.NullString
-		if err := rows.Scan(&s.StudentID, &s.FirstName, &middleName, &s.LastName, &email, &contactNumber); err != nil {
-			continue
-		}
-		if middleName.Valid {
-			s.MiddleName = middleName.String
-		}
-		if email.Valid {
-			s.Email = email.String
-		}
-		if contactNumber.Valid {
-			s.ContactNumber = contactNumber.String
-		}
-		students = append(students, s)
-	}
-
-	subjectNameVal := "N/A"
-	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
-		subjectNameVal = subjectName.String
-	}
-	scheduleVal := "N/A"
-	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
-		scheduleVal = schedule.String
-	}
-	roomVal := "N/A"
-	if room.Valid && strings.TrimSpace(room.String) != "" {
-		roomVal = room.String
-	}
-	syVal := "N/A"
-	if schoolYear.Valid && strings.TrimSpace(schoolYear.String) != "" {
-		syVal = schoolYear.String
-	}
-	semVal := "N/A"
-	if semester.Valid && strings.TrimSpace(semester.String) != "" {
-		semVal = semester.String
-	}
-
-	title := fmt.Sprintf("Class List — %s: %s | SY %s %s", subjectCode, subjectNameVal, syVal, semVal)
-	headers := []string{"No.", "Student ID", "Name", "Email", "Contact"}
-	var docxRows [][]string
-	for i, s := range students {
-		middleInitial := ""
-		if strings.TrimSpace(s.MiddleName) != "" {
-			middleInitial = fmt.Sprintf(" %s.", strings.ToUpper(string(s.MiddleName[0])))
-		}
-		fullName := fmt.Sprintf("%s, %s%s", s.LastName, s.FirstName, middleInitial)
-		email := s.Email
-		if strings.TrimSpace(email) == "" {
-			email = "—"
-		}
-		contact := s.ContactNumber
-		if strings.TrimSpace(contact) == "" {
-			contact = "—"
-		}
-		docxRows = append(docxRows, []string{fmt.Sprintf("%d", i+1), s.StudentID, fullName, email, contact})
-	}
-	_ = scheduleVal
-	_ = roomVal
-
-	data, err := generateDocx(title, headers, docxRows)
+	data, err := generatePrintableDocx(doc)
 	if err != nil {
 		return "", err
 	}
 
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("classlist_%s_%s.docx", subjectCode, time.Now().Format("20060102_150405")))
+	defaultName := fmt.Sprintf("classlist_%s_%s.docx", subjectCode, time.Now().Format("20060102_150405"))
+	filename := resolveExportPath(savePath, defaultName)
 	if err := os.WriteFile(filename, data, 0644); err != nil {
 		return "", fmt.Errorf("failed to write docx: %w", err)
 	}
-	log.Printf("Classlist exported to DOCX: %s (%d students)", filename, len(students))
+	log.Printf("Classlist exported to DOCX: %s (%d students)", filename, studentCount)
 	return filename, nil
 }

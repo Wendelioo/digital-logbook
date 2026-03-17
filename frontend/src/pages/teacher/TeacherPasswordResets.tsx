@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Search, Filter, X } from 'lucide-react';
 import {
   GetPendingPasswordResets,
   ApprovePasswordReset,
@@ -20,6 +20,11 @@ function TeacherPasswordResets() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [resolvingId, setResolvingId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyDateFrom, setHistoryDateFrom] = useState('');
+  const [historyDateTo, setHistoryDateTo] = useState('');
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<'all' | 'approved' | 'rejected'>('all');
+  const [showHistoryFilters, setShowHistoryFilters] = useState(false);
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
@@ -93,6 +98,39 @@ function TeacherPasswordResets() {
       setResolvingId(null);
     }
   };
+
+  const filteredHistory = history.filter((req) => {
+    // Status filter
+    if (historyStatusFilter !== 'all' && req.status !== historyStatusFilter) {
+      return false;
+    }
+
+    // Date filter (by requested_at date portion)
+    if (historyDateFrom || historyDateTo) {
+      const raw = req.requested_at || '';
+      const dateOnly = raw.split(/[T\s]/)[0];
+      if (historyDateFrom && dateOnly < historyDateFrom) return false;
+      if (historyDateTo && dateOnly > historyDateTo) return false;
+    }
+
+    // Text search
+    if (historySearch) {
+      const q = historySearch.toLowerCase();
+      const inStudent =
+        (req.student_name || '').toLowerCase().includes(q) ||
+        (req.student_code || '').toLowerCase().includes(q);
+      const inSubject =
+        (req.subject_code || '').toLowerCase().includes(q) ||
+        (req.subject_name || '').toLowerCase().includes(q);
+      if (!inStudent && !inSubject) return false;
+    }
+
+    return true;
+  });
+
+  const activeHistoryFilterCount =
+    (historyDateFrom || historyDateTo ? 1 : 0) +
+    (historyStatusFilter !== 'all' ? 1 : 0);
 
   return (
     <div className="p-6 space-y-6">
@@ -182,15 +220,141 @@ function TeacherPasswordResets() {
 
       {/* History */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-gray-900">Request History</h2>
-            <span className="text-xs text-gray-400">(last 50)</span>
+        <div className="flex flex-col gap-3 px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold text-gray-900">Request History</h2>
+              <span className="text-xs text-gray-400">(last 50)</span>
+            </div>
+            {loadingHistory && (
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <RefreshCw className="h-3 w-3 animate-spin" /> Loading…
+              </span>
+            )}
           </div>
-          {loadingHistory && (
-            <span className="text-xs text-gray-400 flex items-center gap-1">
-              <RefreshCw className="h-3 w-3 animate-spin" /> Loading…
-            </span>
+
+          {history.length > 0 && (
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              {/* Search bar */}
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search student or subject..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+                {historySearch && (
+                  <button
+                    type="button"
+                    onClick={() => setHistorySearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Filter button (date + status) */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowHistoryFilters(v => !v)}
+                  className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${
+                    showHistoryFilters || activeHistoryFilterCount > 0
+                      ? 'bg-primary-50 border-primary-500 text-primary-700'
+                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <Filter className="h-4 w-4" />
+                  <span>Filter</span>
+                  {activeHistoryFilterCount > 0 && (
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary-500 text-white text-xs font-bold">
+                      {activeHistoryFilterCount}
+                    </span>
+                  )}
+                </button>
+
+                {showHistoryFilters && (
+                  <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                    <div className="p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-gray-800">Filters</span>
+                        {activeHistoryFilterCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setHistoryDateFrom('');
+                              setHistoryDateTo('');
+                              setHistoryStatusFilter('all');
+                            }}
+                            className="text-xs text-primary-600 hover:underline"
+                          >
+                            Clear all
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Date range */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Requested Date</label>
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1 min-w-0">
+                            <input
+                              type="date"
+                              value={historyDateFrom}
+                              onChange={(e) => setHistoryDateFrom(e.target.value)}
+                              className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                          </div>
+                          <span className="text-xs font-medium text-gray-500 shrink-0">to</span>
+                          <div className="relative flex-1 min-w-0">
+                            <input
+                              type="date"
+                              value={historyDateTo}
+                              onChange={(e) => setHistoryDateTo(e.target.value)}
+                              className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Status filter */}
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+                        <div className="relative">
+                          <select
+                            value={historyStatusFilter}
+                            onChange={(e) => setHistoryStatusFilter(e.target.value as 'all' | 'approved' | 'rejected')}
+                            className="w-full border border-gray-300 rounded-lg pl-3 pr-9 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 appearance-none bg-white"
+                          >
+                            <option value="all">All</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                          </select>
+                          <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setShowHistoryFilters(false)}
+                          className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-primary-600 rounded-lg hover:bg-primary-700"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </div>
 
@@ -211,7 +375,7 @@ function TeacherPasswordResets() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {history.map(req => (
+                {filteredHistory.map(req => (
                   <tr key={req.id} className="hover:bg-gray-50/60 transition-colors">
                     <td className="px-6 py-3">
                       <p className="font-medium text-gray-900">{req.student_name}</p>

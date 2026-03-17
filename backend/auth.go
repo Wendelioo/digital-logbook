@@ -47,22 +47,14 @@ func (a *App) Login(username, password string) (*User, error) {
 		return nil, err
 	}
 
-	// Support both hashed (bcrypt) and legacy plaintext passwords.
+	// Only support hashed (bcrypt) passwords. Legacy plaintext passwords are no longer allowed.
 	if strings.HasPrefix(storedPassword, "$2a$") || strings.HasPrefix(storedPassword, "$2b$") || strings.HasPrefix(storedPassword, "$2y$") {
 		if err := bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(password)); err != nil {
 			return nil, fmt.Errorf("invalid credentials")
 		}
 	} else {
-		// Legacy plaintext comparison; on success, upgrade to bcrypt hash.
-		if storedPassword != password {
-			return nil, fmt.Errorf("invalid credentials")
-		}
-		hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-		if err == nil {
-			if _, err := a.db.Exec(`UPDATE users SET password = ? WHERE id = ?`, string(hashed), user.ID); err != nil {
-				log.Printf("Failed to upgrade password hash for user %d: %v", user.ID, err)
-			}
-		}
+		log.Printf("LOGIN ERROR: User '%s' has unsupported legacy password format", username)
+		return nil, fmt.Errorf("invalid credentials")
 	}
 
 	// Enforce 4-year validity for student accounts (including working students)
@@ -221,15 +213,14 @@ func (a *App) ChangePassword(username, oldPassword, newPassword string) error {
 		return err
 	}
 
-	// Support both hashed and legacy plaintext for the existing password.
+	// Only support hashed (bcrypt) passwords for the existing password.
 	if strings.HasPrefix(storedPassword, "$2a$") || strings.HasPrefix(storedPassword, "$2b$") || strings.HasPrefix(storedPassword, "$2y$") {
 		if err := bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(oldPassword)); err != nil {
 			return fmt.Errorf("current password is incorrect")
 		}
 	} else {
-		if storedPassword != oldPassword {
-			return fmt.Errorf("current password is incorrect")
-		}
+		log.Printf("ChangePassword: user %s has unsupported legacy password format", username)
+		return fmt.Errorf("current password is incorrect")
 	}
 
 	// Hash new password before saving
@@ -458,6 +449,13 @@ func (a *App) RequestPasswordReset(studentCode string, teacherUserID int, newPas
 	}
 
 	log.Printf("Password reset request submitted: student=%d teacher=%d", studentUserID, teacherUserID)
+
+	// Notify the teacher about the new password reset request
+	go a.createNotification(teacherUserID, "password_reset",
+		"Password Reset Request",
+		fmt.Sprintf("Student %s submitted a password reset request.", code),
+		"info", notifRef("password_reset"), nil)
+
 	return nil
 }
 
@@ -549,6 +547,13 @@ func (a *App) ApprovePasswordReset(teacherUserID, requestID int) error {
 	}
 
 	log.Printf("Password reset approved: request=%d student=%d teacher=%d", requestID, studentUserID, teacherUserID)
+
+	// Notify the student that their password reset was approved
+	go a.createNotification(studentUserID, "password_reset",
+		"Password Reset Approved",
+		"Your password reset request has been approved by your teacher.",
+		"success", notifRef("password_reset"), notifRefID(requestID))
+
 	return nil
 }
 
@@ -564,6 +569,10 @@ func (a *App) RejectPasswordReset(teacherUserID, requestID int) error {
 		return err
 	}
 
+	// Look up the student for notification
+	var studentUserID int
+	_ = a.db.QueryRow(`SELECT student_user_id FROM password_reset_requests WHERE id = ? AND teacher_user_id = ?`, requestID, teacherUserID).Scan(&studentUserID)
+
 	result, err := a.db.Exec(`
 		UPDATE password_reset_requests
 		SET status = 'rejected', resolved_at = GETDATE()
@@ -577,6 +586,15 @@ func (a *App) RejectPasswordReset(teacherUserID, requestID int) error {
 		return fmt.Errorf("request not found, not assigned to you, or already resolved")
 	}
 	log.Printf("Password reset rejected: request=%d teacher=%d", requestID, teacherUserID)
+
+	// Notify the student that their password reset was rejected
+	if studentUserID > 0 {
+		go a.createNotification(studentUserID, "password_reset",
+			"Password Reset Rejected",
+			"Your password reset request has been rejected by your teacher.",
+			"warning", notifRef("password_reset"), notifRefID(requestID))
+	}
+
 	return nil
 }
 

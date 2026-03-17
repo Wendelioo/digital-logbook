@@ -11,7 +11,6 @@ export namespace backend {
 	    working_students_logged_in: number;
 	    today_logins: number;
 	    today_new_users: number;
-	    locked_accounts: number;
 	    pending_feedback: number;
 	
 	    static createFrom(source: any = {}) {
@@ -30,7 +29,6 @@ export namespace backend {
 	        this.working_students_logged_in = source["working_students_logged_in"];
 	        this.today_logins = source["today_logins"];
 	        this.today_new_users = source["today_new_users"];
-	        this.locked_accounts = source["locked_accounts"];
 	        this.pending_feedback = source["pending_feedback"];
 	    }
 	}
@@ -168,6 +166,32 @@ export namespace backend {
 	        this.is_editable = source["is_editable"];
 	    }
 	}
+	export class AttendanceHistoryRecord {
+	    class_id: number;
+	    subject_code: string;
+	    subject_name: string;
+	    section: string;
+	    date: string;
+	    session_name?: string;
+	    status: string;
+	    time_in?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AttendanceHistoryRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.class_id = source["class_id"];
+	        this.subject_code = source["subject_code"];
+	        this.subject_name = source["subject_name"];
+	        this.section = source["section"];
+	        this.date = source["date"];
+	        this.session_name = source["session_name"];
+	        this.status = source["status"];
+	        this.time_in = source["time_in"];
+	    }
+	}
 	export class AttendanceSession {
 	    session_id: number;
 	    class_id: number;
@@ -177,6 +201,7 @@ export namespace backend {
 	    class_duration_minutes?: number;
 	    grace_period_minutes?: number;
 	    opened_at?: string;
+	    paused_at?: string;
 	    closed_at?: string;
 	    subject_code: string;
 	    subject_name: string;
@@ -199,6 +224,7 @@ export namespace backend {
 	        this.class_duration_minutes = source["class_duration_minutes"];
 	        this.grace_period_minutes = source["grace_period_minutes"];
 	        this.opened_at = source["opened_at"];
+	        this.paused_at = source["paused_at"];
 	        this.closed_at = source["closed_at"];
 	        this.subject_code = source["subject_code"];
 	        this.subject_name = source["subject_name"];
@@ -466,6 +492,70 @@ export namespace backend {
 	        this.logout_time = source["logout_time"];
 	    }
 	}
+	export class Notification {
+	    id: number;
+	    user_id: number;
+	    category: string;
+	    title: string;
+	    message: string;
+	    tone: string;
+	    is_read: boolean;
+	    reference_type?: string;
+	    reference_id?: number;
+	    created_at: string;
+	    read_at?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Notification(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.user_id = source["user_id"];
+	        this.category = source["category"];
+	        this.title = source["title"];
+	        this.message = source["message"];
+	        this.tone = source["tone"];
+	        this.is_read = source["is_read"];
+	        this.reference_type = source["reference_type"];
+	        this.reference_id = source["reference_id"];
+	        this.created_at = source["created_at"];
+	        this.read_at = source["read_at"];
+	    }
+	}
+	export class NotificationSummary {
+	    notifications: Notification[];
+	    unread_count: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new NotificationSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.notifications = this.convertValues(source["notifications"], Notification);
+	        this.unread_count = source["unread_count"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class PasswordResetRequest {
 	    id: number;
 	    student_user_id: number;
@@ -520,6 +610,28 @@ export namespace backend {
 	        this.submitted_at = source["submitted_at"];
 	    }
 	}
+	export class RegistrationHistoryEntry {
+	    first_name: string;
+	    last_name: string;
+	    middle_name?: string;
+	    submitted_at: string;
+	    processed_at: string;
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RegistrationHistoryEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.first_name = source["first_name"];
+	        this.last_name = source["last_name"];
+	        this.middle_name = source["middle_name"];
+	        this.submitted_at = source["submitted_at"];
+	        this.processed_at = source["processed_at"];
+	        this.status = source["status"];
+	    }
+	}
 	export class RegistrationRequest {
 	    student_id: string;
 	    last_name: string;
@@ -553,6 +665,7 @@ export namespace backend {
 	    currently_logged_in: boolean;
 	    current_pc_number?: string;
 	    enrolled_classes: number;
+	    archived_classes: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new StudentDashboard(source);
@@ -566,6 +679,7 @@ export namespace backend {
 	        this.currently_logged_in = source["currently_logged_in"];
 	        this.current_pc_number = source["current_pc_number"];
 	        this.enrolled_classes = source["enrolled_classes"];
+	        this.archived_classes = source["archived_classes"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -620,6 +734,11 @@ export namespace backend {
 	    department_code?: string;
 	    created: string;
 	    login_log_id: number;
+	    last_login_at?: string;
+	    last_login_ago?: string;
+	    deactivated_at?: string;
+	    deleted_at?: string;
+	    activity_status?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new User(source);
@@ -642,6 +761,11 @@ export namespace backend {
 	        this.department_code = source["department_code"];
 	        this.created = source["created"];
 	        this.login_log_id = source["login_log_id"];
+	        this.last_login_at = source["last_login_at"];
+	        this.last_login_ago = source["last_login_ago"];
+	        this.deactivated_at = source["deactivated_at"];
+	        this.deleted_at = source["deleted_at"];
+	        this.activity_status = source["activity_status"];
 	    }
 	}
 	export class WorkingStudentDashboard {

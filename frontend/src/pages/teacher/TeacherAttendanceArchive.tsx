@@ -13,11 +13,15 @@ import {
   ExportClasslistCSV,
   ExportClasslistPDF,
   ExportClasslistDOCX,
+  ExportArchivedAttendanceCSVByDate,
+  ExportArchivedAttendancePDFByDate,
+  ExportArchivedAttendanceDOCXByDate,
   GetArchivedAttendanceSheets,
   UnarchiveAttendanceSession,
   GetArchivedClasses,
   UnarchiveClass,
 } from '../../../wailsjs/go/backend/App';
+import { openExportSaveDialog, defaultClasslistFilename, defaultAttendanceFilename, type ExportFormat } from '../../utils/exportSaveDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class } from './types';
 
@@ -82,7 +86,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
       const filtered = archivedSheets.filter((sheet) => {
         const subjectName = (sheet.subject_name || '').toLowerCase();
         const subjectCode = (sheet.subject_code || '').toLowerCase();
-        const dateStr = new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).toLowerCase();
+        const dateStr = new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).toLowerCase();
         return subjectName.includes(searchLower) || subjectCode.includes(searchLower) || dateStr.includes(searchLower);
       });
       setFilteredAttendance(filtered);
@@ -171,17 +175,22 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
     }
   };
 
-  const handleDownloadArchivedClasslist = async (cls: Class, format: 'csv' | 'pdf' | 'docx') => {
+  const handleDownloadArchivedClasslist = async (cls: Class, format: ExportFormat) => {
     setDownloadingClasslist(cls.class_id);
     setClassExportDropdown(null);
+    const savePath = await openExportSaveDialog('Save classlist', defaultClasslistFilename(format), format);
+    if (!savePath) {
+      setDownloadingClasslist(null);
+      return;
+    }
     try {
       let filePath: string;
       if (format === 'csv') {
-        filePath = await ExportClasslistCSV(cls.class_id);
+        filePath = await ExportClasslistCSV(cls.class_id, savePath);
       } else if (format === 'pdf') {
-        filePath = await ExportClasslistPDF(cls.class_id);
+        filePath = await ExportClasslistPDF(cls.class_id, savePath);
       } else {
-        filePath = await ExportClasslistDOCX(cls.class_id);
+        filePath = await ExportClasslistDOCX(cls.class_id, savePath);
       }
       alert(`Archived classlist exported successfully.\nFile saved to: ${filePath}`);
     } catch (error) {
@@ -194,8 +203,12 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
 
   const getSheetKey = (sheet: any) => (sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`);
 
-  const handleDownloadArchivedAttendance = async (sheet: any, format: 'csv' | 'pdf' | 'docx') => {
+  const handleDownloadArchivedAttendance = async (sheet: any, format: ExportFormat) => {
     const key = sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`;
+
+    const defaultName = defaultAttendanceFilename(sheet.date, format, true);
+    const savePath = await openExportSaveDialog('Save archived attendance', defaultName, format);
+    if (!savePath) return;
 
     setDownloadingAttendance(key);
     setAttendanceExportDropdown(null);
@@ -203,11 +216,11 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
       const sessionId = Number(sheet.session_id) || 0;
       let filePath: string;
       if (format === 'csv') {
-        filePath = await (window as any).go.backend.App.ExportArchivedAttendanceCSVByDate(sheet.class_id, sheet.date, sessionId);
+        filePath = await ExportArchivedAttendanceCSVByDate(sheet.class_id, sheet.date, sessionId, savePath);
       } else if (format === 'pdf') {
-        filePath = await (window as any).go.backend.App.ExportArchivedAttendancePDFByDate(sheet.class_id, sheet.date, sessionId);
+        filePath = await ExportArchivedAttendancePDFByDate(sheet.class_id, sheet.date, sessionId, savePath);
       } else {
-        filePath = await (window as any).go.backend.App.ExportAttendanceDOCXByDate(sheet.class_id, sheet.date);
+        filePath = await ExportArchivedAttendanceDOCXByDate(sheet.class_id, sheet.date, sessionId, savePath);
       }
       alert(`Archived attendance sheet exported successfully.\nFile saved to: ${filePath}`);
     } catch (error) {
@@ -388,7 +401,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                     {currentAttendanceRecords.map((sheet) => (
                       <tr key={sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                          {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           <div className="font-medium">{sheet.subject_name}</div>

@@ -17,7 +17,11 @@ import {
   Users,
   Settings,
   Archive,
-  ArchiveRestore
+  ArchiveRestore,
+  RefreshCw,
+  UserCheck,
+  UserX,
+  Clock,
 } from 'lucide-react';
 import {
   GetUsers,
@@ -33,9 +37,31 @@ import {
   ResetPasswordByRole,
   DeactivateTeacher,
   DeleteExpiredDeactivatedUsers,
+  GetUsersByActivityStatus,
+  RunInactivityCheck,
+  ReactivateUser,
 } from '../../../wailsjs/go/backend/App';
 import { User as UserType, Department } from './types';
 import { useAuth } from '../../contexts/AuthContext';
+
+// ── Frontend time-ago helper ─────────────────────────────────────────────────
+function timeAgoFE(isoDateStr: string): string {
+  const past = new Date(isoDateStr);
+  const now = new Date();
+  const seconds = Math.floor((now.getTime() - past.getTime()) / 1000);
+
+  if (seconds < 60) return seconds <= 1 ? 'just now' : `${seconds} seconds ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return days === 1 ? '1 day ago' : `${days} days ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return months === 1 ? '1 month ago' : `${months} months ago`;
+  const years = Math.floor(days / 365);
+  return years === 1 ? '1 year ago' : `${years} years ago`;
+}
 
 interface ViewUserDetailsModalProps {
   user: UserType | null;
@@ -184,6 +210,13 @@ function UserManagement() {
   const [archivedLoading, setArchivedLoading] = useState(false);
   const [deleteExpiredLoading, setDeleteExpiredLoading] = useState(false);
 
+  // Activity-status tabs (Active / Archived / Deactivated / Deleted)
+  type ActivityTab = 'active' | 'archived' | 'deactivated' | 'deleted';
+  const [activityTab, setActivityTab] = useState<ActivityTab>('active');
+  const [activityUsers, setActivityUsers] = useState<UserType[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [inactivityCheckLoading, setInactivityCheckLoading] = useState(false);
+
   // Excel-like table state: sorting, filtering, selection, pagination
   type SortKey = 'name' | 'role' | 'created';
   const [sortKey, setSortKey] = useState<SortKey>('name');
@@ -274,6 +307,11 @@ function UserManagement() {
     loadDepartments();
   }, [userTypeFilter, searchTerm]); // Reload when filters change
 
+  // Reload activity tab users whenever the selected tab changes
+  useEffect(() => {
+    loadActivityUsers(activityTab);
+  }, [activityTab]);
+
   useEffect(() => {
     setCurrentPage(1); // Reset to first page when filters change
   }, [userTypeFilter, searchTerm, entriesPerPage]);
@@ -294,26 +332,20 @@ function UserManagement() {
 
       // Use server-side filtering for better performance
       if (searchTerm && userTypeFilter) {
-        // Search with user type filter
         data = await SearchUsers(searchTerm, userTypeFilter);
       } else if (searchTerm) {
-        // Search all users
         data = await SearchUsers(searchTerm, '');
       } else if (userTypeFilter) {
-        // Filter by user type only
         data = await GetUsersByType(userTypeFilter);
       } else {
-        // Get all users
         data = await GetUsers();
       }
 
-      // Ensure data is always an array, even if API returns null/undefined
       setUsers(data || []);
       setError('');
     } catch (error) {
       console.error('Failed to load users:', error);
       setError('Unable to load users from server.');
-      // Set empty array on error to prevent blank screen
       setUsers([]);
     } finally {
       setLoading(false);
@@ -335,10 +367,56 @@ function UserManagement() {
     }
   };
 
+  const loadActivityUsers = async (tab: 'active' | 'archived' | 'deactivated' | 'deleted') => {
+    setActivityLoading(true);
+    try {
+      const data = await GetUsersByActivityStatus(tab);
+      setActivityUsers(data || []);
+    } catch (error) {
+      console.error('Failed to load activity users:', error);
+      setActivityUsers([]);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load accounts.';
+      showNotification('error', errorMessage);
+    } finally {
+      setActivityLoading(false);
+    }
+  };
+
+  const handleRunInactivityCheck = async () => {
+    if (!confirm('Run inactivity check?\n\n• Accounts with no login for 6+ months will be auto-deactivated.\n• Accounts deactivated for 4+ years will be flagged for deletion.')) return;
+    setInactivityCheckLoading(true);
+    try {
+      const result = await RunInactivityCheck();
+      const deactivated = (result as Record<string, number>)['deactivated'] ?? 0;
+      const deleted = (result as Record<string, number>)['deleted'] ?? 0;
+      showNotification('success', `Inactivity check complete: ${deactivated} account(s) deactivated, ${deleted} flagged for deletion.`);
+      loadActivityUsers(activityTab);
+      loadUsers();
+    } catch (error) {
+      console.error('Inactivity check failed:', error);
+      showNotification('error', error instanceof Error ? error.message : 'Inactivity check failed.');
+    } finally {
+      setInactivityCheckLoading(false);
+    }
+  };
+
+  const handleReactivate = async (user: UserType) => {
+    const name = user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.name;
+    if (!confirm(`Reactivate ${name}? Their account will be restored to active status.`)) return;
+    try {
+      await ReactivateUser(user.id);
+      showNotification('success', `${name} has been reactivated.`);
+      loadActivityUsers(activityTab);
+      loadUsers();
+    } catch (error) {
+      console.error('Failed to reactivate user:', error);
+      showNotification('error', error instanceof Error ? error.message : 'Failed to reactivate account.');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // Validate required fields based on role
       if (!formData.firstName || !formData.lastName) {
         showNotification('error', 'First Name and Last Name are required');
         return;
@@ -366,33 +444,21 @@ function UserManagement() {
         }
       }
 
-      // Build name from lastName, firstName, middleName
       const fullName = `${formData.lastName}, ${formData.firstName}${formData.middleName ? ' ' + formData.middleName : ''}`;
 
       // For new users, password is required
       // For editing, if password is empty, we keep the old password (backend handles this)
       let password_to_pass = formData.password;
 
-      // If creating a new user and no password provided, show error
       if (!editingUser && !password_to_pass) {
         showNotification('error', 'Password is required for new users');
         return;
       }
 
-      // Validate password confirmation for new users
       if (!editingUser && formData.password !== formData.confirmPassword) {
         showNotification('error', 'Passwords do not match');
         return;
       }
-
-      console.log('Submitting user with data:', {
-        role: formData.role,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        middleName: formData.middleName,
-        employeeId: formData.employeeId,
-        studentId: formData.studentId
-      });
 
       const departmentCode = formData.role === 'teacher' ? formData.departmentCode : '';
 
@@ -402,7 +468,6 @@ function UserManagement() {
       } else {
         await CreateUser(password_to_pass, fullName, formData.firstName, formData.middleName, formData.lastName, formData.role, formData.employeeId, formData.studentId, formData.email, formData.contactNumber, departmentCode);
 
-        // Show specific notification based on user role
         const roleMessages = {
           'student': 'Student added successfully!',
           'working_student': 'Working student added successfully!',
@@ -467,6 +532,7 @@ function UserManagement() {
       await DeleteUser(id);
       showNotification('success', 'User deleted successfully!');
       loadUsers();
+      loadActivityUsers(activityTab);
       if (showArchivedModal) {
         loadArchivedUsers();
       }
@@ -503,6 +569,7 @@ function UserManagement() {
       showNotification('success', 'Archived account restored successfully!');
       loadArchivedUsers();
       loadUsers();
+      loadActivityUsers(activityTab);
     } catch (error) {
       console.error('Failed to restore archived user:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to restore account. Please try again.';
@@ -520,6 +587,7 @@ function UserManagement() {
       showNotification('success', 'Account deleted permanently.');
       loadArchivedUsers();
       loadUsers();
+      loadActivityUsers(activityTab);
     } catch (error) {
       console.error('Failed to delete archived user:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to delete account. Please try again.';
@@ -535,6 +603,7 @@ function UserManagement() {
       showNotification('success', `${count} expired deactivated account(s) deleted permanently.`);
       loadArchivedUsers();
       loadUsers();
+      loadActivityUsers(activityTab);
     } catch (error) {
       console.error('Failed to delete expired deactivated users:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to delete expired accounts. Please try again.';
@@ -587,9 +656,11 @@ function UserManagement() {
 
   // Derived table data (filters, sort, pagination)
   // Note: userTypeFilter and searchTerm are now handled server-side
+  // Build a lookup map from activityUsers (which contains last-login data) keyed by user ID
+  const activityByID = new Map(activityUsers.map((u) => [u.id, u]));
+
   // Only column-specific filters are applied here
   const filteredUsers = users.filter((u) => {
-    // Column-specific filters
     const inName = u.name.toLowerCase().includes(filters.name.toLowerCase());
     const inRole = u.role.toLowerCase().includes(filters.role.toLowerCase());
     const inCreated = (u.created || '').toLowerCase().includes(filters.created.toLowerCase());
@@ -636,14 +707,13 @@ function UserManagement() {
         <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
         <div className="flex items-center gap-2">
           <Button
-            onClick={() => {
-              setShowArchivedModal(true);
-              loadArchivedUsers();
-            }}
+            onClick={handleRunInactivityCheck}
             variant="outline"
-            icon={<Archive className="h-4 w-4" />}
+            icon={<RefreshCw className={`h-4 w-4 ${inactivityCheckLoading ? 'animate-spin' : ''}`} />}
+            disabled={inactivityCheckLoading}
+            title="Auto-deactivate accounts inactive 6+ months; flag accounts inactive 4+ years for deletion"
           >
-            Archive
+            Inactivity Check
           </Button>
           <Button
             onClick={() => setShowForm(true)}
@@ -1062,181 +1132,372 @@ function UserManagement() {
         )}
       </Modal>
 
-      <div className="mb-6 flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <div className="text-sm text-gray-600">
-            Show <select
-              value={entriesPerPage}
-              onChange={(e) => {
-                setEntriesPerPage(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="border border-gray-300 rounded px-2 py-1 mx-1"
-            >
-              <option value="10">10</option>
-              <option value="25">25</option>
-              <option value="50">50</option>
-              <option value="100">100</option>
-            </select> entries
-          </div>
+      {/* ── Activity Status Tabs ─────────────────────────────────────────────── */}
+      <div className="mt-6 mb-4">
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex gap-1" aria-label="Account status tabs">
+            {(
+              [
+                { key: 'active',      label: 'Active',      icon: <UserCheck className="h-4 w-4" />,  color: 'text-green-600',  border: 'border-green-500'  },
+                { key: 'archived',    label: 'Archived',    icon: <Archive className="h-4 w-4" />,    color: 'text-yellow-600', border: 'border-yellow-500' },
+                { key: 'deactivated', label: 'Deactivated', icon: <UserX className="h-4 w-4" />,      color: 'text-orange-600', border: 'border-orange-500' },
+                { key: 'deleted',     label: 'Pending Deletion', icon: <Trash2 className="h-4 w-4" />, color: 'text-red-600',  border: 'border-red-500'    },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActivityTab(tab.key)}
+                className={`
+                  flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors
+                  ${activityTab === tab.key
+                    ? `${tab.border} ${tab.color} bg-white`
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
+                `}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </nav>
         </div>
-        <div className="flex items-center gap-4">
-          <select
-            value={userTypeFilter}
-            onChange={(e) => setUserTypeFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          >
-            <option value="">All Users</option>
-            <option value="teacher">Teacher</option>
-            <option value="student">Student</option>
-            <option value="working_student">Working Student</option>
-          </select>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+
+        {/* Tab description */}
+        <div className="mt-2 mb-4 text-xs text-gray-500">
+          {activityTab === 'active' && (
+            <span className="flex items-center gap-1"><UserCheck className="h-3.5 w-3.5 text-green-500" /> Currently active accounts — last login within the past 6 months.</span>
+          )}
+          {activityTab === 'archived' && (
+            <span className="flex items-center gap-1"><Archive className="h-3.5 w-3.5 text-yellow-500" /> Manually archived accounts. Restore to allow login again.</span>
+          )}
+          {activityTab === 'deactivated' && (
+            <span className="flex items-center gap-1"><UserX className="h-3.5 w-3.5 text-orange-500" /> Auto-deactivated after 6+ months of inactivity — only admin can reactivate. Accounts deactivated for 4+ years are flagged for deletion.</span>
+          )}
+          {activityTab === 'deleted' && (
+            <span className="flex items-center gap-1"><Trash2 className="h-3.5 w-3.5 text-red-500" /> Accounts inactive for 4+ years — pending permanent deletion. Admin can still restore them or remove them now.</span>
+          )}
         </div>
+
+        {/* Activity users table — only shown for non-active tabs */}
+        {activityTab !== 'active' && (activityLoading ? (
+          <div className="flex items-center justify-center h-40">
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+          </div>
+        ) : activityUsers.length === 0 ? (
+          <div className="bg-white rounded-lg shadow border border-gray-100 py-12 text-center text-gray-400">
+            <Users className="h-10 w-10 mx-auto mb-2 opacity-30" />
+            <p>No {activityTab} accounts found.</p>
+          </div>
+        ) : (
+          <div className="bg-white shadow rounded-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User ID</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Last Login</span>
+                    </th>
+                    {activityTab === 'deactivated' && (
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deactivated</th>
+                    )}
+                    {activityTab === 'deleted' && (
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Flagged For Deletion</th>
+                    )}
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {activityUsers.map((user) => {
+                    const displayId = user.employee_id || user.student_id || user.name || '-';
+                    const fullName = user.first_name && user.last_name
+                      ? `${user.last_name}, ${user.first_name}${user.middle_name ? ' ' + user.middle_name : ''}`
+                      : user.name;
+                    return (
+                      <tr key={user.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 whitespace-nowrap font-medium text-gray-900">{displayId}</td>
+                        <td className="px-4 py-3 text-gray-800">{fullName}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold
+                            ${user.role === 'teacher' ? 'bg-blue-100 text-blue-700'
+                              : user.role === 'admin' ? 'bg-purple-100 text-purple-700'
+                              : user.role === 'working_student' ? 'bg-teal-100 text-teal-700'
+                              : 'bg-green-100 text-green-700'}`}>
+                            {user.role.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`font-medium ${
+                            !user.last_login_ago || user.last_login_ago === 'Never logged in'
+                              ? 'text-gray-400 italic'
+                              : 'text-gray-700'
+                          }`}>
+                            {user.last_login_ago || 'Never logged in'}
+                          </span>
+                          {user.last_login_at && (
+                            <div className="text-xs text-gray-400 mt-0.5">{user.last_login_at}</div>
+                          )}
+                        </td>
+                        {activityTab === 'deactivated' && (
+                          <td className="px-4 py-3 whitespace-nowrap text-gray-500 text-xs">
+                            {user.deactivated_at
+                              ? <><div className="font-medium text-orange-600">{timeAgoFE(user.deactivated_at)}</div><div className="text-gray-400">{user.deactivated_at}</div></>
+                              : '-'}
+                          </td>
+                        )}
+                        {activityTab === 'deleted' && (
+                          <td className="px-4 py-3 whitespace-nowrap text-gray-500 text-xs">
+                            {user.deleted_at
+                              ? <><div className="font-medium text-red-600">{timeAgoFE(user.deleted_at)}</div><div className="text-gray-400">{user.deleted_at}</div></>
+                              : '-'}
+                          </td>
+                        )}
+                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {/* Archived tab actions */}
+                            {activityTab === 'archived' && (
+                              <>
+                                <Button onClick={() => handleRestoreArchived(user.id)} variant="success" size="sm" icon={<ArchiveRestore className="h-3 w-3" />} title="Restore" />
+                                <Button onClick={() => handleDeleteArchivedUser(user)} variant="danger" size="sm" icon={<Trash2 className="h-3 w-3" />} title="Delete permanently" />
+                              </>
+                            )}
+                            {/* Deactivated tab actions */}
+                            {activityTab === 'deactivated' && (
+                              <>
+                                <Button onClick={() => handleReactivate(user)} variant="success" size="sm" icon={<UserCheck className="h-3 w-3" />} title="Reactivate account" >
+                                  Reactivate
+                                </Button>
+                                <Button onClick={() => handleDelete(user.id)} variant="danger" size="sm" icon={<Trash2 className="h-3 w-3" />} title="Permanently delete" />
+                              </>
+                            )}
+                            {/* Deleted (pending deletion) tab actions */}
+                            {activityTab === 'deleted' && (
+                              <>
+                                <Button onClick={() => handleReactivate(user)} variant="success" size="sm" icon={<UserCheck className="h-3 w-3" />} title="Restore account" >
+                                  Restore
+                                </Button>
+                                <Button
+                                  onClick={async () => {
+                                    const name = user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.name;
+                                    if (!confirm(`Permanently delete ${name}? This cannot be undone.`)) return;
+                                    try { await DeleteUser(user.id); showNotification('success', 'Account permanently deleted.'); loadActivityUsers(activityTab); }
+                                    catch (error) { showNotification('error', error instanceof Error ? error.message : 'Failed to delete.'); }
+                                  }}
+                                  variant="danger" size="sm" icon={<Trash2 className="h-3 w-3" />} title="Delete permanently"
+                                >
+                                  Delete Now
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
       </div>
 
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table
-            columns={[
-              {
-                key: 'user_id',
-                label: 'User ID',
-                render: (user: UserType) => user.employee_id || user.student_id || user.name || '-'
-              },
-              {
-                key: 'name',
-                label: 'Full Name',
-                sortable: true,
-                render: (user: UserType) => user.first_name && user.last_name
-                  ? `${user.last_name}, ${user.first_name}${user.middle_name ? ' ' + user.middle_name : ''}`
-                  : user.name
-              },
-              {
-                key: 'role',
-                label: 'User Type',
-                sortable: true,
-                render: (user: UserType) => (
-                  <StatusBadge
-                    status={user.role === 'teacher' ? 'success' : user.role === 'student' ? 'active' : 'pending'}
-                    label={user.role.replace('_', ' ')}
-                  />
-                )
-              },
-              {
-                key: 'action',
-                label: 'Action',
-                render: (user: UserType) => (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      onClick={() => setViewingUser(user)}
-                      variant="outline"
-                      size="sm"
-                      icon={<Eye className="h-3 w-3" />}
-                      title="View"
-                    />
-                    <Button
-                      onClick={() => handleEdit(user)}
-                      variant="primary"
-                      size="sm"
-                      icon={<Edit className="h-3 w-3" />}
-                      title="Edit"
-                    />
-                    {user.role !== 'admin' && (
-                      <Button
-                        onClick={() => handleResetPassword(user)}
-                        variant="outline"
-                        size="sm"
-                        icon={<Settings className="h-3 w-3" />}
-                        title="Reset Password"
-                      />
-                    )}
-                    {user.role === 'teacher' ? (
-                      <Button
-                        onClick={async () => {
-                          if (!confirm('Deactivate this teacher account? It will become inactive but remain for records and can be restored within 30 days.')) {
-                            return;
-                          }
-                          try {
-                            await DeactivateTeacher(user.id);
-                            showNotification('success', 'Teacher account deactivated.');
-                            loadUsers();
-                          } catch (error) {
-                            console.error('Failed to deactivate teacher:', error);
-                            const errorMessage = error instanceof Error ? error.message : 'Failed to deactivate teacher account. Please try again.';
-                            showNotification('error', errorMessage);
-                          }
-                        }}
-                        variant="outline"
-                        size="sm"
-                        icon={<Archive className="h-3 w-3" />}
-                        title="Deactivate"
-                      />
-                    ) : user.role !== 'admin' ? (
-                      <Button
-                        onClick={() => handleArchive(user)}
-                        variant="outline"
-                        size="sm"
-                        icon={<Archive className="h-3 w-3" />}
-                        title="Archive"
-                      />
-                    ) : null}
-                  </div>
-                )
-              }
-            ]}
-            data={currentUsers}
-            loading={loading}
-            emptyMessage="No users found"
-          />
-        </div>
-        {currentUsers.length > 0 && (
-          <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
-            <div className="text-sm text-gray-600">
-              Showing {startEntry} to {endEntry} of {sortedUsers.length} entries
-            </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                variant="outline"
-                size="sm"
-              >
-                Previous
-              </Button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                <Button
-                  key={pageNum}
-                  onClick={() => setCurrentPage(pageNum)}
-                  variant={currentPage === pageNum ? "primary" : "outline"}
-                  size="sm"
+      {/* ── Active Users Table (full table with search/filter/pagination) ─── */}
+      {activityTab === 'active' && (
+        <>
+          <div className="mb-6 flex justify-between items-center">
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-gray-600">
+                Show <select
+                  value={entriesPerPage}
+                  onChange={(e) => { setEntriesPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                  className="border border-gray-300 rounded px-2 py-1 mx-1"
                 >
-                  {pageNum}
-                </Button>
-              ))}
-              <Button
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-                variant="outline"
-                size="sm"
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select> entries
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <select
+                value={userTypeFilter}
+                onChange={(e) => setUserTypeFilter(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               >
-                Next
-              </Button>
+                <option value="">All Users</option>
+                <option value="teacher">Teacher</option>
+                <option value="student">Student</option>
+                <option value="working_student">Working Student</option>
+              </select>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
           </div>
-        )}
-      </div>
+
+          <div className="bg-white shadow rounded-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table
+                columns={[
+                  {
+                    key: 'user_id',
+                    label: 'User ID',
+                    render: (user: UserType) => user.employee_id || user.student_id || user.name || '-'
+                  },
+                  {
+                    key: 'name',
+                    label: 'Full Name',
+                    sortable: true,
+                    render: (user: UserType) => user.first_name && user.last_name
+                      ? `${user.last_name}, ${user.first_name}${user.middle_name ? ' ' + user.middle_name : ''}`
+                      : user.name
+                  },
+                  {
+                    key: 'role',
+                    label: 'User Type',
+                    sortable: true,
+                    render: (user: UserType) => (
+                      <StatusBadge
+                        status={user.role === 'teacher' ? 'success' : user.role === 'student' ? 'active' : 'pending'}
+                        label={user.role.replace('_', ' ')}
+                      />
+                    )
+                  },
+                  {
+                    key: 'last_login',
+                    label: 'Last Login',
+                    render: (user: UserType) => {
+                      const info = activityByID.get(user.id);
+                      const ago = info?.last_login_ago;
+                      const at = info?.last_login_at;
+                      if (!ago || ago === 'Never logged in') {
+                        return <span className="text-gray-400 italic text-xs">Never logged in</span>;
+                      }
+                      return (
+                        <span>
+                          <span className="font-medium text-gray-700 text-sm">{ago}</span>
+                          {at && <div className="text-xs text-gray-400 mt-0.5">{at}</div>}
+                        </span>
+                      );
+                    }
+                  },
+                  {
+                    key: 'action',
+                    label: 'Action',
+                    render: (user: UserType) => (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          onClick={() => setViewingUser(user)}
+                          variant="outline"
+                          size="sm"
+                          icon={<Eye className="h-3 w-3" />}
+                          title="View"
+                        />
+                        <Button
+                          onClick={() => handleEdit(user)}
+                          variant="primary"
+                          size="sm"
+                          icon={<Edit className="h-3 w-3" />}
+                          title="Edit"
+                        />
+                        {user.role !== 'admin' && (
+                          <Button
+                            onClick={() => handleResetPassword(user)}
+                            variant="outline"
+                            size="sm"
+                            icon={<Settings className="h-3 w-3" />}
+                            title="Reset Password"
+                          />
+                        )}
+                        {user.role === 'teacher' ? (
+                          <Button
+                            onClick={async () => {
+                              if (!confirm('Deactivate this teacher account? It will become inactive but remain for records and can be restored within 30 days.')) {
+                                return;
+                              }
+                              try {
+                                await DeactivateTeacher(user.id);
+                                showNotification('success', 'Teacher account deactivated.');
+                                loadUsers();
+                              } catch (error) {
+                                console.error('Failed to deactivate teacher:', error);
+                                const errorMessage = error instanceof Error ? error.message : 'Failed to deactivate teacher account. Please try again.';
+                                showNotification('error', errorMessage);
+                              }
+                            }}
+                            variant="outline"
+                            size="sm"
+                            icon={<Archive className="h-3 w-3" />}
+                            title="Deactivate"
+                          />
+                        ) : user.role !== 'admin' ? (
+                          <Button
+                            onClick={() => handleArchive(user)}
+                            variant="outline"
+                            size="sm"
+                            icon={<Archive className="h-3 w-3" />}
+                            title="Archive"
+                          />
+                        ) : null}
+                      </div>
+                    )
+                  }
+                ]}
+                data={currentUsers}
+                loading={loading}
+                emptyMessage="No users found"
+              />
+            </div>
+            {currentUsers.length > 0 && (
+              <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
+                <div className="text-sm text-gray-600">
+                  Showing {startEntry} to {endEntry} of {sortedUsers.length} entries
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Previous
+                  </Button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                    <Button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      variant={currentPage === pageNum ? "primary" : "outline"}
+                      size="sm"
+                    >
+                      {pageNum}
+                    </Button>
+                  ))}
+                  <Button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 export default UserManagement;
+

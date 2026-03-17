@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -63,8 +65,17 @@ func (a *App) startup(ctx context.Context) {
 		if err := a.ensureSessionHeartbeatTable(); err != nil {
 			log.Printf("Failed to ensure session heartbeat table: %v", err)
 		}
+		if err := a.ensureActivityTrackingColumns(); err != nil {
+			log.Printf("Failed to ensure activity tracking columns: %v", err)
+		}
 		if err := a.closeStaleSessions(); err != nil {
 			log.Printf("Failed to close stale sessions on startup: %v", err)
+		}
+		if err := a.ensureNotificationsTable(); err != nil {
+			log.Printf("Failed to ensure notifications table: %v", err)
+		}
+		if err := a.CleanOldNotifications(); err != nil {
+			log.Printf("Failed to clean old notifications: %v", err)
 		}
 	}
 
@@ -85,6 +96,31 @@ func (a *App) shutdown(ctx context.Context) {
 	if err := a.CloseSessionsForCurrentHost(); err != nil {
 		log.Printf("Failed to close sessions on app shutdown: %v", err)
 	}
+}
+
+// SaveFileDialog opens the native Save As dialog so the user can choose where to save a file
+// (e.g. Documents or any folder). Returns the chosen path, or empty string if cancelled.
+// defaultFilename is the suggested name (e.g. "classlist_math_20240101.csv").
+// filterDisplayName and filterPattern set the file type filter (e.g. "CSV files", "*.csv").
+func (a *App) SaveFileDialog(title string, defaultFilename string, filterDisplayName string, filterPattern string) (string, error) {
+	homeDir, _ := os.UserHomeDir()
+	defaultDir := filepath.Join(homeDir, "Documents")
+	// DefaultDirectory must exist; fallback to home if Documents is missing
+	if _, err := os.Stat(defaultDir); err != nil {
+		defaultDir = homeDir
+	}
+	path, err := wailsRuntime.SaveFileDialog(a.ctx, wailsRuntime.SaveDialogOptions{
+		Title:            title,
+		DefaultFilename:  defaultFilename,
+		DefaultDirectory: defaultDir,
+		Filters: []wailsRuntime.FileFilter{
+			{DisplayName: filterDisplayName, Pattern: filterPattern},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // ==============================================================================
@@ -144,6 +180,12 @@ type User struct {
 	DepartmentCode *string `json:"department_code"`
 	Created        string  `json:"created"`
 	LoginLogID     int     `json:"login_log_id"` // Track the login session
+	// Activity tracking fields (populated by GetUsersByActivityStatus)
+	LastLoginAt    *string `json:"last_login_at,omitempty"`   // ISO datetime of last login
+	LastLoginAgo   string  `json:"last_login_ago,omitempty"`  // Human-readable "2 months ago"
+	DeactivatedAt  *string `json:"deactivated_at,omitempty"`  // When auto-deactivated by system
+	DeletedAt      *string `json:"deleted_at,omitempty"`      // When soft-deleted (4-year rule)
+	ActivityStatus string  `json:"activity_status,omitempty"` // active | archived | deactivated | deleted
 }
 
 // LoginLog represents a user login/logout session
@@ -230,7 +272,6 @@ type AdminDashboard struct {
 	WorkingStudentsLoggedIn int `json:"working_students_logged_in"`
 	TodayLogins             int `json:"today_logins"`
 	TodayNewUsers           int `json:"today_new_users"`
-	LockedAccounts          int `json:"locked_accounts"`
 	PendingFeedback         int `json:"pending_feedback"`
 }
 
@@ -319,12 +360,6 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 		WHERE CAST(created_at AS DATE) = CAST(GETDATE() AS DATE)
 	`).Scan(&dashboard.TodayNewUsers)
 
-	// Count locked accounts
-	a.db.QueryRow(`
-		SELECT COUNT(*) FROM users 
-		WHERE account_lock = 1
-	`).Scan(&dashboard.LockedAccounts)
-
 	// Count pending feedback (forwarded to admin but not archived)
 	a.db.QueryRow(`
 		SELECT COUNT(*) FROM feedback 
@@ -407,6 +442,7 @@ type StudentDashboard struct {
 	CurrentlyLoggedIn bool         `json:"currently_logged_in"`
 	CurrentPCNumber   *string      `json:"current_pc_number"`
 	EnrolledClasses   int          `json:"enrolled_classes"`
+	ArchivedClasses   int          `json:"archived_classes"`
 }
 
 // GetStudentDashboard returns student dashboard data
@@ -527,6 +563,20 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 		FROM classlist 
 		WHERE student_id = ? AND status = 'active'
 	`, userID).Scan(&dashboard.EnrolledClasses)
+
+	// Count archived classes (teacher-archived via classes.is_archived OR student self-archived via student_archived_classes)
+	a.db.QueryRow(`
+		SELECT COUNT(DISTINCT cl.class_id)
+		FROM classlist cl
+		JOIN classes c ON cl.class_id = c.class_id
+		LEFT JOIN student_archived_classes sac ON sac.student_id = cl.student_id AND sac.class_id = cl.class_id
+		WHERE cl.student_id = ?
+		  AND cl.status = 'active'
+		  AND (
+			COALESCE(c.is_archived, 0) = 1
+			OR sac.class_id IS NOT NULL
+		  )
+	`, userID).Scan(&dashboard.ArchivedClasses)
 
 	return dashboard, nil
 }

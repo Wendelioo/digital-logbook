@@ -47,6 +47,16 @@ type ApprovalRequest struct {
 	RejectionReason string `json:"rejection_reason,omitempty"`
 }
 
+// RegistrationHistoryEntry is a non-sensitive record for registration history (name and status only)
+type RegistrationHistoryEntry struct {
+	FirstName   string  `json:"first_name"`
+	LastName    string  `json:"last_name"`
+	MiddleName  *string `json:"middle_name,omitempty"`
+	SubmittedAt string  `json:"submitted_at"`
+	ProcessedAt string  `json:"processed_at"`
+	Status      string  `json:"status"` // "approved" or "rejected"
+}
+
 // SubmitRegistration handles student self-registration
 func (a *App) SubmitRegistration(req RegistrationRequest) error {
 	if err := a.checkDB(); err != nil {
@@ -152,6 +162,13 @@ func (a *App) SubmitRegistration(req RegistrationRequest) error {
 	}
 
 	log.Printf("New registration submitted: Student ID %s (User ID: %d)", req.StudentID, userID)
+
+	// Notify all working students about new pending registration
+	go a.createNotificationForRole("working_student", "registration",
+		"New Registration",
+		fmt.Sprintf("Student %s submitted a registration request.", req.StudentID),
+		"info", notifRef("registration"), notifRefID64(userID))
+
 	return nil
 }
 
@@ -285,7 +302,71 @@ func (a *App) ProcessRegistration(req ApprovalRequest) error {
 	}
 
 	log.Printf("Registration %s: User ID %d by User ID %d", req.Action+"d", req.UserID, req.ApprovedBy)
+
+	// Notify the student about their registration result
+	if req.Action == "approve" {
+		go a.createNotification(req.UserID, "registration",
+			"Registration Approved",
+			"Your registration has been approved. You can now log in.",
+			"success", notifRef("registration"), notifRefID(req.UserID))
+	} else {
+		go a.createNotification(req.UserID, "registration",
+			"Registration Rejected",
+			fmt.Sprintf("Your registration was rejected: %s", req.RejectionReason),
+			"warning", notifRef("registration"), notifRefID(req.UserID))
+	}
+
 	return nil
+}
+
+// GetRegistrationHistory returns processed registration records with name and status only (no email, user ID, or student ID).
+func (a *App) GetRegistrationHistory() ([]RegistrationHistoryEntry, error) {
+	if err := a.checkDB(); err != nil {
+		return nil, err
+	}
+
+	query := `
+		SELECT 
+			s.first_name,
+			s.last_name,
+			s.middle_name,
+			u.created_at,
+			ra.processed_at,
+			ra.status
+		FROM registration_approvals ra
+		INNER JOIN users u ON u.id = ra.user_id
+		INNER JOIN students s ON s.id = ra.user_id
+		WHERE ra.status IN ('approved', 'rejected')
+		ORDER BY ra.processed_at DESC
+	`
+
+	rows, err := a.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch registration history: %v", err)
+	}
+	defer rows.Close()
+
+	var entries []RegistrationHistoryEntry
+	for rows.Next() {
+		var e RegistrationHistoryEntry
+		var submittedAt time.Time
+		var processedAt sql.NullTime
+		var middleName sql.NullString
+		err := rows.Scan(&e.FirstName, &e.LastName, &middleName, &submittedAt, &processedAt, &e.Status)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan registration history row: %v", err)
+		}
+		e.SubmittedAt = submittedAt.Format("2006-01-02 15:04:05")
+		if middleName.Valid {
+			e.MiddleName = &middleName.String
+		}
+		if processedAt.Valid {
+			e.ProcessedAt = processedAt.Time.Format("2006-01-02 15:04:05")
+		}
+		entries = append(entries, e)
+	}
+
+	return entries, nil
 }
 
 // ==============================================================================

@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import { ProtectedRoute, RoleRoute } from './components/ProtectedRoute';
 import AppErrorBoundary from './components/AppErrorBoundary';
 import LoginPage from './pages/LoginPage';
@@ -77,7 +78,9 @@ function App() {
   return (
     <AppErrorBoundary>
       <AuthProvider>
-        <AppRoutes />
+        <NotificationProvider>
+          <AppRoutes />
+        </NotificationProvider>
       </AuthProvider>
     </AppErrorBoundary>
   );

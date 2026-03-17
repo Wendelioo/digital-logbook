@@ -7,7 +7,7 @@
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "Wendel",
+    "name": "Wendel Enriquez, Pham Enciso, Nino Yvan Rivera, and Joseph Fernandez",
     "email": "wendelenriquezz@gmail.com"
   }
 }

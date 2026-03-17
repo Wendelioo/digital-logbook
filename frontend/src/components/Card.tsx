@@ -122,11 +122,11 @@ export const StatCard: React.FC<StatCardProps> = ({
   };
 
   return (
-    <Card className={`h-full min-w-0 border-l-4 border-l-primary-200 ${className}`}>
-      <CardBody className="p-3 sm:p-4 md:p-5">
-        <div className="flex flex-col gap-2 min-w-0">
+    <Card className={`min-w-0 border-l-4 border-l-primary-200 ${className}`}>
+      <CardBody noPadding className="p-3 sm:p-4">
+        <div className="flex items-center gap-3 min-w-0">
           {icon && (
-            <div className="flex-shrink-0 self-start">
+            <div className="flex-shrink-0">
               <div className={`${colorClasses[color]} rounded-lg p-2`}>
                 <div className="[&>svg]:h-4 [&>svg]:w-4 sm:[&>svg]:h-5 sm:[&>svg]:w-5">
                   {icon}
@@ -135,11 +135,11 @@ export const StatCard: React.FC<StatCardProps> = ({
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <dt className="text-[10px] sm:text-[11px] font-medium text-gray-600 uppercase tracking-wide leading-tight break-words">
+            <dt className="text-[10px] sm:text-xs font-medium text-gray-600 uppercase tracking-wide leading-tight truncate">
               {title}
             </dt>
-            <dd className="mt-1 flex items-end gap-2 flex-wrap min-w-0">
-              <span className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 leading-tight tabular-nums">
+            <dd className="mt-0.5 flex items-baseline gap-1.5 flex-wrap min-w-0">
+              <span className="text-xl sm:text-2xl font-semibold text-gray-900 leading-tight tabular-nums">
                 {value}
               </span>
               {trend && (

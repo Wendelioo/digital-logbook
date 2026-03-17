@@ -2,23 +2,19 @@ package backend
 
 import (
 	"database/sql"
-	"encoding/csv"
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/jung-kurt/gofpdf"
 )
 
 // ==============================================================================
 // LOGIN LOG QUERIES
 // ==============================================================================
 
-const maxActiveLogEntries = 50000
+const maxActiveLogEntries = 500
 
 // autoArchiveLogsIfNeeded checks the number of non-archived log entries and,
 // if a configured limit is exceeded, automatically archives the oldest logs by date.
@@ -409,8 +405,153 @@ func (a *App) getLogsByDateRange(startDate, endDate string) ([]LoginLog, error) 
 	return logs, nil
 }
 
+func parseLogExportTimestamp(value string) (time.Time, bool) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return time.Time{}, false
+	}
+
+	formats := []string{
+		"2006-01-02 15:04:05",
+		"2006-01-02T15:04:05",
+		time.RFC3339,
+		"2006-01-02",
+	}
+
+	for _, format := range formats {
+		parsed, err := time.Parse(format, trimmed)
+		if err == nil {
+			return parsed, true
+		}
+	}
+
+	return time.Time{}, false
+}
+
+func formatLogExportDate(value string) string {
+	parsed, ok := parseLogExportTimestamp(value)
+	if !ok {
+		return value
+	}
+	return parsed.Format("01/02/2006")
+}
+
+func formatLogExportDateTime(value string) string {
+	parsed, ok := parseLogExportTimestamp(value)
+	if !ok {
+		return value
+	}
+	return parsed.Format("01/02 3:04 PM")
+}
+
+func calculateLogExportDuration(loginTime string, logoutTime *string) string {
+	if logoutTime == nil || strings.TrimSpace(*logoutTime) == "" {
+		return ""
+	}
+
+	loginParsed, loginOK := parseLogExportTimestamp(loginTime)
+	logoutParsed, logoutOK := parseLogExportTimestamp(*logoutTime)
+	if !loginOK || !logoutOK || logoutParsed.Before(loginParsed) {
+		return ""
+	}
+
+	diff := logoutParsed.Sub(loginParsed)
+	hours := int(diff.Hours())
+	minutes := int(diff.Minutes()) % 60
+	return fmt.Sprintf("%dh %dm", hours, minutes)
+}
+
+func buildActiveLogExportRows(logs []LoginLog) [][]string {
+	rows := make([][]string, 0, len(logs))
+	for _, entry := range logs {
+		pc := "N/A"
+		if entry.PCNumber != nil && strings.TrimSpace(*entry.PCNumber) != "" {
+			pc = *entry.PCNumber
+		}
+
+		logout := ""
+		if entry.LogoutTime != nil && strings.TrimSpace(*entry.LogoutTime) != "" {
+			logout = formatLogExportDateTime(*entry.LogoutTime)
+		}
+
+		rows = append(rows, []string{
+			entry.UserName,
+			entry.UserIDNumber,
+			strings.ReplaceAll(entry.UserType, "_", " "),
+			pc,
+			formatLogExportDateTime(entry.LoginTime),
+			logout,
+			calculateLogExportDuration(entry.LoginTime, entry.LogoutTime),
+		})
+	}
+	return rows
+}
+
+func buildArchivedLogExportRows(logs []LoginLog) [][]string {
+	rows := make([][]string, 0, len(logs))
+	for _, entry := range logs {
+		pc := "N/A"
+		if entry.PCNumber != nil && strings.TrimSpace(*entry.PCNumber) != "" {
+			pc = *entry.PCNumber
+		}
+
+		logout := ""
+		if entry.LogoutTime != nil && strings.TrimSpace(*entry.LogoutTime) != "" {
+			logout = formatLogExportDateTime(*entry.LogoutTime)
+		}
+
+		rows = append(rows, []string{
+			formatLogExportDate(entry.LoginTime),
+			entry.UserName,
+			entry.UserIDNumber,
+			strings.ReplaceAll(entry.UserType, "_", " "),
+			pc,
+			formatLogExportDateTime(entry.LoginTime),
+			logout,
+		})
+	}
+	return rows
+}
+
+func buildActiveLogExportDocument(startDate, endDate string, logs []LoginLog) printableExportDocument {
+	rows := buildActiveLogExportRows(logs)
+	return printableExportDocument{
+		Title:            "Log Entries",
+		Subtitle:         fmt.Sprintf("Date Range: %s to %s", startDate, endDate),
+		Details:          nil,
+		TableTitle:       "LOG ENTRIES",
+		TableNote:        "",
+		Headers:          []string{"Name", "ID Number", "User Type", "PC Number", "Login Time", "Logout Time", "Duration"},
+		Rows:             rows,
+		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
+		ColumnWidths:     []float64{52, 28, 26, 24, 34, 34, 18},
+		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L", "L"},
+		Orientation:      "P",
+		GeneratedAt:      time.Now(),
+	}
+}
+
+func buildArchivedLogExportDocument(date string, logs []LoginLog) printableExportDocument {
+	rows := buildArchivedLogExportRows(logs)
+	return printableExportDocument{
+		Title:            "Log Entries",
+		Subtitle:         fmt.Sprintf("Date: %s", date),
+		Details:          nil,
+		TableTitle:       "LOG ENTRIES",
+		TableNote:        "",
+		Headers:          []string{"Date", "Name", "ID Number", "User Type", "PC", "Login", "Logout"},
+		Rows:             rows,
+		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
+		ColumnWidths:     []float64{24, 48, 28, 24, 20, 32, 32},
+		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L", "L"},
+		Orientation:      "P",
+		GeneratedAt:      time.Now(),
+	}
+}
+
 // ExportLogsCSVByRange exports log entries within a date range to CSV.
-func (a *App) ExportLogsCSVByRange(startDate, endDate string) (string, error) {
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportLogsCSVByRange(startDate, endDate string, savePath string) (string, error) {
 	if err := a.checkDB(); err != nil {
 		return "", err
 	}
@@ -419,34 +560,19 @@ func (a *App) ExportLogsCSVByRange(startDate, endDate string) (string, error) {
 		return "", err
 	}
 
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("log_entries_%s_to_%s_%s.csv", startDate, endDate, time.Now().Format("150405")))
-	file, err := os.Create(filename)
-	if err != nil {
+	defaultName := fmt.Sprintf("log_entries_%s_to_%s_%s.csv", startDate, endDate, time.Now().Format("150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	doc := buildActiveLogExportDocument(startDate, endDate, logs)
+
+	if err := writePrintableCSV(filename, doc); err != nil {
 		return "", err
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	writer.Write([]string{"ID", "Name", "ID Number", "User Type", "PC Number", "Login Time", "Logout Time"})
-	for _, l := range logs {
-		pc := ""
-		if l.PCNumber != nil {
-			pc = *l.PCNumber
-		}
-		logout := ""
-		if l.LogoutTime != nil {
-			logout = *l.LogoutTime
-		}
-		writer.Write([]string{strconv.Itoa(l.ID), l.UserName, l.UserIDNumber, l.UserType, pc, l.LoginTime, logout})
 	}
 	return filename, nil
 }
 
 // ExportLogsPDFByRange exports log entries within a date range to PDF.
-func (a *App) ExportLogsPDFByRange(startDate, endDate string) (string, error) {
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportLogsPDFByRange(startDate, endDate string, savePath string) (string, error) {
 	if err := a.checkDB(); err != nil {
 		return "", err
 	}
@@ -455,59 +581,18 @@ func (a *App) ExportLogsPDFByRange(startDate, endDate string) (string, error) {
 		return "", err
 	}
 
-	pdf := gofpdf.New("L", "mm", "A4", "")
-	pdf.AddPage()
-	pdf.SetFont("Arial", "B", 14)
-	pdf.Cell(0, 10, fmt.Sprintf("Log Entries Report: %s to %s", startDate, endDate))
-	pdf.Ln(12)
-
-	pdf.SetFont("Arial", "B", 9)
-	pdf.SetFillColor(31, 56, 100)
-	pdf.SetTextColor(255, 255, 255)
-	cols := []struct {
-		label string
-		width float64
-	}{
-		{"Name", 55}, {"ID Number", 35}, {"User Type", 30}, {"PC Number", 30}, {"Login Time", 50}, {"Logout Time", 50},
+	defaultName := fmt.Sprintf("log_entries_%s_to_%s_%s.pdf", startDate, endDate, time.Now().Format("150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	doc := buildActiveLogExportDocument(startDate, endDate, logs)
+	if err := writePrintablePDF(filename, doc); err != nil {
+		return "", err
 	}
-	for _, c := range cols {
-		pdf.CellFormat(c.width, 7, c.label, "1", 0, "", true, 0, "")
-	}
-	pdf.Ln(-1)
-
-	pdf.SetFont("Arial", "", 8)
-	pdf.SetTextColor(0, 0, 0)
-	for i, l := range logs {
-		if i%2 == 0 {
-			pdf.SetFillColor(255, 255, 255)
-		} else {
-			pdf.SetFillColor(220, 230, 241)
-		}
-		pc := ""
-		if l.PCNumber != nil {
-			pc = *l.PCNumber
-		}
-		logout := ""
-		if l.LogoutTime != nil {
-			logout = *l.LogoutTime
-		}
-		pdf.CellFormat(55, 6, l.UserName, "1", 0, "", true, 0, "")
-		pdf.CellFormat(35, 6, l.UserIDNumber, "1", 0, "", true, 0, "")
-		pdf.CellFormat(30, 6, strings.ReplaceAll(l.UserType, "_", " "), "1", 0, "", true, 0, "")
-		pdf.CellFormat(30, 6, pc, "1", 0, "", true, 0, "")
-		pdf.CellFormat(50, 6, l.LoginTime, "1", 0, "", true, 0, "")
-		pdf.CellFormat(50, 6, logout, "1", 0, "", true, 0, "")
-		pdf.Ln(-1)
-	}
-
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("log_entries_%s_to_%s_%s.pdf", startDate, endDate, time.Now().Format("150405")))
-	err = pdf.OutputFileAndClose(filename)
-	return filename, err
+	return filename, nil
 }
 
 // ExportLogsDOCXByRange exports log entries within a date range to DOCX.
-func (a *App) ExportLogsDOCXByRange(startDate, endDate string) (string, error) {
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportLogsDOCXByRange(startDate, endDate string, savePath string) (string, error) {
 	if err := a.checkDB(); err != nil {
 		return "", err
 	}
@@ -516,27 +601,15 @@ func (a *App) ExportLogsDOCXByRange(startDate, endDate string) (string, error) {
 		return "", err
 	}
 
-	headers := []string{"Name", "ID Number", "User Type", "PC Number", "Login Time", "Logout Time"}
-	var rows [][]string
-	for _, l := range logs {
-		pc := ""
-		if l.PCNumber != nil {
-			pc = *l.PCNumber
-		}
-		logout := ""
-		if l.LogoutTime != nil {
-			logout = *l.LogoutTime
-		}
-		rows = append(rows, []string{l.UserName, l.UserIDNumber, strings.ReplaceAll(l.UserType, "_", " "), pc, l.LoginTime, logout})
-	}
+	doc := buildActiveLogExportDocument(startDate, endDate, logs)
 
-	data, err := generateDocx(fmt.Sprintf("Log Entries: %s to %s", startDate, endDate), headers, rows)
+	data, err := generatePrintableDocx(doc)
 	if err != nil {
 		return "", err
 	}
 
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("log_entries_%s_to_%s_%s.docx", startDate, endDate, time.Now().Format("150405")))
+	defaultName := fmt.Sprintf("log_entries_%s_to_%s_%s.docx", startDate, endDate, time.Now().Format("150405"))
+	filename := resolveExportPath(savePath, defaultName)
 	if err := os.WriteFile(filename, data, 0644); err != nil {
 		return "", fmt.Errorf("failed to write docx: %w", err)
 	}
@@ -660,8 +733,9 @@ func (a *App) ArchiveLogsByDate(date string, adminUserID int) (int, error) {
 	return int(rowsAffected), nil
 }
 
-// ExportArchivedLogSheetCSV exports archived logs for a specific date to CSV
-func (a *App) ExportArchivedLogSheetCSV(date string) (string, error) {
+// ExportArchivedLogSheetCSV exports archived logs for a specific date to CSV.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportArchivedLogSheetCSV(date string, savePath string) (string, error) {
 	logs, err := a.GetArchivedLogsByDate(date)
 	if err != nil {
 		return "", err
@@ -671,48 +745,20 @@ func (a *App) ExportArchivedLogSheetCSV(date string) (string, error) {
 		return "", fmt.Errorf("no archived logs for date %s", date)
 	}
 
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("log_entries_%s.csv", date))
+	defaultName := fmt.Sprintf("log_entries_%s.csv", date)
+	filename := resolveExportPath(savePath, defaultName)
+	doc := buildArchivedLogExportDocument(date, logs)
 
-	file, err := os.Create(filename)
-	if err != nil {
+	if err := writePrintableCSV(filename, doc); err != nil {
 		return "", err
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	// Write header
-	writer.Write([]string{"ID", "User Name", "User ID Number", "User Type", "PC Number", "Login Time", "Logout Time"})
-
-	// Write data
-	for _, log := range logs {
-		pcNum := ""
-		if log.PCNumber != nil {
-			pcNum = *log.PCNumber
-		}
-		logoutTime := ""
-		if log.LogoutTime != nil {
-			logoutTime = *log.LogoutTime
-		}
-
-		writer.Write([]string{
-			strconv.Itoa(log.ID),
-			log.UserName,
-			log.UserIDNumber,
-			log.UserType,
-			pcNum,
-			log.LoginTime,
-			logoutTime,
-		})
 	}
 
 	return filename, nil
 }
 
-// ExportArchivedLogSheetPDF exports archived logs for a specific date to PDF
-func (a *App) ExportArchivedLogSheetPDF(date string) (string, error) {
+// ExportArchivedLogSheetPDF exports archived logs for a specific date to PDF.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportArchivedLogSheetPDF(date string, savePath string) (string, error) {
 	logs, err := a.GetArchivedLogsByDate(date)
 	if err != nil {
 		return "", err
@@ -722,52 +768,40 @@ func (a *App) ExportArchivedLogSheetPDF(date string) (string, error) {
 		return "", fmt.Errorf("no archived logs for date %s", date)
 	}
 
-	pdf := gofpdf.New("P", "mm", "A4", "")
-	pdf.AddPage()
-	pdf.SetFont("Arial", "B", 16)
-	pdf.Cell(0, 10, fmt.Sprintf("Login Logs Report - %s", date))
-	pdf.Ln(12)
+	defaultName := fmt.Sprintf("log_entries_%s.pdf", date)
+	filename := resolveExportPath(savePath, defaultName)
+	doc := buildArchivedLogExportDocument(date, logs)
+	if err := writePrintablePDF(filename, doc); err != nil {
+		return "", err
+	}
+	return filename, nil
+}
 
-	// Add generation date
-	pdf.SetFont("Arial", "", 10)
-	pdf.Cell(0, 6, fmt.Sprintf("Generated: %s", time.Now().Format("January 02, 2006 3:04 PM")))
-	pdf.Ln(10)
-
-	pdf.SetFont("Arial", "B", 9)
-	pdf.Cell(15, 7, "ID")
-	pdf.Cell(50, 7, "User Name")
-	pdf.Cell(35, 7, "ID Number")
-	pdf.Cell(30, 7, "User Type")
-	pdf.Cell(35, 7, "PC Number")
-	pdf.Cell(50, 7, "Login Time")
-	pdf.Cell(50, 7, "Logout Time")
-	pdf.Ln(-1)
-
-	pdf.SetFont("Arial", "", 8)
-	for _, log := range logs {
-		pcNum := ""
-		if log.PCNumber != nil {
-			pcNum = *log.PCNumber
-		}
-		logoutTime := ""
-		if log.LogoutTime != nil {
-			logoutTime = *log.LogoutTime
-		}
-
-		pdf.Cell(15, 6, strconv.Itoa(log.ID))
-		pdf.Cell(50, 6, truncateString(log.UserName, 25))
-		pdf.Cell(35, 6, log.UserIDNumber)
-		pdf.Cell(30, 6, log.UserType)
-		pdf.Cell(35, 6, pcNum)
-		pdf.Cell(50, 6, log.LoginTime)
-		pdf.Cell(50, 6, logoutTime)
-		pdf.Ln(-1)
+// ExportArchivedLogSheetDOCX exports archived logs for a specific date to DOCX.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportArchivedLogSheetDOCX(date string, savePath string) (string, error) {
+	logs, err := a.GetArchivedLogsByDate(date)
+	if err != nil {
+		return "", err
 	}
 
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("log_entries_%s.pdf", date))
-	err = pdf.OutputFileAndClose(filename)
-	return filename, err
+	if len(logs) == 0 {
+		return "", fmt.Errorf("no archived logs for date %s", date)
+	}
+	doc := buildArchivedLogExportDocument(date, logs)
+
+	data, err := generatePrintableDocx(doc)
+	if err != nil {
+		return "", err
+	}
+
+	defaultName := fmt.Sprintf("log_entries_%s.docx", date)
+	filename := resolveExportPath(savePath, defaultName)
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return "", fmt.Errorf("failed to write docx: %w", err)
+	}
+
+	return filename, nil
 }
 
 // ArchiveLogs archives selected login logs by their IDs
