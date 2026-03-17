@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Button from '../../components/Button';
+import LoadingDots from '../../components/LoadingDots';
 import {
   X,
   Search,
@@ -167,7 +168,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -436,7 +437,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                           <div className="flex items-center gap-4">
                             <span className="text-xs text-gray-600">Total: {classlistStudents.length}</span>
                             {loadingClasslist && (
-                              <Loader2 className="h-4 w-4 animate-spin text-primary-600" />
+                              <LoadingDots dotClassName="h-2.5 w-2.5" />
                             )}
                           </div>
                         </div>
@@ -458,7 +459,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                     {loadingClasslist && classlistStudents.length === 0 ? (
                       <tr>
                         <td colSpan={3} className="px-6 py-12 text-center">
-                          <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary-600 mb-2" />
+                          <LoadingDots className="justify-center mb-2 gap-2" dotClassName="h-3 w-3" />
                           <p className="text-gray-500 text-sm">Loading students...</p>
                         </td>
                       </tr>

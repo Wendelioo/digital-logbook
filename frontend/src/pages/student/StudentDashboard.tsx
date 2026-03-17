@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardBody, StatCard, InfoCard } from '../../components/Card';
 import Button from '../../components/Button';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Clock,
   CheckCircle,
@@ -188,7 +189,7 @@ function DashboardOverview() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }

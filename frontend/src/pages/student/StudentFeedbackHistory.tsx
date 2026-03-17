@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Filter,
   X,
@@ -262,7 +263,7 @@ function FeedbackHistory() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -374,18 +375,16 @@ function FeedbackHistory() {
                       </div>
                     </div>
 
-                    <p className="text-xs text-gray-500">Date range and issue filters apply together.</p>
-
-                    {/* Issue / With issues dropdown */}
+                    {/* Status / With issues dropdown */}
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Issue</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
                       <div className="relative">
                         <select
                           value={pendingIssueFilter}
                           onChange={(e) => setPendingIssueFilter(e.target.value as 'all' | 'with_issues' | 'no_issues')}
                           className="w-full border border-gray-300 rounded-lg pl-3 pr-9 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 appearance-none bg-white text-gray-800"
                         >
-                          <option value="all">All</option>
+                          <option value="all">All status</option>
                           <option value="with_issues">With issues</option>
                           <option value="no_issues">No issues</option>
                         </select>

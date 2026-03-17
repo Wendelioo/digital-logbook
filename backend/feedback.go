@@ -16,6 +16,26 @@ import (
 
 const maxActiveFeedbackEntries = 500
 
+func (a *App) ensureFeedbackAdminResolvedAtColumn() error {
+	if a.db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	query := `
+		IF COL_LENGTH('feedback', 'admin_resolved_at') IS NULL
+		BEGIN
+			ALTER TABLE feedback
+			ADD admin_resolved_at DATETIME NULL;
+		END
+	`
+
+	if _, err := a.db.Exec(query); err != nil {
+		return fmt.Errorf("failed to ensure feedback.admin_resolved_at column: %w", err)
+	}
+
+	return nil
+}
+
 // autoArchiveFeedbackIfNeeded checks the number of non-archived forwarded feedback rows
 // and, if a configured limit is exceeded, automatically archives the oldest day's feedback.
 func (a *App) autoArchiveFeedbackIfNeeded() error {
@@ -86,6 +106,8 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 			f.comments, 
 			f.date_submitted,
 			f.status,
+			COALESCE(f.admin_status, 'pending') as admin_status,
+			f.admin_resolved_at,
 			f.verified_by_user_id,
 			f.verified_at,
 			f.forwarded_by_user_id,
@@ -117,6 +139,7 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 		var fb Feedback
 		var middleName, comments, studentIDStr, forwardedByName, workingStudentNotes sql.NullString
 		var dateSubmitted time.Time
+		var adminResolvedAt sql.NullTime
 		var verifiedBy sql.NullInt64
 		var verifiedAt sql.NullTime
 		var forwardedBy sql.NullInt64
@@ -125,6 +148,7 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 		err := rows.Scan(&fb.ID, &fb.StudentUserID, &studentIDStr, &fb.FirstName, &middleName, &fb.LastName,
 			&fb.PCNumber, &fb.EquipmentCondition, &fb.MonitorCondition,
 			&fb.KeyboardCondition, &fb.MouseCondition, &comments, &dateSubmitted, &fb.Status,
+			&fb.AdminStatus, &adminResolvedAt,
 			&verifiedBy, &verifiedAt, &forwardedBy, &forwardedAt, &workingStudentNotes, &forwardedByName)
 		if err != nil {
 			continue
@@ -144,6 +168,10 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 		if verifiedBy.Valid {
 			v := int(verifiedBy.Int64)
 			fb.VerifiedByUserID = &v
+		}
+		if adminResolvedAt.Valid {
+			resolvedAtStr := adminResolvedAt.Time.Format("2006-01-02 15:04:05")
+			fb.AdminResolvedAt = &resolvedAtStr
 		}
 		if verifiedAt.Valid {
 			t := verifiedAt.Time.Format("2006-01-02 15:04:05")
@@ -350,18 +378,33 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 		priority = "high"
 	}
 
+	// Determine if this report actually has any issues
+	noIssue := strings.EqualFold(equipmentCondition, "good") &&
+		strings.EqualFold(monitorCondition, "good") &&
+		strings.EqualFold(keyboardCondition, "good") &&
+		strings.EqualFold(mouseCondition, "good") &&
+		strings.TrimSpace(combinedComments) == ""
+
 	// Workflow status:
-	// All feedback (with or without issues) starts as "pending" so that
-	// working students can review and then forward it to the admin.
+	// - Reports WITH issues start as "pending" (awaiting verification).
+	// - Reports with NO issues skip verification and are immediately "confirmed"
+	//   so they appear in the "Ready to Forward" list for working students.
 	status := "pending"
+	if noIssue {
+		status = "confirmed"
+	}
+
+	// AdminStatus:
+	// - Always starts as "pending" when feedback is first created.
+	adminStatus := "pending"
 
 	query := `INSERT INTO feedback (student_id, pc_number, 
 			  equipment_condition, monitor_condition, keyboard_condition, mouse_condition, 
-			  comments, priority, status, date_submitted) 
-			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE())`
+			  comments, priority, status, admin_status, date_submitted) 
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE())`
 
 	_, err := a.db.Exec(query, userID, pcNumber,
-		equipmentCondition, monitorCondition, keyboardCondition, mouseCondition, nullString(combinedComments), priority, status)
+		equipmentCondition, monitorCondition, keyboardCondition, mouseCondition, nullString(combinedComments), priority, status, adminStatus)
 
 	if err != nil {
 		log.Printf("Failed to save equipment feedback: %v", err)
@@ -404,6 +447,13 @@ func (a *App) GetPendingFeedback() ([]Feedback, error) {
 		FROM feedback f
 		LEFT JOIN students s ON f.student_id = s.id
 		WHERE f.status = 'pending'
+		  AND (
+			LOWER(ISNULL(f.equipment_condition, '')) <> 'good'
+			OR LOWER(ISNULL(f.monitor_condition, '')) <> 'good'
+			OR LOWER(ISNULL(f.keyboard_condition, '')) <> 'good'
+			OR LOWER(ISNULL(f.mouse_condition, '')) <> 'good'
+			OR LTRIM(RTRIM(ISNULL(f.comments, ''))) <> ''
+		  )
 		ORDER BY f.date_submitted DESC`
 	rows, err := a.db.Query(query)
 	if err != nil {
@@ -477,6 +527,92 @@ func (a *App) GetConfirmedFeedback() ([]Feedback, error) {
 		LEFT JOIN students s ON f.student_id = s.id
 		WHERE f.status = 'confirmed'
 		ORDER BY f.date_submitted DESC`
+	rows, err := a.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var feedbacks []Feedback
+	for rows.Next() {
+		var fb Feedback
+		var middleName, comments, studentIDStr, workingStudentNotes sql.NullString
+		var dateSubmitted time.Time
+		var verifiedBy sql.NullInt64
+		var verifiedAt sql.NullTime
+
+		err := rows.Scan(&fb.ID, &fb.StudentUserID, &studentIDStr, &fb.FirstName, &middleName, &fb.LastName,
+			&fb.PCNumber, &fb.EquipmentCondition, &fb.MonitorCondition,
+			&fb.KeyboardCondition, &fb.MouseCondition, &comments, &dateSubmitted, &fb.Status,
+			&verifiedBy, &verifiedAt, &workingStudentNotes)
+		if err != nil {
+			continue
+		}
+
+		if studentIDStr.Valid {
+			fb.StudentIDStr = studentIDStr.String
+		} else {
+			fb.StudentIDStr = "N/A"
+		}
+		if middleName.Valid {
+			fb.MiddleName = &middleName.String
+		}
+		if comments.Valid {
+			fb.Comments = &comments.String
+		}
+		if verifiedBy.Valid {
+			v := int(verifiedBy.Int64)
+			fb.VerifiedByUserID = &v
+		}
+		if verifiedAt.Valid {
+			t := verifiedAt.Time.Format("2006-01-02 15:04:05")
+			fb.VerifiedAt = &t
+		}
+		if workingStudentNotes.Valid {
+			fb.WorkingStudentNotes = &workingStudentNotes.String
+		}
+
+		fb.StudentName = fmt.Sprintf("%s, %s", fb.LastName, fb.FirstName)
+		if middleName.Valid {
+			fb.StudentName += " " + middleName.String
+		}
+		fb.DateSubmitted = dateSubmitted.Format("2006-01-02 15:04:05")
+
+		feedbacks = append(feedbacks, fb)
+	}
+
+	return feedbacks, nil
+}
+
+// GetRejectedFeedback returns feedback that working student has rejected.
+func (a *App) GetRejectedFeedback() ([]Feedback, error) {
+	if err := a.checkDB(); err != nil {
+		return nil, err
+	}
+
+	query := `
+		SELECT 
+			f.id, 
+			f.student_id, 
+			COALESCE(s.student_id, 'N/A') as student_id_str,
+			s.first_name, 
+			s.middle_name, 
+			s.last_name, 
+			f.pc_number, 
+			f.equipment_condition, 
+			f.monitor_condition, 
+			f.keyboard_condition, 
+			f.mouse_condition, 
+			f.comments, 
+			f.date_submitted,
+			f.status,
+			f.verified_by_user_id,
+			f.verified_at,
+			f.working_student_notes
+		FROM feedback f
+		LEFT JOIN students s ON f.student_id = s.id
+		WHERE f.status = 'rejected'
+		ORDER BY f.verified_at DESC, f.date_submitted DESC`
 	rows, err := a.db.Query(query)
 	if err != nil {
 		return nil, err
@@ -756,6 +892,7 @@ func (a *App) getFeedbackByDateRange(startDate, endDate string) ([]Feedback, err
 			f.pc_number, f.equipment_condition, f.monitor_condition,
 			f.keyboard_condition, f.mouse_condition, f.comments,
 			f.date_submitted, f.status,
+			COALESCE(f.admin_status, 'pending') as admin_status,
 			f.verified_by_user_id, f.verified_at,
 			f.forwarded_by_user_id, f.forwarded_at, f.working_student_notes,
 			COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, '') +
@@ -793,7 +930,7 @@ func (a *App) getFeedbackByDateRange(startDate, endDate string) ([]Feedback, err
 
 		if err := rows.Scan(&fb.ID, &fb.StudentUserID, &studentIDStr, &fb.FirstName, &middleName, &fb.LastName,
 			&fb.PCNumber, &fb.EquipmentCondition, &fb.MonitorCondition,
-			&fb.KeyboardCondition, &fb.MouseCondition, &comments, &dateSubmitted, &fb.Status,
+			&fb.KeyboardCondition, &fb.MouseCondition, &comments, &dateSubmitted, &fb.Status, &fb.AdminStatus,
 			&verifiedBy, &verifiedAt, &forwardedBy, &forwardedAt, &workingStudentNotes, &forwardedByName); err != nil {
 			continue
 		}
@@ -1183,7 +1320,7 @@ func (a *App) GetArchivedFeedbackByDate(date string) ([]Feedback, error) {
 
 		err := rows.Scan(&fb.ID, &fb.StudentUserID, &studentIDStr, &fb.FirstName, &middleName, &fb.LastName,
 			&fb.PCNumber, &fb.EquipmentCondition, &fb.MonitorCondition,
-			&fb.KeyboardCondition, &fb.MouseCondition, &comments, &dateSubmitted, &fb.Status,
+			&fb.KeyboardCondition, &fb.MouseCondition, &comments, &dateSubmitted, &fb.Status, &fb.AdminStatus,
 			&forwardedBy, &forwardedAt, &workingStudentNotes, &forwardedByName)
 		if err != nil {
 			continue
@@ -1382,7 +1519,7 @@ func (a *App) GetArchivedFeedback() ([]Feedback, error) {
 
 		err := rows.Scan(&fb.ID, &fb.StudentUserID, &studentIDStr, &fb.FirstName, &middleName, &fb.LastName,
 			&fb.PCNumber, &fb.EquipmentCondition, &fb.MonitorCondition,
-			&fb.KeyboardCondition, &fb.MouseCondition, &comments, &dateSubmitted, &fb.Status,
+			&fb.KeyboardCondition, &fb.MouseCondition, &comments, &dateSubmitted, &fb.Status, &fb.AdminStatus,
 			&forwardedBy, &forwardedAt, &workingStudentNotes, &forwardedByName)
 		if err != nil {
 			continue

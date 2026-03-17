@@ -25,6 +25,48 @@ type App struct {
 	screenLocked bool
 }
 
+// SetFeedbackAdminStatus updates the admin-facing workflow status for a feedback entry.
+// Valid statuses: "pending", "resolved".
+func (a *App) SetFeedbackAdminStatus(feedbackID int, adminUserID int, status string) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	status = strings.ToLower(strings.TrimSpace(status))
+	if status != "pending" && status != "resolved" {
+		return fmt.Errorf("invalid admin status: %s", status)
+	}
+	if err := ValidatePositiveID(feedbackID, "feedback ID"); err != nil {
+		return err
+	}
+	if err := ValidatePositiveID(adminUserID, "admin user ID"); err != nil {
+		return err
+	}
+
+	query := `
+		UPDATE feedback
+		SET admin_status = ?,
+			admin_resolved_at = CASE WHEN ? = 'resolved' THEN GETDATE() ELSE NULL END
+		WHERE id = ?
+	`
+
+	result, err := a.db.Exec(query, status, status, feedbackID)
+	if err != nil {
+		return fmt.Errorf("failed to update admin_status: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return fmt.Errorf("feedback not found")
+	}
+
+	log.Printf("SetFeedbackAdminStatus: feedback %d set to %s by admin %d", feedbackID, status, adminUserID)
+	return nil
+}
+
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{}
@@ -73,6 +115,9 @@ func (a *App) startup(ctx context.Context) {
 		}
 		if err := a.ensureNotificationsTable(); err != nil {
 			log.Printf("Failed to ensure notifications table: %v", err)
+		}
+		if err := a.ensureFeedbackAdminResolvedAtColumn(); err != nil {
+			log.Printf("Failed to ensure feedback admin resolved timestamp column: %v", err)
 		}
 		if err := a.CleanOldNotifications(); err != nil {
 			log.Printf("Failed to clean old notifications: %v", err)
@@ -217,7 +262,9 @@ type Feedback struct {
 	Comments            *string `json:"comments,omitempty"`
 	DateSubmitted       string  `json:"date_submitted"`
 	Status              string  `json:"status"`
-	Priority            string  `json:"priority"` // Issue priority (low/medium/high/critical)
+	Priority            string  `json:"priority"`     // Issue priority (low/medium/high/critical)
+	AdminStatus         string  `json:"admin_status"` // Admin workflow status: "pending" | "resolved"
+	AdminResolvedAt     *string `json:"admin_resolved_at,omitempty"`
 	VerifiedByUserID    *int    `json:"verified_by_user_id,omitempty"`
 	VerifiedAt          *string `json:"verified_at,omitempty"`
 	ForwardedByUserID   *int    `json:"forwarded_by_user_id,omitempty"`

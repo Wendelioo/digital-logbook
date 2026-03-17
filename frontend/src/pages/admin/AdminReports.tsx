@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
 import AdminArchiveModal from '../../components/AdminArchiveModal';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Search,
   X,
-  Archive,
+  History,
   AlertCircle,
   Download,
   Filter,
@@ -16,13 +17,17 @@ import {
   GetFeedbackRangeCount,
   ExportFeedbackCSVByRange,
   ExportFeedbackPDFByRange,
-  ExportFeedbackDOCXByRange
+  ExportFeedbackDOCXByRange,
+  SetFeedbackAdminStatus
 } from '../../../wailsjs/go/backend/App';
 import { openExportSaveDialog, defaultFeedbackRangeFilename, type ExportFormat } from '../../utils/exportSaveDialog';
 import { parseReportContext } from '../../utils/feedbackComments';
+import { StatusBadge } from '../../components/Badge';
 import { Feedback } from './types';
+import { useAuth } from '../../contexts/AuthContext';
 
 function Reports() {
+  const { user } = useAuth();
   const [reports, setReports] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -54,6 +59,9 @@ function Reports() {
   const [exportCountLoading, setExportCountLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportToast, setExportToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
+
+  // Pending issues modal visibility
+  const [showPendingModal, setShowPendingModal] = useState(false);
 
   // Reset to page 1 whenever any filter/search changes
   useEffect(() => {
@@ -173,11 +181,47 @@ function Reports() {
       (!dateRangeEnd || reportDate <= dateRangeEnd)
     );
 
+    const isResolved = (report.admin_status || '').toLowerCase() === 'resolved';
     const matchesStatus = !filterStatus ||
-      (filterStatus === 'with_issue' ? !isNoIssueReport(report) : isNoIssueReport(report));
+      (filterStatus === 'resolved'
+        ? isResolved
+        : filterStatus === 'with_issue'
+          ? !isNoIssueReport(report)
+          : isNoIssueReport(report));
 
     return matchesSearch && matchesDate && matchesStatus;
   });
+
+  const pendingReports = filteredReports.filter(
+    (report) =>
+      (report.admin_status || '').toLowerCase() !== 'resolved' &&
+      !isNoIssueReport(report)
+  );
+
+  const handleAdminStatusToggle = async (report: Feedback, nextStatus: 'pending' | 'resolved') => {
+    if (!user) return;
+    try {
+      await SetFeedbackAdminStatus(report.id, user.id, nextStatus);
+      // update local state optimistically
+      setReports(prev =>
+        prev.map(r =>
+          r.id === report.id
+            ? {
+                ...r,
+                admin_status: nextStatus,
+                admin_resolved_at: nextStatus === 'resolved'
+                  ? new Date().toISOString().replace('T', ' ').slice(0, 19)
+                  : undefined,
+              }
+            : r
+        )
+      );
+    } catch (e) {
+      console.error('Failed to update admin status', e);
+      setExportToast({ type: 'error', message: 'Failed to update status. Please try again.' });
+      setTimeout(() => setExportToast(null), 5000);
+    }
+  };
 
   // Pagination
   const totalReportPages = Math.ceil(filteredReports.length / reportsPerPage);
@@ -188,7 +232,7 @@ function Reports() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -215,7 +259,7 @@ function Reports() {
           <Button
             onClick={() => setShowArchiveModal(true)}
             variant="outline"
-            icon={<Archive className="h-4 w-4" />}
+            icon={<History className="h-4 w-4" />}
           >
             Archived Reports
           </Button>
@@ -223,8 +267,26 @@ function Reports() {
 
         {/* Search + Export Toolbar + View Toggle */}
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
-          <div className="flex items-center justify-end gap-2">
-            <div className="w-64 relative">
+          <div className="flex items-center justify-between gap-4">
+            {/* Left: Pending issues button */}
+            <button
+              onClick={() => setShowPendingModal(true)}
+              title="View pending issues"
+              className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium border transition-colors ${
+                pendingReports.length > 0
+                  ? 'border-red-400 bg-red-50 text-red-800 hover:bg-red-100'
+                  : 'border-gray-300 bg-white text-gray-700 hover:bg-red-50 hover:border-red-300 hover:text-red-800'
+              }`}
+            >
+              <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 text-[11px] font-bold text-white px-1">
+                {pendingReports.length}
+              </span>
+              <span>Pending Issues</span>
+            </button>
+
+            {/* Right: search, filters, export */}
+            <div className="flex items-center gap-2">
+              <div className="w-64 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
               type="text"
@@ -233,18 +295,18 @@ function Reports() {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            )}
-            </div>
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              )}
+              </div>
 
-            {/* Filter button */}
-            <div className="relative">
+              {/* Filter button */}
+              <div className="relative">
               <button
               onClick={() => {
                 const nextOpen = !showFilters;
@@ -308,6 +370,7 @@ function Reports() {
                           className="w-full py-2 pl-3 pr-9 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent appearance-none bg-white"
                         >
                           <option value="">All statuses</option>
+                          <option value="resolved">Resolved</option>
                           <option value="with_issue">With Issue</option>
                           <option value="no_issue">No Issue</option>
                         </select>
@@ -352,16 +415,17 @@ function Reports() {
                   </div>
                 </div>
               )}
-            </div>
+              </div>
 
-            <button
-              onClick={() => { setShowExportModal(true); setExportCount(null); }}
-              title="Export"
-              className="flex items-center gap-1.5 px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
-            >
-              <Download className="h-4 w-4" />
-              <span>Export</span>
-            </button>
+              <button
+                onClick={() => { setShowExportModal(true); setExportCount(null); }}
+                title="Export"
+                className="flex items-center gap-1.5 px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                <span>Export</span>
+              </button>
+            </div>
           </div>
 
         </div>
@@ -381,6 +445,75 @@ function Reports() {
         </div>
       )}
 
+      {/* Pending Issues Modal */}
+      <Modal
+        isOpen={showPendingModal}
+        onClose={() => setShowPendingModal(false)}
+        title="Pending Equipment Issues"
+        size="lg"
+      >
+        {pendingReports.length === 0 ? (
+          <div className="py-6 text-sm text-gray-600">
+            No pending issues right now. New forwarded reports from working students will appear here.
+          </div>
+        ) : (
+          <div className="max-h-[60vh] overflow-y-auto divide-y divide-gray-100">
+            {pendingReports.map((report) => {
+              const { reportedForAnotherPC, submittedFrom } = parseReportContext(report.comments);
+              const issues = countIssues(report);
+              return (
+                <div key={report.id} className="py-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-semibold text-gray-900 truncate">{report.student_name}</span>
+                      <span className="text-[11px] text-gray-500 truncate">{report.student_id_str}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-700">
+                      <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium">
+                        {report.pc_number}
+                      </span>
+                      {submittedFrom && (
+                        <span className="text-gray-500">from {submittedFrom}</span>
+                      )}
+                      <span className="text-gray-500">
+                        {report.date_submitted
+                          ? new Date(report.date_submitted).toLocaleDateString('en-US', {
+                              month: '2-digit', day: '2-digit', year: 'numeric'
+                            })
+                          : '—'}
+                      </span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-red-100 text-red-800 font-semibold">
+                        {issues === 0 ? 'No Issues' : `${issues} ${issues === 1 ? 'Issue' : 'Issues'}`}
+                      </span>
+                    </div>
+                    {report.comments && (
+                      <p className="mt-1 text-xs text-gray-700 whitespace-pre-wrap">
+                        {report.comments}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1 items-end">
+                    <button
+                      onClick={() => setSelectedReport(report)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-full hover:bg-primary-100 transition-colors"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      View details
+                    </button>
+                    <button
+                      onClick={() => handleAdminStatusToggle(report, 'resolved')}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                    >
+                      Mark as Resolved
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Modal>
+
       {/* Single Unified Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
@@ -388,8 +521,7 @@ function Reports() {
               <colgroup>
                 <col style={{ width: '27%' }} />
                 <col style={{ width: '12%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '12%' }} />
+                <col style={{ width: '14%' }} />
                 <col style={{ width: '14%' }} />
                 <col style={{ width: '15%' }} />
                 <col style={{ width: '8%' }} />
@@ -400,7 +532,6 @@ function Reports() {
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">PC / Origin</th>
                   <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Date</th>
                   <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
-                  <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Verified at</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Forwarded By</th>
                   <th className="px-3 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -415,6 +546,9 @@ function Reports() {
                 ) : (
                   paginatedReports.map((report) => {
                     const { reportedForAnotherPC, submittedFrom } = parseReportContext(report.comments);
+                    const issues = countIssues(report);
+                    const hasIssues = issues > 0;
+                    const isResolved = (report.admin_status || '').toLowerCase() === 'resolved';
                     return (
                       <tr
                         key={report.id}
@@ -447,26 +581,44 @@ function Reports() {
                         </td>
                         <td className="px-3 py-3 text-center">
                           {(() => {
-                            const n = countIssues(report);
-                            return n === 0 ? (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 whitespace-nowrap">
-                                No Issues
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 whitespace-nowrap">
-                                {n} {n === 1 ? 'Issue' : 'Issues'}
+                            if (isResolved) {
+                              const resolvedAt = report.admin_resolved_at
+                                ? new Date(report.admin_resolved_at)
+                                : null;
+                              return (
+                                <div className="flex flex-col items-center gap-1">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap bg-emerald-100 text-emerald-800">
+                                    Resolved
+                                  </span>
+                                  {resolvedAt && !Number.isNaN(resolvedAt.getTime()) && (
+                                    <span className="text-[11px] text-emerald-700 whitespace-nowrap">
+                                      {resolvedAt.toLocaleString('en-US', {
+                                        month: '2-digit',
+                                        day: '2-digit',
+                                        year: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            }
+
+                            const baseLabel = hasIssues ? `${issues} ${issues === 1 ? 'Issue' : 'Issues'}` : 'No Issues';
+
+                            return (
+                              <span
+                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${
+                                  hasIssues
+                                    ? 'bg-red-100 text-red-800'
+                                    : 'bg-green-100 text-green-800'
+                                }`}
+                              >
+                                {baseLabel}
                               </span>
                             );
                           })()}
-                        </td>
-                        <td className="px-3 py-3 text-center">
-                          <span className="text-xs text-gray-600">
-                            {report.verified_at
-                              ? new Date(report.verified_at).toLocaleString('en-US', {
-                                  month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-                                })
-                              : '—'}
-                          </span>
                         </td>
                         <td className="px-3 py-3">
                           <div className="text-sm font-medium text-gray-900 truncate">{report.forwarded_by_name || 'Unknown'}</div>
@@ -477,13 +629,23 @@ function Reports() {
                           )}
                         </td>
                         <td className="px-3 py-3 text-center">
-                          <button
-                            onClick={() => setSelectedReport(report)}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                            View
-                          </button>
+                          <div className="flex flex-col items-center gap-1.5">
+                            <button
+                              onClick={() => setSelectedReport(report)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              View
+                            </button>
+                            {!isResolved && hasIssues ? (
+                              <button
+                                onClick={() => handleAdminStatusToggle(report, 'resolved')}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                              >
+                                Mark Resolved
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     );

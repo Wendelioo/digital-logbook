@@ -429,6 +429,8 @@ export namespace backend {
 	    date_submitted: string;
 	    status: string;
 	    priority: string;
+	    admin_status: string;
+	    admin_resolved_at?: string;
 	    verified_by_user_id?: number;
 	    verified_at?: string;
 	    forwarded_by_user_id?: number;
@@ -458,6 +460,8 @@ export namespace backend {
 	        this.date_submitted = source["date_submitted"];
 	        this.status = source["status"];
 	        this.priority = source["priority"];
+	        this.admin_status = source["admin_status"];
+	        this.admin_resolved_at = source["admin_resolved_at"];
 	        this.verified_by_user_id = source["verified_by_user_id"];
 	        this.verified_at = source["verified_at"];
 	        this.forwarded_by_user_id = source["forwarded_by_user_id"];

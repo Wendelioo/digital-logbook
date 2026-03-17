@@ -16,9 +16,6 @@ import {
   Eye,
   EyeOff,
   Bell,
-  AlertCircle,
-  CheckCircle2,
-  Info,
 } from 'lucide-react';
 import LogoutFeedbackModal from './LogoutFeedbackModal';
 
@@ -820,20 +817,19 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                           !n.is_read ? 'bg-blue-50/50' : ''
                         }`}
                       >
-                        <div className="flex items-start gap-2">
-                          <span className="mt-0.5 flex-shrink-0">
-                            {n.tone === 'warning' && <AlertCircle className="h-4 w-4 text-yellow-600" />}
-                            {n.tone === 'success' && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-                            {n.tone === 'info' && <Info className="h-4 w-4 text-primary-600" />}
-                          </span>
+                        <div className="flex items-center justify-between gap-3">
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium text-gray-900">{n.title}</p>
                             <p className="text-xs text-gray-600 mt-0.5">{n.message}</p>
-                            <p className="text-xs text-gray-400 mt-1">{getNotifRelativeTime(n.created_at)}</p>
                           </div>
-                          {!n.is_read && (
-                            <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0 mt-1.5" />
-                          )}
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-[11px] text-gray-400">
+                              {getNotifRelativeTime(n.created_at)}
+                            </span>
+                            {!n.is_read && (
+                              <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))

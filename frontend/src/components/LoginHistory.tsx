@@ -3,6 +3,7 @@ import { GetStudentLoginLogs } from '../../wailsjs/go/backend/App';
 import { useAuth } from '../contexts/AuthContext';
 import Button from './Button';
 import { Search, X, Filter } from 'lucide-react';
+import LoadingDots from './LoadingDots';
 
 type TimePeriod = 'all' | '7days' | 'last_week' | 'last_month' | '3months';
 
@@ -161,7 +162,7 @@ export default function LoginHistory({
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent" />
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }

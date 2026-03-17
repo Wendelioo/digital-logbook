@@ -3,6 +3,8 @@ import { CheckCircle, XCircle, User, Mail, Phone, Calendar, History, Search, Fil
 import { GetPendingRegistrations, ProcessRegistration, GetRegistrationHistory } from '../../wailsjs/go/backend/App';
 import Button from '../components/Button';
 import { Card } from '../components/Card';
+import LoadingDots from '../components/LoadingDots';
+import Modal from '../components/Modal';
 import { backend } from '../../wailsjs/go/models';
 
 type PendingRegistration = backend.PendingRegistration;
@@ -20,6 +22,7 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
   const [processing, setProcessing] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
   const [historySearch, setHistorySearch] = useState('');
@@ -180,11 +183,16 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
     setRejectionReason('');
   };
 
+  const closeHistoryModal = () => {
+    setShowHistoryModal(false);
+    setShowHistoryFilterPanel(false);
+  };
+
   if (loading) {
     return (
       <Card>
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+          <LoadingDots className="gap-3" dotClassName="h-3 w-3" />
         </div>
       </Card>
     );
@@ -194,14 +202,25 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Pending Student Registrations</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Registration Requests</h2>
         </div>
-        <button
-          onClick={() => { loadRegistrations(); loadHistory(); }}
-          className="px-4 py-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setShowHistoryModal(true)}
+            variant="outline"
+            size="sm"
+            icon={<History className="h-4 w-4" />}
+            title="View registration history"
+          >
+            History
+          </Button>
+          <button
+            onClick={() => { loadRegistrations(); loadHistory(); }}
+            className="px-4 py-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -220,7 +239,7 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
         <div className="grid gap-4">
           {registrations.map((reg) => (
             <Card key={reg.user_id} className="hover:shadow-lg transition-shadow">
-              <div className="flex items-start justify-between">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
@@ -236,37 +255,39 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                     <div className="flex items-center gap-2 text-gray-600">
-                      <Mail className="w-4 h-4" />
+                      <Mail className="w-4 h-4 text-gray-500 flex-shrink-0" />
                       <span>{reg.email}</span>
                     </div>
                     <div className="flex items-center gap-2 text-gray-600">
-                      <Phone className="w-4 h-4" />
+                      <Phone className="w-4 h-4 text-gray-500 flex-shrink-0" />
                       <span>{reg.contact_number}</span>
                     </div>
                     <div className="flex items-center gap-2 text-gray-600">
-                      <Calendar className="w-4 h-4" />
+                      <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
                       <span>Submitted: {new Date(reg.submitted_at).toLocaleDateString()}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex gap-2 ml-4">
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
                   <Button
                     onClick={() => handleApprove(reg.user_id)}
                     disabled={processing === reg.user_id}
                     variant="primary"
-                    className="flex items-center gap-2"
+                    size="md"
+                    className="w-full sm:w-32"
+                    icon={<CheckCircle />}
                   >
-                    <CheckCircle className="w-4 h-4" />
                     {processing === reg.user_id ? 'Approving...' : 'Approve'}
                   </Button>
                   <Button
                     onClick={() => openRejectModal(reg.user_id)}
                     disabled={processing === reg.user_id}
                     variant="danger"
-                    className="flex items-center gap-2"
+                    size="md"
+                    className="w-full sm:w-32"
+                    icon={<XCircle />}
                   >
-                    <XCircle className="w-4 h-4" />
                     Reject
                   </Button>
                 </div>
@@ -276,20 +297,20 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
         </div>
       )}
 
-      {/* Registration History - same layout as Login History / other sections */}
-      <div className="mt-10">
-        <div className="mb-4">
-          <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <History className="w-5 h-5" />
-            Registration History
-          </h3>
-        </div>
-
-        <div className="bg-white shadow rounded-lg p-4">
-          <div className="flex items-center justify-between mb-4">
-            <div />
+      <Modal
+        isOpen={showHistoryModal}
+        onClose={closeHistoryModal}
+        title="Registration History"
+        size="xl"
+        showVariantIcon={false}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-gray-600">
+              Review all approved and rejected registration requests.
+            </div>
             <div className="flex items-center gap-3">
-              <div className="relative w-64">
+              <div className="relative w-64 max-w-full">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type="text"
@@ -429,16 +450,17 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
               </div>
             </div>
           </div>
+
           {historyLoading ? (
             <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent" />
+              <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
             </div>
           ) : filteredHistory.length === 0 ? (
-            <div className="px-6 py-12 text-center text-gray-500 text-sm">
+            <div className="px-6 py-12 text-center text-gray-500 text-sm border border-gray-100 rounded-lg">
               No registration history found.
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto border border-gray-100 rounded-lg">
               <table className="w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -480,7 +502,7 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
             </div>
           )}
         </div>
-      </div>
+      </Modal>
 
       {/* Reject Modal */}
       {showRejectModal && (

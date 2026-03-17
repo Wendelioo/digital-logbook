@@ -5,6 +5,7 @@ import { User, Lock, Eye, EyeOff, UserPlus, Settings, KeyRound, Check, X } from 
 import { CreateUser, GetDepartments, GetStudentTeachers, RequestPasswordReset } from '../../wailsjs/go/backend/App';
 import { backend } from '../../wailsjs/go/models';
 import Button from '../components/Button';
+import LoadingDots from '../components/LoadingDots';
 import { InputField } from '../components/Form';
 import backgroundImage from '../assets/background/background.jpg';
 import RegistrationModal from './RegistrationPage';
@@ -20,6 +21,7 @@ const roleRoutes: { [key: string]: string } = {
 };
 
 function LoginPage() {
+  const [rememberMe, setRememberMe] = useState(() => localStorage.getItem('rememberMe') === 'true');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -141,7 +143,7 @@ function LoginPage() {
     setSuccessMessage('');
 
     try {
-      const userData = await login(username, password);
+      const userData = await login(username, password, rememberMe);
       
       if (userData) {
         navigate(roleRoutes[userData.role]);
@@ -259,7 +261,7 @@ function LoginPage() {
           {/* Form Header */}
           <div className="mb-8">
             <h2 className="text-3xl font-bold text-gray-900 mb-2 tracking-tight">
-              {isRegistering ? 'Create Account' : 'Welcome Back'}
+              Sign In
             </h2>
             <p className="text-gray-500 text-sm">
               {isRegistering ? 'Register an account to get started.' : 'Sign in to continue and access your account.'}
@@ -296,37 +298,43 @@ function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-5" noValidate>
             {/* Username/ID Field */}
             <div>
-              <label htmlFor="username" className="block text-sm font-semibold text-gray-800 mb-2.5">
+              <label htmlFor="username" className="sr-only">
                 ID
               </label>
-              <div className="relative">
+              <div className="relative rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500 overflow-hidden">
+                <div className="absolute inset-y-0 left-0 w-32 border-r border-gray-300 flex items-center justify-center gap-1.5 text-sm font-semibold text-gray-500 pointer-events-none bg-gray-50">
+                  <span>ID</span>
+                  <User className="w-4 h-4" />
+                </div>
                 <input
                   type="text"
                   id="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full pl-36 pr-4 py-3 border-0 rounded-lg focus:outline-none focus:ring-0"
                   required
                 />
-                <User className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
               </div>
             </div>
 
             {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-semibold text-gray-800 mb-2.5">
+              <label htmlFor="password" className="sr-only">
                 Password
               </label>
-              <div className="relative">
+              <div className="relative rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500 overflow-hidden">
+                <div className="absolute inset-y-0 left-0 w-32 border-r border-gray-300 flex items-center justify-center gap-1.5 text-sm font-semibold text-gray-500 pointer-events-none bg-gray-50">
+                  <span>Password</span>
+                  <Lock className="w-4 h-4" />
+                </div>
                 <input
                   type={showPassword ? "text" : "password"}
                   id="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="login-password-input w-full pl-11 pr-11 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="login-password-input w-full pl-36 pr-11 py-3 border-0 rounded-lg focus:outline-none focus:ring-0"
                   required
                 />
-                <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
@@ -343,6 +351,8 @@ function LoginPage() {
               <label className="flex items-center cursor-pointer group">
                 <input 
                   type="checkbox" 
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
                   className="w-4 h-4 text-teal-600 border-gray-300 rounded focus:ring-teal-500 cursor-pointer" 
                 />
                 <span className="ml-2.5 text-sm text-gray-700 font-medium group-hover:text-gray-900 transition-colors">
@@ -366,10 +376,7 @@ function LoginPage() {
             >
               {loading ? (
                 <span className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
+                  <LoadingDots className="mr-3" dotClassName="h-2.5 w-2.5 bg-white" />
                   Signing in...
                 </span>
               ) : 'Sign In'}
@@ -552,9 +559,14 @@ function LoginPage() {
                     <button
                       type="submit"
                       disabled={forgotLoading || !pwValid || !pwMatch || !forgotTeacherID}
-                      className="flex-1 bg-teal-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="flex-1 inline-flex items-center justify-center gap-2 bg-teal-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
-                      {forgotLoading ? 'Submitting...' : 'Submit Request'}
+                      {forgotLoading ? (
+                        <>
+                          <LoadingDots dotClassName="h-2.5 w-2.5 bg-white" />
+                          Submitting...
+                        </>
+                      ) : 'Submit Request'}
                     </button>
                   </div>
                 </form>

@@ -146,6 +146,11 @@ func (a *App) GetAllLogs() ([]LoginLog, error) {
 		return nil, err
 	}
 
+	// Ensure we keep only the most recent maxActiveLogEntries as "active"
+	if err := a.autoArchiveLogsIfNeeded(); err != nil {
+		log.Printf("autoArchiveLogsIfNeeded failed: %v", err)
+	}
+
 	// Query log_entries directly with joins to ensure all logs are returned
 	// even if user profile data is missing
 	// Only returns non-archived logs (is_archived = 0 or NULL for backwards compatibility)

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Calendar,
   X,
@@ -253,7 +254,7 @@ function AttendanceManagementDetail() {
   if (loading && !selectedClass) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -291,7 +292,7 @@ function AttendanceManagementDetail() {
 
         {loading && (
           <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+            <LoadingDots className="justify-center gap-3" dotClassName="h-4 w-4" />
           </div>
         )}
 
@@ -373,7 +374,7 @@ function AttendanceManagementDetail() {
             {/* Combined Class Info and Attendance Table */}
             {loadingAttendance ? (
               <div className="px-6 py-12 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                <LoadingDots className="justify-center mx-auto gap-2" dotClassName="h-3 w-3" />
                 <p className="mt-2 text-sm text-gray-500">Loading attendance records...</p>
               </div>
             ) : (

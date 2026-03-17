@@ -241,6 +241,10 @@ CREATE TABLE feedback (
     comments NVARCHAR(MAX),
     working_student_notes NVARCHAR(MAX),
     status NVARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'rejected', 'forwarded', 'resolved')),
+    admin_status NVARCHAR(20) NULL
+        CONSTRAINT DF_feedback_admin_status DEFAULT 'pending'
+        CHECK (admin_status IN ('pending', 'resolved')),
+    admin_resolved_at DATETIME,
     priority NVARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
     verified_by_user_id INT,
     verified_at DATETIME,

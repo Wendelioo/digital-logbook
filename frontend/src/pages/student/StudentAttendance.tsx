@@ -1,8 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import Button from '../../components/Button';
+import Modal from '../../components/Modal';
 import { CheckCircle2, History, Filter, X, Search } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { GetStudentOpenAttendanceSessions, StudentTimeIn, GetStudentAttendanceHistory } from '../../../wailsjs/go/backend/App';
+import LoadingDots from '../../components/LoadingDots';
 
 interface AttendanceSession {
   session_id: number;
@@ -48,6 +50,7 @@ function StudentAttendance() {
   const [historySearch, setHistorySearch] = useState<string>('');
   const [pendingClassFilter, setPendingClassFilter] = useState<string>('all');
   const [pendingStatusFilter, setPendingStatusFilter] = useState<string>('all');
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   const parseSessionDateTime = (value?: string): Date | null => {
     if (!value) return null;
@@ -184,10 +187,15 @@ function StudentAttendance() {
     return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">Absent</span>;
   };
 
+  const closeHistoryModal = () => {
+    setShowHistoryModal(false);
+    setShowHistoryFilters(false);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -197,7 +205,17 @@ function StudentAttendance() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Attendance</h2>
-        <Button onClick={() => { loadSessions({ showLoading: true }); loadHistory(); }} variant="outline" size="sm">Refresh</Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setShowHistoryModal(true)}
+            variant="outline"
+            size="sm"
+            icon={<History className="h-4 w-4" />}
+          >
+            History
+          </Button>
+          <Button onClick={() => { loadSessions({ showLoading: true }); loadHistory(); }} variant="outline" size="sm">Refresh</Button>
+        </div>
       </div>
 
       {notice && (
@@ -281,194 +299,196 @@ function StudentAttendance() {
         )}
       </div>
 
-      {/* Attendance History */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <History className="h-4 w-4 text-gray-500" />
-            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Attendance History</h3>
+      <Modal
+        isOpen={showHistoryModal}
+        onClose={closeHistoryModal}
+        title="Attendance History"
+        size="xl"
+        showVariantIcon={false}
+      >
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm text-gray-600">Review your attendance records with filters and search.</div>
+
+            {history.length > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="relative w-56 max-w-full">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search subject, date..."
+                    value={historySearch}
+                    onChange={e => setHistorySearch(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  {historySearch && (
+                    <button
+                      onClick={() => setHistorySearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      const nextOpen = !showHistoryFilters;
+                      if (nextOpen) {
+                        setPendingClassFilter(classFilter);
+                        setPendingStatusFilter(statusFilter);
+                      }
+                      setShowHistoryFilters(nextOpen);
+                    }}
+                    className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${
+                      showHistoryFilters || classFilter !== 'all' || statusFilter !== 'all'
+                        ? 'bg-primary-50 border-primary-500 text-primary-700'
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <Filter className="h-4 w-4" />
+                    <span>Filter</span>
+                    {(classFilter !== 'all' || statusFilter !== 'all') && (
+                      <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary-500 text-white text-xs font-bold">
+                        {[classFilter !== 'all', statusFilter !== 'all'].filter(Boolean).length}
+                      </span>
+                    )}
+                  </button>
+
+                  {showHistoryFilters && (
+                  <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg z-50">
+                    <div className="p-4 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-gray-800">Filters</span>
+                        {(classFilter !== 'all' || statusFilter !== 'all') && (
+                          <button
+                            onClick={() => { setClassFilter('all'); setStatusFilter('all'); }}
+                            className="text-xs text-primary-600 hover:underline"
+                          >
+                            Clear all
+                          </button>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Class</label>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={pendingClassFilter}
+                            onChange={e => setPendingClassFilter(e.target.value)}
+                            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="all">All Classes</option>
+                            {uniqueClasses.map(c => (
+                              <option key={c.class_id} value={String(c.class_id)}>{c.label}</option>
+                            ))}
+                          </select>
+                          {pendingClassFilter !== 'all' && (
+                            <button onClick={() => setPendingClassFilter('all')} className="text-gray-400 hover:text-gray-600">
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={pendingStatusFilter}
+                            onChange={e => setPendingStatusFilter(e.target.value)}
+                            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="all">All Statuses</option>
+                            <option value="present">Present</option>
+                            <option value="late">Late</option>
+                            <option value="absent">Absent</option>
+                          </select>
+                          {pendingStatusFilter !== 'all' && (
+                            <button onClick={() => setPendingStatusFilter('all')} className="text-gray-400 hover:text-gray-600">
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPendingClassFilter('all');
+                            setPendingStatusFilter('all');
+                            setClassFilter('all');
+                            setStatusFilter('all');
+                            setShowHistoryFilters(false);
+                          }}
+                          className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                        >
+                          Clear
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setClassFilter(pendingClassFilter);
+                            setStatusFilter(pendingStatusFilter);
+                            setShowHistoryFilters(false);
+                          }}
+                          className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-primary-600 rounded-lg hover:bg-primary-700"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           </div>
 
           {history.length > 0 && (
-            <div className="flex items-center gap-2">
-              <div className="relative w-56">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search subject, date..."
-                  value={historySearch}
-                  onChange={e => setHistorySearch(e.target.value)}
-                  className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-                {historySearch && (
-                  <button
-                    onClick={() => setHistorySearch('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
+            <div className="grid grid-cols-3 gap-3 mt-3 mb-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                <p className="text-xl font-bold text-green-700">{presentCount}</p>
+                <p className="text-xs text-green-600 font-medium">Present</p>
               </div>
-              <div className="relative">
-                <button
-                  onClick={() => {
-                    const nextOpen = !showHistoryFilters;
-                    if (nextOpen) {
-                      setPendingClassFilter(classFilter);
-                      setPendingStatusFilter(statusFilter);
-                    }
-                    setShowHistoryFilters(nextOpen);
-                  }}
-                  className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${
-                    showHistoryFilters || classFilter !== 'all' || statusFilter !== 'all'
-                      ? 'bg-primary-50 border-primary-500 text-primary-700'
-                      : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <Filter className="h-4 w-4" />
-                  <span>Filter</span>
-                  {(classFilter !== 'all' || statusFilter !== 'all') && (
-                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary-500 text-white text-xs font-bold">
-                      {[classFilter !== 'all', statusFilter !== 'all'].filter(Boolean).length}
-                    </span>
-                  )}
-                </button>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
+                <p className="text-xl font-bold text-yellow-700">{lateCount}</p>
+                <p className="text-xs text-yellow-600 font-medium">Late</p>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                <p className="text-xl font-bold text-red-700">{absentCount}</p>
+                <p className="text-xs text-red-600 font-medium">Absent</p>
+              </div>
+            </div>
+          )}
 
-                {showHistoryFilters && (
-                <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg z-50">
-                  <div className="p-4 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-gray-800">Filters</span>
-                      {(classFilter !== 'all' || statusFilter !== 'all') && (
-                        <button
-                          onClick={() => { setClassFilter('all'); setStatusFilter('all'); }}
-                          className="text-xs text-primary-600 hover:underline"
-                        >
-                          Clear all
-                        </button>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Class</label>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={pendingClassFilter}
-                          onChange={e => setPendingClassFilter(e.target.value)}
-                          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        >
-                          <option value="all">All Classes</option>
-                          {uniqueClasses.map(c => (
-                            <option key={c.class_id} value={String(c.class_id)}>{c.label}</option>
-                          ))}
-                        </select>
-                        {pendingClassFilter !== 'all' && (
-                          <button onClick={() => setPendingClassFilter('all')} className="text-gray-400 hover:text-gray-600">
-                            <X className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={pendingStatusFilter}
-                          onChange={e => setPendingStatusFilter(e.target.value)}
-                          className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        >
-                          <option value="all">All Statuses</option>
-                          <option value="present">Present</option>
-                          <option value="late">Late</option>
-                          <option value="absent">Absent</option>
-                        </select>
-                        {pendingStatusFilter !== 'all' && (
-                          <button onClick={() => setPendingStatusFilter('all')} className="text-gray-400 hover:text-gray-600">
-                            <X className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Apply & Clear */}
-                    <div className="flex justify-end gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPendingClassFilter('all');
-                          setPendingStatusFilter('all');
-                          setClassFilter('all');
-                          setStatusFilter('all');
-                          setShowHistoryFilters(false);
-                        }}
-                        className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-                      >
-                        Clear
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setClassFilter(pendingClassFilter);
-                          setStatusFilter(pendingStatusFilter);
-                          setShowHistoryFilters(false);
-                        }}
-                        className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-primary-600 rounded-lg hover:bg-primary-700"
-                      >
-                        Apply
-                      </button>
+          {historyLoading ? (
+            <div className="flex items-center justify-center h-24">
+              <LoadingDots className="justify-center" dotClassName="h-2.5 w-2.5" />
+            </div>
+          ) : filteredHistory.length === 0 ? (
+            <div className="bg-white border border-gray-100 rounded-lg p-6 text-center">
+              <p className="text-sm text-gray-500">{history.length === 0 ? 'No attendance records yet.' : 'No records match the selected filters.'}</p>
+            </div>
+          ) : (
+            <div className="bg-white border border-gray-100 rounded-lg divide-y divide-gray-100 overflow-hidden">
+              {filteredHistory.map((record, idx) => (
+                <div key={idx} className="flex items-center justify-between px-4 py-3 gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-900 truncate">{record.subject_code} - {record.subject_name}</p>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <span className="text-xs text-gray-500">{record.date}</span>
+                      {record.section && <span className="text-xs text-gray-400">- {record.section}</span>}
+                      {record.session_name && <span className="text-xs text-gray-400">- {record.session_name}</span>}
+                      {record.time_in && <span className="text-xs text-gray-500">- In: {record.time_in}</span>}
                     </div>
                   </div>
+                  <div className="flex-shrink-0">{statusBadge(record.status)}</div>
                 </div>
-              )}
+              ))}
             </div>
-          </div>
-        )}
+          )}
         </div>
-
-        {/* Summary */}
-        {history.length > 0 && (
-          <div className="grid grid-cols-3 gap-3 mt-3 mb-4">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
-              <p className="text-xl font-bold text-green-700">{presentCount}</p>
-              <p className="text-xs text-green-600 font-medium">Present</p>
-            </div>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
-              <p className="text-xl font-bold text-yellow-700">{lateCount}</p>
-              <p className="text-xs text-yellow-600 font-medium">Late</p>
-            </div>
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
-              <p className="text-xl font-bold text-red-700">{absentCount}</p>
-              <p className="text-xs text-red-600 font-medium">Absent</p>
-            </div>
-          </div>
-        )}
-
-        {historyLoading ? (
-          <div className="flex items-center justify-center h-24">
-            <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary-500 border-t-transparent"></div>
-          </div>
-        ) : filteredHistory.length === 0 ? (
-          <div className="bg-white shadow rounded-lg p-6 text-center">
-            <p className="text-sm text-gray-500">{history.length === 0 ? 'No attendance records yet.' : 'No records match the selected filters.'}</p>
-          </div>
-        ) : (
-          <div className="bg-white shadow rounded-lg divide-y divide-gray-100 overflow-hidden">
-            {filteredHistory.map((record, idx) => (
-              <div key={idx} className="flex items-center justify-between px-4 py-3 gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 truncate">{record.subject_code} - {record.subject_name}</p>
-                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                    <span className="text-xs text-gray-500">{record.date}</span>
-                    {record.section && <span className="text-xs text-gray-400">- {record.section}</span>}
-                    {record.session_name && <span className="text-xs text-gray-400">- {record.session_name}</span>}
-                    {record.time_in && <span className="text-xs text-gray-500">- In: {record.time_in}</span>}
-                  </div>
-                </div>
-                <div className="flex-shrink-0">{statusBadge(record.status)}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      </Modal>
     </div>
   );
 }

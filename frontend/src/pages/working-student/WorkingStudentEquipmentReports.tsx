@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Eye,
   AlertCircle,
@@ -11,8 +12,8 @@ import {
 import {
   GetPendingFeedback,
   GetConfirmedFeedback,
+  GetRejectedFeedback,
   ConfirmFeedback,
-  ConfirmAndForwardMultiple,
   ForwardFeedbackToAdmin,
   ForwardMultipleFeedbackToAdmin,
 } from '../../../wailsjs/go/backend/App';
@@ -20,20 +21,20 @@ import { useAuth } from '../../contexts/AuthContext';
 import { parseReportContext } from '../../utils/feedbackComments';
 import { Feedback } from './types';
 
-type SectionTab = 'awaiting' | 'ready_to_forward';
+type SectionTab = 'issues' | 'ready_to_forward' | 'rejected';
 
 function EquipmentReports() {
   const { user } = useAuth();
   const [feedbackList, setFeedbackList] = useState<Feedback[]>([]);
   const [confirmedList, setConfirmedList] = useState<Feedback[]>([]);
-  const [sectionTab, setSectionTab] = useState<SectionTab>('awaiting');
+  const [rejectedList, setRejectedList] = useState<Feedback[]>([]);
+  const [sectionTab, setSectionTab] = useState<SectionTab>('issues');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
   const [selectedFeedbackIds, setSelectedFeedbackIds] = useState<Set<number>>(new Set());
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [showBatchForwardModal, setShowBatchForwardModal] = useState(false);
-  const [showConfirmAndForwardModal, setShowConfirmAndForwardModal] = useState(false);
   const [forwardNotes, setForwardNotes] = useState('');
   const [forwarding, setForwarding] = useState(false);
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
@@ -57,12 +58,14 @@ function EquipmentReports() {
 
   const loadAllFeedback = async () => {
     try {
-      const [pending, confirmed] = await Promise.all([
+      const [pending, confirmed, rejected] = await Promise.all([
         GetPendingFeedback(),
         GetConfirmedFeedback(),
+        GetRejectedFeedback(),
       ]);
       setFeedbackList(pending || []);
       setConfirmedList(confirmed || []);
+      setRejectedList(rejected || []);
       setError('');
     } catch (error) {
       console.error('Failed to load feedback:', error);
@@ -76,8 +79,6 @@ function EquipmentReports() {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 5000);
   };
-
-  const currentList = sectionTab === 'awaiting' ? feedbackList : confirmedList;
 
   const isNoIssueReport = (report: Feedback) => {
     const allGood =
@@ -97,7 +98,13 @@ function EquipmentReports() {
       report.mouse_condition,
     ].filter(c => c && c.toLowerCase() !== 'good').length;
 
-  const visibleFeedbackList = currentList;
+  const issueFeedbackList = feedbackList.filter((report) => !isNoIssueReport(report));
+  const visibleFeedbackList = sectionTab === 'issues'
+    ? issueFeedbackList
+    : sectionTab === 'ready_to_forward'
+      ? confirmedList
+      : rejectedList;
+  const isRejectedTab = sectionTab === 'rejected';
 
   const handleConfirmClick = (feedback: Feedback, decision: 'confirm' | 'reject') => {
     setConfirmFeedback(feedback);
@@ -182,34 +189,6 @@ function EquipmentReports() {
     }
   };
 
-  const handleConfirmAndForwardClick = () => {
-    if (selectedFeedbackIds.size === 0) {
-      showNotification('error', 'Please select at least one report to confirm and forward.');
-      return;
-    }
-    setForwardNotes('');
-    setShowConfirmAndForwardModal(true);
-  };
-
-  const handleConfirmAndForwardSubmit = async () => {
-    if (selectedFeedbackIds.size === 0 || !user) return;
-    setForwarding(true);
-    try {
-      const feedbackIdsArray = Array.from(selectedFeedbackIds);
-      const count = await ConfirmAndForwardMultiple(feedbackIdsArray, user.id, forwardNotes.trim());
-      showNotification('success', `Successfully confirmed and forwarded ${count} report${count !== 1 ? 's' : ''} to admin!`);
-      setShowConfirmAndForwardModal(false);
-      setSelectedFeedbackIds(new Set());
-      setForwardNotes('');
-      await loadAllFeedback();
-    } catch (error) {
-      console.error('Failed to confirm and forward:', error);
-      showNotification('error', 'Failed to confirm and forward. Please try again.');
-    } finally {
-      setForwarding(false);
-    }
-  };
-
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       const selectedIds = new Set(selectedFeedbackIds);
@@ -235,7 +214,7 @@ function EquipmentReports() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -302,17 +281,17 @@ function EquipmentReports() {
           <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-100">
             <button
               type="button"
-              onClick={() => { setSectionTab('awaiting'); setSelectedFeedbackIds(new Set()); }}
+              onClick={() => { setSectionTab('issues'); setSelectedFeedbackIds(new Set()); }}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                sectionTab === 'awaiting'
+                sectionTab === 'issues'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-600 hover:text-gray-900'
               }`}
             >
-              Awaiting Verification
+              Issue Reports
               <span className={`ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold ${
-                sectionTab === 'awaiting' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'
-              }`}>{feedbackList.length}</span>
+                sectionTab === 'issues' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'
+              }`}>{issueFeedbackList.length}</span>
             </button>
             <button
               type="button"
@@ -328,6 +307,20 @@ function EquipmentReports() {
                 sectionTab === 'ready_to_forward' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
               }`}>{confirmedList.length}</span>
             </button>
+            <button
+              type="button"
+              onClick={() => { setSectionTab('rejected'); setSelectedFeedbackIds(new Set()); }}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                sectionTab === 'rejected'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Rejected
+              <span className={`ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                sectionTab === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'
+              }`}>{rejectedList.length}</span>
+            </button>
           </div>
 
         </div>
@@ -337,7 +330,7 @@ function EquipmentReports() {
             <span className="font-semibold text-gray-700">{visibleFeedbackList.length}</span>
             {' '}report{visibleFeedbackList.length !== 1 ? 's' : ''} shown
           </span>
-          {selectedFeedbackIds.size > 0 && (
+          {!isRejectedTab && selectedFeedbackIds.size > 0 && (
             <span className="text-blue-600 font-medium">
               · {selectedFeedbackIds.size} selected
             </span>
@@ -351,7 +344,7 @@ function EquipmentReports() {
         </div>
       ) : (
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          {selectedFeedbackIds.size > 0 && (
+          {!isRejectedTab && selectedFeedbackIds.size > 0 && (
             <div className="px-6 py-3 bg-blue-50 border-b border-blue-200 flex items-center justify-between">
               <div className="text-sm text-gray-700">
                 <span className="font-semibold text-blue-900">{selectedFeedbackIds.size}</span> report{selectedFeedbackIds.size !== 1 ? 's' : ''} selected
@@ -364,16 +357,7 @@ function EquipmentReports() {
                 >
                   Clear Selection
                 </Button>
-                {sectionTab === 'awaiting' ? (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleConfirmAndForwardClick}
-                    icon={<Send className="h-4 w-4" />}
-                  >
-                    Confirm & forward ({selectedFeedbackIds.size})
-                  </Button>
-                ) : (
+                {sectionTab === 'ready_to_forward' && (
                   <Button
                     variant="primary"
                     size="sm"
@@ -395,18 +379,19 @@ function EquipmentReports() {
                   <col style={{ width: '18%' }} />
                   <col style={{ width: '12%' }} />
                   <col style={{ width: '12%' }} />
-                  {sectionTab === 'ready_to_forward' && <col style={{ width: '13%' }} />}
                   <col style={{ width: '15%' }} />
                 </colgroup>
                 <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
                     <th className="px-3 py-3 text-left">
-                      <input
-                        type="checkbox"
-                        checked={visibleFeedbackList.length > 0 && visibleFeedbackList.every((feedback) => selectedFeedbackIds.has(feedback.id))}
-                        onChange={(e) => handleSelectAll(e.target.checked)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
+                      {!isRejectedTab && (
+                        <input
+                          type="checkbox"
+                          checked={visibleFeedbackList.length > 0 && visibleFeedbackList.every((feedback) => selectedFeedbackIds.has(feedback.id))}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                      )}
                     </th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Student
@@ -420,11 +405,6 @@ function EquipmentReports() {
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Status
                     </th>
-                    {sectionTab === 'ready_to_forward' && (
-                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                        Verified at
-                      </th>
-                    )}
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Actions
                     </th>
@@ -438,12 +418,14 @@ function EquipmentReports() {
                         : 'bg-red-50 hover:bg-red-100'
                     }`}>
                       <td className="px-3 py-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedFeedbackIds.has(feedback.id)}
-                          onChange={(e) => handleSelectFeedback(feedback.id, e.target.checked)}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
+                        {!isRejectedTab && (
+                          <input
+                            type="checkbox"
+                            checked={selectedFeedbackIds.has(feedback.id)}
+                            onChange={(e) => handleSelectFeedback(feedback.id, e.target.checked)}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                          />
+                        )}
                       </td>
                       <td className="px-3 py-3">
                         <div className="text-sm font-medium text-gray-900 truncate">{feedback.student_name}</div>
@@ -476,32 +458,44 @@ function EquipmentReports() {
                       </td>
                       <td className="px-3 py-3">
                         {(() => {
+                          if (isRejectedTab) {
+                            return (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap bg-red-100 text-red-800">
+                                  Rejected
+                                </span>
+                                {feedback.verified_at && (
+                                  <span className="text-[11px] text-red-700 whitespace-nowrap">
+                                    {new Date(feedback.verified_at).toLocaleString('en-US', {
+                                      month: '2-digit',
+                                      day: '2-digit',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          }
+
                           const n = countIssues(feedback);
-                          return n === 0 ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 whitespace-nowrap">
-                              No Issues
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800 whitespace-nowrap">
-                              {n} {n === 1 ? 'Issue' : 'Issues'}
+                          const hasIssues = n > 0;
+                          const baseLabel = hasIssues ? `${n} ${n === 1 ? 'Issue' : 'Issues'}` : 'No Issues';
+
+                          return (
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${
+                                hasIssues
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-green-100 text-green-800'
+                              }`}
+                            >
+                              {baseLabel}
                             </span>
                           );
                         })()}
                       </td>
-                      {sectionTab === 'ready_to_forward' && (
-                        <td className="px-3 py-3">
-                          <span className="text-xs text-gray-600 whitespace-nowrap">
-                            {feedback.verified_at
-                              ? new Date(feedback.verified_at).toLocaleString('en-US', {
-                                  month: '2-digit',
-                                  day: '2-digit',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })
-                              : '—'}
-                          </span>
-                        </td>
-                      )}
                       <td className="px-3 py-3">
                         <div className="flex flex-col gap-1">
                           <button
@@ -516,7 +510,7 @@ function EquipmentReports() {
                             <Eye className="h-3.5 w-3.5 flex-shrink-0" />
                             <span>Details</span>
                           </button>
-                          {sectionTab === 'awaiting' ? (
+                          {sectionTab === 'issues' ? (
                             <div className="flex items-center gap-1">
                               <button
                                 type="button"
@@ -536,7 +530,7 @@ function EquipmentReports() {
                                 <XCircle className="h-3.5 w-3.5" />
                               </button>
                             </div>
-                          ) : (
+                          ) : sectionTab === 'ready_to_forward' ? (
                             <button
                               type="button"
                               title="Forward to admin"
@@ -546,7 +540,7 @@ function EquipmentReports() {
                               <Send className="h-3.5 w-3.5 flex-shrink-0" />
                               <span>Forward</span>
                             </button>
-                          )}
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -558,7 +552,7 @@ function EquipmentReports() {
           <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
             <div className="text-xs text-gray-500">
               {visibleFeedbackList.length} report{visibleFeedbackList.length !== 1 ? 's' : ''} shown
-              {selectedFeedbackIds.size > 0 && (
+              {!isRejectedTab && selectedFeedbackIds.size > 0 && (
                 <span className="ml-2 text-blue-600 font-medium">· {selectedFeedbackIds.size} selected</span>
               )}
             </div>
@@ -881,92 +875,6 @@ function EquipmentReports() {
                   loading={forwarding}
                 >
                   Forward {selectedFeedbackIds.size} Report{selectedFeedbackIds.size !== 1 ? 's' : ''}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirm & Forward Multiple Modal (Awaiting tab) */}
-      {showConfirmAndForwardModal && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowConfirmAndForwardModal(false);
-            }
-          }}
-        >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 relative">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowConfirmAndForwardModal(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 text-2xl font-bold"
-            >
-              ×
-            </Button>
-            
-            <div className="text-center p-8 pb-4">
-              <Send className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                Confirm & Forward to Admin
-              </h3>
-              <p className="text-gray-600">
-                You are about to confirm and forward <span className="font-semibold text-blue-600">{selectedFeedbackIds.size}</span> report{selectedFeedbackIds.size !== 1 ? 's' : ''} to admin in one go
-              </p>
-            </div>
-
-            <div className="px-8 pb-8">
-              <div className="bg-gray-50 rounded-lg p-4 mb-6 max-h-48 overflow-y-auto">
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">Selected Reports</h4>
-                <div className="space-y-2">
-                  {feedbackList
-                    .filter(f => selectedFeedbackIds.has(f.id))
-                    .map((feedback) => (
-                      <div key={feedback.id} className="text-sm text-gray-700 flex items-center justify-between py-1 border-b border-gray-200 last:border-0">
-                        <span className="font-medium">{feedback.student_name}</span>
-                        <span className="text-gray-500">
-                          Reported for: PC {feedback.pc_number}
-                          {(() => {
-                            const { submittedFrom } = parseReportContext(feedback.comments);
-                            return submittedFrom ? ` · from ${submittedFrom}` : '';
-                          })()}
-                        </span>
-                      </div>
-                    ))}
-                </div>
-              </div>
-
-              <div className="mb-6">
-                <label htmlFor="confirm-forward-notes" className="block text-sm font-medium text-gray-700 mb-2">
-                  Notes (Optional)
-                </label>
-                <textarea
-                  id="confirm-forward-notes"
-                  rows={4}
-                  value={forwardNotes}
-                  onChange={(e) => setForwardNotes(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Add any notes for the admin (applies to all selected reports)..."
-                />
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowConfirmAndForwardModal(false)}
-                  disabled={forwarding}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={handleConfirmAndForwardSubmit}
-                  loading={forwarding}
-                >
-                  Confirm & Forward {selectedFeedbackIds.size} Report{selectedFeedbackIds.size !== 1 ? 's' : ''}
                 </Button>
               </div>
             </div>

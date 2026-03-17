@@ -281,8 +281,10 @@ func (a *App) ProcessRegistration(req ApprovalRequest) error {
 
 	// Update approval record
 	var rejectionReason interface{}
+	approvalStatus := "approved"
 	if req.Action == "reject" {
 		rejectionReason = req.RejectionReason
+		approvalStatus = "rejected"
 	} else {
 		rejectionReason = nil
 	}
@@ -291,7 +293,7 @@ func (a *App) ProcessRegistration(req ApprovalRequest) error {
 		UPDATE registration_approvals
 		SET status = ?, approved_by_user_id = ?, rejection_reason = ?, processed_at = GETDATE()
 		WHERE user_id = ? AND status = 'pending'
-	`, req.Action+"d", req.ApprovedBy, rejectionReason, req.UserID)
+	`, approvalStatus, req.ApprovedBy, rejectionReason, req.UserID)
 	if err != nil {
 		return fmt.Errorf("failed to update approval record: %v", err)
 	}
@@ -301,7 +303,7 @@ func (a *App) ProcessRegistration(req ApprovalRequest) error {
 		return fmt.Errorf("failed to commit transaction: %v", err)
 	}
 
-	log.Printf("Registration %s: User ID %d by User ID %d", req.Action+"d", req.UserID, req.ApprovedBy)
+	log.Printf("Registration %s: User ID %d by User ID %d", approvalStatus, req.UserID, req.ApprovedBy)
 
 	// Notify the student about their registration result
 	if req.Action == "approve" {

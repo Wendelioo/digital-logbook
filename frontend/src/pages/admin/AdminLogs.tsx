@@ -3,11 +3,12 @@ import Button from '../../components/Button';
 import Table from '../../components/Table';
 import AdminArchiveModal from '../../components/AdminArchiveModal';
 import { Badge } from '../../components/Badge';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Search,
   X,
   AlertCircle,
-  Archive,
+  History,
   Download,
   Filter
 } from 'lucide-react';
@@ -173,7 +174,7 @@ function ViewLogs() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -205,7 +206,7 @@ function ViewLogs() {
         <Button
           onClick={() => setShowArchiveModal(true)}
           variant="outline"
-          icon={<Archive className="h-4 w-4" />}
+          icon={<History className="h-4 w-4" />}
         >
           Archived Logs
         </Button>
@@ -474,37 +475,55 @@ function ViewLogs() {
           />
         </div>
         {filteredLogs.length > 0 && totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
-            <div className="text-sm text-gray-600">
-              Showing {startIndex + 1} to {Math.min(endIndex, filteredLogs.length)} of {filteredLogs.length} entries
-            </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                variant="outline"
-                size="sm"
-              >
-                Previous
-              </Button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="text-sm text-gray-600">
+                Showing {startIndex + 1} to {Math.min(endIndex, filteredLogs.length)} of {filteredLogs.length} entries
+              </div>
+              <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                 <Button
-                  key={pageNum}
-                  onClick={() => setCurrentPage(pageNum)}
-                  variant={currentPage === pageNum ? "primary" : "outline"}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  variant="outline"
                   size="sm"
                 >
-                  {pageNum}
+                  Previous
                 </Button>
-              ))}
-              <Button
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                disabled={currentPage >= totalPages}
-                variant="outline"
-                size="sm"
-              >
-                Next
-              </Button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => {
+                  if (
+                    pageNum === 1 ||
+                    pageNum === totalPages ||
+                    (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
+                  ) {
+                    return (
+                      <Button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        variant={currentPage === pageNum ? 'primary' : 'outline'}
+                        size="sm"
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  }
+
+                  if (pageNum === currentPage - 2 || pageNum === currentPage + 2) {
+                    return <span key={pageNum} className="px-2 text-sm text-gray-500">...</span>;
+                  }
+
+                  return null;
+                })}
+
+                <Button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage >= totalPages}
+                  variant="outline"
+                  size="sm"
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           </div>
         )}

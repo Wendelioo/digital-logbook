@@ -11,6 +11,7 @@ import {
   Check,
 } from 'lucide-react';
 import { SubmitRegistration } from '../../wailsjs/go/backend/App';
+import LoadingDots from '../components/LoadingDots';
 
 interface RegistrationModalProps {
   isOpen: boolean;
@@ -37,26 +38,42 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
 
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof typeof formData, string>>>({});
 
+  const capitalizeFirstLetter = (input: string): string => {
+    const firstNonSpaceIndex = input.search(/\S/);
+    if (firstNonSpaceIndex === -1) return input;
+
+    const ch = input[firstNonSpaceIndex];
+    if (!/[a-z]/.test(ch)) return input;
+
+    return (
+      input.slice(0, firstNonSpaceIndex) +
+      ch.toUpperCase() +
+      input.slice(firstNonSpaceIndex + 1)
+    );
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
+    const { name } = e.target;
+    let { value } = e.target;
+
+    if (name === 'first_name' || name === 'last_name' || name === 'middle_name') {
+      value = capitalizeFirstLetter(value);
+    }
+
     const updatedFormData = {
       ...formData,
       [name]: value,
     };
     setFormData(updatedFormData);
-    setFieldErrors((prev) => ({
-      ...prev,
-      ...validateAllFields(updatedFormData, name as keyof typeof formData),
-    }));
+    setFieldErrors((prev) =>
+      validateAllFields(updatedFormData, name as keyof typeof formData, prev)
+    );
     setError('');
   };
 
   const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
     const name = e.target.name as keyof typeof formData;
-    setFieldErrors((prev) => ({
-      ...prev,
-      ...validateAllFields(formData, name),
-    }));
+    setFieldErrors((prev) => validateAllFields(formData, name, prev));
   };
 
   // Validation constants (aligned with backend)
@@ -74,9 +91,10 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
 
   const validateAllFields = (
     values: typeof formData,
-    touchedField?: keyof typeof formData
+    touchedField?: keyof typeof formData,
+    currentErrors: Partial<Record<keyof typeof formData, string>> = {}
   ): Partial<Record<keyof typeof formData, string>> => {
-    const errors: Partial<Record<keyof typeof formData, string>> = touchedField ? { ...fieldErrors } : {};
+    const errors: Partial<Record<keyof typeof formData, string>> = touchedField ? { ...currentErrors } : {};
 
     const fieldsToValidate: (keyof typeof formData)[] = touchedField
       ? [touchedField]
@@ -188,12 +206,14 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
   };
 
   // For password checklist UI (same rules as backend)
+  // Backend treats "special" as punctuation or symbol characters (unicode.IsPunct / unicode.IsSymbol),
+  // so we approximate that here using an ASCII punctuation/symbol character class.
   const pwRules = {
     length: formData.password.length >= 8,
     upper: /[A-Z]/.test(formData.password),
     lower: /[a-z]/.test(formData.password),
     number: /[0-9]/.test(formData.password),
-    special: /[^A-Za-z0-9]/.test(formData.password),
+    special: /[!-/:-@[-`{-~]/.test(formData.password),
   };
   const pwValid = Object.values(pwRules).every(Boolean);
   const pwMatch = formData.password === formData.confirm_password && formData.confirm_password.length > 0;
@@ -568,20 +588,13 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                       minLength={8}
                       maxLength={MAX_LEN_PASSWORD}
                       autoComplete="new-password"
-                      className={`w-full pl-10 pr-10 py-2.5 text-sm border rounded-lg focus:ring-2 ${
+                      className={`w-full pl-10 pr-3.5 py-2.5 text-sm border rounded-lg focus:ring-2 ${
                         fieldErrors.confirm_password
                           ? 'border-red-400 focus:ring-red-500 focus:border-red-500'
                           : 'border-gray-300 focus:ring-primary-500 focus:border-primary-500'
                       }`}
                     />
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword((prev) => !prev)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
                   </div>
                   {fieldErrors.confirm_password && (
                     <p className="mt-1 text-xs text-red-600">{fieldErrors.confirm_password}</p>
@@ -607,10 +620,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
               >
                 {loading ? (
                   <span className="flex items-center gap-2">
-                    <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
+                    <LoadingDots dotClassName="h-2.5 w-2.5 bg-white" />
                     Creating Account...
                   </span>
                 ) : 'Create Account'}

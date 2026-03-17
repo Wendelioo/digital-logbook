@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import Button from '../../components/Button';
 import Table from '../../components/Table';
 import { Badge } from '../../components/Badge';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Download,
   Filter,
@@ -555,7 +556,7 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -1282,20 +1283,6 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
                         </span>
                       );
                     }
-                  },
-                  {
-                    key: 'verified_at',
-                    label: 'Verified At',
-                    width: '160px',
-                    render: (record: Feedback) => (
-                      <span className="text-xs text-gray-600">
-                        {record.verified_at
-                          ? new Date(record.verified_at).toLocaleString('en-US', {
-                              month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
-                            })
-                          : '—'}
-                      </span>
-                    )
                   },
                   {
                     key: 'forwarded_by',

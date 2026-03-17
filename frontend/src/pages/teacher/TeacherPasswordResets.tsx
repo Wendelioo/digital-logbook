@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Search, Filter, X } from 'lucide-react';
+import { RefreshCw, Search, Filter, X, History } from 'lucide-react';
 import {
   GetPendingPasswordResets,
   ApprovePasswordReset,
@@ -8,6 +8,8 @@ import {
 } from '../../../wailsjs/go/backend/App';
 import { backend } from '../../../wailsjs/go/models';
 import { useAuth } from '../../contexts/AuthContext';
+import Modal from '../../components/Modal';
+import LoadingDots from '../../components/LoadingDots';
 
 type PasswordResetRequest = backend.PasswordResetRequest;
 
@@ -25,6 +27,7 @@ function TeacherPasswordResets() {
   const [historyDateTo, setHistoryDateTo] = useState('');
   const [historyStatusFilter, setHistoryStatusFilter] = useState<'all' | 'approved' | 'rejected'>('all');
   const [showHistoryFilters, setShowHistoryFilters] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
@@ -132,6 +135,16 @@ function TeacherPasswordResets() {
     (historyDateFrom || historyDateTo ? 1 : 0) +
     (historyStatusFilter !== 'all' ? 1 : 0);
 
+  const openHistoryModal = () => {
+    setShowHistoryModal(true);
+    loadHistory();
+  };
+
+  const closeHistoryModal = () => {
+    setShowHistoryModal(false);
+    setShowHistoryFilters(false);
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Toast */}
@@ -150,14 +163,26 @@ function TeacherPasswordResets() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-gray-900">Password Reset Requests</h1>
-        <button
-          onClick={refresh}
-          disabled={loadingPending || loadingHistory}
-          className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
-        >
-          <RefreshCw className={`h-4 w-4 ${loadingPending ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={openHistoryModal}
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            title="Request history"
+            aria-label="Open request history"
+          >
+            <History className="h-4 w-4" />
+            History
+          </button>
+          <button
+            onClick={refresh}
+            disabled={loadingPending || loadingHistory}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors"
+          >
+            {loadingPending ? <LoadingDots dotClassName="h-2.5 w-2.5" /> : <RefreshCw className="h-4 w-4" />}
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Pending Requests */}
@@ -173,7 +198,7 @@ function TeacherPasswordResets() {
           </div>
           {loadingPending && (
             <span className="text-xs text-gray-400 flex items-center gap-1">
-              <RefreshCw className="h-3 w-3 animate-spin" /> Updating…
+              <LoadingDots dotClassName="h-2 w-2" /> Updating...
             </span>
           )}
         </div>
@@ -218,25 +243,29 @@ function TeacherPasswordResets() {
         )}
       </div>
 
-      {/* History */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex flex-col gap-3 px-6 py-4 border-b border-gray-100">
-          <div className="flex items-center justify-between">
+      <Modal
+        isOpen={showHistoryModal}
+        onClose={closeHistoryModal}
+        title="Password Reset Request History"
+        size="xl"
+        showVariantIcon={false}
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-gray-900">Request History</h2>
+              <span className="text-sm font-medium text-gray-700">Resolved Requests</span>
               <span className="text-xs text-gray-400">(last 50)</span>
             </div>
             {loadingHistory && (
               <span className="text-xs text-gray-400 flex items-center gap-1">
-                <RefreshCw className="h-3 w-3 animate-spin" /> Loading…
+                <LoadingDots dotClassName="h-2 w-2" /> Loading...
               </span>
             )}
           </div>
 
           {history.length > 0 && (
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              {/* Search bar */}
-              <div className="relative w-full sm:w-64">
+            <div className="flex items-center justify-end gap-3 flex-wrap">
+              <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="text"
@@ -256,7 +285,6 @@ function TeacherPasswordResets() {
                 )}
               </div>
 
-              {/* Filter button (date + status) */}
               <div className="relative">
                 <button
                   type="button"
@@ -296,7 +324,6 @@ function TeacherPasswordResets() {
                         )}
                       </div>
 
-                      {/* Date range */}
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Requested Date</label>
                         <div className="flex items-center gap-2">
@@ -320,7 +347,6 @@ function TeacherPasswordResets() {
                         </div>
                       </div>
 
-                      {/* Status filter */}
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
                         <div className="relative">
@@ -356,53 +382,57 @@ function TeacherPasswordResets() {
               </div>
             </div>
           )}
-        </div>
 
-        {history.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-center">
-            <p className="text-sm text-gray-500">No resolved requests yet.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Student</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Subject</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Requested</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Resolved</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {filteredHistory.map(req => (
-                  <tr key={req.id} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="px-6 py-3">
-                      <p className="font-medium text-gray-900">{req.student_name}</p>
-                      <p className="text-xs text-gray-400">{req.student_code}</p>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      <p>{req.subject_code}</p>
-                      {req.subject_name && (
-                        <p className="text-xs text-gray-400 truncate max-w-[180px]">{req.subject_name}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{req.requested_at}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{req.resolved_at || '—'}</td>
-                    <td className="px-4 py-3">
-                      {req.status === 'approved' ? (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Approved</span>
-                      ) : (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">Rejected</span>
-                      )}
-                    </td>
+          {history.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <p className="text-sm text-gray-500">No resolved requests yet.</p>
+            </div>
+          ) : filteredHistory.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <p className="text-sm text-gray-500">No history results match your current filters.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Student</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Subject</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Requested</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Resolved</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {filteredHistory.map(req => (
+                    <tr key={req.id} className="hover:bg-gray-50/60 transition-colors">
+                      <td className="px-6 py-3">
+                        <p className="font-medium text-gray-900">{req.student_name}</p>
+                        <p className="text-xs text-gray-400">{req.student_code}</p>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        <p>{req.subject_code}</p>
+                        {req.subject_name && (
+                          <p className="text-xs text-gray-400 truncate max-w-[180px]">{req.subject_name}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{req.requested_at}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{req.resolved_at || '—'}</td>
+                      <td className="px-4 py-3">
+                        {req.status === 'approved' ? (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">Approved</span>
+                        ) : (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">Rejected</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

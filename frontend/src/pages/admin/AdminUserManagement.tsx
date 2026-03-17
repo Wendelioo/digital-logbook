@@ -3,6 +3,7 @@ import Button from '../../components/Button';
 import Table from '../../components/Table';
 import { StatusBadge } from '../../components/Badge';
 import Modal from '../../components/Modal';
+import LoadingDots from '../../components/LoadingDots';
 import {
   UserPlus,
   Edit,
@@ -18,7 +19,6 @@ import {
   Settings,
   Archive,
   ArchiveRestore,
-  RefreshCw,
   UserCheck,
   UserX,
   Clock,
@@ -38,7 +38,6 @@ import {
   DeactivateTeacher,
   DeleteExpiredDeactivatedUsers,
   GetUsersByActivityStatus,
-  RunInactivityCheck,
   ReactivateUser,
 } from '../../../wailsjs/go/backend/App';
 import { User as UserType, Department } from './types';
@@ -215,7 +214,6 @@ function UserManagement() {
   const [activityTab, setActivityTab] = useState<ActivityTab>('active');
   const [activityUsers, setActivityUsers] = useState<UserType[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
-  const [inactivityCheckLoading, setInactivityCheckLoading] = useState(false);
 
   // Excel-like table state: sorting, filtering, selection, pagination
   type SortKey = 'name' | 'role' | 'created';
@@ -379,24 +377,6 @@ function UserManagement() {
       showNotification('error', errorMessage);
     } finally {
       setActivityLoading(false);
-    }
-  };
-
-  const handleRunInactivityCheck = async () => {
-    if (!confirm('Run inactivity check?\n\n• Accounts with no login for 6+ months will be auto-deactivated.\n• Accounts deactivated for 4+ years will be flagged for deletion.')) return;
-    setInactivityCheckLoading(true);
-    try {
-      const result = await RunInactivityCheck();
-      const deactivated = (result as Record<string, number>)['deactivated'] ?? 0;
-      const deleted = (result as Record<string, number>)['deleted'] ?? 0;
-      showNotification('success', `Inactivity check complete: ${deactivated} account(s) deactivated, ${deleted} flagged for deletion.`);
-      loadActivityUsers(activityTab);
-      loadUsers();
-    } catch (error) {
-      console.error('Inactivity check failed:', error);
-      showNotification('error', error instanceof Error ? error.message : 'Inactivity check failed.');
-    } finally {
-      setInactivityCheckLoading(false);
     }
   };
 
@@ -649,7 +629,7 @@ function UserManagement() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -706,15 +686,6 @@ function UserManagement() {
       <div className="mb-6 flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
         <div className="flex items-center gap-2">
-          <Button
-            onClick={handleRunInactivityCheck}
-            variant="outline"
-            icon={<RefreshCw className={`h-4 w-4 ${inactivityCheckLoading ? 'animate-spin' : ''}`} />}
-            disabled={inactivityCheckLoading}
-            title="Auto-deactivate accounts inactive 6+ months; flag accounts inactive 4+ years for deletion"
-          >
-            Inactivity Check
-          </Button>
           <Button
             onClick={() => setShowForm(true)}
             variant="primary"
@@ -1052,7 +1023,7 @@ function UserManagement() {
       >
         {archivedLoading ? (
           <div className="flex items-center justify-center h-40">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+            <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
           </div>
         ) : archivedUsers.length === 0 ? (
           <div className="px-6 py-12 text-center">
@@ -1180,12 +1151,17 @@ function UserManagement() {
         {/* Activity users table — only shown for non-active tabs */}
         {activityTab !== 'active' && (activityLoading ? (
           <div className="flex items-center justify-center h-40">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+            <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
           </div>
         ) : activityUsers.length === 0 ? (
-          <div className="bg-white rounded-lg shadow border border-gray-100 py-12 text-center text-gray-400">
-            <Users className="h-10 w-10 mx-auto mb-2 opacity-30" />
-            <p>No {activityTab} accounts found.</p>
+          <div className="bg-white rounded-lg shadow border border-gray-100 py-10 text-center text-gray-500">
+            <p className="text-sm font-medium">
+              No {activityTab} accounts found.
+            </p>
+            <p className="mt-1 text-xs text-gray-400">
+              When accounts become {activityTab === 'deactivated' ? 'inactive' : activityTab === 'deleted' ? 'eligible for deletion' : activityTab},
+              they will appear in this list.
+            </p>
           </div>
         ) : (
           <div className="bg-white shadow rounded-lg overflow-hidden">

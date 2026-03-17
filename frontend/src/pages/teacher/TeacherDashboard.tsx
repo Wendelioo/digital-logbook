@@ -129,31 +129,34 @@ function DashboardOverview() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
         {/* Quick Stats */}
         <div className="md:col-span-2 space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard
-              title="Active Classes"
-              value={activeClasses}
-              icon={<Library className="h-6 w-6" />}
-              color="blue"
-            />
-            <StatCard
-              title="Total Students"
-              value={totalStudents}
-              icon={<Users className="h-6 w-6" />}
-              color="green"
-            />
-            <StatCard
-              title="Inactive Classes"
-              value={inactiveClasses}
-              icon={<PauseCircle className="h-6 w-6" />}
-              color="yellow"
-            />
-            <StatCard
-              title="Archived Classes"
-              value={archivedClasses}
-              icon={<Archive className="h-6 w-6" />}
-              color="indigo"
-            />
+          <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Overview</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <StatCard
+                title="Active Classes"
+                value={activeClasses}
+                icon={<Library className="h-6 w-6" />}
+                color="blue"
+              />
+              <StatCard
+                title="Archived Classes"
+                value={archivedClasses}
+                icon={<Archive className="h-6 w-6" />}
+                color="indigo"
+              />
+              <StatCard
+                title="Inactive Classes"
+                value={inactiveClasses}
+                icon={<PauseCircle className="h-6 w-6" />}
+                color="yellow"
+              />
+              <StatCard
+                title="Total Students"
+                value={totalStudents}
+                icon={<Users className="h-6 w-6" />}
+                color="green"
+              />
+            </div>
           </div>
 
           {/* List of Schedule */}

@@ -431,7 +431,7 @@ func docxParagraph(text string, bold bool, size int, centered bool) string {
 	return sb.String()
 }
 
-func docxTableCell(text, fillColor string, bold bool, whiteText bool) string {
+func docxTableCell(text, _ string, bold bool, _ bool) string {
 	var sb strings.Builder
 	sb.WriteString(`<w:tc><w:tcPr>`)
 	// Plain cell: no background color shading

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardBody, StatCard } from '../../components/Card';
 import Button from '../../components/Button';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Users,
   UserCheck,
@@ -202,7 +203,7 @@ function DashboardOverview() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -214,34 +215,39 @@ function DashboardOverview() {
         <p className="text-sm text-gray-500">Here's what's going on today.</p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
-        {/* Stats Cards */}
         <div className="md:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard
-              title="Students Registered"
-              value={stats.students_registered}
-              icon={<Users className="h-6 w-6" />}
-              color="blue"
-            />
-            <StatCard
-              title="Pending Feedback"
-              value={stats.pending_feedback}
-              icon={<AlertCircle className="h-6 w-6" />}
-              color="yellow"
-            />
-            <StatCard
-              title="Pending Registrations"
-              value={stats.pending_registrations}
-              icon={<UserCheck className="h-6 w-6" />}
-              color="green"
-            />
-          </div>
-
-          {/* Today's Activity */}
+          {/* Overview */}
           <Card>
-            <CardHeader title="Today's Activity" />
+            <CardHeader title="Overview" />
             <CardBody>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="flex items-center p-4 bg-indigo-50 rounded-lg">
+                  <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mr-4">
+                    <Users className="h-6 w-6 text-indigo-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Students Registered</p>
+                    <p className="text-2xl font-bold text-gray-900">{stats.students_registered}</p>
+                  </div>
+                </div>
+                <div className="flex items-center p-4 bg-yellow-50 rounded-lg">
+                  <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
+                    <AlertCircle className="h-6 w-6 text-yellow-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Pending Feedback</p>
+                    <p className="text-2xl font-bold text-gray-900">{stats.pending_feedback}</p>
+                  </div>
+                </div>
+                <div className="flex items-center p-4 bg-emerald-50 rounded-lg">
+                  <div className="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center mr-4">
+                    <UserCheck className="h-6 w-6 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Pending Registration Requests</p>
+                    <p className="text-2xl font-bold text-gray-900">{stats.pending_registrations}</p>
+                  </div>
+                </div>
                 <div className="flex items-center p-4 bg-blue-50 rounded-lg">
                   <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
                     <Calendar className="h-6 w-6 text-blue-600" />
@@ -394,20 +400,6 @@ function DashboardOverview() {
                   <div className="min-w-0">
                     <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">Attendance</h3>
                     <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">View your attendance records.</p>
-                  </div>
-                </Link>
-                <Link
-                  to="manage-users"
-                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200"
-                >
-                  <div className="flex-shrink-0">
-                    <div className="w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
-                      <Users className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">Student Management</h3>
-                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">Approve and manage student registrations.</p>
                   </div>
                 </Link>
                 <Link

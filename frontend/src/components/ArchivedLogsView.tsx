@@ -3,6 +3,7 @@ import { Card, CardHeader, CardBody } from './Card';
 import Table from './Table';
 import Button from './Button';
 import { Badge } from './Badge';
+import LoadingDots from './LoadingDots';
 import {
   ChevronRight,
   ChevronDown,
@@ -217,7 +218,7 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <LoadingDots className="justify-center gap-3" dotClassName="h-4 w-4" />
       </div>
     );
   }

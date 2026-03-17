@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
 import TeacherStoredArchiveModal from '../../components/TeacherStoredArchiveModal';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Eye,
   Edit,
@@ -198,7 +199,7 @@ function ClassManagement() {
     return (
       <div className="p-6">
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+          <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
         </div>
       </div>
     );

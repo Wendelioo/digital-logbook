@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardBody, StatCard } from '../../components/Card';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Users,
   User,
@@ -14,6 +15,7 @@ import {
 } from '../../../wailsjs/go/backend/App';
 import { BackendDashboardNotifications } from '../../components/DashboardNotifications';
 import { DashboardStats } from './types';
+import { StatusBadge } from '../../components/Badge';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 
@@ -65,7 +67,7 @@ function DashboardOverview() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -73,11 +75,28 @@ function DashboardOverview() {
   const totalUserAccounts =
     stats.total_students + stats.total_teachers + stats.working_students;
 
-  const forwardedIssueAlerts = notifications.filter(
+  const isToday = (isoDate: string) => {
+    const d = new Date(isoDate);
+    const now = new Date();
+    return (
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate()
+    );
+  };
+
+  const todaysFeedback = notifications.filter(
     (notification) =>
       notification.category === 'feedback' &&
-      notification.tone === 'warning' &&
-      !notification.is_read
+      isToday(notification.created_at)
+  );
+
+  const issueFeedbackCount = todaysFeedback.filter(
+    (notification) => notification.tone === 'warning'
+  ).length;
+
+  const nonIssueFeedbackCount = todaysFeedback.filter(
+    (notification) => notification.tone !== 'warning'
   ).length;
 
   return (
@@ -88,31 +107,36 @@ function DashboardOverview() {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
         <div className="md:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            <StatCard
-              title="All User Accounts"
-              value={totalUserAccounts}
-              icon={<Users className="h-6 w-6" />}
-              color="purple"
-            />
-            <StatCard
-              title="Students"
-              value={stats.total_students}
-              icon={<Users className="h-6 w-6" />}
-              color="blue"
-            />
-            <StatCard
-              title="Teachers"
-              value={stats.total_teachers}
-              icon={<Users className="h-6 w-6" />}
-              color="green"
-            />
-            <StatCard
-              title="Working Students"
-              value={stats.working_students}
-              icon={<Users className="h-6 w-6" />}
-              color="indigo"
-            />
+          <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Overview</h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              <StatCard
+                title="All User Accounts"
+                value={totalUserAccounts}
+                icon={<Users className="h-6 w-6" />}
+                color="purple"
+              />
+              <StatCard
+                title="Students"
+                value={stats.total_students}
+                icon={<Users className="h-6 w-6" />}
+                color="blue"
+              />
+              <StatCard
+                title="Teachers"
+                value={stats.total_teachers}
+                icon={<Users className="h-6 w-6" />}
+                color="green"
+              />
+              <StatCard
+                title="Working Students"
+                value={stats.working_students}
+                icon={<Users className="h-6 w-6" />}
+                color="indigo"
+              />
+            </div>
           </div>
 
           <Card>
@@ -150,36 +174,34 @@ function DashboardOverview() {
             </CardBody>
           </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader title="Today's Activity" />
-              <CardBody>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center">
-                      <ClipboardList className="h-5 w-5 text-blue-600 mr-3" />
-                      <span className="text-sm font-medium text-gray-700">Total Logins</span>
-                    </div>
-                    <span className="text-lg font-bold text-gray-900">{stats.today_logins}</span>
+          <Card>
+            <CardHeader title="Today's Activity" />
+            <CardBody>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center">
+                    <ClipboardList className="h-5 w-5 text-blue-600 mr-3" />
+                    <span className="text-sm font-medium text-gray-700">Total Logins</span>
                   </div>
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center">
-                      <UserPlus className="h-5 w-5 text-green-600 mr-3" />
-                      <span className="text-sm font-medium text-gray-700">New Users</span>
-                    </div>
-                    <span className="text-lg font-bold text-gray-900">{stats.today_new_users}</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center">
-                      <BarChart3 className="h-5 w-5 text-purple-600 mr-3" />
-                      <span className="text-sm font-medium text-gray-700">Recent Activity (24h)</span>
-                    </div>
-                    <span className="text-lg font-bold text-gray-900">{stats.recent_logins}</span>
-                  </div>
+                  <span className="text-lg font-bold text-gray-900">{stats.today_logins}</span>
                 </div>
-              </CardBody>
-            </Card>
-          </div>
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center">
+                    <UserPlus className="h-5 w-5 text-green-600 mr-3" />
+                    <span className="text-sm font-medium text-gray-700">New Users</span>
+                  </div>
+                  <span className="text-lg font-bold text-gray-900">{stats.today_new_users}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center">
+                    <BarChart3 className="h-5 w-5 text-purple-600 mr-3" />
+                    <span className="text-sm font-medium text-gray-700">Recent Activity (24h)</span>
+                  </div>
+                  <span className="text-lg font-bold text-gray-900">{stats.recent_logins}</span>
+                </div>
+              </div>
+            </CardBody>
+          </Card>
 
           <Card>
             <CardHeader title="Quick Actions" />
@@ -228,18 +250,40 @@ function DashboardOverview() {
 
         <div className="md:border-l md:border-gray-300 md:pl-6 space-y-6">
           <Card className="h-fit">
-            <CardHeader title="Critical Alerts" />
+            <CardHeader title="Critical Alerts (Today)" />
             <CardBody>
-              <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div
+                  className={`p-3 rounded-lg border ${
+                    nonIssueFeedbackCount > 0
+                      ? 'bg-green-50 border-green-200'
+                      : 'bg-gray-50 border-gray-200'
+                  }`}
+                >
+                  <div className="flex flex-col items-start gap-2">
+                    <span className="text-sm font-semibold text-gray-800">
+                      {nonIssueFeedbackCount > 0 ? 'No Issue (All Working)' : 'No Issue Feedback'}
+                    </span>
+                    <span
+                      className={`text-2xl font-bold ${
+                        nonIssueFeedbackCount > 0 ? 'text-green-700' : 'text-gray-500'
+                      }`}
+                    >
+                      {nonIssueFeedbackCount > 0 ? nonIssueFeedbackCount : '0'}
+                    </span>
+                  </div>
+                </div>
+
                 <Link
                   to="reports"
-                  className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 transition-colors"
+                  className="flex flex-col p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 border border-yellow-200 transition-colors"
                 >
-                  <div className="flex items-center">
-                    <FileText className="h-5 w-5 text-yellow-600 mr-3" />
-                    <span className="text-sm font-medium text-gray-700">Forwarded Feedback Issues</span>
-                  </div>
-                  <span className="text-lg font-bold text-yellow-600">{forwardedIssueAlerts}</span>
+                  <span className="text-sm font-semibold text-gray-800 mb-2">
+                    Issue Feedback
+                  </span>
+                  <span className="text-2xl font-bold text-yellow-700">
+                    {issueFeedbackCount}
+                  </span>
                 </Link>
               </div>
             </CardBody>
