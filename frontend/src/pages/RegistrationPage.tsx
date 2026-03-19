@@ -21,6 +21,54 @@ interface RegistrationModalProps {
   onClose: () => void;
 }
 
+const mapRegistrationErrorMessage = (err: unknown): string => {
+  const rawMessage = err instanceof Error ? err.message : '';
+  const message = rawMessage.toLowerCase();
+
+  if (message.includes('pending registration')) {
+    return 'Your registration is already pending approval. Please wait for verification.';
+  }
+
+  if (message.includes('already active') || message.includes('already registered to an active account')) {
+    return 'This account is already active. Please sign in instead.';
+  }
+
+  if (message.includes('student id already registered') || message.includes('student id is already')) {
+    return 'This Student ID is already registered. Please use a different Student ID or contact support.';
+  }
+
+  if (message.includes('email already') || message.includes('email is already registered')) {
+    return 'This email is already in use. Please use another email address.';
+  }
+
+  if (message.includes('rejected') && message.includes('student id')) {
+    return 'This Student ID was previously rejected. Re-register using the same Student ID details.';
+  }
+
+  if (message.includes('department') && (message.includes('inactive') || message.includes('invalid') || message.includes('required'))) {
+    return 'Please select a valid active department.';
+  }
+
+  if (
+    message.includes('required') ||
+    message.includes('invalid') ||
+    message.includes('must be') ||
+    message.includes('contains invalid characters')
+  ) {
+    return rawMessage;
+  }
+
+  if (message.includes('database') || message.includes('connection') || message.includes('transaction failed')) {
+    return 'Unable to process registration right now. Please try again in a moment.';
+  }
+
+  if (rawMessage.trim().length > 0) {
+    return rawMessage;
+  }
+
+  return 'Registration failed. Please try again.';
+};
+
 const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -277,8 +325,8 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
         password: '',
         confirm_password: '',
       });
-    } catch (err: any) {
-      setError(err.message || 'Registration failed. Please try again.');
+    } catch (err) {
+      setError(mapRegistrationErrorMessage(err));
     } finally {
       setLoading(false);
     }

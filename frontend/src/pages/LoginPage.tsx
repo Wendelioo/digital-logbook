@@ -20,6 +20,68 @@ const roleRoutes: { [key: string]: string } = {
   admin: '/admin'
 };
 
+const getErrorText = (err: unknown): string => {
+  if (typeof err === 'string') {
+    return err;
+  }
+
+  if (err instanceof Error) {
+    return err.message;
+  }
+
+  if (typeof err === 'object' && err !== null) {
+    const maybeMessage = (err as { message?: unknown }).message;
+    if (typeof maybeMessage === 'string') {
+      return maybeMessage;
+    }
+
+    const maybeError = (err as { error?: unknown }).error;
+    if (typeof maybeError === 'string') {
+      return maybeError;
+    }
+
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return '';
+    }
+  }
+
+  return '';
+};
+
+const mapLoginErrorMessage = (err: unknown): string => {
+  const rawMessage = getErrorText(err);
+  const message = rawMessage.toLowerCase();
+
+  if (
+    message.includes('invalid credentials') ||
+    message.includes('invalid username or password') ||
+    message.includes('user not found') ||
+    message.includes('password is incorrect')
+  ) {
+    return 'Incorrect ID or password. Please check your details and try again.';
+  }
+
+  if (message.includes('pending approval') || message.includes('account pending')) {
+    return 'Your account is pending approval. Please wait for verification.';
+  }
+
+  if (message.includes('archived') || message.includes('deactivated') || message.includes('deleted') || message.includes('inactive')) {
+    return 'Your account is not active. Please contact your administrator.';
+  }
+
+  if (message.includes('database') || message.includes('connection') || message.includes('connect')) {
+    return 'Unable to connect to the server right now. Please try again in a moment.';
+  }
+
+  if (rawMessage.trim().length > 0) {
+    return rawMessage;
+  }
+
+  return 'Login failed. Please try again.';
+};
+
 function LoginPage() {
   const [rememberMe, setRememberMe] = useState(() => localStorage.getItem('rememberMe') === 'true');
   const [username, setUsername] = useState('');
@@ -148,11 +210,11 @@ function LoginPage() {
       if (userData) {
         navigate(roleRoutes[userData.role]);
       } else {
-        setError('Invalid credentials');
+        setError('Incorrect ID or password. Please check your details and try again.');
       }
     } catch (err) {
       console.error('Login error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      const errorMessage = mapLoginErrorMessage(err);
       setError(errorMessage);
     } finally {
       setLoading(false);

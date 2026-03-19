@@ -583,6 +583,55 @@ func buildArchivedLogExportRows(logs []LoginLog) [][]string {
 	return rows
 }
 
+func buildActiveLogExportDocumentByCount(requestedCount int, logs []LoginLog) printableExportDocument {
+	rows := buildActiveLogExportRows(logs)
+	subtitle := fmt.Sprintf("Latest %d records", requestedCount)
+	if len(rows) == 1 {
+		subtitle = fmt.Sprintf("Latest %d record", requestedCount)
+	}
+	if len(rows) < requestedCount {
+		subtitle = fmt.Sprintf("Latest %d records (only %d available)", requestedCount, len(rows))
+	}
+
+	return printableExportDocument{
+		Title:            "Log Entries",
+		Subtitle:         subtitle,
+		Details:          nil,
+		TableTitle:       "LOG ENTRIES",
+		TableNote:        "",
+		Headers:          []string{"Name", "ID Number", "User Type", "PC Number", "Login Time", "Logout Time", "Duration"},
+		Rows:             rows,
+		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
+		ColumnWidths:     []float64{52, 28, 26, 24, 34, 34, 18},
+		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L", "L"},
+		Orientation:      "P",
+		GeneratedAt:      time.Now(),
+	}
+}
+
+func buildActiveLogExportDocumentByRowRange(fromRow, toRow int, logs []LoginLog) printableExportDocument {
+	rows := buildActiveLogExportRows(logs)
+	subtitle := fmt.Sprintf("Rows %d to %d (latest-first)", fromRow, toRow)
+	if len(rows) < (toRow - fromRow + 1) {
+		subtitle = fmt.Sprintf("Rows %d to %d (latest-first, only %d available)", fromRow, toRow, len(rows))
+	}
+
+	return printableExportDocument{
+		Title:            "Log Entries",
+		Subtitle:         subtitle,
+		Details:          nil,
+		TableTitle:       "LOG ENTRIES",
+		TableNote:        "",
+		Headers:          []string{"Name", "ID Number", "User Type", "PC Number", "Login Time", "Logout Time", "Duration"},
+		Rows:             rows,
+		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
+		ColumnWidths:     []float64{52, 28, 26, 24, 34, 34, 18},
+		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L", "L"},
+		Orientation:      "P",
+		GeneratedAt:      time.Now(),
+	}
+}
+
 func buildActiveLogExportDocument(startDate, endDate string, logs []LoginLog) printableExportDocument {
 	rows := buildActiveLogExportRows(logs)
 	return printableExportDocument{
@@ -599,6 +648,291 @@ func buildActiveLogExportDocument(startDate, endDate string, logs []LoginLog) pr
 		Orientation:      "P",
 		GeneratedAt:      time.Now(),
 	}
+}
+
+// getLogsByCount fetches the latest non-archived log entries, limited by count.
+func (a *App) getLogsByCount(count int) ([]LoginLog, error) {
+	if count <= 0 {
+		return nil, fmt.Errorf("count must be greater than zero")
+	}
+	if count > maxActiveLogEntries {
+		return nil, fmt.Errorf("count cannot exceed %d", maxActiveLogEntries)
+	}
+
+	query := `
+		SELECT
+			ll.id, ll.user_id,
+			COALESCE(u.user_type, 'unknown') as user_type,
+			ll.pc_number, ll.login_time, ll.logout_time,
+			COALESCE(
+				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
+					THEN s.last_name + ', ' + s.first_name +
+						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
+					ELSE NULL END,
+				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
+					THEN t.last_name + ', ' + t.first_name +
+						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
+					ELSE NULL END,
+				CASE WHEN adm.last_name IS NOT NULL AND adm.first_name IS NOT NULL
+					THEN adm.last_name + ', ' + adm.first_name +
+						CASE WHEN adm.middle_name IS NOT NULL THEN ' ' + adm.middle_name ELSE '' END
+					ELSE NULL END,
+				u.username
+			) as full_name,
+			COALESCE(s.student_id, t.teacher_id, adm.admin_id, u.username) as user_id_number
+		FROM log_entries ll
+		JOIN users u ON ll.user_id = u.id
+		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
+		LEFT JOIN admins adm ON u.id = adm.id AND u.user_type = 'admin'
+		WHERE (ll.is_archived = 0 OR ll.is_archived IS NULL)
+		ORDER BY ll.login_time DESC
+		OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY`
+
+	rows, err := a.db.Query(query, count)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query logs by count: %w", err)
+	}
+	defer rows.Close()
+
+	logs := make([]LoginLog, 0, count)
+	for rows.Next() {
+		var logEntry LoginLog
+		var pcNumber sql.NullString
+		var loginTime time.Time
+		var logoutTime sql.NullTime
+		var userIDNumber sql.NullString
+
+		if err := rows.Scan(&logEntry.ID, &logEntry.UserID, &logEntry.UserType, &pcNumber, &loginTime, &logoutTime, &logEntry.UserName, &userIDNumber); err != nil {
+			continue
+		}
+		logEntry.LoginTime = loginTime.Format("2006-01-02 15:04:05")
+		if pcNumber.Valid {
+			logEntry.PCNumber = &pcNumber.String
+		}
+		if logoutTime.Valid {
+			s := logoutTime.Time.Format("2006-01-02 15:04:05")
+			logEntry.LogoutTime = &s
+		}
+		if userIDNumber.Valid {
+			logEntry.UserIDNumber = userIDNumber.String
+		} else {
+			logEntry.UserIDNumber = logEntry.UserName
+		}
+		logs = append(logs, logEntry)
+	}
+	return logs, nil
+}
+
+// getLogsByRowRange fetches latest non-archived log entries from a 1-based row range.
+func (a *App) getLogsByRowRange(fromRow, toRow int) ([]LoginLog, error) {
+	if fromRow <= 0 || toRow <= 0 {
+		return nil, fmt.Errorf("row range must be greater than zero")
+	}
+	if fromRow > toRow {
+		return nil, fmt.Errorf("from row cannot be greater than to row")
+	}
+	if toRow > maxActiveLogEntries {
+		return nil, fmt.Errorf("to row cannot exceed %d", maxActiveLogEntries)
+	}
+
+	offset := fromRow - 1
+	count := toRow - fromRow + 1
+
+	query := `
+		SELECT
+			ll.id, ll.user_id,
+			COALESCE(u.user_type, 'unknown') as user_type,
+			ll.pc_number, ll.login_time, ll.logout_time,
+			COALESCE(
+				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
+					THEN s.last_name + ', ' + s.first_name +
+						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
+					ELSE NULL END,
+				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
+					THEN t.last_name + ', ' + t.first_name +
+						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
+					ELSE NULL END,
+				CASE WHEN adm.last_name IS NOT NULL AND adm.first_name IS NOT NULL
+					THEN adm.last_name + ', ' + adm.first_name +
+						CASE WHEN adm.middle_name IS NOT NULL THEN ' ' + adm.middle_name ELSE '' END
+					ELSE NULL END,
+				u.username
+			) as full_name,
+			COALESCE(s.student_id, t.teacher_id, adm.admin_id, u.username) as user_id_number
+		FROM log_entries ll
+		JOIN users u ON ll.user_id = u.id
+		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
+		LEFT JOIN admins adm ON u.id = adm.id AND u.user_type = 'admin'
+		WHERE (ll.is_archived = 0 OR ll.is_archived IS NULL)
+		ORDER BY ll.login_time DESC
+		OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`
+
+	rows, err := a.db.Query(query, offset, count)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query logs by row range: %w", err)
+	}
+	defer rows.Close()
+
+	logs := make([]LoginLog, 0, count)
+	for rows.Next() {
+		var logEntry LoginLog
+		var pcNumber sql.NullString
+		var loginTime time.Time
+		var logoutTime sql.NullTime
+		var userIDNumber sql.NullString
+
+		if err := rows.Scan(&logEntry.ID, &logEntry.UserID, &logEntry.UserType, &pcNumber, &loginTime, &logoutTime, &logEntry.UserName, &userIDNumber); err != nil {
+			continue
+		}
+		logEntry.LoginTime = loginTime.Format("2006-01-02 15:04:05")
+		if pcNumber.Valid {
+			logEntry.PCNumber = &pcNumber.String
+		}
+		if logoutTime.Valid {
+			s := logoutTime.Time.Format("2006-01-02 15:04:05")
+			logEntry.LogoutTime = &s
+		}
+		if userIDNumber.Valid {
+			logEntry.UserIDNumber = userIDNumber.String
+		} else {
+			logEntry.UserIDNumber = logEntry.UserName
+		}
+		logs = append(logs, logEntry)
+	}
+	return logs, nil
+}
+
+// ExportLogsCSVByRowRange exports non-archived log entries within a row range to CSV.
+func (a *App) ExportLogsCSVByRowRange(fromRow, toRow int, savePath string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+	logs, err := a.getLogsByRowRange(fromRow, toRow)
+	if err != nil {
+		return "", err
+	}
+
+	defaultName := fmt.Sprintf("log_entries_rows_%d_to_%d_%s.csv", fromRow, toRow, time.Now().Format("150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	doc := buildActiveLogExportDocumentByRowRange(fromRow, toRow, logs)
+
+	if err := writePrintableCSV(filename, doc); err != nil {
+		return "", err
+	}
+	return filename, nil
+}
+
+// ExportLogsPDFByRowRange exports non-archived log entries within a row range to PDF.
+func (a *App) ExportLogsPDFByRowRange(fromRow, toRow int, savePath string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+	logs, err := a.getLogsByRowRange(fromRow, toRow)
+	if err != nil {
+		return "", err
+	}
+
+	defaultName := fmt.Sprintf("log_entries_rows_%d_to_%d_%s.pdf", fromRow, toRow, time.Now().Format("150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	doc := buildActiveLogExportDocumentByRowRange(fromRow, toRow, logs)
+	if err := writePrintablePDF(filename, doc); err != nil {
+		return "", err
+	}
+	return filename, nil
+}
+
+// ExportLogsDOCXByRowRange exports non-archived log entries within a row range to DOCX.
+func (a *App) ExportLogsDOCXByRowRange(fromRow, toRow int, savePath string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+	logs, err := a.getLogsByRowRange(fromRow, toRow)
+	if err != nil {
+		return "", err
+	}
+
+	doc := buildActiveLogExportDocumentByRowRange(fromRow, toRow, logs)
+
+	data, err := generatePrintableDocx(doc)
+	if err != nil {
+		return "", err
+	}
+
+	defaultName := fmt.Sprintf("log_entries_rows_%d_to_%d_%s.docx", fromRow, toRow, time.Now().Format("150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return "", fmt.Errorf("failed to write docx: %w", err)
+	}
+	return filename, nil
+}
+
+// ExportLogsCSVByCount exports the latest non-archived log entries to CSV.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportLogsCSVByCount(count int, savePath string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+	logs, err := a.getLogsByCount(count)
+	if err != nil {
+		return "", err
+	}
+
+	defaultName := fmt.Sprintf("log_entries_latest_%d_%s.csv", count, time.Now().Format("150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	doc := buildActiveLogExportDocumentByCount(count, logs)
+
+	if err := writePrintableCSV(filename, doc); err != nil {
+		return "", err
+	}
+	return filename, nil
+}
+
+// ExportLogsPDFByCount exports the latest non-archived log entries to PDF.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportLogsPDFByCount(count int, savePath string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+	logs, err := a.getLogsByCount(count)
+	if err != nil {
+		return "", err
+	}
+
+	defaultName := fmt.Sprintf("log_entries_latest_%d_%s.pdf", count, time.Now().Format("150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	doc := buildActiveLogExportDocumentByCount(count, logs)
+	if err := writePrintablePDF(filename, doc); err != nil {
+		return "", err
+	}
+	return filename, nil
+}
+
+// ExportLogsDOCXByCount exports the latest non-archived log entries to DOCX.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportLogsDOCXByCount(count int, savePath string) (string, error) {
+	if err := a.checkDB(); err != nil {
+		return "", err
+	}
+	logs, err := a.getLogsByCount(count)
+	if err != nil {
+		return "", err
+	}
+
+	doc := buildActiveLogExportDocumentByCount(count, logs)
+
+	data, err := generatePrintableDocx(doc)
+	if err != nil {
+		return "", err
+	}
+
+	defaultName := fmt.Sprintf("log_entries_latest_%d_%s.docx", count, time.Now().Format("150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return "", fmt.Errorf("failed to write docx: %w", err)
+	}
+	return filename, nil
 }
 
 func buildArchivedLogExportDocument(date string, logs []LoginLog) printableExportDocument {

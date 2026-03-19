@@ -14,12 +14,11 @@ import {
 } from 'lucide-react';
 import {
   GetAllLogs,
-  GetLogsRangeCount,
-  ExportLogsCSVByRange,
-  ExportLogsPDFByRange,
-  ExportLogsDOCXByRange
+  ExportLogsCSVByRowRange,
+  ExportLogsPDFByRowRange,
+  ExportLogsDOCXByRowRange
 } from '../../../wailsjs/go/backend/App';
-import { openExportSaveDialog, defaultLogsRangeFilename, type ExportFormat } from '../../utils/exportSaveDialog';
+import { openExportSaveDialog, defaultLogsRowRangeFilename, type ExportFormat } from '../../utils/exportSaveDialog';
 import { LoginLog } from './types';
 
 function ViewLogs() {
@@ -50,12 +49,20 @@ function ViewLogs() {
 
   // Export modal
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportStart, setExportStart] = useState('');
-  const [exportEnd, setExportEnd] = useState('');
-  const [exportCount, setExportCount] = useState<number | null>(null);
-  const [exportCountLoading, setExportCountLoading] = useState(false);
+  const [exportFromRow, setExportFromRow] = useState('1');
+  const [exportToRow, setExportToRow] = useState('100');
   const [exporting, setExporting] = useState(false);
   const [exportToast, setExportToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
+
+  const parsedFromRow = Number.parseInt(exportFromRow, 10);
+  const parsedToRow = Number.parseInt(exportToRow, 10);
+  const isExportRangeValid =
+    Number.isInteger(parsedFromRow) &&
+    Number.isInteger(parsedToRow) &&
+    parsedFromRow >= 1 &&
+    parsedToRow >= 1 &&
+    parsedFromRow <= parsedToRow &&
+    parsedToRow <= 500;
 
   // Load all logs on mount
   useEffect(() => {
@@ -120,30 +127,21 @@ function ViewLogs() {
     setCurrentPage(1);
   };
 
-  const applyExportRange = async () => {
-    if (!exportStart || !exportEnd) return;
-    setExportCountLoading(true);
-    try {
-      const count = await GetLogsRangeCount(exportStart, exportEnd);
-      setExportCount(count);
-    } catch {
-      setExportCount(0);
-    } finally {
-      setExportCountLoading(false);
-    }
-  };
-
   const handleExport = async (format: ExportFormat) => {
-    if (!exportStart || !exportEnd) return;
-    const defaultName = defaultLogsRangeFilename(exportStart, exportEnd, format);
+    if (!isExportRangeValid) {
+      showExportToast('error', 'Enter a valid range from 1 to 500 (From must be less than or equal to To).');
+      return;
+    }
+
+    const defaultName = defaultLogsRowRangeFilename(parsedFromRow, parsedToRow, format);
     const savePath = await openExportSaveDialog('Save log entries', defaultName, format);
     if (!savePath) return;
     setExporting(true);
     try {
       let filename = '';
-      if (format === 'pdf') filename = await ExportLogsPDFByRange(exportStart, exportEnd, savePath);
-      else if (format === 'csv') filename = await ExportLogsCSVByRange(exportStart, exportEnd, savePath);
-      else filename = await ExportLogsDOCXByRange(exportStart, exportEnd, savePath);
+      if (format === 'pdf') filename = await ExportLogsPDFByRowRange(parsedFromRow, parsedToRow, savePath);
+      else if (format === 'csv') filename = await ExportLogsCSVByRowRange(parsedFromRow, parsedToRow, savePath);
+      else filename = await ExportLogsDOCXByRowRange(parsedFromRow, parsedToRow, savePath);
       showExportToast('success', `Saved: ${filename.split(/[\\/]/).pop()}`);
     } catch (err) {
       showExportToast('error', 'Export failed. Please try again.');
@@ -348,10 +346,9 @@ function ViewLogs() {
 
           <button
             onClick={() => {
-              setExportStart(filterDateFrom || '');
-              setExportEnd(filterDateTo || '');
               setShowExportModal(true);
-              setExportCount(null);
+              setExportFromRow('1');
+              setExportToRow('100');
             }}
             title="Export"
             className="flex items-center gap-1.5 px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
@@ -573,47 +570,43 @@ function ViewLogs() {
             </div>
 
             <div className="px-6 py-5 space-y-5">
-              {/* Date Range */}
+              {/* Row Range */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Record Range</label>
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">From</label>
                     <input
-                      type="date"
-                      value={exportStart}
-                      onChange={(e) => { setExportStart(e.target.value); setExportCount(null); }}
+                      type="number"
+                      min={1}
+                      max={500}
+                      value={exportFromRow}
+                      onChange={(e) => setExportFromRow(e.target.value)}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
-                  <span className="text-gray-400 mt-4">—</span>
+                  <span className="text-gray-400 mt-5">to</span>
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">To</label>
                     <input
-                      type="date"
-                      value={exportEnd}
-                      onChange={(e) => { setExportEnd(e.target.value); setExportCount(null); }}
+                      type="number"
+                      min={1}
+                      max={500}
+                      value={exportToRow}
+                      onChange={(e) => setExportToRow(e.target.value)}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
                 </div>
-                <button
-                  onClick={applyExportRange}
-                  disabled={!exportStart || !exportEnd || exportCountLoading}
-                  className="mt-2 w-full py-2 rounded-lg border border-primary-500 text-primary-700 text-sm font-medium hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  {exportCountLoading ? 'Checking...' : 'Apply Range'}
-                </button>
               </div>
 
-              {/* Record count preview */}
-              {exportCount !== null && (
-                <div className={`rounded-lg px-4 py-3 text-sm font-medium ${
-                  exportCount > 0 ? 'bg-primary-50 text-primary-800 border border-primary-200' : 'bg-yellow-50 text-yellow-800 border border-yellow-200'
-                }`}>
-                  {exportCount > 0
-                    ? `${exportCount} record${exportCount !== 1 ? 's' : ''} found in this range`
-                    : 'No records found for this date range'}
+              {isExportRangeValid ? (
+                <div className="rounded-lg px-4 py-3 text-sm font-medium bg-primary-50 text-primary-800 border border-primary-200">
+                  Exports rows {parsedFromRow} to {parsedToRow} (latest-first) from the active table (max 500 retained).
+                </div>
+              ) : (
+                <div className="rounded-lg px-4 py-3 text-sm font-medium bg-yellow-50 text-yellow-800 border border-yellow-200">
+                  Enter a valid range from 1 to 500, and make sure From is less than or equal to To.
                 </div>
               )}
 
@@ -623,21 +616,21 @@ function ViewLogs() {
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     onClick={() => handleExport('pdf')}
-                    disabled={!exportStart || !exportEnd || exporting || exportCount === 0}
+                    disabled={exporting || !isExportRangeValid}
                     className="flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-xl border-2 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     <span className="text-xs font-semibold">PDF</span>
                   </button>
                   <button
                     onClick={() => handleExport('csv')}
-                    disabled={!exportStart || !exportEnd || exporting || exportCount === 0}
+                    disabled={exporting || !isExportRangeValid}
                     className="flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-xl border-2 border-green-200 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     <span className="text-xs font-semibold">CSV</span>
                   </button>
                   <button
                     onClick={() => handleExport('docx')}
-                    disabled={!exportStart || !exportEnd || exporting || exportCount === 0}
+                    disabled={exporting || !isExportRangeValid}
                     className="flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-xl border-2 border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   >
                     <span className="text-xs font-semibold">DOCX</span>

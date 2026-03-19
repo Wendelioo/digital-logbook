@@ -51,6 +51,30 @@ export function defaultFeedbackRangeFilename(start: string, end: string, ext: st
   return `feedback_${start}_to_${end}_${ts}.${ext}`;
 }
 
+/** Suggested default filename for active log count export */
+export function defaultLogsCountFilename(count: number, ext: string): string {
+  const ts = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+  return `log_entries_latest_${count}_${ts}.${ext}`;
+}
+
+/** Suggested default filename for active feedback count export */
+export function defaultFeedbackCountFilename(count: number, ext: string): string {
+  const ts = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+  return `feedback_latest_${count}_${ts}.${ext}`;
+}
+
+/** Suggested default filename for active log row-range export */
+export function defaultLogsRowRangeFilename(fromRow: number, toRow: number, ext: string): string {
+  const ts = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+  return `log_entries_rows_${fromRow}_to_${toRow}_${ts}.${ext}`;
+}
+
+/** Suggested default filename for active feedback row-range export */
+export function defaultFeedbackRowRangeFilename(fromRow: number, toRow: number, ext: string): string {
+  const ts = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+  return `feedback_rows_${fromRow}_to_${toRow}_${ts}.${ext}`;
+}
+
 /** Suggested default filename for archived log sheet (single date) */
 export function defaultArchivedLogFilename(date: string, ext: string): string {
   return `log_entries_${date}.${ext}`;
