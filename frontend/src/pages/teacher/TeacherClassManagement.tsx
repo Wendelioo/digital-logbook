@@ -41,6 +41,10 @@ function ClassManagement() {
   const [showFilters, setShowFilters] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [pendingStatusFilter, setPendingStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [semesterFilter, setSemesterFilter] = useState<string>('all');
+  const [pendingSemesterFilter, setPendingSemesterFilter] = useState<string>('all');
+  const [schoolYearFilter, setSchoolYearFilter] = useState<string>('all');
+  const [pendingSchoolYearFilter, setPendingSchoolYearFilter] = useState<string>('all');
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -50,6 +54,14 @@ function ClassManagement() {
   const [exportToast, setExportToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [exportingId, setExportingId] = useState<number | null>(null);
   const [openExportDropdown, setOpenExportDropdown] = useState<{ id: number; top: number; left: number } | null>(null);
+
+  const normalizeSemester = (value?: string | null): string => {
+    if (!value) return '';
+    const normalized = value.toLowerCase().replace(/\s+/g, '');
+    if (normalized.includes('1st') || normalized.includes('first') || normalized === '1') return '1';
+    if (normalized.includes('2nd') || normalized.includes('second') || normalized === '2') return '2';
+    return normalized;
+  };
 
   // Close export dropdown on outside click
   useEffect(() => {
@@ -108,9 +120,17 @@ function ClassManagement() {
       });
     }
 
+    if (semesterFilter !== 'all') {
+      filtered = filtered.filter(cls => normalizeSemester(cls.semester) === semesterFilter);
+    }
+
+    if (schoolYearFilter !== 'all') {
+      filtered = filtered.filter(cls => (cls.school_year || '') === schoolYearFilter);
+    }
+
     setFilteredClasses(filtered);
     setCurrentPage(1);
-  }, [searchTerm, statusFilter, classes]);
+  }, [searchTerm, statusFilter, semesterFilter, schoolYearFilter, classes]);
 
   const handleViewClassList = (classId: number) => {
     navigate(`/teacher/class-management/${classId}?mode=view`);
@@ -212,6 +232,13 @@ function ClassManagement() {
   const currentClasses = filteredClasses.slice(startIndex, endIndex);
   const startEntry = filteredClasses.length > 0 ? startIndex + 1 : 0;
   const endEntry = Math.min(endIndex, filteredClasses.length);
+  const schoolYearOptions = Array.from(
+    new Set(classes.map((cls) => (cls.school_year || '').trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+  const activeFilterCount =
+    (statusFilter !== 'all' ? 1 : 0) +
+    (semesterFilter !== 'all' ? 1 : 0) +
+    (schoolYearFilter !== 'all' ? 1 : 0);
 
   return (
     <div className="flex flex-col min-w-0">
@@ -321,32 +348,38 @@ function ClassManagement() {
                   const nextOpen = !showFilters;
                   if (nextOpen) {
                     setPendingStatusFilter(statusFilter);
+                    setPendingSemesterFilter(semesterFilter);
+                    setPendingSchoolYearFilter(schoolYearFilter);
                   }
                   setShowFilters(nextOpen);
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-sm font-medium transition-colors ${
-                  showFilters || statusFilter !== 'all'
+                  showFilters || activeFilterCount > 0
                     ? 'bg-primary-50 border-primary-500 text-primary-700'
                     : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
                 }`}
               >
                 <Filter className="h-4 w-4" />
                 <span>Filter</span>
-                {statusFilter !== 'all' && (
+                {activeFilterCount > 0 && (
                   <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary-500 text-white text-xs font-bold">
-                    1
+                    {activeFilterCount}
                   </span>
                 )}
               </button>
 
               {showFilters && (
-                <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-lg z-50">
+                <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg z-50">
                   <div className="p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-semibold text-gray-800">Filters</span>
-                      {statusFilter !== 'all' && (
+                      {activeFilterCount > 0 && (
                         <button
-                          onClick={() => setStatusFilter('all')}
+                          onClick={() => {
+                            setStatusFilter('all');
+                            setSemesterFilter('all');
+                            setSchoolYearFilter('all');
+                          }}
                           className="text-xs text-primary-600 hover:underline"
                         >
                           Clear all
@@ -366,13 +399,46 @@ function ClassManagement() {
                       </select>
                     </div>
 
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Semester</label>
+                      <select
+                        value={pendingSemesterFilter}
+                        onChange={(e) => setPendingSemesterFilter(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      >
+                        <option value="all">All</option>
+                        <option value="1">1st Sem</option>
+                        <option value="2">2nd Sem</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">School Year</label>
+                      <select
+                        value={pendingSchoolYearFilter}
+                        onChange={(e) => setPendingSchoolYearFilter(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      >
+                        <option value="all">All</option>
+                        {schoolYearOptions.map((schoolYear) => (
+                          <option key={schoolYear} value={schoolYear}>
+                            {schoolYear}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     {/* Apply & Clear */}
                     <div className="flex justify-end gap-2 pt-1">
                       <button
                         type="button"
                         onClick={() => {
                           setPendingStatusFilter('all');
+                          setPendingSemesterFilter('all');
+                          setPendingSchoolYearFilter('all');
                           setStatusFilter('all');
+                          setSemesterFilter('all');
+                          setSchoolYearFilter('all');
                           setShowFilters(false);
                         }}
                         className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -383,6 +449,8 @@ function ClassManagement() {
                         type="button"
                         onClick={() => {
                           setStatusFilter(pendingStatusFilter);
+                          setSemesterFilter(pendingSemesterFilter);
+                          setSchoolYearFilter(pendingSchoolYearFilter);
                           setShowFilters(false);
                         }}
                         className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-primary-600 rounded-lg hover:bg-primary-700"
@@ -463,7 +531,7 @@ function ClassManagement() {
                       )}
                     </td>
                     <td className="px-3 sm:px-6 py-4 text-sm font-medium">
-                      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
                         <Button
                           onClick={() => handleViewClassList(cls.class_id)}
                           variant="outline"
@@ -481,8 +549,8 @@ function ClassManagement() {
                             title="Edit"
                           />
                         )}
-                        {/* Archive - only for INACTIVE classes */}
-                        {!cls.is_active && !cls.is_archived && (
+                        {/* Archive - shown for non-archived classes; enabled only when INACTIVE */}
+                        {!cls.is_archived && (
                           <Button
                             onClick={() => handleArchiveClass(cls.class_id)}
                             variant="outline"
@@ -490,6 +558,7 @@ function ClassManagement() {
                             className="text-orange-600 hover:bg-orange-50"
                             icon={<Archive className="h-3 w-3" />}
                             title="Archive Class"
+                            disabled={cls.is_active}
                           />
                         )}
                         {/* Export dropdown */}

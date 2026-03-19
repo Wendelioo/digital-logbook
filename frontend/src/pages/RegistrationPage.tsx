@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   X,
   Eye,
@@ -10,8 +10,11 @@ import {
   Lock,
   Check,
 } from 'lucide-react';
-import { SubmitRegistration } from '../../wailsjs/go/backend/App';
+import { GetDepartments, SubmitRegistration } from '../../wailsjs/go/backend/App';
+import { backend } from '../../wailsjs/go/models';
 import LoadingDots from '../components/LoadingDots';
+
+type Department = backend.Department;
 
 interface RegistrationModalProps {
   isOpen: boolean;
@@ -24,9 +27,11 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [departments, setDepartments] = useState<Department[]>([]);
 
   const [formData, setFormData] = useState({
     student_id: '',
+    department_code: '',
     last_name: '',
     first_name: '',
     middle_name: '',
@@ -37,6 +42,22 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
   });
 
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof typeof formData, string>>>({});
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const loadDepartments = async () => {
+      try {
+        const data = await GetDepartments();
+        setDepartments((data || []).filter((dept: Department) => dept.is_active));
+      } catch (err) {
+        console.error('Failed to load departments:', err);
+        setDepartments([]);
+      }
+    };
+
+    loadDepartments();
+  }, [isOpen]);
 
   const capitalizeFirstLetter = (input: string): string => {
     const firstNonSpaceIndex = input.search(/\S/);
@@ -52,7 +73,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
     );
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name } = e.target;
     let { value } = e.target;
 
@@ -71,7 +92,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
     setError('');
   };
 
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => {
     const name = e.target.name as keyof typeof formData;
     setFieldErrors((prev) => validateAllFields(formData, name, prev));
   };
@@ -98,7 +119,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
 
     const fieldsToValidate: (keyof typeof formData)[] = touchedField
       ? [touchedField]
-      : ['student_id', 'first_name', 'last_name', 'middle_name', 'contact_number', 'email', 'password', 'confirm_password'];
+      : ['student_id', 'department_code', 'first_name', 'last_name', 'middle_name', 'contact_number', 'email', 'password', 'confirm_password'];
 
     fieldsToValidate.forEach((field) => {
       const raw = values[field];
@@ -115,6 +136,11 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
             message = 'Student ID contains invalid characters.';
           } else if (!STUDENT_ID_REGEX.test(value)) {
             message = 'Student ID must be exactly 7 digits (e.g. 2211172).';
+          }
+          break;
+        case 'department_code':
+          if (!value) {
+            message = 'Department is required.';
           }
           break;
         case 'first_name':
@@ -242,6 +268,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
       setSuccess(true);
       setFormData({
         student_id: '',
+        department_code: '',
         last_name: '',
         first_name: '',
         middle_name: '',
@@ -349,6 +376,48 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                 </div>
                 {fieldErrors.student_id && (
                   <p className="mt-1 text-xs text-red-600">{fieldErrors.student_id}</p>
+                )}
+              </div>
+            </section>
+
+            <hr className="border-gray-100" />
+
+            {/* Department */}
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-gray-600 tracking-wide uppercase">
+                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                    <UserCircle className="w-3.5 h-3.5" />
+                  </span>
+                  <span>Department</span>
+                </div>
+              </div>
+              <div>
+                <label htmlFor="department_code" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Department <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="department_code"
+                  name="department_code"
+                  value={formData.department_code}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  required
+                  className={`w-full px-3.5 py-2.5 text-sm border rounded-lg focus:ring-2 ${
+                    fieldErrors.department_code
+                      ? 'border-red-400 focus:ring-red-500 focus:border-red-500'
+                      : 'border-gray-300 focus:ring-primary-500 focus:border-primary-500'
+                  }`}
+                >
+                  <option value="">Select Department</option>
+                  {departments.map((dept) => (
+                    <option key={dept.department_code} value={dept.department_code}>
+                      {dept.department_code} - {dept.department_name}
+                    </option>
+                  ))}
+                </select>
+                {fieldErrors.department_code && (
+                  <p className="mt-1 text-xs text-red-600">{fieldErrors.department_code}</p>
                 )}
               </div>
             </section>

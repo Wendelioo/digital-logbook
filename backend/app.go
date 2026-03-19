@@ -110,6 +110,9 @@ func (a *App) startup(ctx context.Context) {
 		if err := a.ensureActivityTrackingColumns(); err != nil {
 			log.Printf("Failed to ensure activity tracking columns: %v", err)
 		}
+		if err := a.ensureAccountStatusConstraint(); err != nil {
+			log.Printf("Failed to ensure account status constraint: %v", err)
+		}
 		if err := a.closeStaleSessions(); err != nil {
 			log.Printf("Failed to close stale sessions on startup: %v", err)
 		}

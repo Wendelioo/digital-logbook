@@ -90,6 +90,10 @@ function AttendanceClassSelection() {
   const [pendingDateRangeEnd, setPendingDateRangeEnd] = useState('');
   const [classFilter, setClassFilter] = useState<string>('all');
   const [pendingClassFilter, setPendingClassFilter] = useState<string>('all');
+  const [semesterFilter, setSemesterFilter] = useState<string>('all');
+  const [pendingSemesterFilter, setPendingSemesterFilter] = useState<string>('all');
+  const [schoolYearFilter, setSchoolYearFilter] = useState<string>('all');
+  const [pendingSchoolYearFilter, setPendingSchoolYearFilter] = useState<string>('all');
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -115,6 +119,14 @@ function AttendanceClassSelection() {
   const [classDuration, setClassDuration] = useState('90');
   const [gracePeriod, setGracePeriod] = useState('10');
   const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
+
+  const normalizeSemester = (value?: string | null): string => {
+    if (!value) return '';
+    const normalized = value.toLowerCase().replace(/\s+/g, '');
+    if (normalized.includes('1st') || normalized.includes('first') || normalized === '1') return '1';
+    if (normalized.includes('2nd') || normalized.includes('second') || normalized === '2') return '2';
+    return normalized;
+  };
 
   const parseSessionDateTime = (value?: string): Date | null => {
     if (!value) return null;
@@ -231,6 +243,8 @@ function AttendanceClassSelection() {
 
   useEffect(() => {
     let filtered = attendanceSheets;
+    const classByID = new Map(allTeacherClasses.map((cls) => [cls.class_id, cls]));
+
     if (searchTerm) {
       filtered = filtered.filter(sheet =>
         sheet.subject_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -250,13 +264,27 @@ function AttendanceClassSelection() {
       filtered = filtered.filter(sheet => String(sheet.class_id) === classFilter);
     }
 
+    if (semesterFilter !== 'all') {
+      filtered = filtered.filter((sheet) => normalizeSemester(classByID.get(sheet.class_id)?.semester || '') === semesterFilter);
+    }
+
+    if (schoolYearFilter !== 'all') {
+      filtered = filtered.filter((sheet) => (classByID.get(sheet.class_id)?.school_year || '') === schoolYearFilter);
+    }
+
     setFilteredSheets(filtered);
     setCurrentPage(1);
-  }, [searchTerm, dateRangeStart, dateRangeEnd, classFilter, attendanceSheets]);
+  }, [searchTerm, dateRangeStart, dateRangeEnd, classFilter, semesterFilter, schoolYearFilter, attendanceSheets, allTeacherClasses]);
 
   const activeFilterCount =
     (dateRangeStart || dateRangeEnd ? 1 : 0) +
-    (classFilter !== 'all' ? 1 : 0);
+    (classFilter !== 'all' ? 1 : 0) +
+    (semesterFilter !== 'all' ? 1 : 0) +
+    (schoolYearFilter !== 'all' ? 1 : 0);
+
+  const schoolYearOptions = Array.from(
+    new Set(allTeacherClasses.map((cls) => (cls.school_year || '').trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
 
   const handleTakeAttendance = async (classId: number) => {
     setOpeningAttendance(classId);
@@ -688,6 +716,8 @@ function AttendanceClassSelection() {
                     setPendingDateRangeStart(dateRangeStart);
                     setPendingDateRangeEnd(dateRangeEnd);
                     setPendingClassFilter(classFilter);
+                    setPendingSemesterFilter(semesterFilter);
+                    setPendingSchoolYearFilter(schoolYearFilter);
                   }
                   setShowFilters(nextOpen);
                 }}
@@ -756,6 +786,49 @@ function AttendanceClassSelection() {
                       </div>
                     </div>
 
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Semester</label>
+                      <div className="relative">
+                        <select
+                          value={pendingSemesterFilter}
+                          onChange={(e) => setPendingSemesterFilter(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="all">All semesters</option>
+                          <option value="1">1st Sem</option>
+                          <option value="2">2nd Sem</option>
+                        </select>
+                        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">School Year</label>
+                      <div className="relative">
+                        <select
+                          value={pendingSchoolYearFilter}
+                          onChange={(e) => setPendingSchoolYearFilter(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="all">All school years</option>
+                          {schoolYearOptions.map((schoolYear) => (
+                            <option key={schoolYear} value={schoolYear}>
+                              {schoolYear}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </span>
+                      </div>
+                    </div>
+
                     {/* Apply & Clear */}
                     <div className="flex justify-end gap-2 pt-1">
                       <button
@@ -764,9 +837,13 @@ function AttendanceClassSelection() {
                           setPendingDateRangeStart('');
                           setPendingDateRangeEnd('');
                           setPendingClassFilter('all');
+                          setPendingSemesterFilter('all');
+                          setPendingSchoolYearFilter('all');
                           setDateRangeStart('');
                           setDateRangeEnd('');
                           setClassFilter('all');
+                          setSemesterFilter('all');
+                          setSchoolYearFilter('all');
                           setShowFilters(false);
                         }}
                         className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -779,6 +856,8 @@ function AttendanceClassSelection() {
                           setDateRangeStart(pendingDateRangeStart);
                           setDateRangeEnd(pendingDateRangeEnd);
                           setClassFilter(pendingClassFilter);
+                          setSemesterFilter(pendingSemesterFilter);
+                          setSchoolYearFilter(pendingSchoolYearFilter);
                           setShowFilters(false);
                         }}
                         className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-primary-600 rounded-lg hover:bg-primary-700"

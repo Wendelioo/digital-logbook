@@ -27,6 +27,8 @@ import { Feedback } from './types';
 import { useAuth } from '../../contexts/AuthContext';
 
 function Reports() {
+  const pageSizeOptions = [1, 25, 50, 100, 200, 300, 400, 500];
+
   const { user } = useAuth();
   const [reports, setReports] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,7 +36,7 @@ function Reports() {
 
   // Pagination
   const [reportsPage, setReportsPage] = useState(1);
-  const reportsPerPage = 10;
+  const [reportsPerPage, setReportsPerPage] = useState(25);
 
   // General search
   const [searchQuery, setSearchQuery] = useState('');
@@ -198,6 +200,14 @@ function Reports() {
       !isNoIssueReport(report)
   );
 
+  // Main table should only show:
+  // 1) no-issue reports, or
+  // 2) issue reports already resolved by admin.
+  const tableReports = filteredReports.filter((report) => {
+    const isResolved = (report.admin_status || '').toLowerCase() === 'resolved';
+    return isNoIssueReport(report) || isResolved;
+  });
+
   const handleAdminStatusToggle = async (report: Feedback, nextStatus: 'pending' | 'resolved') => {
     if (!user) return;
     try {
@@ -224,10 +234,10 @@ function Reports() {
   };
 
   // Pagination
-  const totalReportPages = Math.ceil(filteredReports.length / reportsPerPage);
+  const totalReportPages = Math.ceil(tableReports.length / reportsPerPage);
   const reportsStartIndex = (reportsPage - 1) * reportsPerPage;
   const reportsEndIndex = reportsStartIndex + reportsPerPage;
-  const paginatedReports = filteredReports.slice(reportsStartIndex, reportsEndIndex);
+  const paginatedReports = tableReports.slice(reportsStartIndex, reportsEndIndex);
 
   if (loading) {
     return (
@@ -418,13 +428,35 @@ function Reports() {
               </div>
 
               <button
-                onClick={() => { setShowExportModal(true); setExportCount(null); }}
+                onClick={() => {
+                  setExportStart(dateRangeStart || '');
+                  setExportEnd(dateRangeEnd || '');
+                  setShowExportModal(true);
+                  setExportCount(null);
+                }}
                 title="Export"
                 className="flex items-center gap-1.5 px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
               >
                 <Download className="h-4 w-4" />
                 <span>Export</span>
               </button>
+
+              <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-sm text-gray-700">
+                <span className="text-gray-500">Show</span>
+                <select
+                  value={reportsPerPage}
+                  onChange={(e) => {
+                    setReportsPerPage(Number(e.target.value));
+                    setReportsPage(1);
+                  }}
+                  className="bg-transparent border-none p-0 pr-6 text-sm font-medium text-gray-900 focus:outline-none focus:ring-0"
+                >
+                  {pageSizeOptions.map((size) => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+                <span className="text-gray-500">entries</span>
+              </div>
             </div>
           </div>
 
@@ -513,6 +545,10 @@ function Reports() {
           </div>
         )}
       </Modal>
+
+      <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-900">
+        Unresolved reports with issues are managed in Pending Issues and will appear in this table once marked as resolved.
+      </div>
 
       {/* Single Unified Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -654,10 +690,10 @@ function Reports() {
               </tbody>
             </table>
         </div>
-        {filteredReports.length > 0 && (
+        {tableReports.length > 0 && (
           <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
             <div className="text-sm text-gray-600">
-              Showing {reportsStartIndex + 1} to {Math.min(reportsEndIndex, filteredReports.length)} of {filteredReports.length} entries
+              Showing {reportsStartIndex + 1} to {Math.min(reportsEndIndex, tableReports.length)} of {tableReports.length} entries
             </div>
             <div className="flex gap-2">
               <Button

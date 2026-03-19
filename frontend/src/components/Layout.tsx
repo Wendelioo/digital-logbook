@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
-import { UpdateUserPhoto, ChangePassword, SaveEquipmentFeedback, UpdateUser, GetPendingFeedback, GetPendingRegistrations } from '../../wailsjs/go/backend/App';
+import { UpdateUserPhoto, ChangePassword, SaveEquipmentFeedback, UpdateUser, GetPendingFeedback, GetConfirmedFeedback, GetPendingRegistrations } from '../../wailsjs/go/backend/App';
 import { compressImage, isImageFile, isValidFileSize } from '../utils/imageUtils';
 import {
   User,
@@ -58,6 +58,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const [feedbackMode, setFeedbackMode] = useState<'logout' | 'manual'>('logout');
   const [showPendingTasksModal, setShowPendingTasksModal] = useState(false);
   const [pendingFeedbackCount, setPendingFeedbackCount] = useState(0);
+  const [readyToForwardCount, setReadyToForwardCount] = useState(0);
   const [pendingRegistrationsCount, setPendingRegistrationsCount] = useState(0);
   const [activeTab, setActiveTab] = useState<'profile' | 'password'>('profile');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -98,14 +99,17 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
     } else if (user?.role === 'working_student') {
       // Block logout if there are pending tasks to review
       try {
-        const [pendingFeedback, pendingRegs] = await Promise.all([
+        const [pendingFeedback, readyToForward, pendingRegs] = await Promise.all([
           GetPendingFeedback().catch(() => []),
+          GetConfirmedFeedback().catch(() => []),
           GetPendingRegistrations().catch(() => []),
         ]);
         const feedbackCount = pendingFeedback?.length ?? 0;
+        const confirmedCount = readyToForward?.length ?? 0;
         const regsCount = pendingRegs?.length ?? 0;
-        if (feedbackCount > 0 || regsCount > 0) {
+        if (feedbackCount > 0 || confirmedCount > 0 || regsCount > 0) {
           setPendingFeedbackCount(feedbackCount);
+          setReadyToForwardCount(confirmedCount);
           setPendingRegistrationsCount(regsCount);
           setShowPendingTasksModal(true);
           return;
@@ -1261,16 +1265,22 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
               <div className="w-10 h-10 bg-warning-50 rounded-lg flex items-center justify-center flex-shrink-0">
                 <svg className="w-5 h-5 text-warning-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900">Pending Tasks</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Unfinished Tasks</h3>
             </div>
             <p className="text-sm text-gray-600 mb-4">
-              You still have pending tasks that need to be resolved before logging out:
+              You still have unfinished tasks that need to be resolved before logging out:
             </p>
             <ul className="text-sm text-gray-700 mb-6 space-y-2">
               {pendingFeedbackCount > 0 && (
                 <li className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-warning-500 flex-shrink-0" />
                   <span><span className="font-semibold text-warning-700">{pendingFeedbackCount}</span> equipment report{pendingFeedbackCount !== 1 ? 's' : ''} awaiting review</span>
+                </li>
+              )}
+              {readyToForwardCount > 0 && (
+                <li className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-warning-500 flex-shrink-0" />
+                  <span><span className="font-semibold text-warning-700">{readyToForwardCount}</span> confirmed report{readyToForwardCount !== 1 ? 's' : ''} ready to forward</span>
                 </li>
               )}
               {pendingRegistrationsCount > 0 && (

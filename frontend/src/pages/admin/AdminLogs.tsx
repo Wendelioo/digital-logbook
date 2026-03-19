@@ -23,12 +23,14 @@ import { openExportSaveDialog, defaultLogsRangeFilename, type ExportFormat } fro
 import { LoginLog } from './types';
 
 function ViewLogs() {
+  const pageSizeOptions = [1, 25, 50, 100, 200, 300, 400, 500];
+
   // All logs
   const [logs, setLogs] = useState<LoginLog[]>([]);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(25);
   
   // UI states
   const [loading, setLoading] = useState(true);
@@ -345,13 +347,35 @@ function ViewLogs() {
           </div>
 
           <button
-            onClick={() => { setShowExportModal(true); setExportCount(null); }}
+            onClick={() => {
+              setExportStart(filterDateFrom || '');
+              setExportEnd(filterDateTo || '');
+              setShowExportModal(true);
+              setExportCount(null);
+            }}
             title="Export"
             className="flex items-center gap-1.5 px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
           >
             <Download className="h-4 w-4" />
             <span>Export</span>
           </button>
+
+          <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-sm text-gray-700">
+            <span className="text-gray-500">Show</span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => {
+                setItemsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="bg-transparent border-none p-0 pr-6 text-sm font-medium text-gray-900 focus:outline-none focus:ring-0"
+            >
+              {pageSizeOptions.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+            <span className="text-gray-500">entries</span>
+          </div>
         </div>
       </div>
 

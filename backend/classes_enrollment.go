@@ -64,6 +64,10 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 		return err
 	}
 
+	if err := a.ensureStudentCanJoinClassDepartment(studentID, classID); err != nil {
+		return err
+	}
+
 	// Check class is active (not closed or archived)
 	var isActive bool
 	var isArchived bool
@@ -126,6 +130,12 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 func (a *App) EnrollMultipleStudents(studentIDs []int, classID int, enrolledBy int) error {
 	if err := a.checkDB(); err != nil {
 		return err
+	}
+
+	for _, studentID := range studentIDs {
+		if err := a.ensureStudentCanJoinClassDepartment(studentID, classID); err != nil {
+			return err
+		}
 	}
 
 	// Check class is active (not closed or archived)
@@ -343,6 +353,42 @@ func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error)
 
 	log.Printf("Student %d joined class %d via EDP code %s", studentUserID, classID, edpCode)
 	return classID, nil
+}
+
+// ensureStudentCanJoinClassDepartment validates student/class department compatibility.
+// A mismatch is blocked when both sides have non-empty department codes.
+func (a *App) ensureStudentCanJoinClassDepartment(studentUserID int, classID int) error {
+	var studentDepartment sql.NullString
+	err := a.db.QueryRow(`SELECT department_code FROM students WHERE id = ?`, studentUserID).Scan(&studentDepartment)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("student not found")
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check student department: %w", err)
+	}
+
+	var classDepartment sql.NullString
+	err = a.db.QueryRow(`
+		SELECT t.department_code
+		FROM classes c
+		LEFT JOIN teachers t ON c.teacher_id = t.id
+		WHERE c.class_id = ?
+	`, classID).Scan(&classDepartment)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("class not found")
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check class department: %w", err)
+	}
+
+	studentDept := strings.TrimSpace(studentDepartment.String)
+	classDept := strings.TrimSpace(classDepartment.String)
+
+	if studentDept != "" && classDept != "" && !strings.EqualFold(studentDept, classDept) {
+		return fmt.Errorf("cannot join classlist: student department (%s) does not match class department (%s)", studentDept, classDept)
+	}
+
+	return nil
 }
 
 // ==============================================================================

@@ -33,11 +33,10 @@ func (a *App) Login(username, password string) (*User, error) {
 	var accountStatus string
 	var isActive bool
 	var createdAt time.Time
-	var updatedAt sql.NullTime
 	var storedPassword string
 
-	query := `SELECT id, username, password, user_type, account_status, is_active, created_at, updated_at FROM users WHERE username = ?`
-	err := a.db.QueryRow(query, username).Scan(&user.ID, &user.Name, &storedPassword, &user.Role, &accountStatus, &isActive, &createdAt, &updatedAt)
+	query := `SELECT id, username, password, user_type, account_status, is_active, created_at FROM users WHERE username = ?`
+	err := a.db.QueryRow(query, username).Scan(&user.ID, &user.Name, &storedPassword, &user.Role, &accountStatus, &isActive, &createdAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("LOGIN ERROR: User '%s' not found", username)
@@ -69,45 +68,13 @@ func (a *App) Login(username, password string) (*User, error) {
 		}
 	}
 
-	// Handle deactivated accounts with 30-day retention window
-	// During this period, login will reactivate the account; after 30 days it is deleted.
-	if accountStatus == "suspended" {
-		// Use updated_at as the deactivation timestamp; fall back to created_at if missing
-		lastChange := createdAt
-		if updatedAt.Valid {
-			lastChange = updatedAt.Time
-		}
-
-		retentionDeadline := lastChange.AddDate(0, 0, 30)
-		now := time.Now()
-
-		if now.After(retentionDeadline) {
-			if err := a.DeleteUser(user.ID); err != nil {
-				log.Printf("Failed to auto-delete deactivated account %d after 30 days: %v", user.ID, err)
-				return nil, fmt.Errorf("this account was deactivated more than 30 days ago and could not be removed automatically. Please contact your administrator.")
-			}
-			return nil, fmt.Errorf("this account was deactivated more than 30 days ago and has been permanently removed.")
-		}
-
-		// Within 30 days: reactivate the account on successful login
-		if _, err := a.db.Exec(`
-			UPDATE users
-			SET account_status = 'active', is_active = 1, updated_at = GETDATE()
-			WHERE id = ? AND account_status = 'suspended'
-		`, user.ID); err != nil {
-			log.Printf("Failed to reactivate deactivated account %d on login: %v", user.ID, err)
-			return nil, fmt.Errorf("failed to reactivate your account. Please contact your administrator.")
-		}
-
-		accountStatus = "active"
-		isActive = true
-	}
-
 	// Check account status
 	statusErrors := map[string]string{
-		"pending":   "account pending approval - please wait for working student verification",
-		"rejected":  "account registration was rejected - please contact administrator",
-		"suspended": "account suspended - please contact administrator",
+		"pending":     "account pending approval - please wait for working student verification",
+		"archived":    "account archived - please contact administrator",
+		"rejected":    "account registration was rejected - please contact administrator",
+		"deactivated": "account deactivated - please contact administrator",
+		"deleted":     "account deleted - please contact administrator",
 	}
 	if msg, found := statusErrors[accountStatus]; found {
 		return nil, fmt.Errorf(msg)
@@ -130,6 +97,17 @@ func (a *App) Login(username, password string) (*User, error) {
 	if err != nil {
 		log.Printf("Failed to get hostname: %v", err)
 		hostname = "Unknown"
+	}
+
+	// End any still-open sessions for this user (e.g. previous PC shutdown without logout).
+	// Otherwise the old row stays logout_time NULL forever because the new login refreshes
+	// the same user heartbeat and closeStaleSessions will not touch the orphaned row.
+	if _, err := a.db.Exec(`
+		UPDATE log_entries
+		SET logout_time = GETDATE()
+		WHERE user_id = ? AND logout_time IS NULL
+	`, user.ID); err != nil {
+		log.Printf("Failed to close prior open login logs for user %d: %v", user.ID, err)
 	}
 
 	// Create login log entry

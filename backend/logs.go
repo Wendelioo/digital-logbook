@@ -16,6 +16,50 @@ import (
 
 const maxActiveLogEntries = 500
 
+// repairLogoutTimeWhenNewerLoginExists sets logout_time to the next session's login_time
+// for rows that are still open but the user logged in again later (e.g. PC shutdown without
+// graceful logout). closeStaleSessions alone misses these because the heartbeat is refreshed
+// on the new login, so the old log row still looks "active" by user_id.
+func (a *App) repairLogoutTimeWhenNewerLoginExists(forUserID *int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	var err error
+	if forUserID != nil {
+		_, err = a.db.Exec(`
+;WITH ordered AS (
+  SELECT id,
+         LEAD(login_time) OVER (PARTITION BY user_id ORDER BY login_time ASC, id ASC) AS next_login
+  FROM log_entries
+  WHERE user_id = ?
+)
+UPDATE le
+SET le.logout_time = o.next_login
+FROM log_entries le
+INNER JOIN ordered o ON o.id = le.id
+WHERE le.logout_time IS NULL AND o.next_login IS NOT NULL
+`, *forUserID)
+	} else {
+		_, err = a.db.Exec(`
+;WITH ordered AS (
+  SELECT id,
+         LEAD(login_time) OVER (PARTITION BY user_id ORDER BY login_time ASC, id ASC) AS next_login
+  FROM log_entries
+)
+UPDATE le
+SET le.logout_time = o.next_login
+FROM log_entries le
+INNER JOIN ordered o ON o.id = le.id
+WHERE le.logout_time IS NULL AND o.next_login IS NOT NULL
+`)
+	}
+	if err != nil {
+		return fmt.Errorf("repair logout_time from next login: %w", err)
+	}
+	return nil
+}
+
 // autoArchiveLogsIfNeeded checks the number of non-archived log entries and,
 // if a configured limit is exceeded, automatically archives the oldest logs by date.
 func (a *App) autoArchiveLogsIfNeeded() error {
@@ -146,6 +190,16 @@ func (a *App) GetAllLogs() ([]LoginLog, error) {
 		return nil, err
 	}
 
+	// Ensure logout_time is finalized for clients that disconnected/shut down
+	// before the query runs (admin view uses GetAllLogs()).
+	if err := a.closeStaleSessions(); err != nil {
+		// Best-effort: still return logs even if cleanup fails.
+		log.Printf("Failed to close stale sessions before GetAllLogs: %v", err)
+	}
+	if err := a.repairLogoutTimeWhenNewerLoginExists(nil); err != nil {
+		log.Printf("Failed to repair logout_time before GetAllLogs: %v", err)
+	}
+
 	// Ensure we keep only the most recent maxActiveLogEntries as "active"
 	if err := a.autoArchiveLogsIfNeeded(); err != nil {
 		log.Printf("autoArchiveLogsIfNeeded failed: %v", err)
@@ -237,6 +291,17 @@ func (a *App) GetAllLogs() ([]LoginLog, error) {
 func (a *App) GetStudentLoginLogs(userID int) ([]LoginLog, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
+	}
+
+	// If a client PC was shut down or the app closed unexpectedly, `logout_time`
+	// might still be NULL until stale-session cleanup runs.
+	// Calling it here ensures the student's login history shows the correct logout time.
+	if err := a.closeStaleSessions(); err != nil {
+		// Best-effort: still return logs even if cleanup fails.
+		log.Printf("Failed to close stale sessions before GetStudentLoginLogs: %v", err)
+	}
+	if err := a.repairLogoutTimeWhenNewerLoginExists(&userID); err != nil {
+		log.Printf("Failed to repair logout_time before GetStudentLoginLogs: %v", err)
 	}
 
 	log.Printf("GetStudentLoginLogs called for userID: %d", userID)

@@ -402,6 +402,12 @@ function AttendanceManagementDetail() {
                         <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">Room:</td>
                         <td className="px-3 py-2 text-gray-900">{selectedClass.room || '—'}</td>
                       </tr>
+                      <tr>
+                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">Semester:</td>
+                        <td className="px-3 py-2 text-gray-900">{selectedClass.semester || '—'}</td>
+                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">School Year:</td>
+                        <td className="px-3 py-2 text-gray-900">{selectedClass.school_year || '—'}</td>
+                      </tr>
                     </tbody>
 
                     {/* Attendance List Header */}

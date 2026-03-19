@@ -28,8 +28,10 @@ CREATE TABLE users (
     username NVARCHAR(50) NOT NULL UNIQUE,
     password NVARCHAR(255) NOT NULL,
     user_type NVARCHAR(20) NOT NULL CHECK (user_type IN ('admin', 'teacher', 'student', 'working_student')),
-    account_status NVARCHAR(20) DEFAULT 'active' CHECK (account_status IN ('pending', 'active', 'suspended', 'rejected')),
+    account_status NVARCHAR(20) DEFAULT 'active' CHECK (account_status IN ('pending', 'active', 'archived', 'deactivated', 'deleted', 'rejected')),
     is_active BIT DEFAULT 1,
+    -- Timestamp when account was manually archived by admin
+    archived_at DATETIME NULL,
     -- Auto-deactivated after 6+ months of inactivity (set by RunInactivityCheck)
     deactivated_at DATETIME NULL,
     -- Soft-delete flag: set when account has been deactivated for 4+ years (pending permanent removal)
@@ -96,12 +98,14 @@ CREATE TABLE students (
     last_name NVARCHAR(100) NOT NULL,
     email NVARCHAR(255),
     contact_number NVARCHAR(20),
+    department_code NVARCHAR(20),
     is_working_student BIT DEFAULT 0,
     archived_at DATETIME,
     deletion_scheduled_at DATETIME,
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME DEFAULT GETDATE(),
-    FOREIGN KEY (id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (department_code) REFERENCES departments(department_code)
 );
 GO
 

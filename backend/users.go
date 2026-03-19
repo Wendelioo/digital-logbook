@@ -28,7 +28,7 @@ func (a *App) GetUsers() ([]User, error) {
 			a.email, a.contact_number, NULL as department_code
 		FROM users u
 		JOIN admins a ON u.id = a.id
-		WHERE u.user_type = 'admin' AND u.is_active = 1 AND u.account_status <> 'suspended'
+		WHERE u.user_type = 'admin' AND u.is_active = 1 AND u.account_status = 'active'
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
@@ -37,16 +37,16 @@ func (a *App) GetUsers() ([]User, error) {
 			t.email, t.contact_number, t.department_code
 		FROM users u
 		JOIN teachers t ON u.id = t.id
-		WHERE u.user_type IN ('teacher') AND u.is_active = 1 AND u.account_status <> 'suspended'
+		WHERE u.user_type IN ('teacher') AND u.is_active = 1 AND u.account_status = 'active'
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
 			s.first_name, s.middle_name, s.last_name,
 			NULL as admin_id, s.student_id,
-			s.email, s.contact_number, NULL as department_code
+			s.email, s.contact_number, s.department_code
 		FROM users u
 		JOIN students s ON u.id = s.id
-		WHERE u.user_type IN ('student', 'working_student') AND u.is_active = 1 AND u.account_status <> 'suspended'
+		WHERE u.user_type IN ('student', 'working_student') AND u.is_active = 1 AND u.account_status = 'active'
 		ORDER BY created_at DESC
 	`
 	rows, err := a.db.Query(query)
@@ -72,7 +72,7 @@ func (a *App) GetUsersByType(userType string) ([]User, error) {
 			a.email, a.contact_number, NULL as department_code
 		FROM users u
 		JOIN admins a ON u.id = a.id
-		WHERE u.user_type = 'admin' AND u.user_type = ? AND u.is_active = 1 AND u.account_status <> 'suspended'
+		WHERE u.user_type = 'admin' AND u.user_type = ? AND u.is_active = 1 AND u.account_status = 'active'
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
@@ -81,16 +81,16 @@ func (a *App) GetUsersByType(userType string) ([]User, error) {
 			t.email, t.contact_number, t.department_code
 		FROM users u
 		JOIN teachers t ON u.id = t.id
-		WHERE u.user_type = 'teacher' AND u.user_type = ? AND u.is_active = 1 AND u.account_status <> 'suspended'
+		WHERE u.user_type = 'teacher' AND u.user_type = ? AND u.is_active = 1 AND u.account_status = 'active'
 		UNION ALL
 		SELECT 
 			u.id, u.username, u.user_type, u.created_at,
 			s.first_name, s.middle_name, s.last_name,
 			NULL as admin_id, s.student_id,
-			s.email, s.contact_number, NULL as department_code
+			s.email, s.contact_number, s.department_code
 		FROM users u
 		JOIN students s ON u.id = s.id
-		WHERE u.user_type IN ('student', 'working_student') AND u.user_type = ? AND u.is_active = 1 AND u.account_status <> 'suspended'
+		WHERE u.user_type IN ('student', 'working_student') AND u.user_type = ? AND u.is_active = 1 AND u.account_status = 'active'
 		ORDER BY created_at DESC
 	`
 	rows, err := a.db.Query(query, userType, userType, userType)
@@ -124,7 +124,7 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 			a.email, a.contact_number, NULL as department_code
 		FROM users u
 		JOIN admins a ON u.id = a.id
-		WHERE u.user_type = 'admin' AND u.is_active = 1 AND u.account_status <> 'suspended' AND (
+		WHERE u.user_type = 'admin' AND u.is_active = 1 AND u.account_status = 'active' AND (
 			u.username LIKE ? OR
 			a.first_name LIKE ? OR
 			a.last_name LIKE ? OR
@@ -140,7 +140,7 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 			t.email, t.contact_number, t.department_code
 		FROM users u
 		JOIN teachers t ON u.id = t.id
-		WHERE u.user_type = 'teacher' AND u.is_active = 1 AND u.account_status <> 'suspended' AND (
+		WHERE u.user_type = 'teacher' AND u.is_active = 1 AND u.account_status = 'active' AND (
 			u.username LIKE ? OR
 			t.first_name LIKE ? OR
 			t.last_name LIKE ? OR
@@ -153,10 +153,10 @@ func (a *App) SearchUsers(searchTerm, userType string) ([]User, error) {
 			u.id, u.username, u.user_type, u.created_at,
 			s.first_name, s.middle_name, s.last_name,
 			NULL as admin_id, s.student_id,
-			s.email, s.contact_number, NULL as department_code
+			s.email, s.contact_number, s.department_code
 		FROM users u
 		JOIN students s ON u.id = s.id
-		WHERE u.user_type IN ('student', 'working_student') AND u.is_active = 1 AND u.account_status <> 'suspended' AND (
+		WHERE u.user_type IN ('student', 'working_student') AND u.is_active = 1 AND u.account_status = 'active' AND (
 			u.username LIKE ? OR
 			s.first_name LIKE ? OR
 			s.last_name LIKE ? OR
@@ -221,6 +221,9 @@ func (a *App) CreateUser(password, name, firstName, middleName, lastName, role, 
 		if err := ValidateStudentID(studentID); err != nil {
 			return err
 		}
+		if strings.TrimSpace(departmentCode) == "" {
+			return fmt.Errorf("department is required for %s", strings.ReplaceAll(role, "_", " "))
+		}
 	}
 	if email != "" {
 		if err := ValidateEmail(email); err != nil {
@@ -234,6 +237,20 @@ func (a *App) CreateUser(password, name, firstName, middleName, lastName, role, 
 	}
 	if len(strings.TrimSpace(departmentCode)) > MaxLenDepartment {
 		return fmt.Errorf("department code must be at most %d characters", MaxLenDepartment)
+	}
+
+	if role == "student" || role == "working_student" {
+		normalizedDepartmentCode, err := a.validateActiveDepartmentCode(departmentCode)
+		if err != nil {
+			return err
+		}
+		departmentCode = normalizedDepartmentCode
+	} else if role == "teacher" && strings.TrimSpace(departmentCode) != "" {
+		normalizedDepartmentCode, err := a.validateActiveDepartmentCode(departmentCode)
+		if err != nil {
+			return err
+		}
+		departmentCode = normalizedDepartmentCode
 	}
 
 	log.Printf("CreateUser called - Role: %s, StudentID: %s, Email: %s", role, studentID, email)
@@ -302,14 +319,31 @@ func (a *App) UpdateUser(id int, name, firstName, middleName, lastName, role, em
 		query = `UPDATE admins SET first_name = ?, middle_name = ?, last_name = ?, admin_id = ?, email = ? WHERE id = ?`
 		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(employeeID), nullString(email), id)
 	case "teacher":
+		if strings.TrimSpace(departmentCode) != "" {
+			normalizedDepartmentCode, deptErr := a.validateActiveDepartmentCode(departmentCode)
+			if deptErr != nil {
+				return deptErr
+			}
+			departmentCode = normalizedDepartmentCode
+		}
 		query = `UPDATE teachers SET first_name = ?, middle_name = ?, last_name = ?, teacher_id = ?, email = ?, contact_number = ?, department_code = ? WHERE id = ?`
 		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(employeeID), nullString(email), nullString(contactNumber), nullString(departmentCode), id)
 	case "student":
-		query = `UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, student_id = ?, email = ?, contact_number = ? WHERE id = ? AND is_working_student = 0`
-		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(studentID), nullString(email), nullString(contactNumber), id)
+		normalizedDepartmentCode, deptErr := a.validateActiveDepartmentCode(departmentCode)
+		if deptErr != nil {
+			return deptErr
+		}
+		departmentCode = normalizedDepartmentCode
+		query = `UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, student_id = ?, email = ?, contact_number = ?, department_code = ? WHERE id = ? AND is_working_student = 0`
+		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(studentID), nullString(email), nullString(contactNumber), nullString(departmentCode), id)
 	case "working_student":
-		query = `UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, student_id = ?, email = ?, contact_number = ? WHERE id = ? AND is_working_student = 1`
-		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(studentID), nullString(email), nullString(contactNumber), id)
+		normalizedDepartmentCode, deptErr := a.validateActiveDepartmentCode(departmentCode)
+		if deptErr != nil {
+			return deptErr
+		}
+		departmentCode = normalizedDepartmentCode
+		query = `UPDATE students SET first_name = ?, middle_name = ?, last_name = ?, student_id = ?, email = ?, contact_number = ?, department_code = ? WHERE id = ? AND is_working_student = 1`
+		_, err = a.db.Exec(query, firstName, nullString(middleName), lastName, nullString(studentID), nullString(email), nullString(contactNumber), nullString(departmentCode), id)
 	}
 
 	return err
@@ -327,7 +361,7 @@ func (a *App) DeleteUser(id int) error {
 }
 
 // DeleteExpiredDeactivatedUsers permanently deletes accounts that have been deactivated
-// (suspended) for more than the given number of days. Intended to be run by an administrator
+// for more than the given number of days. Intended to be run by an administrator
 // (e.g. after 30 days for students, 365 days for teachers who might return).
 func (a *App) DeleteExpiredDeactivatedUsers(days int) (int, error) {
 	if err := a.checkDB(); err != nil {
@@ -340,7 +374,7 @@ func (a *App) DeleteExpiredDeactivatedUsers(days int) (int, error) {
 	rows, err := a.db.Query(`
 		SELECT id
 		FROM users
-		WHERE account_status = 'suspended'
+		WHERE account_status = 'deactivated'
 		  AND is_active = 0
 		  AND updated_at <= DATEADD(DAY, -?, GETDATE())
 	`, days)
@@ -407,8 +441,11 @@ func (a *App) DeactivateTeacher(id int) error {
 
 	result, err := a.db.Exec(`
 		UPDATE users
-		SET account_status = 'suspended', is_active = 0, updated_at = GETDATE()
-		WHERE id = ? AND (is_active = 1 OR account_status <> 'suspended')
+		SET account_status = 'deactivated',
+		    is_active = 0,
+		    deactivated_at = COALESCE(deactivated_at, GETDATE()),
+		    updated_at = GETDATE()
+		WHERE id = ? AND account_status <> 'deactivated'
 	`, id)
 	if err != nil {
 		return err
@@ -446,8 +483,11 @@ func (a *App) ArchiveUser(id int) error {
 
 	result, err := a.db.Exec(`
 		UPDATE users
-		SET account_status = 'suspended', is_active = 0, updated_at = GETDATE()
-		WHERE id = ? AND (is_active = 1 OR account_status <> 'suspended')
+		SET account_status = 'archived',
+		    is_active = 0,
+		    archived_at = COALESCE(archived_at, GETDATE()),
+		    updated_at = GETDATE()
+		WHERE id = ? AND account_status <> 'archived'
 	`, id)
 	if err != nil {
 		return err
@@ -472,8 +512,11 @@ func (a *App) UnarchiveUser(id int) error {
 
 	result, err := a.db.Exec(`
 		UPDATE users
-		SET account_status = 'active', is_active = 1, updated_at = GETDATE()
-		WHERE id = ? AND (is_active = 0 OR account_status = 'suspended')
+		SET account_status = 'active',
+		    is_active = 1,
+		    archived_at = NULL,
+		    updated_at = GETDATE()
+		WHERE id = ? AND account_status = 'archived'
 	`, id)
 	if err != nil {
 		return err
@@ -490,7 +533,7 @@ func (a *App) UnarchiveUser(id int) error {
 	return nil
 }
 
-// GetArchivedUsers returns archived/deactivated accounts for admin review (admins, teachers, students).
+// GetArchivedUsers returns manually archived accounts for admin review.
 func (a *App) GetArchivedUsers() ([]User, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
@@ -498,34 +541,34 @@ func (a *App) GetArchivedUsers() ([]User, error) {
 
 	query := `
 		SELECT 
-			u.id, u.username, u.user_type, u.updated_at,
+			u.id, u.username, u.user_type, COALESCE(u.archived_at, u.updated_at),
 			a.first_name, a.middle_name, a.last_name,
 			a.admin_id, NULL as student_id,
 			a.email, a.contact_number, NULL as department_code
 		FROM users u
 		JOIN admins a ON u.id = a.id
-		WHERE (u.is_active = 0 OR u.account_status = 'suspended')
+		WHERE u.account_status = 'archived'
 		UNION ALL
 		SELECT 
-			u.id, u.username, u.user_type, u.updated_at,
+			u.id, u.username, u.user_type, COALESCE(u.archived_at, u.updated_at),
 			t.first_name, t.middle_name, t.last_name,
 			t.teacher_id, NULL as student_id,
 			t.email, t.contact_number, t.department_code
 		FROM users u
 		JOIN teachers t ON u.id = t.id
 		WHERE u.user_type = 'teacher'
-		  AND (u.is_active = 0 OR u.account_status = 'suspended')
+		  AND u.account_status = 'archived'
 		UNION ALL
 		SELECT 
-			u.id, u.username, u.user_type, u.updated_at,
+			u.id, u.username, u.user_type, COALESCE(u.archived_at, u.updated_at),
 			s.first_name, s.middle_name, s.last_name,
 			NULL as admin_id, s.student_id,
-			s.email, s.contact_number, NULL as department_code
+			s.email, s.contact_number, s.department_code
 		FROM users u
 		JOIN students s ON u.id = s.id
 		WHERE u.user_type IN ('student', 'working_student')
-		  AND (u.is_active = 0 OR u.account_status = 'suspended')
-		ORDER BY updated_at DESC
+		  AND u.account_status = 'archived'
+		ORDER BY COALESCE(archived_at, updated_at) DESC
 	`
 
 	rows, err := a.db.Query(query)
@@ -615,6 +658,28 @@ func (a *App) checkDuplicateUser(username, role string) error {
 	return nil
 }
 
+// validateActiveDepartmentCode ensures the selected department exists and is active.
+func (a *App) validateActiveDepartmentCode(departmentCode string) (string, error) {
+	normalized := strings.TrimSpace(departmentCode)
+	if normalized == "" {
+		return "", fmt.Errorf("department is required")
+	}
+
+	var isActive bool
+	err := a.db.QueryRow(`SELECT is_active FROM departments WHERE department_code = ?`, normalized).Scan(&isActive)
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("selected department does not exist")
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to validate department: %w", err)
+	}
+	if !isActive {
+		return "", fmt.Errorf("selected department is archived or inactive")
+	}
+
+	return normalized, nil
+}
+
 // insertRoleSpecificProfile inserts user profile into role-specific table
 func (a *App) insertRoleSpecificProfile(userID int64, role, firstName, middleName, lastName, employeeID, studentID, email, contactNumber, departmentCode string) error {
 	var query string
@@ -628,12 +693,12 @@ func (a *App) insertRoleSpecificProfile(userID int64, role, firstName, middleNam
 		query = `INSERT INTO teachers (id, teacher_id, first_name, middle_name, last_name, email, contact_number, department_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 		_, err = a.db.Exec(query, userID, nullString(employeeID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), nullString(departmentCode))
 	case "student":
-		query = `INSERT INTO students (id, student_id, first_name, middle_name, last_name, email, contact_number, is_working_student) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), 0)
+		query = `INSERT INTO students (id, student_id, first_name, middle_name, last_name, email, contact_number, department_code, is_working_student) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), nullString(departmentCode), 0)
 	case "working_student":
-		query = `INSERT INTO students (id, student_id, first_name, middle_name, last_name, email, contact_number, is_working_student) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+		query = `INSERT INTO students (id, student_id, first_name, middle_name, last_name, email, contact_number, department_code, is_working_student) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
 		log.Printf("Inserting working student - id: %d, student_id: %s, name: %s %s, email: %s", userID, studentID, firstName, lastName, email)
-		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), 1)
+		_, err = a.db.Exec(query, userID, nullString(studentID), firstName, nullString(middleName), lastName, nullString(email), nullString(contactNumber), nullString(departmentCode), 1)
 	}
 
 	if err != nil {
@@ -935,10 +1000,23 @@ func (a *App) DeleteExpiredStudents() (int, error) {
 // ACCOUNT ACTIVITY STATUS MANAGEMENT
 // ==============================================================================
 
-// ensureActivityTrackingColumns ensures the deactivated_at and deleted_at columns
+// ensureActivityTrackingColumns ensures the archived_at, deactivated_at and deleted_at columns
 // exist in the users table. Called at startup as a lightweight auto-migration.
 func (a *App) ensureActivityTrackingColumns() error {
 	_, err := a.db.Exec(`
+		IF NOT EXISTS (
+			SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'archived_at'
+		)
+		BEGIN
+			ALTER TABLE users ADD archived_at DATETIME NULL
+		END
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to ensure archived_at column: %w", err)
+	}
+
+	_, err = a.db.Exec(`
 		IF NOT EXISTS (
 			SELECT * FROM INFORMATION_SCHEMA.COLUMNS
 			WHERE TABLE_NAME = 'users' AND COLUMN_NAME = 'deactivated_at'
@@ -967,14 +1045,55 @@ func (a *App) ensureActivityTrackingColumns() error {
 	return nil
 }
 
+// ensureAccountStatusConstraint ensures users.account_status supports full lifecycle states.
+func (a *App) ensureAccountStatusConstraint() error {
+	_, err := a.db.Exec(`
+		UPDATE users
+		SET archived_at = updated_at
+		WHERE account_status = 'archived'
+		  AND archived_at IS NULL;
+
+		UPDATE users
+		SET account_status = 'deleted', updated_at = GETDATE()
+		WHERE deleted_at IS NOT NULL
+		  AND account_status <> 'deleted';
+
+		DECLARE @dropSql NVARCHAR(MAX) = N'';
+
+		SELECT @dropSql = @dropSql + N'ALTER TABLE users DROP CONSTRAINT [' + cc.name + N'];'
+		FROM sys.check_constraints cc
+		INNER JOIN sys.columns c
+			ON cc.parent_object_id = c.object_id
+			AND cc.parent_column_id = c.column_id
+		INNER JOIN sys.tables t
+			ON cc.parent_object_id = t.object_id
+		WHERE t.name = 'users'
+		  AND c.name = 'account_status';
+
+		IF LEN(@dropSql) > 0
+		BEGIN
+			EXEC sp_executesql @dropSql;
+		END
+
+		ALTER TABLE users WITH NOCHECK
+		ADD CONSTRAINT CK_users_account_status
+		CHECK (account_status IN ('pending', 'active', 'archived', 'deactivated', 'deleted', 'rejected'));
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to ensure account status check constraint: %w", err)
+	}
+
+	return nil
+}
+
 // GetUsersByActivityStatus returns users filtered by activity status with last-login info.
 //
 // statusFilter values:
 //
 //	"active"      – is_active = 1, account_status = 'active', not soft-deleted
-//	"archived"    – manually suspended (is_active = 0, deactivated_at IS NULL)
+//	"archived"    – manually archived (account_status = 'archived')
 //	"deactivated" – auto-deactivated after 6+ months of inactivity
-//	"deleted"     – soft-deleted (inactive 4+ years, pending permanent removal)
+//	"deleted"     – soft-deleted (account_status = 'deleted')
 func (a *App) GetUsersByActivityStatus(statusFilter string) ([]User, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
@@ -985,11 +1104,11 @@ func (a *App) GetUsersByActivityStatus(statusFilter string) ([]User, error) {
 	case "active":
 		condition = `up.is_active = 1 AND up.account_status = 'active' AND up.deleted_at IS NULL`
 	case "archived":
-		condition = `up.is_active = 0 AND up.deleted_at IS NULL AND up.deactivated_at IS NULL`
+		condition = `up.account_status = 'archived' AND up.deleted_at IS NULL`
 	case "deactivated":
-		condition = `up.is_active = 0 AND up.deactivated_at IS NOT NULL AND up.deleted_at IS NULL`
+		condition = `up.account_status = 'deactivated' AND up.deactivated_at IS NOT NULL AND up.deleted_at IS NULL`
 	case "deleted":
-		condition = `up.deleted_at IS NOT NULL`
+		condition = `up.account_status = 'deleted' OR up.deleted_at IS NOT NULL`
 	default:
 		return nil, fmt.Errorf("invalid status filter: %s", statusFilter)
 	}
@@ -1029,7 +1148,7 @@ func (a *App) GetUsersByActivityStatus(statusFilter string) ([]User, error) {
 				s.first_name, s.middle_name, s.last_name,
 				CAST(NULL AS NVARCHAR(50)) AS employee_id, s.student_id,
 				s.email, s.contact_number,
-				CAST(NULL AS NVARCHAR(20)) AS department_code,
+				s.department_code,
 				u.deactivated_at, u.deleted_at, u.is_active, u.account_status
 			FROM users u
 			JOIN students s ON u.id = s.id
@@ -1045,7 +1164,7 @@ func (a *App) GetUsersByActivityStatus(statusFilter string) ([]User, error) {
 			up.first_name, up.middle_name, up.last_name,
 			up.employee_id, up.student_id,
 			up.email, up.contact_number, up.department_code,
-			ll.last_login_at, up.deactivated_at, up.deleted_at
+			ll.last_login_at, up.deactivated_at, up.deleted_at, up.account_status
 		FROM UserProfiles up
 		LEFT JOIN LastLogins ll ON up.id = ll.user_id
 		WHERE %s
@@ -1071,13 +1190,14 @@ func (a *App) scanUsersWithActivity(rows *sql.Rows) ([]User, error) {
 		var employeeID, studentID sql.NullString
 		var email, contactNumber, departmentCode sql.NullString
 		var lastLoginAt, deactivatedAt, deletedAt sql.NullTime
+		var accountStatus sql.NullString
 
 		err := rows.Scan(
 			&user.ID, &user.Name, &user.Role, &createdAt,
 			&firstName, &middleName, &lastName,
 			&employeeID, &studentID,
 			&email, &contactNumber, &departmentCode,
-			&lastLoginAt, &deactivatedAt, &deletedAt,
+			&lastLoginAt, &deactivatedAt, &deletedAt, &accountStatus,
 		)
 		if err != nil {
 			log.Printf("Error scanning user with activity: %v", err)
@@ -1128,12 +1248,12 @@ func (a *App) scanUsersWithActivity(rows *sql.Rows) ([]User, error) {
 			formatted := deletedAt.Time.Format("2006-01-02 15:04:05")
 			user.DeletedAt = &formatted
 			user.ActivityStatus = "deleted"
-		} else if user.Name == "" || !deactivatedAt.Valid {
+		} else if accountStatus.Valid && accountStatus.String == "archived" {
 			user.ActivityStatus = "archived"
 		}
 
 		if user.ActivityStatus == "" {
-			if deactivatedAt.Valid {
+			if deactivatedAt.Valid || (accountStatus.Valid && accountStatus.String == "deactivated") {
 				user.ActivityStatus = "deactivated"
 			} else {
 				user.ActivityStatus = "active"
@@ -1162,7 +1282,7 @@ func (a *App) RunInactivityCheck() (map[string]int, error) {
 	deactivateResult, err := a.db.Exec(`
 		UPDATE users
 		SET is_active      = 0,
-		    account_status = 'suspended',
+		    account_status = 'deactivated',
 		    deactivated_at = GETDATE(),
 		    updated_at     = GETDATE()
 		WHERE id IN (
@@ -1190,7 +1310,8 @@ func (a *App) RunInactivityCheck() (map[string]int, error) {
 	// Step 2: soft-delete accounts that have been deactivated for 4+ years
 	softDeleteResult, err := a.db.Exec(`
 		UPDATE users
-		SET deleted_at  = GETDATE(),
+		SET account_status = 'deleted',
+		    deleted_at  = GETDATE(),
 		    updated_at  = GETDATE()
 		WHERE is_active       = 0
 		  AND deactivated_at IS NOT NULL

@@ -89,7 +89,7 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
   };
 
   const getDepartment = () => {
-    if (user.role === 'teacher' && departmentName) {
+    if ((user.role === 'teacher' || user.role === 'student' || user.role === 'working_student') && departmentName) {
       return departmentName;
     }
     return 'N/A';
@@ -426,6 +426,11 @@ function UserManagement() {
 
       const fullName = `${formData.lastName}, ${formData.firstName}${formData.middleName ? ' ' + formData.middleName : ''}`;
 
+      if ((formData.role === 'student' || formData.role === 'working_student') && !formData.departmentCode) {
+        showNotification('error', 'Department is required for students and working students');
+        return;
+      }
+
       // For new users, password is required
       // For editing, if password is empty, we keep the old password (backend handles this)
       let password_to_pass = formData.password;
@@ -440,7 +445,9 @@ function UserManagement() {
         return;
       }
 
-      const departmentCode = formData.role === 'teacher' ? formData.departmentCode : '';
+      const departmentCode = (formData.role === 'teacher' || formData.role === 'student' || formData.role === 'working_student')
+        ? formData.departmentCode
+        : '';
 
       if (editingUser) {
         await UpdateUser(editingUser.id, fullName, formData.firstName, formData.middleName, formData.lastName, formData.role, formData.employeeId, formData.studentId, formData.email, formData.contactNumber, departmentCode);
@@ -543,16 +550,16 @@ function UserManagement() {
     }
   };
 
-  const handleRestoreArchived = async (id: number) => {
+  const handleUnarchiveUser = async (id: number) => {
     try {
       await UnarchiveUser(id);
-      showNotification('success', 'Archived account restored successfully!');
+      showNotification('success', 'Account unarchived successfully!');
       loadArchivedUsers();
       loadUsers();
       loadActivityUsers(activityTab);
     } catch (error) {
-      console.error('Failed to restore archived user:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to restore account. Please try again.';
+      console.error('Failed to unarchive user:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to unarchive account. Please try again.';
       showNotification('error', errorMessage);
     }
   };
@@ -758,6 +765,7 @@ function UserManagement() {
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { value: 'teacher', label: 'Teacher' },
+                  { value: 'student', label: 'Student' },
                   { value: 'working_student', label: 'Working Student' }
                 ].map((option) => (
                   <button
@@ -838,15 +846,16 @@ function UserManagement() {
           <div>
             <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Account Information</label>
             <div className="grid grid-cols-2 gap-3">
-              {formData.role === 'teacher' && (
+              {(formData.role === 'teacher' || formData.role === 'student' || formData.role === 'working_student') && (
                 <div className="col-span-2">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Department
+                    Department {(formData.role === 'student' || formData.role === 'working_student') && <span className="text-red-500">*</span>}
                   </label>
                   <select
                     value={formData.departmentCode}
                     onChange={(e) => setFormData({ ...formData, departmentCode: e.target.value })}
                     className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required={formData.role === 'student' || formData.role === 'working_student'}
                   >
                     <option value="">Select Department</option>
                     {departments.filter(dept => dept.is_active).map(dept => (
@@ -1076,12 +1085,12 @@ function UserManagement() {
                     <td className="px-4 py-4 whitespace-nowrap text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Button
-                          onClick={() => handleRestoreArchived(user.id)}
+                          onClick={() => handleUnarchiveUser(user.id)}
                           variant="success"
                           size="sm"
                           className="h-9 w-9 px-0 py-0"
                           icon={<ArchiveRestore className="h-4 w-4" />}
-                          title="Restore"
+                          title="Unarchive"
                         />
                         <Button
                           onClick={() => handleDeleteArchivedUser(user)}
@@ -1138,7 +1147,7 @@ function UserManagement() {
             <span className="flex items-center gap-1"><UserCheck className="h-3.5 w-3.5 text-green-500" /> Currently active accounts — last login within the past 6 months.</span>
           )}
           {activityTab === 'archived' && (
-            <span className="flex items-center gap-1"><Archive className="h-3.5 w-3.5 text-yellow-500" /> Manually archived accounts. Restore to allow login again.</span>
+            <span className="flex items-center gap-1"><Archive className="h-3.5 w-3.5 text-yellow-500" /> Manually archived accounts. Unarchive to allow login again.</span>
           )}
           {activityTab === 'deactivated' && (
             <span className="flex items-center gap-1"><UserX className="h-3.5 w-3.5 text-orange-500" /> Auto-deactivated after 6+ months of inactivity — only admin can reactivate. Accounts deactivated for 4+ years are flagged for deletion.</span>
@@ -1234,7 +1243,7 @@ function UserManagement() {
                             {/* Archived tab actions */}
                             {activityTab === 'archived' && (
                               <>
-                                <Button onClick={() => handleRestoreArchived(user.id)} variant="success" size="sm" icon={<ArchiveRestore className="h-3 w-3" />} title="Restore" />
+                                <Button onClick={() => handleUnarchiveUser(user.id)} variant="success" size="sm" icon={<ArchiveRestore className="h-3 w-3" />} title="Unarchive" />
                                 <Button onClick={() => handleDeleteArchivedUser(user)} variant="danger" size="sm" icon={<Trash2 className="h-3 w-3" />} title="Delete permanently" />
                               </>
                             )}
@@ -1431,6 +1440,7 @@ function UserManagement() {
                 data={currentUsers}
                 loading={loading}
                 emptyMessage="No users found"
+                hideEmptyIcon
               />
             </div>
             {currentUsers.length > 0 && (

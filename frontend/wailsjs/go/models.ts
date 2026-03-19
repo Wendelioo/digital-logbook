@@ -638,6 +638,7 @@ export namespace backend {
 	}
 	export class RegistrationRequest {
 	    student_id: string;
+	    department_code: string;
 	    last_name: string;
 	    first_name: string;
 	    middle_name: string;
@@ -653,6 +654,7 @@ export namespace backend {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.student_id = source["student_id"];
+	        this.department_code = source["department_code"];
 	        this.last_name = source["last_name"];
 	        this.first_name = source["first_name"];
 	        this.middle_name = source["middle_name"];

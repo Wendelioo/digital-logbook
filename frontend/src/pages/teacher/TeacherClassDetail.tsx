@@ -381,6 +381,12 @@ function ClassManagementDetail() {
                   <td className="px-4 py-2 text-gray-900" colSpan={3}>{classInfo.room || 'N/A'}</td>
                 </tr>
                 <tr>
+                  <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Semester:</td>
+                  <td className="px-4 py-2 text-gray-900">{classInfo.semester || 'N/A'}</td>
+                  <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">School Year:</td>
+                  <td className="px-4 py-2 text-gray-900" colSpan={3}>{classInfo.school_year || 'N/A'}</td>
+                </tr>
+                <tr>
                   <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Instructor:</td>
                   <td className="px-4 py-2 text-gray-900" colSpan={5}>{classInfo.teacher_name || 'N/A'}</td>
                 </tr>
