@@ -22,6 +22,25 @@ body {
     background: radial-gradient(circle at top left, #f3f6ff 0%, #fafaf9 38%, #f8fafc 100%);
 }
 
+table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid #d1d5db;
+}
+
+thead th,
+tbody td,
+tfoot td {
+    border: 1px solid #d1d5db;
+    vertical-align: middle;
+    padding: 0.75rem 1rem;
+}
+
+thead th,
+tbody td {
+    text-align: left;
+}
+
 #app {
     height: 100vh;
     text-align: center;
@@ -29,7 +48,6 @@ body {
 
 /* ===== CUSTOM LAYER COMPONENTS ===== */
 @layer components {
-    /* Card Styles */
     .card {
         @apply bg-white/95 backdrop-blur-sm rounded-2xl shadow-soft border border-gray-200;
     }
@@ -53,13 +71,12 @@ body {
     .section-highlight-subtitle {
         @apply text-sm text-gray-600 mt-1;
     }
-    
 
 /* Global section heading polish for dashboard/content pages */
 main h2 {
     letter-spacing: -0.01em;
 }
-    /* Input Styles */
+
     .input {
         @apply w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm
                bg-white text-gray-900
@@ -69,7 +86,6 @@ main h2 {
                transition-all duration-200;
     }
     
-    /* Animations */
     .animate-slideDown {
         animation: slideDown 0.3s ease-out;
     }
@@ -90,7 +106,6 @@ main h2 {
         @apply border-success-400 focus:ring-success-500;
     }
     
-    /* Select Styles */
     .select {
         @apply w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm
                bg-white text-gray-900
@@ -99,7 +114,6 @@ main h2 {
                transition-all duration-200;
     }
     
-    /* Label Styles */
     .label {
         @apply block text-sm font-medium text-gray-700 mb-1.5;
     }
@@ -109,7 +123,6 @@ main h2 {
         @apply text-danger-500;
     }
     
-    /* Badge Styles */
     .badge {
         @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
     }
@@ -228,6 +241,21 @@ main h2 {
     }
 }
 
+@keyframes loadingDot {
+    0%, 80%, 100% {
+        opacity: 0.35;
+        transform: translateY(0);
+    }
+    40% {
+        opacity: 1;
+        transform: translateY(-5px);
+    }
+}
+
+.animate-loading-dot {
+    animation: loadingDot 1s infinite ease-in-out;
+}
+
 /* Fix for modal overlay issues */
 .fixed.inset-0 {
     position: fixed !important;
@@ -251,7 +279,6 @@ main h2 {
     transform: scale(1.05);
 }
 
-/* Smooth transitions */
 .transition-all {
     transition-property: all;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
@@ -366,7 +393,6 @@ main h2 {
 }
 
 /* ===== YOUTUBE-STYLE SIDEBAR ===== */
-/* Thin scrollbar for sidebar nav */
 .scrollbar-thin::-webkit-scrollbar {
     width: 4px;
 }
@@ -388,7 +414,6 @@ main h2 {
     background: rgba(0, 0, 0, 0.3);
 }
 
-/* Sidebar scrollbar styling */
 .sidebar-scroll::-webkit-scrollbar {
     width: 4px;
 }
@@ -406,17 +431,14 @@ main h2 {
     background: rgba(156, 163, 175, 0.5);
 }
 
-/* Glow effect for active navigation */
 .nav-item-active-glow {
     box-shadow: 0 4px 14px 0 rgba(147, 51, 234, 0.39);
 }
 
-/* Smooth transitions for all interactive elements */
 .smooth-transition {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Modern tooltip styles */
 .modern-tooltip {
     backdrop-filter: blur(8px);
     background: rgba(17, 24, 39, 0.95);
@@ -427,7 +449,7 @@ main h2 {
     outline: 2px solid #9333ea;
     outline-offset: 2px;
 }
-/* Attendance Checkbox Styling */
+
 .attendance-checkbox {
     appearance: none;
     width: 1rem;
@@ -471,7 +493,6 @@ main h2 {
     outline-offset: 2px;
 }
 
-/* Checkbox color variants */
 .checkbox-green:checked {
     background-color: #16a34a;
     border-color: #16a34a;

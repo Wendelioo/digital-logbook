@@ -31,36 +31,38 @@ interface EquipmentItemProps {
 
 function EquipmentItem({ label, value, onChange, issueOnly = false }: EquipmentItemProps) {
   if (issueOnly) {
-    const checked = value.status === 'no';
+    const hasIssue = value.status === 'no';
     return (
       <div className={`border rounded-xl p-4 transition-all duration-200 ${
-        checked ? 'border-red-200 bg-red-50/50' : 'border-gray-200 bg-white'
+        hasIssue ? 'border-red-200 bg-red-50/50' : 'border-gray-200 bg-white'
       }`}>
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={checked}
-            onChange={(e) => {
-              if (e.target.checked) {
-                onChange({ status: 'no', issue: value.issue });
-              } else {
-                onChange({ status: 'yes', issue: '' });
-              }
-            }}
-            className="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500 cursor-pointer"
-          />
-          <span className={`font-medium text-sm ${
-            checked ? 'text-red-800' : 'text-gray-700'
-          }`}>{label} has a problem</span>
-        </label>
-        {checked && (
+        {/* Equipment Header */}
+        <div className="mb-3">
+          <h4 className="font-medium text-gray-900">{label}</h4>
+        </div>
+
+        {/* Issue Button */}
+        <button
+          type="button"
+          onClick={() => onChange({ status: hasIssue ? 'yes' : 'no', issue: hasIssue ? '' : value.issue })}
+          className={`w-full px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+            hasIssue
+              ? 'bg-red-600 text-white shadow-sm'
+              : 'bg-white border border-gray-300 text-gray-700 hover:border-red-400 hover:bg-red-50'
+          }`}
+        >
+          Issue
+        </button>
+
+        {/* Issue Description */}
+        {hasIssue && (
           <div className="mt-3">
             <input
               type="text"
               value={value.issue}
               onChange={(e) => onChange({ status: 'no', issue: e.target.value })}
-              placeholder={`Describe the ${label.toLowerCase()} issue...`}
-              className="w-full px-3 py-2 border border-red-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
+              placeholder="Describe the issue..."
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
             />
           </div>
         )}
@@ -164,12 +166,6 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
           alert('Please enter the lab and PC number you are reporting for.');
           return;
         }
-        const hasIssue = [feedback.computer, feedback.mouse, feedback.keyboard, feedback.monitor]
-          .some(eq => eq.status === 'no' && eq.issue.trim());
-        if (!hasIssue) {
-          alert('Please select at least one equipment with a problem and describe the issue.');
-          return;
-        }
         const items = [
           { eq: feedback.computer, name: 'Computer' },
           { eq: feedback.mouse, name: 'Mouse' },
@@ -177,6 +173,10 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
           { eq: feedback.monitor, name: 'Monitor' },
         ];
         for (const { eq, name } of items) {
+          if (eq.status === null) {
+            alert(`Please indicate status for the ${name} (Working or Issue).`);
+            return;
+          }
           if (eq.status === 'no' && !eq.issue.trim()) {
             alert(`Please describe the issue with the ${name}.`);
             return;
@@ -235,11 +235,10 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
 
   const progress = mode === 'logout' && !isOtherPC ? (logoutCompletedItems / 4) * 100 : 100;
 
+  const otherPcAllComplete = [feedback.computer, feedback.mouse, feedback.keyboard, feedback.monitor]
+    .every(eq => eq.status !== null && (eq.status === 'yes' || eq.issue.trim().length > 0));
   const otherPcCanSubmit =
-    feedback.targetPCNumber.trim().length > 0 &&
-    [feedback.computer, feedback.mouse, feedback.keyboard, feedback.monitor].some(
-      eq => eq.status === 'no' && eq.issue.trim().length > 0
-    );
+    feedback.targetPCNumber.trim().length > 0 && otherPcAllComplete;
 
   const canSubmit = mode === 'logout'
     ? isOtherPC
@@ -400,10 +399,10 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
                       onChange={() => setFeedback({
                         ...feedback,
                         reportingContext: 'other_pc',
-                        computer: { status: 'yes', issue: '' },
-                        mouse: { status: 'yes', issue: '' },
-                        keyboard: { status: 'yes', issue: '' },
-                        monitor: { status: 'yes', issue: '' },
+                        computer: { status: null, issue: '' },
+                        mouse: { status: null, issue: '' },
+                        keyboard: { status: null, issue: '' },
+                        monitor: { status: null, issue: '' },
                       })}
                       className="text-blue-600 focus:ring-blue-500"
                     />
@@ -425,31 +424,27 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
               </div>
               {isOtherPC ? (
                 <div className="mb-6">
-                  <p className="text-xs text-gray-500 mb-3">Check any equipment that has a problem on that PC:</p>
+                  <p className="text-xs text-gray-500 mb-3">Select Working or Issue for each equipment on that PC (you can report no issues if everything is fine):</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <EquipmentItem
                       label="Computer"
                       value={feedback.computer}
                       onChange={(value) => setFeedback({ ...feedback, computer: value })}
-                      issueOnly
                     />
                     <EquipmentItem
                       label="Mouse"
                       value={feedback.mouse}
                       onChange={(value) => setFeedback({ ...feedback, mouse: value })}
-                      issueOnly
                     />
                     <EquipmentItem
                       label="Keyboard"
                       value={feedback.keyboard}
                       onChange={(value) => setFeedback({ ...feedback, keyboard: value })}
-                      issueOnly
                     />
                     <EquipmentItem
                       label="Monitor"
                       value={feedback.monitor}
                       onChange={(value) => setFeedback({ ...feedback, monitor: value })}
-                      issueOnly
                     />
                   </div>
                 </div>

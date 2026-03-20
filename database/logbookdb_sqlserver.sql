@@ -2,6 +2,8 @@
 USE logbookdb;
 GO
 
+IF OBJECT_ID('notifications', 'U') IS NOT NULL DROP TABLE notifications;
+IF OBJECT_ID('password_reset_requests', 'U') IS NOT NULL DROP TABLE password_reset_requests;
 IF OBJECT_ID('registration_approvals', 'U') IS NOT NULL DROP TABLE registration_approvals;
 IF OBJECT_ID('feedback', 'U') IS NOT NULL DROP TABLE feedback;
 IF OBJECT_ID('user_session_heartbeats', 'U') IS NOT NULL DROP TABLE user_session_heartbeats;
@@ -26,9 +28,14 @@ CREATE TABLE users (
     username NVARCHAR(50) NOT NULL UNIQUE,
     password NVARCHAR(255) NOT NULL,
     user_type NVARCHAR(20) NOT NULL CHECK (user_type IN ('admin', 'teacher', 'student', 'working_student')),
-    account_status NVARCHAR(20) DEFAULT 'active' CHECK (account_status IN ('pending', 'active', 'suspended', 'rejected')),
-    account_lock BIT DEFAULT 0,
+    account_status NVARCHAR(20) DEFAULT 'active' CHECK (account_status IN ('pending', 'active', 'archived', 'deactivated', 'deleted', 'rejected')),
     is_active BIT DEFAULT 1,
+    -- Timestamp when account was manually archived by admin
+    archived_at DATETIME NULL,
+    -- Auto-deactivated after 6+ months of inactivity (set by RunInactivityCheck)
+    deactivated_at DATETIME NULL,
+    -- Soft-delete flag: set when account has been deactivated for 4+ years (pending permanent removal)
+    deleted_at DATETIME NULL,
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME DEFAULT GETDATE()
 );
@@ -91,12 +98,14 @@ CREATE TABLE students (
     last_name NVARCHAR(100) NOT NULL,
     email NVARCHAR(255),
     contact_number NVARCHAR(20),
+    department_code NVARCHAR(20),
     is_working_student BIT DEFAULT 0,
     archived_at DATETIME,
     deletion_scheduled_at DATETIME,
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME DEFAULT GETDATE(),
-    FOREIGN KEY (id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (department_code) REFERENCES departments(department_code)
 );
 GO
 
@@ -236,6 +245,10 @@ CREATE TABLE feedback (
     comments NVARCHAR(MAX),
     working_student_notes NVARCHAR(MAX),
     status NVARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'rejected', 'forwarded', 'resolved')),
+    admin_status NVARCHAR(20) NULL
+        CONSTRAINT DF_feedback_admin_status DEFAULT 'pending'
+        CHECK (admin_status IN ('pending', 'resolved')),
+    admin_resolved_at DATETIME,
     priority NVARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
     verified_by_user_id INT,
     verified_at DATETIME,
@@ -269,6 +282,46 @@ CREATE TABLE registration_approvals (
 );
 GO
 
+CREATE TABLE password_reset_requests (
+    id                  INT IDENTITY(1,1) PRIMARY KEY,
+    student_user_id     INT NOT NULL,
+    teacher_user_id     INT NOT NULL,
+    new_password_hash   NVARCHAR(255) NOT NULL,
+    status              NVARCHAR(20) NOT NULL DEFAULT 'pending'
+                            CHECK (status IN ('pending', 'approved', 'rejected')),
+    requested_at        DATETIME DEFAULT GETDATE(),
+    resolved_at         DATETIME NULL,
+    CONSTRAINT fk_prr_student FOREIGN KEY (student_user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_prr_teacher FOREIGN KEY (teacher_user_id) REFERENCES users(id)
+);
+GO
+
+/* ================================
+   NOTIFICATIONS
+================================ */
+CREATE TABLE notifications (
+    id              INT IDENTITY(1,1) PRIMARY KEY,
+    user_id         INT NOT NULL,
+    category        NVARCHAR(50) NOT NULL,
+    title           NVARCHAR(200) NOT NULL,
+    message         NVARCHAR(500) NOT NULL,
+    tone            NVARCHAR(20) NOT NULL DEFAULT 'info'
+                        CHECK (tone IN ('info', 'warning', 'success')),
+    is_read         BIT NOT NULL DEFAULT 0,
+    reference_type  NVARCHAR(50) NULL,
+    reference_id    INT NULL,
+    created_at      DATETIME NOT NULL DEFAULT GETDATE(),
+    read_at         DATETIME NULL,
+    CONSTRAINT FK_notifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+GO
+
+CREATE INDEX idx_prr_student_id ON password_reset_requests(student_user_id);
+CREATE INDEX idx_prr_teacher_id ON password_reset_requests(teacher_user_id);
+CREATE INDEX idx_prr_status ON password_reset_requests(status);
+CREATE INDEX idx_notifications_user_unread ON notifications(user_id, is_read);
+CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at DESC);
+CREATE INDEX idx_notifications_category ON notifications(category);
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_user_type ON users(user_type);
 CREATE INDEX idx_log_entries_user_id ON log_entries(user_id);

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Button from '../../components/Button';
+import LoadingDots from '../../components/LoadingDots';
 import {
   X,
   Search,
@@ -167,7 +168,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -399,7 +400,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                   {/* Class Information Header */}
                   <thead>
                     <tr>
-                      <th colSpan={5} className="px-4 py-2 text-left border-b-2 border-gray-900">
+                      <th colSpan={3} className="px-4 py-2 text-left border-b-2 border-gray-900">
                         <div className="text-gray-900 font-bold text-sm tracking-wide">CLASS INFORMATION</div>
                       </th>
                     </tr>
@@ -430,13 +431,13 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                   {/* Student List Header */}
                   <thead>
                     <tr>
-                      <th colSpan={5} className="px-4 py-3 text-left border-b-2 border-t-2 border-gray-900">
+                      <th colSpan={3} className="px-4 py-3 text-left border-b-2 border-t-2 border-gray-900">
                         <div className="flex items-center justify-between">
                           <span className="text-gray-900 font-bold text-sm tracking-wide">STUDENTS LIST</span>
                           <div className="flex items-center gap-4">
                             <span className="text-xs text-gray-600">Total: {classlistStudents.length}</span>
                             {loadingClasslist && (
-                              <Loader2 className="h-4 w-4 animate-spin text-primary-600" />
+                              <LoadingDots dotClassName="h-2.5 w-2.5" />
                             )}
                           </div>
                         </div>
@@ -448,9 +449,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                   <thead>
                     <tr className="bg-gray-50">
                       <th className="px-1 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '25px' }}>No.</th>
-                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>Student ID</th>
                       <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase">Name</th>
-                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '200px' }}>Email</th>
                       <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Status</th>
                     </tr>
                   </thead>
@@ -459,8 +458,8 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                   <tbody className="bg-white text-xs">
                     {loadingClasslist && classlistStudents.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-6 py-12 text-center">
-                          <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary-600 mb-2" />
+                        <td colSpan={3} className="px-6 py-12 text-center">
+                          <LoadingDots className="justify-center mb-2 gap-2" dotClassName="h-3 w-3" />
                           <p className="text-gray-500 text-sm">Loading students...</p>
                         </td>
                       </tr>
@@ -470,14 +469,8 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                           <td className="px-1 py-1.5 text-center font-medium text-gray-900">
                             {index + 1}
                           </td>
-                          <td className="px-1 py-1.5 font-medium text-gray-900 text-xs">
-                            {student.student_code}
-                          </td>
                           <td className="px-1 py-1.5 text-gray-900">
                             {student.last_name}, {student.first_name} {student.middle_name ? student.middle_name.charAt(0) + '.' : ''}
-                          </td>
-                          <td className="px-1 py-1.5 text-gray-700">
-                            {student.email || '—'}
                           </td>
                           <td className="px-1 py-1.5">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${student.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
@@ -488,7 +481,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={5} className="px-6 py-8 text-center">
+                        <td colSpan={3} className="px-6 py-8 text-center">
                           <p className="text-gray-500 text-sm">No students enrolled</p>
                         </td>
                       </tr>
@@ -499,7 +492,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
 
               {/* Footer */}
               <div className="mt-8 pt-4 border-t border-gray-300 text-xs text-gray-600 flex justify-between">
-                <span>Printed: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                <span>Printed: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
                 <span>Digital Logbook System</span>
               </div>
             </div>

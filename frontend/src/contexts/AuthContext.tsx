@@ -19,7 +19,7 @@ declare global {
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string) => Promise<User>;
+  login: (username: string, password: string, rememberMe: boolean) => Promise<User>;
   logout: () => Promise<void>;
   updateUser: (updatedUser: Partial<User>) => void;
   isAuthenticated: boolean;
@@ -27,6 +27,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
+const REMEMBER_ME_KEY = 'rememberMe';
 const HEARTBEAT_INTERVAL_MS = 30 * 1000;
 const RUNTIME_WAIT_TIMEOUT_MS = 5000;
 const RUNTIME_WAIT_INTERVAL_MS = 50;
@@ -50,6 +51,7 @@ async function waitForWailsRuntime(timeoutMs = RUNTIME_WAIT_TIMEOUT_MS): Promise
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isRememberedSession, setIsRememberedSession] = useState(false);
   const logoutInProgressRef = useRef(false);
 
   useEffect(() => {
@@ -71,6 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearLocalSession = useCallback(() => {
     setUser(null);
     setIsAuthenticated(false);
+    setIsRememberedSession(false);
     localStorage.removeItem('user');
     sessionStorage.clear();
     window.dispatchEvent(new CustomEvent(AUTH_STATUS_CHANGED_EVENT));
@@ -78,12 +81,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Check for saved user session on mount
   useEffect(() => {
+    const sessionUser = sessionStorage.getItem('user');
+    if (sessionUser) {
+      try {
+        const parsedSessionUser = JSON.parse(sessionUser);
+        setUser(parsedSessionUser);
+        setIsAuthenticated(true);
+        setIsRememberedSession(false);
+        UnlockScreen().catch(() => {});
+        return;
+      } catch (error) {
+        console.error('Failed to parse session user:', error);
+        sessionStorage.removeItem('user');
+      }
+    }
+
     const savedUser = localStorage.getItem('user');
     if (savedUser) {
       try {
         const parsedUser = JSON.parse(savedUser);
         setUser(parsedUser);
         setIsAuthenticated(true);
+        setIsRememberedSession(true);
         // If user session exists, unlock screen (kiosk mode - user was already logged in)
         UnlockScreen().catch(() => {});
       } catch (error) {
@@ -93,7 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Handle inactivity and window close
+  // Handle inactivity timeout — calls backend to record logout, then clears local session
   const handleAutoLogout = useCallback(async () => {
     if (logoutInProgressRef.current) {
       return;
@@ -101,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     logoutInProgressRef.current = true;
     try {
-      if (user && window.go?.main?.App) {
+      if (user && window.go?.backend?.App) {
         await Logout(user.id);
       }
     } catch (error) {
@@ -120,16 +139,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [clearLocalSession, user]);
 
-  useInactivityDetection(handleAutoLogout, !!user);
-  useWindowUnload(handleAutoLogout, !!user);
+  // Handle window/app close — only clears local session.
+  // The Go OnBeforeClose + OnShutdown hooks reliably handle DB session cleanup
+  // on the backend side, so no async backend call is needed here.
+  const handleWindowClose = useCallback(() => {
+    clearLocalSession();
+  }, [clearLocalSession]);
 
-  const login = async (username: string, password: string): Promise<User> => {
+  useInactivityDetection(handleAutoLogout, !!user);
+  useWindowUnload(handleWindowClose, !!user);
+
+  const login = async (username: string, password: string, rememberMe: boolean): Promise<User> => {
     logoutInProgressRef.current = false;
 
     // Clear existing state
     setUser(null);
     setIsAuthenticated(false);
+    setIsRememberedSession(false);
     localStorage.removeItem('user');
+    sessionStorage.removeItem('user');
 
     try {
       // Check Wails runtime availability (allow short delay for runtime injection)
@@ -146,7 +174,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Update state and persist
       setUser(userData);
       setIsAuthenticated(true);
-      localStorage.setItem('user', JSON.stringify(userData));
+      setIsRememberedSession(rememberMe);
+
+      if (rememberMe) {
+        localStorage.setItem('user', JSON.stringify(userData));
+        sessionStorage.removeItem('user');
+      } else {
+        sessionStorage.setItem('user', JSON.stringify(userData));
+        localStorage.removeItem('user');
+      }
+
+      localStorage.setItem(REMEMBER_ME_KEY, String(rememberMe));
       window.dispatchEvent(new CustomEvent(AUTH_STATUS_CHANGED_EVENT));
 
       // Unlock screen in kiosk mode so user can freely use Windows
@@ -170,7 +208,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     logoutInProgressRef.current = true;
     try {
-      if (user && window.go?.main?.App) {
+      if (user && window.go?.backend?.App) {
         await Logout(user.id);
       }
     } catch (error) {
@@ -193,7 +231,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user) {
       const updatedUser = { ...user, ...updatedUserData };
       setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      if (isRememberedSession) {
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+      } else {
+        sessionStorage.setItem('user', JSON.stringify(updatedUser));
+      }
     }
   };
 

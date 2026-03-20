@@ -5,7 +5,6 @@ import LoginHistory from '../../components/LoginHistory';
 import { MyClasses, ArchivedClasses, StudentAttendance } from '../student';
 import {
   LayoutDashboard,
-  Users,
   Clock,
   BarChart3,
   ClipboardList,
@@ -14,7 +13,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import DashboardOverview from './WorkingStudentDashboard';
-import ManageUsers from './WorkingStudentManageUsers';
 import EquipmentReports from './WorkingStudentEquipmentReports';
 import ArchivedStudentsManagement from './WorkingStudentArchiving';
 
@@ -29,8 +27,7 @@ function WorkingStudentDashboard() {
   const navigationItems = [
     // Working Student Section
     { name: 'Dashboard', href: '/working-student', icon: <LayoutDashboard className="h-5 w-5" />, current: location.pathname === '/working-student' },
-    { name: 'Pending Registrations', href: '/working-student/pending-registrations', icon: <ClipboardList className="h-5 w-5" />, current: location.pathname === '/working-student/pending-registrations' },
-    { name: 'Student Management', href: '/working-student/manage-users', icon: <Users className="h-5 w-5" />, current: location.pathname === '/working-student/manage-users' },
+    { name: 'Registration Requests', href: '/working-student/pending-registrations', icon: <ClipboardList className="h-5 w-5" />, current: location.pathname === '/working-student/pending-registrations' },
     { name: 'Feedback', href: '/working-student/equipment-reports', icon: <BarChart3 className="h-5 w-5" />, current: location.pathname === '/working-student/equipment-reports' },
     
     // Divider label for student features
@@ -49,7 +46,6 @@ function WorkingStudentDashboard() {
         {/* Working Student Routes */}
         <Route index element={<DashboardOverview />} />
         <Route path="pending-registrations" element={<PendingRegistrations workingStudentUserId={user?.id || 0} />} />
-        <Route path="manage-users" element={<ManageUsers />} />
         <Route path="archived-students" element={<ArchivedStudentsManagement />} />
         <Route path="equipment-reports" element={<EquipmentReports />} />
         
@@ -57,7 +53,7 @@ function WorkingStudentDashboard() {
         <Route path="attendance" element={<StudentAttendance />} />
         <Route path="my-classes" element={<MyClasses />} />
         <Route path="my-archived-classes" element={<ArchivedClasses />} />
-        <Route path="login-history" element={<LoginHistory showStatus={false} />} />
+        <Route path="login-history" element={<LoginHistory />} />
       </Routes>
     </Layout>
   );

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { UserPlus, Edit, Trash2, Search } from 'lucide-react';
 import Button from './Button';
+import LoadingDots from './LoadingDots';
 import Modal from './Modal';
 import { useUsers } from '../hooks/useUsers';
 
@@ -51,7 +52,7 @@ const UserManagement: React.FC = () => {
   if (loading && users.length === 0) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
+        <LoadingDots className="gap-3" dotClassName="h-3 w-3" />
       </div>
     );
   }

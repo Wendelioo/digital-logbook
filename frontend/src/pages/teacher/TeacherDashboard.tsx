@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { StatCard } from '../../components/Card';
 import { Card, CardHeader, CardBody } from '../../components/Card';
@@ -14,9 +14,10 @@ import {
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
+  GetPendingPasswordResets,
 } from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
-import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
+import { BackendDashboardNotifications } from '../../components/DashboardNotifications';
 import { Class } from './types';
 
 const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
@@ -28,33 +29,16 @@ function DashboardOverview() {
   const [openSessionsToday, setOpenSessionsToday] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
-  const [notifications, setNotifications] = useState<DashboardNotificationItem[]>([]);
-  const previousMetricsRef = useRef<{ activeClasses: number; totalStudents: number; openSessionsToday: number } | null>(null);
 
-  const pushNotification = (message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
-    setNotifications((prev) => [
-      {
-        id: `${Date.now()}-${Math.random()}`,
-        message,
-        createdAt: Date.now(),
-        tone,
-      },
-      ...prev,
-    ].slice(0, 10));
-  };
-  const upsertNotification = (id: string, message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
-    setNotifications((prev) => {
-      const next = prev.filter((item) => item.id !== id);
-      return [
-        {
-          id,
-          message,
-          createdAt: Date.now(),
-          tone,
-        },
-        ...next,
-      ].slice(0, 10);
-    });
+  // Pending password reset count (for the quick-link card)
+  const [pendingResetCount, setPendingResetCount] = useState(0);
+
+  const loadResetCount = async () => {
+    if (!user?.id) return;
+    try {
+      const data = await GetPendingPasswordResets(user.id);
+      setPendingResetCount((data || []).length);
+    } catch { /* non-critical */ }
   };
 
   useEffect(() => {
@@ -66,12 +50,11 @@ function DashboardOverview() {
 
       setLoading(true);
       try {
-        // Note: user.id should be the teacher's database ID from teachers table
-        console.log('Loading classes for teacher ID:', user.id);
         const classesData = await GetTeacherClassesByUserID(user.id);
-        console.log('Classes data received:', classesData);
-        const nextClasses = classesData || [];
-        setClasses(nextClasses);
+        // Only update classes when we got a valid array (avoid clearing list on null/failed response)
+        if (Array.isArray(classesData)) {
+          setClasses(classesData);
+        }
 
         let nextOpenSessionsToday = 0;
         try {
@@ -87,43 +70,6 @@ function DashboardOverview() {
           nextOpenSessionsToday = 0;
           setOpenSessionsToday(0);
         }
-
-        const nextActiveClasses = nextClasses.filter(cls => cls.is_active).length;
-        const nextTotalStudents = nextClasses.reduce((sum, cls) => sum + cls.enrolled_count, 0);
-        upsertNotification(
-          'teacher-open-sessions',
-          `Open attendance sessions today: ${nextOpenSessionsToday}.`,
-          nextOpenSessionsToday > 0 ? 'warning' : 'success'
-        );
-        upsertNotification('teacher-active-classes', `Active classes: ${nextActiveClasses}.`, 'info');
-        upsertNotification('teacher-total-students', `Enrolled students: ${nextTotalStudents}.`, 'info');
-        const previous = previousMetricsRef.current;
-
-        if (!previous) {
-          pushNotification('Teacher dashboard is connected and receiving live updates.', 'success');
-        } else {
-          if (nextOpenSessionsToday !== previous.openSessionsToday) {
-            if (nextOpenSessionsToday > previous.openSessionsToday) {
-              pushNotification(`${nextOpenSessionsToday} attendance session(s) are now open.`, 'warning');
-            } else {
-              pushNotification('Open attendance sessions were closed or completed.', 'success');
-            }
-          }
-
-          if (nextActiveClasses !== previous.activeClasses) {
-            pushNotification(`Active classes changed to ${nextActiveClasses}.`, 'info');
-          }
-
-          if (nextTotalStudents !== previous.totalStudents) {
-            pushNotification(`Enrolled students updated to ${nextTotalStudents}.`, 'info');
-          }
-        }
-
-        previousMetricsRef.current = {
-          activeClasses: nextActiveClasses,
-          totalStudents: nextTotalStudents,
-          openSessionsToday: nextOpenSessionsToday,
-        };
 
         setError('');
       } catch (error) {
@@ -147,6 +93,13 @@ function DashboardOverview() {
     };
   }, [user?.id]);
 
+  // Poll reset count every 15 seconds
+  useEffect(() => {
+    loadResetCount();
+    const interval = setInterval(loadResetCount, 15000);
+    return () => clearInterval(interval);
+  }, [user?.id]);
+
   const totalStudents = classes.reduce((sum, cls) => sum + cls.enrolled_count, 0);
   const activeClasses = classes.filter(cls => cls.is_active && !cls.is_archived).length;
   const inactiveClasses = classes.filter(cls => !cls.is_active && !cls.is_archived).length;
@@ -168,34 +121,42 @@ function DashboardOverview() {
         </div>
       )}
 
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Welcome back, {user?.first_name || user?.name}!</h2>
+        <p className="text-sm text-gray-500">Here's what's going on today.</p>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
         {/* Quick Stats */}
         <div className="md:col-span-2 space-y-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard
-              title="Active Classes"
-              value={activeClasses}
-              icon={<Library className="h-6 w-6" />}
-              color="blue"
-            />
-            <StatCard
-              title="Total Students"
-              value={totalStudents}
-              icon={<Users className="h-6 w-6" />}
-              color="green"
-            />
-            <StatCard
-              title="Inactive Classes"
-              value={inactiveClasses}
-              icon={<PauseCircle className="h-6 w-6" />}
-              color="yellow"
-            />
-            <StatCard
-              title="Archived Classes"
-              value={archivedClasses}
-              icon={<Archive className="h-6 w-6" />}
-              color="indigo"
-            />
+          <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Overview</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <StatCard
+                title="Active Classes"
+                value={activeClasses}
+                icon={<Library className="h-6 w-6" />}
+                color="blue"
+              />
+              <StatCard
+                title="Archived Classes"
+                value={archivedClasses}
+                icon={<Archive className="h-6 w-6" />}
+                color="indigo"
+              />
+              <StatCard
+                title="Inactive Classes"
+                value={inactiveClasses}
+                icon={<PauseCircle className="h-6 w-6" />}
+                color="yellow"
+              />
+              <StatCard
+                title="Total Students"
+                value={totalStudents}
+                icon={<Users className="h-6 w-6" />}
+                color="green"
+              />
+            </div>
           </div>
 
           {/* List of Schedule */}
@@ -277,13 +238,43 @@ function DashboardOverview() {
           </Card>
         </div>
 
-        <div className="md:border-l md:border-gray-300 md:pl-6">
+        <div className="md:border-l md:border-gray-300 md:pl-6 space-y-6">
+          {/* Password Reset Requests - link card */}
+          <Card>
+            <CardHeader
+              title={
+                <span className="flex items-center gap-2">
+                  Password Resets
+                  {pendingResetCount > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-orange-500 text-white text-xs font-bold">
+                      {pendingResetCount}
+                    </span>
+                  )}
+                </span>
+              }
+            />
+            <CardBody>
+              {pendingResetCount > 0 ? (
+                <p className="text-sm text-gray-600 mb-3">
+                  You have <span className="font-semibold text-orange-600">{pendingResetCount}</span> student password reset request{pendingResetCount !== 1 ? 's' : ''} waiting for your approval.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-500 mb-3">No pending password reset requests.</p>
+              )}
+              <Link
+                to="password-resets"
+                className="inline-flex items-center px-4 py-2 text-sm font-semibold bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors"
+              >
+                Manage Requests
+              </Link>
+            </CardBody>
+          </Card>
+
           <Card className="h-fit">
             <CardHeader title="Notifications" />
             <CardBody>
-              <DashboardNotifications
-                items={notifications}
-                emptyMessage="No new class or attendance updates."
+              <BackendDashboardNotifications
+                emptyMessage="No new notifications."
               />
             </CardBody>
           </Card>

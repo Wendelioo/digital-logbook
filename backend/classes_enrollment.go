@@ -2,65 +2,17 @@ package backend
 
 import (
 	"database/sql"
-	"encoding/csv"
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
-
-	"github.com/jung-kurt/gofpdf"
 )
 
 // ==============================================================================
 // ENROLLMENT MANAGEMENT - Student enrollment in classes
 // ==============================================================================
-
-// GetAvailableStudents returns students not enrolled in a specific class
-func (a *App) GetAvailableStudents(classID int) ([]ClassStudent, error) {
-	if err := a.checkDB(); err != nil {
-		return nil, err
-	}
-
-	query := `
-		SELECT 
-			s.id as id, s.student_id, s.first_name, s.middle_name, s.last_name,
-			CASE WHEN EXISTS(
-				SELECT 1 FROM classlist cl 
-				WHERE cl.student_id = s.id AND cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
-			) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END as is_enrolled
-		FROM students s
-		WHERE NOT EXISTS (
-			SELECT 1 FROM classlist cl 
-			WHERE cl.student_id = s.id AND cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
-		)
-		ORDER BY last_name, first_name
-	`
-
-	rows, err := a.db.Query(query, classID, classID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var students []ClassStudent
-	for rows.Next() {
-		var student ClassStudent
-		var middleName sql.NullString
-		err := rows.Scan(&student.ID, &student.StudentID, &student.FirstName, &middleName, &student.LastName, &student.IsEnrolled)
-		if err != nil {
-			continue
-		}
-		if middleName.Valid {
-			student.MiddleName = &middleName.String
-		}
-		students = append(students, student)
-	}
-
-	return students, nil
-}
 
 // GetAllStudentsForEnrollment returns all students with their enrollment status for a specific class
 func (a *App) GetAllStudentsForEnrollment(classID int) ([]ClassStudent, error) {
@@ -109,6 +61,10 @@ func (a *App) GetAllStudentsForEnrollment(classID int) ([]ClassStudent, error) {
 // auto-insert an attendance record for the student with status='absent'.
 func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) error {
 	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	if err := a.ensureStudentCanJoinClassDepartment(studentID, classID); err != nil {
 		return err
 	}
 
@@ -176,6 +132,12 @@ func (a *App) EnrollMultipleStudents(studentIDs []int, classID int, enrolledBy i
 		return err
 	}
 
+	for _, studentID := range studentIDs {
+		if err := a.ensureStudentCanJoinClassDepartment(studentID, classID); err != nil {
+			return err
+		}
+	}
+
 	// Check class is active (not closed or archived)
 	var isActive bool
 	var isArchived bool
@@ -221,27 +183,6 @@ func (a *App) EnrollMultipleStudents(studentIDs []int, classID int, enrolledBy i
 	}
 
 	log.Printf("Enrolled %d students in class %d", len(studentIDs), classID)
-	return nil
-}
-
-// UnenrollStudentFromClass removes a student from a class
-func (a *App) UnenrollStudentFromClass(classlistID int) error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	// classlistID is now a composite key, so we need class_id and student_id
-	// For now, we'll need to update the function signature or parse the ID
-	// Since we can't easily get both from a single ID, let's update to use composite key
-	// This function signature needs to change - for now, assuming classlistID represents class_id
-	query := `UPDATE classlist SET status = 'dropped' WHERE class_id = ?`
-	_, err := a.db.Exec(query, classlistID)
-	if err != nil {
-		log.Printf("Failed to unenroll student (class_id=%d): %v", classlistID, err)
-		return err
-	}
-
-	log.Printf("Student unenrolled (class_id=%d)", classlistID)
 	return nil
 }
 
@@ -414,6 +355,42 @@ func (a *App) JoinClassByEDPCode(studentUserID int, edpCode string) (int, error)
 	return classID, nil
 }
 
+// ensureStudentCanJoinClassDepartment validates student/class department compatibility.
+// A mismatch is blocked when both sides have non-empty department codes.
+func (a *App) ensureStudentCanJoinClassDepartment(studentUserID int, classID int) error {
+	var studentDepartment sql.NullString
+	err := a.db.QueryRow(`SELECT department_code FROM students WHERE id = ?`, studentUserID).Scan(&studentDepartment)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("student not found")
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check student department: %w", err)
+	}
+
+	var classDepartment sql.NullString
+	err = a.db.QueryRow(`
+		SELECT t.department_code
+		FROM classes c
+		LEFT JOIN teachers t ON c.teacher_id = t.id
+		WHERE c.class_id = ?
+	`, classID).Scan(&classDepartment)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("class not found")
+	}
+	if err != nil {
+		return fmt.Errorf("failed to check class department: %w", err)
+	}
+
+	studentDept := strings.TrimSpace(studentDepartment.String)
+	classDept := strings.TrimSpace(classDepartment.String)
+
+	if studentDept != "" && classDept != "" && !strings.EqualFold(studentDept, classDept) {
+		return fmt.Errorf("cannot join classlist: student department (%s) does not match class department (%s)", studentDept, classDept)
+	}
+
+	return nil
+}
+
 // ==============================================================================
 // ENROLLMENT ARCHIVING
 // ==============================================================================
@@ -571,146 +548,15 @@ func (a *App) UnarchiveStudentEnrollment(studentUserID int, classID int) error {
 }
 
 // ==============================================================================
-// STUDENT ENROLLMENT STATUS TOGGLE
-// ==============================================================================
-
-// SetStudentEnrollmentStatus updates the status of a student's enrollment in a class
-// status can be: 'active' + 'dropped' + 'completed'
-func (a *App) SetStudentEnrollmentStatus(studentUserID int, classID int, status string) error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	// Validate status
-	validStatuses := map[string]bool{"active": true, "dropped": true, "completed": true}
-	if !validStatuses[status] {
-		return fmt.Errorf("invalid status: %s. Must be 'active' + 'dropped', or 'completed'", status)
-	}
-
-	result, err := a.db.Exec(
-		"UPDATE classlist SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE student_id = ? AND class_id = ?",
-		status, studentUserID, classID,
-	)
-	if err != nil {
-		log.Printf("Failed to update enrollment status: %v", err)
-		return err
-	}
-
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		return fmt.Errorf("enrollment not found")
-	}
-
-	log.Printf("Updated enrollment status: student_id=%d, class_id=%d, status=%s", studentUserID, classID, status)
-	return nil
-}
-
-// MarkEnrollmentCompleted marks a student's enrollment as completed (semester finished)
-func (a *App) MarkEnrollmentCompleted(studentUserID int, classID int) error {
-	return a.SetStudentEnrollmentStatus(studentUserID, classID, "completed")
-}
-
-// MarkEnrollmentDropped marks a student's enrollment as dropped
-func (a *App) MarkEnrollmentDropped(studentUserID int, classID int) error {
-	return a.SetStudentEnrollmentStatus(studentUserID, classID, "dropped")
-}
-
-// ReactivateEnrollment marks a student's enrollment as active again
-func (a *App) ReactivateEnrollment(studentUserID int, classID int) error {
-	return a.SetStudentEnrollmentStatus(studentUserID, classID, "active")
-}
-
-// MarkAllEnrollmentsCompleted marks all active enrollments in a class as completed
-// Useful when a class/semester ends
-func (a *App) MarkAllEnrollmentsCompleted(classID int) error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	result, err := a.db.Exec(
-		"UPDATE classlist SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE class_id = ? AND status = 'active'",
-		classID,
-	)
-	if err != nil {
-		log.Printf("Failed to mark all enrollments completed: %v", err)
-		return err
-	}
-
-	rowsAffected, _ := result.RowsAffected()
-	log.Printf("Marked all enrollments completed for class_id=%d, affected=%d", classID, rowsAffected)
-	return nil
-}
-
-// GetCompletedEnrollments returns all students with completed status in a class
-func (a *App) GetCompletedEnrollments(classID int) ([]ClasslistEntry, error) {
-	if err := a.checkDB(); err != nil {
-		return nil, err
-	}
-
-	query := `
-		SELECT 
-			cl.class_id, cl.student_id, stu.student_id,
-			stu.first_name, stu.middle_name, stu.last_name,
-			cl.status,
-			cl.enrollment_date,
-			stu.email,
-			stu.contact_number,
-			sub.description as course
-		FROM classlist cl
-		JOIN students stu ON cl.student_id = stu.id
-		JOIN classes c ON cl.class_id = c.class_id
-		JOIN subjects sub ON c.subject_code = sub.subject_code
-		WHERE cl.class_id = ? AND cl.status = 'completed'
-		ORDER BY stu.last_name, stu.first_name
-	`
-
-	rows, err := a.db.Query(query, classID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var students []ClasslistEntry
-	for rows.Next() {
-		var student ClasslistEntry
-		var middleName, email, contactNumber, course sql.NullString
-		var enrollmentDate time.Time
-		err := rows.Scan(
-			&student.ClassID, &student.StudentUserID, &student.StudentCode,
-			&student.FirstName, &middleName, &student.LastName,
-			&student.Status,
-			&enrollmentDate, &email, &contactNumber, &course,
-		)
-		if err != nil {
-			continue
-		}
-		if middleName.Valid {
-			student.MiddleName = &middleName.String
-		}
-		if email.Valid {
-			student.Email = &email.String
-		}
-		if contactNumber.Valid {
-			student.ContactNumber = &contactNumber.String
-		}
-		if course.Valid {
-			student.Course = &course.String
-		}
-		student.EnrollmentDate = enrollmentDate.Format("2006-01-02")
-		students = append(students, student)
-	}
-
-	return students, nil
-}
-
-// ==============================================================================
 // CLASSLIST EXPORT
 // ==============================================================================
 
-// ExportClasslistCSV exports the classlist (enrolled students) for a class to CSV
-func (a *App) ExportClasslistCSV(classID int) (string, error) {
+// buildClasslistPrintableDocument prepares a printableExportDocument and metadata
+// for all enrolled students in a class. It is used by the different export
+// formats (CSV, PDF, DOCX) so the export logic lives in one place.
+func (a *App) buildClasslistPrintableDocument(classID int) (printableExportDocument, string, int, error) {
 	if err := a.checkDB(); err != nil {
-		return "", err
+		return printableExportDocument{}, "", 0, err
 	}
 
 	var subjectCode string
@@ -731,7 +577,7 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 	`
 	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName, &semester, &schoolYear)
 	if err != nil {
-		log.Printf("Failed to get class info for export: %v", err)
+		log.Printf("Failed to get class info for classlist export: %v", err)
 		subjectCode = fmt.Sprintf("class_%d", classID)
 		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
 	}
@@ -748,7 +594,7 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 
 	rows, err := a.db.Query(query, classID)
 	if err != nil {
-		return "", err
+		return printableExportDocument{}, "", 0, err
 	}
 	defer rows.Close()
 
@@ -765,11 +611,10 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 	for rows.Next() {
 		var s StudentRecord
 		var middleName, email, contactNumber sql.NullString
-		err := rows.Scan(
+		if err := rows.Scan(
 			&s.StudentID, &s.FirstName, &middleName, &s.LastName,
 			&email, &contactNumber,
-		)
-		if err != nil {
+		); err != nil {
 			continue
 		}
 		if middleName.Valid {
@@ -783,18 +628,6 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 		}
 		students = append(students, s)
 	}
-
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("classlist_%s_%s.csv", subjectCode, time.Now().Format("20060102_150405")))
-
-	file, err := os.Create(filename)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
 
 	subjectNameValue := "N/A"
 	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
@@ -821,17 +654,7 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 		schoolYearValue = schoolYear.String
 	}
 
-	writer.Write([]string{"CLASS LIST"})
-	writer.Write([]string{fmt.Sprintf("School Year %s • %s", schoolYearValue, semesterValue)})
-	writer.Write([]string{""})
-	writer.Write([]string{"CLASS INFORMATION"})
-	writer.Write([]string{"Subject Code", subjectCode, "Schedule", scheduleValue})
-	writer.Write([]string{"Subject Name", subjectNameValue, "Room", roomValue})
-	writer.Write([]string{"Instructor", teacherValue})
-	writer.Write([]string{""})
-	writer.Write([]string{"STUDENTS LIST"})
-	writer.Write([]string{"No.", "Student ID", "Name", "Email", "Contact"})
-
+	var exportRows [][]string
 	for index, s := range students {
 		middleInitial := ""
 		if strings.TrimSpace(s.MiddleName) != "" {
@@ -840,14 +663,14 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 		fullName := fmt.Sprintf("%s, %s%s", s.LastName, s.FirstName, middleInitial)
 		email := s.Email
 		if strings.TrimSpace(email) == "" {
-			email = "—"
+			email = ""
 		}
 		contact := s.ContactNumber
 		if strings.TrimSpace(contact) == "" {
-			contact = "—"
+			contact = ""
 		}
 
-		writer.Write([]string{
+		exportRows = append(exportRows, []string{
 			fmt.Sprintf("%d", index+1),
 			s.StudentID,
 			fullName,
@@ -856,187 +679,81 @@ func (a *App) ExportClasslistCSV(classID int) (string, error) {
 		})
 	}
 
-	log.Printf("Classlist exported to CSV: %s (%d students)", filename, len(students))
+	doc := printableExportDocument{
+		Title:    "CLASS LIST",
+		Subtitle: fmt.Sprintf("School Year %s - %s", schoolYearValue, semesterValue),
+		Details: []printableExportField{
+			{Label: "Subject Code", Value: subjectCode},
+			{Label: "Subject Name", Value: subjectNameValue},
+			{Label: "Instructor", Value: teacherValue},
+			{Label: "Schedule", Value: scheduleValue},
+			{Label: "Room", Value: roomValue},
+		},
+		TableTitle:       "STUDENTS LIST",
+		TableNote:        fmt.Sprintf("Total: %d", len(exportRows)),
+		Headers:          []string{"NO.", "STUDENT ID", "NAME", "EMAIL", "CONTACT"},
+		Rows:             exportRows,
+		Footer:           []printableExportField{{Label: "Total Students", Value: fmt.Sprintf("%d", len(exportRows))}},
+		ColumnWidths:     []float64{12, 28, 60, 55, 35},
+		ColumnAlignments: []string{"C", "L", "L", "L", "L"},
+		Orientation:      "P",
+		GeneratedAt:      time.Now(),
+	}
+
+	return doc, subjectCode, len(exportRows), nil
+}
+
+// ExportClasslistCSV exports the classlist (enrolled students) for a class to CSV.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportClasslistCSV(classID int, savePath string) (string, error) {
+	doc, subjectCode, studentCount, err := a.buildClasslistPrintableDocument(classID)
+	if err != nil {
+		return "", err
+	}
+	defaultName := fmt.Sprintf("classlist_%s_%s.csv", subjectCode, time.Now().Format("20060102_150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	if err := writePrintableCSV(filename, doc); err != nil {
+		return "", err
+	}
+
+	log.Printf("Classlist exported to CSV: %s (%d students)", filename, studentCount)
 	return filename, nil
 }
 
-// ExportClasslistPDF exports the classlist (enrolled students) for a class to PDF
-func (a *App) ExportClasslistPDF(classID int) (string, error) {
-	if err := a.checkDB(); err != nil {
-		return "", err
-	}
-
-	var subjectCode string
-	var subjectName, schedule, room, teacherName, semester, schoolYear sql.NullString
-	classQuery := `
-		SELECT
-			c.subject_code,
-			s.description,
-			c.schedule,
-			c.room,
-			(t.last_name + ', ' + t.first_name) as teacher_name,
-			c.semester,
-			c.school_year
-		FROM classes c
-		JOIN subjects s ON c.subject_code = s.subject_code
-		LEFT JOIN teachers t ON c.teacher_id = t.id
-		WHERE c.class_id = ?
-	`
-	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName, &semester, &schoolYear)
-	if err != nil {
-		log.Printf("Failed to get class info for PDF export: %v", err)
-		subjectCode = fmt.Sprintf("class_%d", classID)
-		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
-	}
-
-	query := `
-		SELECT 
-			stu.student_id, stu.first_name, stu.middle_name, stu.last_name,
-			stu.email, stu.contact_number
-		FROM classlist cl
-		JOIN students stu ON cl.student_id = stu.id
-		WHERE cl.class_id = ?
-		ORDER BY stu.last_name, stu.first_name
-	`
-
-	rows, err := a.db.Query(query, classID)
+// ExportClasslistPDF exports the classlist (enrolled students) for a class to PDF.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportClasslistPDF(classID int, savePath string) (string, error) {
+	doc, subjectCode, studentCount, err := a.buildClasslistPrintableDocument(classID)
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
-
-	type StudentRecord struct {
-		StudentID     string
-		FirstName     string
-		MiddleName    string
-		LastName      string
-		Email         string
-		ContactNumber string
-	}
-
-	var students []StudentRecord
-	for rows.Next() {
-		var s StudentRecord
-		var middleName, email, contactNumber sql.NullString
-		err := rows.Scan(
-			&s.StudentID, &s.FirstName, &middleName, &s.LastName,
-			&email, &contactNumber,
-		)
-		if err != nil {
-			continue
-		}
-		if middleName.Valid {
-			s.MiddleName = middleName.String
-		}
-		if email.Valid {
-			s.Email = email.String
-		}
-		if contactNumber.Valid {
-			s.ContactNumber = contactNumber.String
-		}
-		students = append(students, s)
-	}
-
-	homeDir, _ := os.UserHomeDir()
-	filename := filepath.Join(homeDir, "Downloads", fmt.Sprintf("classlist_%s_%s.pdf", subjectCode, time.Now().Format("20060102_150405")))
-
-	pdf := gofpdf.New("P", "mm", "A4", "")
-	pdf.SetMargins(10, 10, 10)
-	pdf.SetAutoPageBreak(true, 10)
-	pdf.AddPage()
-
-	subjectNameValue := "N/A"
-	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
-		subjectNameValue = subjectName.String
-	}
-	scheduleValue := "N/A"
-	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
-		scheduleValue = schedule.String
-	}
-	roomValue := "N/A"
-	if room.Valid && strings.TrimSpace(room.String) != "" {
-		roomValue = room.String
-	}
-	teacherValue := "N/A"
-	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
-		teacherValue = teacherName.String
-	}
-	semesterValue := "N/A"
-	if semester.Valid && strings.TrimSpace(semester.String) != "" {
-		semesterValue = semester.String
-	}
-	schoolYearValue := "N/A"
-	if schoolYear.Valid && strings.TrimSpace(schoolYear.String) != "" {
-		schoolYearValue = schoolYear.String
-	}
-
-	truncate := func(value string, max int) string {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			return "—"
-		}
-		runes := []rune(trimmed)
-		if len(runes) <= max {
-			return trimmed
-		}
-		if max <= 1 {
-			return string(runes[:max])
-		}
-		return string(runes[:max-1]) + "…"
-	}
-
-	pdf.SetFont("Arial", "B", 14)
-	pdf.Cell(0, 8, "CLASS LIST")
-	pdf.Ln(9)
-	pdf.SetFont("Arial", "", 10)
-	pdf.Cell(0, 6, fmt.Sprintf("School Year %s • %s", schoolYearValue, semesterValue))
-	pdf.Ln(6)
-	pdf.SetFont("Arial", "B", 10)
-	pdf.Cell(0, 6, "CLASS INFORMATION")
-	pdf.Ln(7)
-	pdf.SetFont("Arial", "", 10)
-	pdf.CellFormat(30, 6, "Subject Code:", "", 0, "L", false, 0, "")
-	pdf.CellFormat(70, 6, subjectCode, "", 0, "L", false, 0, "")
-	pdf.CellFormat(25, 6, "Schedule:", "", 0, "L", false, 0, "")
-	pdf.CellFormat(65, 6, scheduleValue, "", 1, "L", false, 0, "")
-	pdf.CellFormat(30, 6, "Subject Name:", "", 0, "L", false, 0, "")
-	pdf.CellFormat(70, 6, subjectNameValue, "", 0, "L", false, 0, "")
-	pdf.CellFormat(25, 6, "Room:", "", 0, "L", false, 0, "")
-	pdf.CellFormat(65, 6, roomValue, "", 1, "L", false, 0, "")
-	pdf.CellFormat(30, 6, "Instructor:", "", 0, "L", false, 0, "")
-	pdf.CellFormat(160, 6, teacherValue, "", 1, "L", false, 0, "")
-	pdf.Ln(2)
-	pdf.SetFont("Arial", "B", 10)
-	pdf.CellFormat(120, 6, "STUDENTS LIST", "", 0, "L", false, 0, "")
-	pdf.CellFormat(70, 6, fmt.Sprintf("Total: %d", len(students)), "", 1, "R", false, 0, "")
-	pdf.Ln(1)
-
-	pdf.SetFont("Arial", "B", 9)
-	pdf.CellFormat(12, 7, "#", "1", 0, "C", false, 0, "")
-	pdf.CellFormat(28, 7, "Student ID", "1", 0, "C", false, 0, "")
-	pdf.CellFormat(60, 7, "Name", "1", 0, "C", false, 0, "")
-	pdf.CellFormat(55, 7, "Email", "1", 0, "C", false, 0, "")
-	pdf.CellFormat(35, 7, "Contact", "1", 1, "C", false, 0, "")
-
-	pdf.SetFont("Arial", "", 9)
-	for index, s := range students {
-		middleInitial := ""
-		if s.MiddleName != "" {
-			middleInitial = fmt.Sprintf(" %s.", strings.ToUpper(string(s.MiddleName[0])))
-		}
-		fullName := fmt.Sprintf("%s, %s%s", s.LastName, s.FirstName, middleInitial)
-
-		pdf.CellFormat(12, 7, fmt.Sprintf("%d", index+1), "1", 0, "C", false, 0, "")
-		pdf.CellFormat(28, 7, s.StudentID, "1", 0, "L", false, 0, "")
-		pdf.CellFormat(60, 7, truncate(fullName, 34), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(55, 7, truncate(s.Email, 30), "1", 0, "L", false, 0, "")
-		pdf.CellFormat(35, 7, truncate(s.ContactNumber, 20), "1", 1, "L", false, 0, "")
-	}
-
-	if err := pdf.OutputFileAndClose(filename); err != nil {
+	defaultName := fmt.Sprintf("classlist_%s_%s.pdf", subjectCode, time.Now().Format("20060102_150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	if err := writePrintablePDF(filename, doc); err != nil {
 		return "", err
 	}
 
-	log.Printf("Classlist exported to PDF: %s (%d students)", filename, len(students))
+	log.Printf("Classlist exported to PDF: %s (%d students)", filename, studentCount)
+	return filename, nil
+}
+
+// ExportClasslistDOCX exports the classlist for a class to DOCX.
+// If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
+func (a *App) ExportClasslistDOCX(classID int, savePath string) (string, error) {
+	doc, subjectCode, studentCount, err := a.buildClasslistPrintableDocument(classID)
+	if err != nil {
+		return "", err
+	}
+	data, err := generatePrintableDocx(doc)
+	if err != nil {
+		return "", err
+	}
+
+	defaultName := fmt.Sprintf("classlist_%s_%s.docx", subjectCode, time.Now().Format("20060102_150405"))
+	filename := resolveExportPath(savePath, defaultName)
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return "", fmt.Errorf("failed to write docx: %w", err)
+	}
+	log.Printf("Classlist exported to DOCX: %s (%d students)", filename, studentCount)
 	return filename, nil
 }

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
 import StudentArchivedClassesModal from '../../components/StudentArchivedClassesModal';
+import LoadingDots from '../../components/LoadingDots';
 import {
   X,
   Plus,
@@ -10,6 +11,7 @@ import {
   Eye,
   Archive,
   ArchiveRestore,
+  Filter,
 } from 'lucide-react';
 import {
   GetStudentClasses,
@@ -37,6 +39,9 @@ function MyClasses() {
   const [classlistStudents, setClasslistStudents] = useState<ClasslistEntry[]>([]);
   const [loadingClasslist, setLoadingClasslist] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [teacherFilter, setTeacherFilter] = useState<string>('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [pendingTeacherFilter, setPendingTeacherFilter] = useState<string>('');
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
@@ -58,10 +63,16 @@ function MyClasses() {
         (cls.teacher_name && cls.teacher_name.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
+    // Filter by teacher
+    if (teacherFilter) {
+      filtered = filtered.filter(cls =>
+        (cls.teacher_name || '').toLowerCase() === teacherFilter.toLowerCase()
+      );
+    }
 
     setFilteredClasses(filtered);
     setCurrentPage(1); // Reset to first page when filters change
-  }, [searchTerm, classes]);
+  }, [searchTerm, teacherFilter, classes]);
 
   const loadClasses = async () => {
     if (!user) return;
@@ -187,7 +198,7 @@ function MyClasses() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -245,7 +256,7 @@ function MyClasses() {
 
       {/* Controls Section */}
       <div className="flex-shrink-0 mb-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-700">Show</span>
             <select
@@ -270,8 +281,86 @@ function MyClasses() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              placeholder=""
+              placeholder="Subject, teacher, EDP..."
             />
+            <div className="relative">
+              <button
+                onClick={() => {
+                  const nextOpen = !showFilters;
+                  if (nextOpen) {
+                    setPendingTeacherFilter(teacherFilter);
+                  }
+                  setShowFilters(nextOpen);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm font-medium transition-colors ${
+                  showFilters || teacherFilter
+                    ? 'bg-primary-50 border-primary-500 text-primary-700'
+                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Filter className="h-4 w-4" />
+                <span>Filter</span>
+                {teacherFilter && (
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary-500 text-white text-xs font-bold">
+                    1
+                  </span>
+                )}
+              </button>
+
+              {showFilters && (
+                <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                  <div className="p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-gray-800">Filters</span>
+                      {teacherFilter && (
+                        <button
+                          onClick={() => setTeacherFilter('')}
+                          className="text-xs text-primary-600 hover:underline"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Teacher</label>
+                      <select
+                        value={pendingTeacherFilter}
+                        onChange={(e) => setPendingTeacherFilter(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                      >
+                        <option value="">All teachers</option>
+                        {Array.from(new Set(classes.map(c => c.teacher_name).filter(Boolean))).sort().map(name => (
+                          <option key={name} value={name!}>{name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingTeacherFilter('');
+                          setTeacherFilter('');
+                          setShowFilters(false);
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTeacherFilter(pendingTeacherFilter);
+                          setShowFilters(false);
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-primary-600 rounded-lg hover:bg-primary-700"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -392,12 +481,6 @@ function MyClasses() {
                     Schedule
                   </th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Room
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Students
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Action
                   </th>
                 </tr>
@@ -419,14 +502,6 @@ function MyClasses() {
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900 break-words">
                       {cls.schedule || '-'}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900 break-words">
-                      {cls.room || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {cls.enrolled_count || 0}
-                      </span>
                     </td>
                     <td className="px-6 py-4 text-sm font-medium">
                       <div className="flex items-center gap-2">
@@ -539,31 +614,31 @@ function MyClasses() {
                   {/* Class Information Header */}
                   <thead>
                     <tr>
-                      <th colSpan={5} className="px-4 py-2 text-left border-b-2 border-gray-900">
+                      <th colSpan={4} className="px-4 py-2 text-left border-b-2 border-gray-900">
                         <div className="text-gray-900 font-bold text-sm tracking-wide">CLASS INFORMATION</div>
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white text-sm">
                     <tr>
-                      <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '120px' }}>Subject Code:</td>
+                      <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '140px' }}>Subject Code:</td>
                       <td className="px-4 py-2 text-gray-900">{viewingClasslist.subject_code || 'N/A'}</td>
-                      <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '100px' }}>EDP Code:</td>
-                      <td className="px-4 py-2 text-gray-900" colSpan={2}>{viewingClasslist.edp_code || 'N/A'}</td>
+                      <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '120px' }}>EDP Code:</td>
+                      <td className="px-4 py-2 text-gray-900">{viewingClasslist.edp_code || 'N/A'}</td>
                     </tr>
                     <tr>
-                      <td className="px-4 py-2 font-semibold text-gray-700">Descriptive Title:</td>
-                      <td className="px-4 py-2 text-gray-900" colSpan={4}>{viewingClasslist.descriptive_title || viewingClasslist.subject_name || 'N/A'}</td>
+                      <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Descriptive Title:</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={3}>{viewingClasslist.descriptive_title || viewingClasslist.subject_name || 'N/A'}</td>
                     </tr>
                     <tr>
-                      <td className="px-4 py-2 font-semibold text-gray-700">Schedule:</td>
+                      <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Schedule:</td>
                       <td className="px-4 py-2 text-gray-900">{viewingClasslist.schedule || 'N/A'}</td>
-                      <td className="px-4 py-2 font-semibold text-gray-700">Room:</td>
-                      <td className="px-4 py-2 text-gray-900" colSpan={2}>{viewingClasslist.room || 'N/A'}</td>
+                      <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Room:</td>
+                      <td className="px-4 py-2 text-gray-900">{viewingClasslist.room || 'N/A'}</td>
                     </tr>
                     <tr>
-                      <td className="px-4 py-2 font-semibold text-gray-700">Teacher:</td>
-                      <td className="px-4 py-2 text-gray-900" colSpan={4}>{viewingClasslist.teacher_name || 'N/A'}</td>
+                      <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Teacher:</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={3}>{viewingClasslist.teacher_name || 'N/A'}</td>
                     </tr>
                   </tbody>
 
@@ -576,7 +651,7 @@ function MyClasses() {
                           <div className="flex items-center gap-4">
                             <span className="text-xs text-gray-600">Total: {classlistStudents.length}</span>
                             {loadingClasslist && (
-                              <Loader2 className="h-4 w-4 animate-spin text-primary-600" />
+                              <LoadingDots dotClassName="h-2.5 w-2.5" />
                             )}
                           </div>
                         </div>
@@ -588,9 +663,13 @@ function MyClasses() {
                   <thead>
                     <tr className="bg-gray-50">
                       <th className="px-1 py-2 text-center text-xs font-bold text-gray-700 uppercase" style={{ width: '25px' }}>No.</th>
-                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>Student ID</th>
+                      {(user?.role === 'teacher' || user?.role === 'admin') && (
+                        <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '100px' }}>Student ID</th>
+                      )}
                       <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase">Name</th>
-                      <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '200px' }}>Email</th>
+                      {(user?.role === 'teacher' || user?.role === 'admin') && (
+                        <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '200px' }}>Email</th>
+                      )}
                       <th className="px-1 py-2 text-left text-xs font-bold text-gray-700 uppercase" style={{ width: '80px' }}>Status</th>
                     </tr>
                   </thead>
@@ -599,8 +678,8 @@ function MyClasses() {
                   <tbody className="bg-white text-xs">
                     {loadingClasslist && classlistStudents.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-6 py-12 text-center">
-                          <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary-600 mb-2" />
+                        <td colSpan={user?.role === 'teacher' || user?.role === 'admin' ? 5 : 3} className="px-6 py-12 text-center">
+                          <LoadingDots className="justify-center mb-2 gap-2" dotClassName="h-3 w-3" />
                           <p className="text-gray-500 text-sm">Loading students...</p>
                         </td>
                       </tr>
@@ -610,15 +689,19 @@ function MyClasses() {
                           <td className="px-1 py-1.5 text-center font-medium text-gray-900">
                             {index + 1}
                           </td>
-                          <td className="px-1 py-1.5 font-medium text-gray-900 text-xs">
-                            {student.student_code}
-                          </td>
+                          {(user?.role === 'teacher' || user?.role === 'admin') && (
+                            <td className="px-1 py-1.5 font-medium text-gray-900 text-xs">
+                              {student.student_code}
+                            </td>
+                          )}
                           <td className="px-1 py-1.5 text-gray-900">
                             {student.last_name}, {student.first_name} {student.middle_name ? student.middle_name.charAt(0) + '.' : ''}
                           </td>
-                          <td className="px-1 py-1.5 text-gray-700">
-                            {student.email || '—'}
-                          </td>
+                          {(user?.role === 'teacher' || user?.role === 'admin') && (
+                            <td className="px-1 py-1.5 text-gray-700">
+                              {student.email || '—'}
+                            </td>
+                          )}
                           <td className="px-1 py-1.5">
                             <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${student.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
                               {student.status || 'active'}
@@ -628,7 +711,7 @@ function MyClasses() {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={5} className="px-6 py-8 text-center">
+                        <td colSpan={user?.role === 'teacher' || user?.role === 'admin' ? 5 : 3} className="px-6 py-8 text-center">
                           <Users className="mx-auto h-10 w-10 text-gray-400 mb-2" />
                           <p className="text-gray-500 text-sm">No students enrolled</p>
                         </td>
@@ -636,12 +719,6 @@ function MyClasses() {
                     )}
                   </tbody>
                 </table>
-              </div>
-
-              {/* Footer */}
-              <div className="mt-8 pt-4 border-t border-gray-300 text-xs text-gray-600 flex justify-between">
-                <span>Printed: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-                <span>Digital Logbook System</span>
               </div>
             </div>
           </div>

@@ -1,8 +1,8 @@
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+import LoadingDots from './LoadingDots';
 
 interface ButtonProps {
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
   type?: 'button' | 'submit' | 'reset';
   variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'warning' | 'outline' | 'ghost' | 'link';
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
@@ -22,7 +22,7 @@ interface ButtonProps {
  * Features:
  * - Multiple variants (primary, secondary, danger, success, warning, outline, ghost, link)
  * - Multiple sizes (xs, sm, md, lg, xl)
- * - Loading state with spinner
+ * - Loading state with animated dots
  * - Icon support with position control
  * - Full width option
  * - Disabled state
@@ -105,7 +105,7 @@ const Button: React.FC<ButtonProps> = ({
     >
       {loading ? (
         <>
-          {renderIcon(<Loader2 className="animate-spin" />)}
+          <LoadingDots dotClassName={iconSizeClasses[size]} />
           {children && <span>Loading...</span>}
         </>
       ) : (

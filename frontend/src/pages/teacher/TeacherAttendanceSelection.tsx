@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
 import TeacherStoredArchiveModal from '../../components/TeacherStoredArchiveModal';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Edit,
   Archive,
@@ -12,12 +13,24 @@ import {
   Pause,
   Play,
   Square,
+  Filter,
+  FileText,
+  FileSpreadsheet,
+  Download,
+  FileType,
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
   GetActiveAttendanceSheets,
   OpenClassAttendance,
+  ExportAttendanceCSVByDate,
+  ExportAttendancePDFByDate,
+  ExportAttendanceDOCXByDate,
+  ExportAttendanceCSVBySession,
+  ExportAttendancePDFBySession,
+  ExportAttendanceDOCXBySession,
 } from '../../../wailsjs/go/backend/App';
+import { openExportSaveDialog, defaultAttendanceFilename, type ExportFormat } from '../../utils/exportSaveDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class } from './types';
 
@@ -49,6 +62,7 @@ interface AttendanceSession {
   class_duration_minutes?: number;
   grace_period_minutes?: number;
   opened_at?: string;
+  paused_at?: string;
   subject_code: string;
   subject_name: string;
   edp_code: string;
@@ -58,11 +72,6 @@ interface AttendanceSession {
 }
 
 type TimerMode = 'running' | 'paused' | 'stopped';
-
-interface SessionTimerControl {
-  mode: TimerMode;
-  pausedAt?: number;
-}
 
 function AttendanceClassSelection() {
   const navigate = useNavigate();
@@ -74,22 +83,50 @@ function AttendanceClassSelection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [dateRangeStart, setDateRangeStart] = useState('');
+  const [dateRangeEnd, setDateRangeEnd] = useState('');
+  const [pendingDateRangeStart, setPendingDateRangeStart] = useState('');
+  const [pendingDateRangeEnd, setPendingDateRangeEnd] = useState('');
+  const [classFilter, setClassFilter] = useState<string>('all');
+  const [pendingClassFilter, setPendingClassFilter] = useState<string>('all');
+  const [semesterFilter, setSemesterFilter] = useState<string>('all');
+  const [pendingSemesterFilter, setPendingSemesterFilter] = useState<string>('all');
+  const [schoolYearFilter, setSchoolYearFilter] = useState<string>('all');
+  const [pendingSchoolYearFilter, setPendingSchoolYearFilter] = useState<string>('all');
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [refreshKey, setRefreshKey] = useState(0);
   const [openingAttendance, setOpeningAttendance] = useState<number | null>(null);
   
-  // Modal state
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [exportToast, setExportToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [exportingKey, setExportingKey] = useState<string | null>(null);
+  const [openExportDropdown, setOpenExportDropdown] = useState<{ key: string; top: number; left: number } | null>(null);
+
+  // Close export dropdown on outside click
+  useEffect(() => {
+    if (!openExportDropdown) return;
+    const handle = () => setOpenExportDropdown(null);
+    window.addEventListener('click', handle);
+    return () => window.removeEventListener('click', handle);
+  }, [openExportDropdown]);
   const [attendanceSessions, setAttendanceSessions] = useState<AttendanceSession[]>([]);
   const [sessionBusyId, setSessionBusyId] = useState<number | null>(null);
   const [classDuration, setClassDuration] = useState('90');
   const [gracePeriod, setGracePeriod] = useState('10');
   const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
-  const [sessionTimerControls, setSessionTimerControls] = useState<Record<number, SessionTimerControl>>({});
+
+  const normalizeSemester = (value?: string | null): string => {
+    if (!value) return '';
+    const normalized = value.toLowerCase().replace(/\s+/g, '');
+    if (normalized.includes('1st') || normalized.includes('first') || normalized === '1') return '1';
+    if (normalized.includes('2nd') || normalized.includes('second') || normalized === '2') return '2';
+    return normalized;
+  };
 
   const parseSessionDateTime = (value?: string): Date | null => {
     if (!value) return null;
@@ -104,36 +141,30 @@ function AttendanceClassSelection() {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  const getSessionTimerControl = (sessionId: number): SessionTimerControl => {
-    return sessionTimerControls[sessionId] || { mode: 'running' };
-  };
+  const handleSessionTimerMode = async (session: AttendanceSession, mode: TimerMode) => {
+    if (!user?.id) return;
 
-  const handleSessionTimerMode = (sessionId: number, mode: TimerMode) => {
-    setSessionTimerControls((prev) => {
-      const current = prev[sessionId] || { mode: 'running' as TimerMode };
-
+    setSessionBusyId(session.session_id);
+    setNotice(null);
+    try {
       if (mode === 'paused') {
-        const pausedAt = current.mode === 'paused' && typeof current.pausedAt === 'number'
-          ? current.pausedAt
-          : nowTimestamp;
-        return {
-          ...prev,
-          [sessionId]: { mode: 'paused', pausedAt },
-        };
+        await (window as any).go.backend.App.PauseAttendanceSession(session.session_id, user.id);
+        setNotice({ type: 'success', text: 'Attendance timer paused.' });
+      } else if (mode === 'running') {
+        await (window as any).go.backend.App.ResumeAttendanceSession(session.session_id, user.id);
+        setNotice({ type: 'success', text: 'Attendance timer resumed.' });
+      } else {
+        await (window as any).go.backend.App.SaveAttendanceSession(session.session_id, user.id);
+        setNotice({ type: 'success', text: 'Attendance timer stopped and session saved.' });
       }
 
-      if (mode === 'stopped') {
-        return {
-          ...prev,
-          [sessionId]: { mode: 'stopped' },
-        };
-      }
-
-      return {
-        ...prev,
-        [sessionId]: { mode: 'running' },
-      };
-    });
+      setRefreshKey((prev) => prev + 1);
+    } catch (error) {
+      console.error('Failed to update attendance timer mode:', error);
+      setNotice({ type: 'error', text: 'Failed to update attendance session timer.' });
+    } finally {
+      setSessionBusyId(null);
+    }
   };
 
   useEffect(() => {
@@ -173,7 +204,6 @@ function AttendanceClassSelection() {
     }
   }, [location.pathname]);
 
-  // Load active attendance sheets
   useEffect(() => {
     const loadAttendanceSheets = async () => {
       if (!user?.id) return;
@@ -211,9 +241,10 @@ function AttendanceClassSelection() {
     loadSessions();
   }, [user?.id, refreshKey]);
 
-  // Filter by search term
   useEffect(() => {
     let filtered = attendanceSheets;
+    const classByID = new Map(allTeacherClasses.map((cls) => [cls.class_id, cls]));
+
     if (searchTerm) {
       filtered = filtered.filter(sheet =>
         sheet.subject_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -222,11 +253,39 @@ function AttendanceClassSelection() {
         sheet.date.includes(searchTerm)
       );
     }
+    if (dateRangeStart || dateRangeEnd) {
+      filtered = filtered.filter(sheet => {
+        if (dateRangeStart && sheet.date < dateRangeStart) return false;
+        if (dateRangeEnd && sheet.date > dateRangeEnd) return false;
+        return true;
+      });
+    }
+    if (classFilter !== 'all') {
+      filtered = filtered.filter(sheet => String(sheet.class_id) === classFilter);
+    }
+
+    if (semesterFilter !== 'all') {
+      filtered = filtered.filter((sheet) => normalizeSemester(classByID.get(sheet.class_id)?.semester || '') === semesterFilter);
+    }
+
+    if (schoolYearFilter !== 'all') {
+      filtered = filtered.filter((sheet) => (classByID.get(sheet.class_id)?.school_year || '') === schoolYearFilter);
+    }
+
     setFilteredSheets(filtered);
     setCurrentPage(1);
-  }, [searchTerm, attendanceSheets]);
+  }, [searchTerm, dateRangeStart, dateRangeEnd, classFilter, semesterFilter, schoolYearFilter, attendanceSheets, allTeacherClasses]);
 
-  // Create/load attendance session for a class today
+  const activeFilterCount =
+    (dateRangeStart || dateRangeEnd ? 1 : 0) +
+    (classFilter !== 'all' ? 1 : 0) +
+    (semesterFilter !== 'all' ? 1 : 0) +
+    (schoolYearFilter !== 'all' ? 1 : 0);
+
+  const schoolYearOptions = Array.from(
+    new Set(allTeacherClasses.map((cls) => (cls.school_year || '').trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+
   const handleTakeAttendance = async (classId: number) => {
     setOpeningAttendance(classId);
     setNotice(null);
@@ -260,7 +319,6 @@ function AttendanceClassSelection() {
 
       // Keep existing behavior to open the sheet view.
       await OpenClassAttendance(classId, today);
-      // Navigate to the attendance detail page
       if (createdSession?.session_id) {
         navigate(`/teacher/attendance/${classId}?date=${today}&sessionId=${createdSession.session_id}`);
       } else {
@@ -327,17 +385,50 @@ function AttendanceClassSelection() {
     }
   };
 
-  // Handle modal submission
   const handleAddAttendanceSubmit = () => {
     if (selectedClassId) {
       handleTakeAttendance(selectedClassId);
     }
   };
 
+  const showExportToast = (type: 'success' | 'error', message: string) => {
+    setExportToast({ type, message });
+    setTimeout(() => setExportToast(null), 5000);
+  };
+
+  const handleExportAttendance = async (classId: number, date: string, format: ExportFormat, sessionId?: number) => {
+    const key = sessionId ? `${classId}-${date}-${sessionId}-${format}` : `${classId}-${date}-${format}`;
+    setExportingKey(key);
+    try {
+      const defaultName = defaultAttendanceFilename(date, format, false);
+      const savePath = await openExportSaveDialog('Save attendance', defaultName, format);
+      if (!savePath) {
+        setExportingKey(null);
+        return;
+      }
+      const filename = sessionId && sessionId > 0
+        ? format === 'csv'
+          ? await ExportAttendanceCSVBySession(classId, date, sessionId, savePath)
+          : format === 'pdf'
+            ? await ExportAttendancePDFBySession(classId, date, sessionId, savePath)
+            : await ExportAttendanceDOCXBySession(classId, date, sessionId, savePath)
+        : format === 'csv'
+          ? await ExportAttendanceCSVByDate(classId, date, savePath)
+          : format === 'pdf'
+            ? await ExportAttendancePDFByDate(classId, date, savePath)
+            : await ExportAttendanceDOCXByDate(classId, date, savePath);
+      showExportToast('success', `Saved: ${filename.split(/[\\/]/).pop()}`);
+    } catch (err) {
+      showExportToast('error', 'Export failed. Please try again.');
+    } finally {
+      setExportingKey(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -356,7 +447,6 @@ function AttendanceClassSelection() {
     return effectiveStatus !== 'open';
   });
 
-  // Calculate pagination
   const totalPages = Math.ceil(tableSheets.length / entriesPerPage);
   const startIndex = (currentPage - 1) * entriesPerPage;
   const endIndex = startIndex + entriesPerPage;
@@ -386,7 +476,60 @@ function AttendanceClassSelection() {
 
   return (
     <div className="flex flex-col">
-      {/* Header Section with Add Button */}
+      {exportToast && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border ${
+          exportToast.type === 'success'
+            ? 'bg-green-50 border-green-200 text-green-800'
+            : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          <span className="font-medium">{exportToast.message}</span>
+        </div>
+      )}
+      {/* Fixed export dropdown (outside any overflow container) */}
+      {openExportDropdown && (
+        <div
+          style={{ position: 'fixed', top: openExportDropdown.top, left: openExportDropdown.left, zIndex: 9999 }}
+          className="w-44 bg-white border border-gray-200 rounded-lg shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+			onClick={() => {
+			  const d = openExportDropdown;
+			  setOpenExportDropdown(null);
+			  const [cId, dt, sessionId] = d.key.split('|');
+			  handleExportAttendance(Number(cId), dt, 'csv', sessionId ? Number(sessionId) : undefined);
+			}}
+            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-t-lg"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+            Export CSV
+          </button>
+          <button
+			onClick={() => {
+			  const d = openExportDropdown;
+			  setOpenExportDropdown(null);
+			  const [cId, dt, sessionId] = d.key.split('|');
+			  handleExportAttendance(Number(cId), dt, 'pdf', sessionId ? Number(sessionId) : undefined);
+			}}
+            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
+          >
+            <FileText className="h-3.5 w-3.5 text-rose-600" />
+            Export PDF
+          </button>
+          <button
+			onClick={() => {
+			  const d = openExportDropdown;
+			  setOpenExportDropdown(null);
+			  const [cId, dt, sessionId] = d.key.split('|');
+			  handleExportAttendance(Number(cId), dt, 'docx', sessionId ? Number(sessionId) : undefined);
+			}}
+            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-b-lg"
+          >
+            <FileType className="h-3.5 w-3.5 text-blue-600" />
+            Export DOCX
+          </button>
+        </div>
+      )}
       <div className="flex-shrink-0 mb-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-900">Attendance Management</h2>
@@ -423,7 +566,6 @@ function AttendanceClassSelection() {
         </div>
       )}
 
-      {/* Attendance Sessions (Today) */}
       <div className="flex-shrink-0 mb-3 bg-white border border-gray-200 rounded-lg p-3">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-semibold text-gray-900">Active Attendance Sheet</h3>
@@ -435,40 +577,35 @@ function AttendanceClassSelection() {
               <div key={session.session_id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-md">
                 <div>
                   <p className="text-sm font-medium text-gray-900">{session.session_name || `${session.subject_code} Attendance`}</p>
-                  <p className="text-xs text-gray-500">{session.subject_code} • P:{session.present_count} A:{session.absent_count} L:{session.late_count}</p>
+                  <p className="text-xs text-gray-500">{session.subject_code} - P:{session.present_count} A:{session.absent_count} L:{session.late_count}</p>
                   {(() => {
                     const openedAt = parseSessionDateTime(session.opened_at);
                     if (!openedAt) {
                       return null;
                     }
 
-                    const timerControl = getSessionTimerControl(session.session_id);
+                    const pausedAt = parseSessionDateTime(session.paused_at);
+                    const isPaused = !!pausedAt;
                     const classMinutes = Math.max(0, session.class_duration_minutes || 0);
                     const graceMinutes = Math.max(0, session.grace_period_minutes || 0);
                     const classDeadline = new Date(openedAt.getTime() + classMinutes * 60 * 1000);
                     const graceDeadline = new Date(openedAt.getTime() + graceMinutes * 60 * 1000);
-                    const attendanceDeadline = new Date(classDeadline.getTime() + graceMinutes * 60 * 1000);
-                    const effectiveNow = timerControl.mode === 'running'
-                      ? nowTimestamp
-                      : timerControl.mode === 'paused'
-                        ? (timerControl.pausedAt || nowTimestamp)
-                        : attendanceDeadline.getTime();
-                    const classRemaining = timerControl.mode === 'stopped'
-                      ? 0
-                      : Math.max(0, Math.floor((classDeadline.getTime() - effectiveNow) / 1000));
-                    const graceRemaining = timerControl.mode === 'stopped'
-                      ? 0
-                      : Math.max(0, Math.floor((graceDeadline.getTime() - effectiveNow) / 1000));
+                    const effectiveNow = isPaused && pausedAt
+                      ? pausedAt.getTime()
+                      : nowTimestamp;
+                    const classRemaining = Math.max(0, Math.floor((classDeadline.getTime() - effectiveNow) / 1000));
+                    const graceRemaining = Math.max(0, Math.floor((graceDeadline.getTime() - effectiveNow) / 1000));
 
                     return (
                       <>
+                        {isPaused && (
+                          <p className="text-[11px] text-amber-600">Timer paused</p>
+                        )}
                         <p className="text-[11px] text-gray-500">
                           Class remaining: {formatRemaining(classRemaining)}
                         </p>
                         <p className="text-[11px] text-gray-500">
-                          Grace period remaining: {timerControl.mode === 'stopped'
-                            ? '00:00'
-                            : formatRemaining(graceRemaining)}
+                          Grace period remaining: {formatRemaining(graceRemaining)}
                         </p>
                       </>
                     );
@@ -478,30 +615,38 @@ function AttendanceClassSelection() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
+                  {(() => {
+                    const isPaused = !!session.paused_at;
+                    const isBusy = sessionBusyId === session.session_id;
+                    return (
+                      <>
                   <Button
-                    onClick={() => handleSessionTimerMode(session.session_id, 'paused')}
+                    onClick={() => handleSessionTimerMode(session, 'paused')}
                     variant="outline"
                     size="sm"
-                    disabled={getSessionTimerControl(session.session_id).mode === 'paused'}
+                    disabled={isPaused || isBusy}
                     icon={<Pause className="h-3 w-3" />}
                     title="Pause Timer"
                   />
                   <Button
-                    onClick={() => handleSessionTimerMode(session.session_id, 'running')}
+                    onClick={() => handleSessionTimerMode(session, 'running')}
                     variant="outline"
                     size="sm"
-                    disabled={getSessionTimerControl(session.session_id).mode === 'running'}
+                    disabled={!isPaused || isBusy}
                     icon={<Play className="h-3 w-3" />}
                     title="Play Timer"
                   />
                   <Button
-                    onClick={() => handleSessionTimerMode(session.session_id, 'stopped')}
+                    onClick={() => handleSessionTimerMode(session, 'stopped')}
                     variant="outline"
                     size="sm"
-                    disabled={getSessionTimerControl(session.session_id).mode === 'stopped'}
+                    disabled={isBusy}
                     icon={<Square className="h-3 w-3" />}
                     title="Stop Timer"
                   />
+                      </>
+                    );
+                  })()}
                   <Button
                     onClick={() => navigate(`/teacher/attendance/${session.class_id}?date=${session.attendance_date}&sessionId=${session.session_id}`)}
                     variant="outline"
@@ -537,7 +682,6 @@ function AttendanceClassSelection() {
         )}
       </div>
 
-      {/* Controls Section */}
       <div className="flex-shrink-0 mb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -557,7 +701,6 @@ function AttendanceClassSelection() {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-700">Search</span>
             <input
               type="text"
               value={searchTerm}
@@ -565,11 +708,171 @@ function AttendanceClassSelection() {
               className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Subject code, name, EDP, or date"
             />
+            <div className="relative">
+              <button
+                onClick={() => {
+                  const nextOpen = !showFilters;
+                  if (nextOpen) {
+                    setPendingDateRangeStart(dateRangeStart);
+                    setPendingDateRangeEnd(dateRangeEnd);
+                    setPendingClassFilter(classFilter);
+                    setPendingSemesterFilter(semesterFilter);
+                    setPendingSchoolYearFilter(schoolYearFilter);
+                  }
+                  setShowFilters(nextOpen);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-medium transition-colors ${
+                  showFilters || activeFilterCount > 0
+                    ? 'bg-primary-50 border-primary-500 text-primary-700'
+                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Filter className="h-3.5 w-3.5" />
+                <span>Filter</span>
+                {activeFilterCount > 0 && (
+                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary-500 text-white text-xs font-bold">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+
+              {showFilters && (
+                <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                  <div className="p-4 space-y-3">
+                    {/* Filter by Date Range: [from] to [to] with calendar icons */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Date Range</label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1 min-w-0">
+                          <input
+                            type="date"
+                            value={pendingDateRangeStart}
+                            onChange={(e) => setPendingDateRangeStart(e.target.value)}
+                            className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                        </div>
+                        <span className="text-xs font-medium text-gray-500 shrink-0">to</span>
+                        <div className="relative flex-1 min-w-0">
+                          <input
+                            type="date"
+                            value={pendingDateRangeEnd}
+                            onChange={(e) => setPendingDateRangeEnd(e.target.value)}
+                            className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Class</label>
+                      <div className="relative">
+                        <select
+                          value={pendingClassFilter}
+                          onChange={(e) => setPendingClassFilter(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="all">All classes</option>
+                          {allTeacherClasses.map(cls => (
+                            <option key={cls.class_id} value={String(cls.class_id)}>
+                              {cls.subject_code} - {cls.subject_name}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Semester</label>
+                      <div className="relative">
+                        <select
+                          value={pendingSemesterFilter}
+                          onChange={(e) => setPendingSemesterFilter(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="all">All semesters</option>
+                          <option value="1">1st Sem</option>
+                          <option value="2">2nd Sem</option>
+                        </select>
+                        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">School Year</label>
+                      <div className="relative">
+                        <select
+                          value={pendingSchoolYearFilter}
+                          onChange={(e) => setPendingSchoolYearFilter(e.target.value)}
+                          className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        >
+                          <option value="all">All school years</option>
+                          {schoolYearOptions.map((schoolYear) => (
+                            <option key={schoolYear} value={schoolYear}>
+                              {schoolYear}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Apply & Clear */}
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingDateRangeStart('');
+                          setPendingDateRangeEnd('');
+                          setPendingClassFilter('all');
+                          setPendingSemesterFilter('all');
+                          setPendingSchoolYearFilter('all');
+                          setDateRangeStart('');
+                          setDateRangeEnd('');
+                          setClassFilter('all');
+                          setSemesterFilter('all');
+                          setSchoolYearFilter('all');
+                          setShowFilters(false);
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDateRangeStart(pendingDateRangeStart);
+                          setDateRangeEnd(pendingDateRangeEnd);
+                          setClassFilter(pendingClassFilter);
+                          setSemesterFilter(pendingSemesterFilter);
+                          setSchoolYearFilter(pendingSchoolYearFilter);
+                          setShowFilters(false);
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-primary-600 rounded-lg hover:bg-primary-700"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Attendance Sheets Table */}
       <div className="flex-1 overflow-auto">
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
@@ -612,7 +915,7 @@ function AttendanceClassSelection() {
                         <div className="text-xs text-gray-500">EDP: {sheet.edp_code || '-'}</div>
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <div>{new Date(sheet.date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</div>
+                        <div>{new Date(sheet.date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</div>
                         {generatedAt && (
                           <div className="text-[11px] text-gray-500">
                             Generated: {new Date(generatedAt.replace(' ', 'T')).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -651,6 +954,24 @@ function AttendanceClassSelection() {
                               title="Archive"
                             />
                           )}
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                              const key = `${sheet.class_id}|${sheet.date}|${sheetSessionId || ''}`;
+                              setOpenExportDropdown(
+                                openExportDropdown?.key === key
+                                  ? null
+                                  : { key, top: rect.bottom + 4, left: rect.right - 176 }
+                              );
+                            }}
+                            variant="outline"
+                            size="sm"
+                            className="text-gray-600 hover:bg-gray-100"
+                            icon={<Download className="h-3 w-3" />}
+                            title="Export"
+                            disabled={exportingKey !== null && exportingKey.startsWith(`${sheet.class_id}-${sheet.date}`)}
+                          />
                         </div>
                       </td>
                     </tr>
@@ -692,7 +1013,6 @@ function AttendanceClassSelection() {
         </div>
       </div>
 
-      {/* Pagination Section */}
       {tableSheets.length > 0 && (
         <div className="flex-shrink-0 mt-2 flex items-center justify-between">
           <div className="text-xs text-gray-700">
@@ -725,7 +1045,6 @@ function AttendanceClassSelection() {
         </div>
       )}
 
-      {/* Add Attendance Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
@@ -771,7 +1090,7 @@ function AttendanceClassSelection() {
                 </label>
                 <input
                   type="text"
-                  value={new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                  value={new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}
                   disabled
                   className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100 text-gray-600"
                 />
@@ -823,6 +1142,7 @@ function AttendanceClassSelection() {
         isOpen={showArchiveModal}
         onClose={() => setShowArchiveModal(false)}
         initialTab="attendance"
+        onAttendanceUnarchived={() => setRefreshKey((prev) => prev + 1)}
       />
 
     </div>

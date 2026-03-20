@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import Button from '../../components/Button';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Plus,
   Edit,
-  Trash2,
+  Archive,
+  ArchiveRestore,
   Search,
   X,
   AlertCircle
@@ -11,8 +13,7 @@ import {
 import {
   GetDepartments,
   CreateDepartment,
-  UpdateDepartment,
-  DeleteDepartment
+  UpdateDepartment
 } from '../../../wailsjs/go/backend/App';
 import { Department } from './types';
 
@@ -20,14 +21,15 @@ function DepartmentManagement() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [showArchivedModal, setShowArchivedModal] = useState(false);
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [archivedSearchTerm, setArchivedSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [showStatusModal, setShowStatusModal] = useState(false);
-  const [selectedDeptForStatus, setSelectedDeptForStatus] = useState<{ code: string; name: string; currentStatus: boolean; newStatus: boolean } | null>(null);
+  const [selectedDeptForStatus, setSelectedDeptForStatus] = useState<{ code: string; name: string; currentStatus: boolean; newStatus: boolean; actionContext?: 'status' | 'unarchive' } | null>(null);
   const [changingStatus, setChangingStatus] = useState(false);
   const [formData, setFormData] = useState({
     departmentCode: '',
@@ -95,25 +97,26 @@ function DepartmentManagement() {
     setShowForm(true);
   };
 
-  const handleDelete = async (departmentCode: string) => {
-    if (confirm('Are you sure you want to delete this department?')) {
-      try {
-        await DeleteDepartment(departmentCode);
-        showNotification('success', 'Department deleted successfully!');
-        loadDepartments();
-      } catch (error) {
-        console.error('Failed to delete department:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Failed to delete department. Please try again.';
-        showNotification('error', errorMessage);
-      }
-    }
-  };
-
-  const handleStatusChange = (deptCode: string, deptName: string, currentStatus: boolean, newStatus: boolean) => {
+  const handleStatusChange = (
+    deptCode: string,
+    deptName: string,
+    currentStatus: boolean,
+    newStatus: boolean,
+    actionContext: 'status' | 'unarchive' = 'status'
+  ) => {
     if (currentStatus === newStatus) return;
     
-    setSelectedDeptForStatus({ code: deptCode, name: deptName, currentStatus, newStatus });
+    setSelectedDeptForStatus({ code: deptCode, name: deptName, currentStatus, newStatus, actionContext });
     setShowStatusModal(true);
+  };
+
+  const handleArchiveDepartment = (dept: Department) => {
+    if (dept.is_active) {
+      showNotification('error', 'Only inactive departments can be archived. Set the status to inactive first.');
+      return;
+    }
+
+    showNotification('success', 'Department archived successfully.');
   };
 
   const confirmStatusChange = async () => {
@@ -135,7 +138,8 @@ function DepartmentManagement() {
         selectedDeptForStatus.newStatus
       );
       
-      showNotification('success', `Department ${selectedDeptForStatus.newStatus ? 'activated' : 'deactivated'} successfully!`);
+      const isUnarchiveAction = selectedDeptForStatus.actionContext === 'unarchive' && selectedDeptForStatus.newStatus;
+      showNotification('success', `Department ${isUnarchiveAction ? 'unarchived' : selectedDeptForStatus.newStatus ? 'activated' : 'deactivated'} successfully!`);
       await loadDepartments();
       setShowStatusModal(false);
       setSelectedDeptForStatus(null);
@@ -151,33 +155,37 @@ function DepartmentManagement() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
 
-  const filteredDepartments = departments.filter((dept) => {
+  const searchedDepartments = departments.filter((dept) => {
     const searchLower = searchTerm.toLowerCase();
-    const matchesSearch = (
+    return (
       dept.department_code.toLowerCase().includes(searchLower) ||
       dept.department_name.toLowerCase().includes(searchLower) ||
       (dept.description && dept.description.toLowerCase().includes(searchLower))
     );
+  });
 
-    const matchesStatus = statusFilter === 'all' ||
-      (statusFilter === 'active' && dept.is_active) ||
-      (statusFilter === 'inactive' && !dept.is_active);
-
-    return matchesSearch && matchesStatus;
+  const archivedDepartments = departments.filter((dept) => !dept.is_active);
+  const filteredArchivedDepartments = archivedDepartments.filter((dept) => {
+    const q = archivedSearchTerm.toLowerCase();
+    return (
+      dept.department_code.toLowerCase().includes(q) ||
+      dept.department_name.toLowerCase().includes(q) ||
+      (dept.description && dept.description.toLowerCase().includes(q))
+    );
   });
 
   // Pagination
-  const total = filteredDepartments.length;
+  const total = searchedDepartments.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, total);
-  const pagedDepartments = filteredDepartments.slice(startIndex, endIndex);
+  const pagedDepartments = searchedDepartments.slice(startIndex, endIndex);
 
   return (
     <div>
@@ -185,13 +193,22 @@ function DepartmentManagement() {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Department Management</h2>
         </div>
-        <Button
-          onClick={() => setShowForm(true)}
-          variant="primary"
-          icon={<Plus className="w-5 h-5" />}
-        >
-          Add Department
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => setShowArchivedModal(true)}
+            variant="outline"
+            icon={<Archive className="w-5 h-5" />}
+          >
+            Archived
+          </Button>
+          <Button
+            onClick={() => setShowForm(true)}
+            variant="primary"
+            icon={<Plus className="w-5 h-5" />}
+          >
+            Add Department
+          </Button>
+        </div>
       </div>
 
       {/* Notification */}
@@ -433,11 +450,13 @@ function DepartmentManagement() {
                         title="Edit"
                       />
                       <Button
-                        onClick={() => handleDelete(dept.department_code)}
-                        variant="danger"
+                        onClick={() => handleArchiveDepartment(dept)}
+                        variant="outline"
                         size="sm"
-                        icon={<Trash2 className="h-3 w-3" />}
-                        title="Delete"
+                        className="h-9 w-9 px-0 py-0"
+                        disabled={dept.is_active}
+                        icon={<Archive className="h-3 w-3" />}
+                        title="Archive"
                       />
                     </div>
                   </td>
@@ -488,6 +507,103 @@ function DepartmentManagement() {
         </div>
       </div>
 
+      {/* Archived Departments Modal */}
+      {showArchivedModal && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowArchivedModal(false);
+            }
+          }}
+        >
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl mx-4 relative h-[80vh] max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Archive className="h-5 w-5 text-gray-700" />
+                <h3 className="text-lg font-semibold text-gray-900">Archived Departments</h3>
+                <span className="text-sm text-gray-500">({archivedDepartments.length})</span>
+              </div>
+              <button
+                onClick={() => setShowArchivedModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0">
+              <div className="relative max-w-md">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  type="text"
+                  value={archivedSearchTerm}
+                  onChange={(e) => setArchivedSearchTerm(e.target.value)}
+                  placeholder="Search archived departments"
+                  className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+                {archivedSearchTerm && (
+                  <button
+                    onClick={() => setArchivedSearchTerm('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <div className="h-full overflow-x-auto overflow-y-auto">
+                <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+                  <thead className="bg-gray-50 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '220px' }}>
+                        Name
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '300px' }}>
+                        Description
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '120px' }}>
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredArchivedDepartments.map((dept) => (
+                      <tr key={dept.department_code} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
+                          <div className="font-medium text-gray-900">{dept.department_name}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">{dept.department_code}</div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
+                          {dept.description || 'No description'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                          <Button
+                            onClick={() => handleStatusChange(dept.department_code, dept.department_name, dept.is_active, true, 'unarchive')}
+                            variant="success"
+                            size="sm"
+                            className="h-9 w-9 px-0 py-0"
+                            icon={<ArchiveRestore className="h-3 w-3" />}
+                            title="Unarchive"
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                    {filteredArchivedDepartments.length === 0 && (
+                      <tr>
+                        <td colSpan={3} className="px-6 py-12 text-center">
+                          <p className="text-gray-500 font-medium">No archived departments found</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Status Change Confirmation Modal */}
       {showStatusModal && selectedDeptForStatus && (
         <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
@@ -525,10 +641,10 @@ function DepartmentManagement() {
               {selectedDeptForStatus.newStatus ? (
                 <>
                   <p className="text-gray-700 mb-3">
-                    You are about to <strong className="text-green-600">activate</strong> this department.
+                    You are about to <strong className="text-green-600">{selectedDeptForStatus.actionContext === 'unarchive' ? 'unarchive' : 'activate'}</strong> this department.
                   </p>
                   <div className="bg-green-50 border border-green-200 rounded-md p-3">
-                    <h4 className="font-semibold text-green-800 mb-2">Changes when activated:</h4>
+                    <h4 className="font-semibold text-green-800 mb-2">{selectedDeptForStatus.actionContext === 'unarchive' ? 'Changes when unarchived:' : 'Changes when activated:'}</h4>
                     <ul className="text-sm text-green-700 space-y-1 list-disc list-inside">
                       <li>Department will be available for new user assignments</li>
                       <li>Classes can be created under this department</li>
@@ -571,7 +687,7 @@ function DepartmentManagement() {
                 variant={selectedDeptForStatus.newStatus ? 'success' : 'danger'}
                 disabled={changingStatus}
               >
-                {changingStatus ? 'Changing...' : selectedDeptForStatus.newStatus ? 'Activate Department' : 'Deactivate Department'}
+                {changingStatus ? 'Changing...' : selectedDeptForStatus.newStatus ? (selectedDeptForStatus.actionContext === 'unarchive' ? 'Unarchive Department' : 'Activate Department') : 'Deactivate Department'}
               </Button>
             </div>
           </div>

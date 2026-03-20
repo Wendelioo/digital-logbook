@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChevronUp, ChevronDown } from 'lucide-react';
+import LoadingDots from './LoadingDots';
 
 interface Column<T> {
   key: string;
@@ -92,12 +93,23 @@ function Table<T extends Record<string, any>>({
     }
   };
 
+  const getHeaderContentAlignmentClass = (align?: string) => {
+    switch (align) {
+      case 'center':
+        return 'justify-center';
+      case 'right':
+        return 'justify-end';
+      default:
+        return 'justify-start';
+    }
+  };
+
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-soft border border-gray-200 overflow-hidden">
         <div className="flex items-center justify-center h-64">
           <div className="flex flex-col items-center gap-3">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+            <LoadingDots className="gap-3" dotClassName="h-3 w-3" />
             <p className="text-sm text-gray-600">Loading...</p>
           </div>
         </div>
@@ -107,8 +119,8 @@ function Table<T extends Record<string, any>>({
 
   return (
     <div className="bg-white rounded-xl shadow-soft border border-gray-200 overflow-hidden">
-      <div className={`overflow-x-auto overflow-y-auto ${stickyHeader ? 'max-h-[600px]' : ''}`} style={{ WebkitOverflowScrolling: 'touch' }}>
-        <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+      <div className={`${stickyHeader ? 'overflow-x-auto overflow-y-auto max-h-[600px]' : 'overflow-x-auto'}`} style={{ WebkitOverflowScrolling: 'touch' }}>
+        <table className="w-full divide-y divide-gray-200 border border-gray-300 border-collapse" style={{ minWidth: '100%', tableLayout: 'auto' }}>
           <thead className={`bg-gray-50 ${stickyHeader ? 'sticky top-0 z-10 shadow-sm' : ''}`}>
             <tr>
               {columns.map((column) => (
@@ -118,6 +130,7 @@ function Table<T extends Record<string, any>>({
                   className={`
                     px-6 ${compact ? 'py-2.5' : 'py-3.5'}
                     text-xs font-semibold text-gray-700 uppercase tracking-wider
+                    border border-gray-300 align-middle
                     ${getAlignmentClass(column.align)}
                     ${column.sortable ? 'cursor-pointer select-none hover:bg-gray-100 transition-colors' : ''}
                     ${column.width ? '' : 'whitespace-nowrap'}
@@ -125,7 +138,7 @@ function Table<T extends Record<string, any>>({
                   style={column.width ? { width: column.width, minWidth: column.width } : { minWidth: '100px' }}
                   onClick={() => column.sortable && handleHeaderClick(column)}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className={`flex items-center gap-2 ${getHeaderContentAlignmentClass(column.align)}`}>
                     <span>{column.label}</span>
                     {column.sortable && (
                       <span className="inline-flex flex-col">
@@ -180,7 +193,6 @@ function Table<T extends Record<string, any>>({
                     ${striped && index % 2 === 0 ? 'bg-white' : striped ? 'bg-gray-50/50' : 'bg-white'}
                     ${hoverable ? 'hover:bg-gray-50 transition-colors' : ''}
                     ${onRowClick ? 'cursor-pointer' : ''}
-                    border-b border-gray-100 last:border-b-0
                   `}
                   onClick={() => onRowClick && onRowClick(item, index)}
                 >
@@ -190,6 +202,7 @@ function Table<T extends Record<string, any>>({
                       className={`
                         px-6 ${compact ? 'py-2.5' : 'py-4'}
                         text-sm text-gray-900
+                        border border-gray-300 align-middle
                         ${getAlignmentClass(column.align)}
                       `}
                       style={{ whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: column.width || 'none' }}
