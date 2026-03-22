@@ -151,7 +151,7 @@ export const Alert: React.FC<AlertProps> = ({
   const config = variantConfig[variant];
 
   return (
-    <div className={`${config.bg} border ${config.border} rounded-lg p-4 ${className}`}>
+    <div className={`${config.bg} border ${config.border} rounded-xl p-4 ${className}`}>
       <div className="flex items-start">
         <div className="flex-shrink-0">{config.icon}</div>
         <div className="ml-3 flex-1">
@@ -225,7 +225,7 @@ export const Notification: React.FC<NotificationProps> = ({
   const config = variantConfig[variant];
 
   return (
-    <div className={`fixed ${positionClasses[position]} z-50 max-w-sm w-full ${config.bg} shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden animate-slide-in`}>
+    <div className={`fixed ${positionClasses[position]} z-50 max-w-sm w-full ${config.bg} shadow-lg rounded-xl pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden animate-slide-in`}>
       <div className={`p-4 ${config.border}`}>
         <div className="flex items-start">
           <div className="flex-shrink-0">{config.icon}</div>

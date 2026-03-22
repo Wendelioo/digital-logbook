@@ -265,7 +265,7 @@ function TeacherPasswordResets() {
 
           {history.length > 0 && (
             <div className="flex items-center justify-end gap-3 flex-wrap">
-              <div className="relative w-full sm:w-72">
+              <div className="relative w-72 max-w-full">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="text"

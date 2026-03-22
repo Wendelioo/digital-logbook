@@ -368,7 +368,7 @@ function MyClasses() {
       {/* Join Class Modal */}
       {showJoinForm && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowJoinForm(false);
@@ -378,7 +378,7 @@ function MyClasses() {
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 relative">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
             <Button
               type="button"
               onClick={() => {
@@ -394,7 +394,7 @@ function MyClasses() {
               ×
             </Button>
 
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <div className="mb-6">
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Join a Class</h3>
                 <p className="text-sm text-gray-600">Enter the EDP Code to join a class</p>
@@ -587,9 +587,9 @@ function MyClasses() {
       {/* Classlist Modal */}
       {viewingClasslist && (
         <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
-          <div className="min-h-screen p-4 md:p-8">
+          <div className="min-h-screen p-3 sm:p-4 md:p-8">
             {/* Bond Paper Style Class List Sheet */}
-            <div className="bg-white max-w-4xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
+            <div className="bg-white max-w-4xl mx-auto my-4 sm:my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
               {/* Close Button */}
               <button
                 onClick={() => {

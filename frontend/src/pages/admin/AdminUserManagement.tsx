@@ -97,22 +97,22 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+      className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
         }
       }}
     >
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 relative">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex items-center gap-2">
           <Eye className="h-5 w-5 text-gray-700" />
           <h3 className="text-lg font-semibold text-gray-900">{getTitle()}</h3>
         </div>
 
         {/* Content */}
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           <div className="flex gap-6">
             {/* Left Section - Profile Picture */}
             <div className="flex-shrink-0">
@@ -160,7 +160,7 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
         </div>
 
         {/* Footer - Close Button */}
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 flex justify-end">
           <Button
             onClick={onClose}
             variant="secondary"
@@ -1316,14 +1316,14 @@ function UserManagement() {
                 <option value="student">Student</option>
                 <option value="working_student">Working Student</option>
               </select>
-              <div className="relative">
+              <div className="relative w-64 max-w-full">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type="text"
                   placeholder="Search"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>

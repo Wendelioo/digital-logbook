@@ -45,7 +45,7 @@ function EquipmentItem({ label, value, onChange, issueOnly = false }: EquipmentI
         <button
           type="button"
           onClick={() => onChange({ status: hasIssue ? 'yes' : 'no', issue: hasIssue ? '' : value.issue })}
-          className={`w-full px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+          className={`w-full px-4 py-2 rounded-xl font-medium text-sm transition-all ${
             hasIssue
               ? 'bg-red-600 text-white shadow-sm'
               : 'bg-white border border-gray-300 text-gray-700 hover:border-red-400 hover:bg-red-50'
@@ -62,7 +62,7 @@ function EquipmentItem({ label, value, onChange, issueOnly = false }: EquipmentI
               value={value.issue}
               onChange={(e) => onChange({ status: 'no', issue: e.target.value })}
               placeholder="Describe the issue..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
+          className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-danger-500 focus:border-transparent text-sm"
             />
           </div>
         )}
@@ -84,7 +84,7 @@ function EquipmentItem({ label, value, onChange, issueOnly = false }: EquipmentI
       <div className="absolute top-4 right-4">
         {isComplete ? (
           <CheckCircle2 className={`h-5 w-5 ${
-            value.status === 'yes' ? 'text-green-500' : 'text-red-500'
+            value.status === 'yes' ? 'text-success-500' : 'text-danger-500'
           }`} />
         ) : (
           <div className="h-5 w-5 rounded-full border-2 border-gray-300" />
@@ -101,7 +101,7 @@ function EquipmentItem({ label, value, onChange, issueOnly = false }: EquipmentI
         <button
           type="button"
           onClick={() => onChange({ status: 'yes', issue: '' })}
-          className={`flex-1 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+          className={`flex-1 px-4 py-2 rounded-xl font-medium text-sm transition-all ${
             value.status === 'yes'
               ? 'bg-green-600 text-white shadow-sm'
               : 'bg-white border border-gray-300 text-gray-700 hover:border-green-400 hover:bg-green-50'
@@ -112,7 +112,7 @@ function EquipmentItem({ label, value, onChange, issueOnly = false }: EquipmentI
         <button
           type="button"
           onClick={() => onChange({ status: 'no', issue: value.issue })}
-          className={`flex-1 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+          className={`flex-1 px-4 py-2 rounded-xl font-medium text-sm transition-all ${
             value.status === 'no'
               ? 'bg-red-600 text-white shadow-sm'
               : 'bg-white border border-gray-300 text-gray-700 hover:border-red-400 hover:bg-red-50'
@@ -130,7 +130,7 @@ function EquipmentItem({ label, value, onChange, issueOnly = false }: EquipmentI
             value={value.issue}
             onChange={(e) => onChange({ status: 'no', issue: e.target.value })}
             placeholder="Describe the issue..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm"
+          className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-danger-500 focus:border-transparent text-sm"
             required
           />
         </div>
@@ -253,9 +253,9 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
       onClick={handleBackdropClick}
       style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
     >
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[calc(100vh-2rem)] overflow-y-auto">
         {/* Header */}
-        <div className="border-b border-gray-100 px-8 py-5 sticky top-0 bg-white z-10 rounded-t-2xl">
+        <div className="border-b border-gray-100 px-4 sm:px-8 py-4 sm:py-5 sticky top-0 bg-white z-10 rounded-t-2xl">
           <div className="flex justify-between items-start">
             <div className="flex-1">
               <h3 className="text-xl font-bold text-gray-900">{mode === 'logout' ? 'Equipment Check' : 'Report Lab Issue'}</h3>
@@ -271,7 +271,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
                   </div>
                   <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-300"
+                      className="h-full bg-primary-600 transition-all duration-300"
                       style={{ width: `${progress}%` }}
                     ></div>
                   </div>
@@ -289,7 +289,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-8" noValidate>
+        <form onSubmit={handleSubmit} className="p-4 sm:p-8" noValidate>
           {mode === 'manual' && (
             <div className="border border-gray-200 rounded-xl p-4 mb-6 bg-gray-50">
               <h4 className="text-sm font-semibold text-gray-800 mb-3">Reporting Context</h4>
@@ -303,7 +303,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
                       ...feedback,
                       reportingContext: e.target.value as 'current_pc' | 'other_pc'
                     })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   >
                     <option value="current_pc">Current PC</option>
                     <option value="other_pc">Another PC</option>
@@ -318,7 +318,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
                       ...feedback,
                       reportedBy: e.target.value as 'self' | 'classmate'
                     })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   >
                     <option value="self">Self</option>
                     <option value="classmate">Classmate</option>
@@ -334,7 +334,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
                     value={feedback.targetPCNumber}
                     onChange={(e) => setFeedback({ ...feedback, targetPCNumber: e.target.value })}
                     placeholder="e.g. CL1-PC01"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   />
                 </div>
 
@@ -346,7 +346,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
                       ...feedback,
                       severity: e.target.value as 'normal' | 'high' | 'critical'
                     })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   >
                     <option value="normal">Normal</option>
                     <option value="high">High</option>
@@ -362,7 +362,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
                   value={feedback.affectedStudentID}
                   onChange={(e) => setFeedback({ ...feedback, affectedStudentID: e.target.value })}
                   placeholder="If reporting for classmate"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -387,7 +387,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
                         keyboard: { status: null, issue: '' },
                         monitor: { status: null, issue: '' },
                       })}
-                      className="text-blue-600 focus:ring-blue-500"
+                      className="text-primary-600 focus:ring-primary-500"
                     />
                     <span className="text-sm text-gray-700">This PC (the one I used)</span>
                   </label>
@@ -404,20 +404,20 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
                         keyboard: { status: null, issue: '' },
                         monitor: { status: null, issue: '' },
                       })}
-                      className="text-blue-600 focus:ring-blue-500"
+                      className="text-primary-600 focus:ring-primary-500"
                     />
                     <span className="text-sm text-gray-700">Another PC</span>
                   </label>
                 </div>
                 {isOtherPC && (
                   <div className="mt-3">
-                    <label className="block text-xs font-medium text-gray-700 mb-1.5">Lab &amp; PC Number <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5">Lab &amp; PC Number <span className="text-danger-500">*</span></label>
                     <input
                       type="text"
                       value={feedback.targetPCNumber}
                       onChange={(e) => setFeedback({ ...feedback, targetPCNumber: e.target.value })}
                       placeholder="e.g. CL1-PC01"
-                      className="w-56 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-56 px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                     />
                   </div>
                 )}
@@ -485,7 +485,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
                       ...feedback,
                       issueCategory: e.target.value as 'computer' | 'mouse' | 'keyboard' | 'monitor' | 'other'
                     })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   >
                     <option value="computer">Computer</option>
                     <option value="monitor">Monitor</option>
@@ -502,7 +502,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
                   onChange={(e) => setFeedback({ ...feedback, issueDescription: e.target.value })}
                   rows={4}
                   placeholder="Describe what is not working..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
                 />
               </div>
             </div>
@@ -518,7 +518,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
               onChange={(e) => setFeedback({ ...feedback, additionalComments: e.target.value })}
               rows={3}
               placeholder="Any other observations or concerns..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm resize-none"
             />
           </div>
 
@@ -527,13 +527,13 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium text-sm"
+              className="px-5 py-2.5 border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors font-medium text-sm"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className={`px-6 py-2.5 rounded-lg font-medium text-sm transition-all ${
+              className={`px-6 py-2.5 rounded-xl font-medium text-sm transition-all ${
                 canSubmit
                   ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'
                   : 'bg-gray-300 text-gray-500 cursor-not-allowed'

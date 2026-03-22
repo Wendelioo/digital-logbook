@@ -11,8 +11,6 @@ import {
   MapPin,
   AlertCircle,
   ClipboardCheck,
-  CheckCircle,
-  XCircle,
 } from 'lucide-react';
 import { GetWorkingStudentDashboard, GetStudentDashboard, GetStudentOpenAttendanceSessions, GetStudentLoginLogs, StudentTimeIn } from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
@@ -68,7 +66,6 @@ function DashboardOverview() {
   const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
   const [loading, setLoading] = useState(true);
 
-  const normalizeStatus = (status?: string) => (status || '').trim().toLowerCase();
   const parseSessionDateTime = (value?: string): Date | null => {
     if (!value) return null;
     const parsed = new Date(value.replace(' ', 'T'));
@@ -194,10 +191,6 @@ function DashboardOverview() {
   }, [openSessions.length]);
 
   const attendanceList = studentDashboard?.attendance || [];
-  const presentCount = attendanceList.filter(a => normalizeStatus(a.status) === 'present').length;
-  const absentCount = attendanceList.filter(a => normalizeStatus(a.status) === 'absent').length;
-  const lateCount = attendanceList.filter(a => normalizeStatus(a.status) === 'late').length;
-  const totalAttendance = attendanceList.length;
   const recentAttendance = attendanceList.slice(0, 5);
 
   if (loading) {
@@ -217,76 +210,59 @@ function DashboardOverview() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
         <div className="md:col-span-2 space-y-6">
           {/* Overview */}
-          <Card>
-            <CardHeader title="Overview" />
-            <CardBody>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                <div className="flex items-center p-4 bg-indigo-50 rounded-lg">
-                  <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mr-4">
-                    <Users className="h-6 w-6 text-indigo-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Students Registered</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.students_registered}</p>
-                  </div>
-                </div>
-                <div className="flex items-center p-4 bg-yellow-50 rounded-lg">
-                  <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
-                    <AlertCircle className="h-6 w-6 text-yellow-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Pending Feedback</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.pending_feedback}</p>
-                  </div>
-                </div>
-                <div className="flex items-center p-4 bg-emerald-50 rounded-lg">
-                  <div className="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center mr-4">
-                    <UserCheck className="h-6 w-6 text-emerald-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Pending Registration Requests</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.pending_registrations}</p>
-                  </div>
-                </div>
-                <div className="flex items-center p-4 bg-blue-50 rounded-lg">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
-                    <Calendar className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">New Registrations</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.today_registrations}</p>
-                  </div>
-                </div>
-                <div className="flex items-center p-4 bg-green-50 rounded-lg">
-                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
-                    <Users className="h-6 w-6 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Students Online</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.active_students_now}</p>
-                  </div>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Overview</h3>
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+              <StatCard
+                title="Students Registered"
+                value={stats.students_registered}
+                icon={<Users />}
+                color="blue"
+              />
+              <StatCard
+                title="Pending Feedback"
+                value={stats.pending_feedback}
+                icon={<AlertCircle />}
+                color="yellow"
+              />
+              <StatCard
+                title="Pending Registration Requests"
+                value={stats.pending_registrations}
+                icon={<UserCheck />}
+                color="green"
+              />
+              <StatCard
+                title="New Registrations"
+                value={stats.today_registrations}
+                icon={<Calendar />}
+                color="blue"
+              />
+              <StatCard
+                title="Students Online"
+                value={stats.active_students_now}
+                icon={<Users />}
+                color="green"
+              />
+            </div>
+          </div>
 
           {lastLogin && (
             <Card>
               <CardHeader title="Login Information" />
               <CardBody>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="flex items-center p-4 bg-blue-50 rounded-lg">
-                    <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
-                      <Clock className="h-6 w-6 text-blue-600" />
+                  <div className="flex items-center p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <div className="w-12 h-12 bg-primary-50 rounded-lg flex items-center justify-center mr-4">
+                      <Clock className="h-6 w-6 text-primary-600" />
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Last Login</p>
                       <p className="text-sm font-semibold text-gray-900">{formatSqlDateTimeLocal(lastLogin.login_time)}</p>
                     </div>
                   </div>
-                  <div className="flex items-center p-4 bg-purple-50 rounded-lg">
-                    <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-4">
-                      <MapPin className="h-6 w-6 text-purple-600" />
+                  <div className="flex items-center p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <div className="w-12 h-12 bg-primary-50 rounded-lg flex items-center justify-center mr-4">
+                      <MapPin className="h-6 w-6 text-primary-600" />
                     </div>
                     <div>
                       <p className="text-sm text-gray-600">Last PC Used</p>
@@ -300,144 +276,84 @@ function DashboardOverview() {
 
           {/* Attendance Summary — shown for all; empty if not enrolled in IT classes */}
           <Card>
-            <CardHeader title="Attendance Summary" />
+            <CardHeader title="Recent Records" />
             <CardBody>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                <StatCard
-                  title="Present"
-                  value={presentCount}
-                  icon={<CheckCircle className="h-6 w-6" />}
-                  color="green"
-                />
-                <StatCard
-                  title="Absent"
-                  value={absentCount}
-                  icon={<XCircle className="h-6 w-6" />}
-                  color="red"
-                />
-                <StatCard
-                  title="Late"
-                  value={lateCount}
-                  icon={<Clock className="h-6 w-6" />}
-                  color="yellow"
-                />
-              </div>
-              <div className="pt-6 border-t border-gray-200">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-600">Total Records</span>
-                  <span className="text-lg font-semibold text-gray-900">{totalAttendance}</span>
-                </div>
-              </div>
               {recentAttendance.length > 0 && (
                 <div className="mt-6 border-t border-gray-200 pt-4">
-                  <p className="text-sm font-semibold text-gray-800 mb-3">Recent Records</p>
-                  <div className="space-y-3">
-                    {recentAttendance.map((record, index) => {
-                      const status = (record.status || '').trim() || '—';
-                      const statusColor =
-                        status.toLowerCase() === 'present'
-                          ? 'text-emerald-700 bg-emerald-50'
-                          : status.toLowerCase() === 'late'
-                            ? 'text-amber-700 bg-amber-50'
-                            : status.toLowerCase() === 'absent'
-                              ? 'text-red-700 bg-red-50'
-                              : 'text-gray-600 bg-gray-100';
-                      const displayDate = record.date
-                        ? (() => {
-                            const d = new Date(record.date + 'T12:00:00');
-                            return Number.isNaN(d.getTime()) ? record.date : d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
-                          })()
-                        : record.date;
-                      return (
-                        <div
-                          key={`${record.class_id}-${record.date}-${index}`}
-                          className="rounded-lg border border-gray-200 bg-gray-50/80 p-3 space-y-2"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-sm font-semibold text-gray-900">
-                              {record.subject_code}
-                            </p>
-                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${statusColor}`}>
-                              {status}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
-                            <span className="text-gray-500">Date</span>
-                            <span className="text-gray-700">{displayDate}</span>
-                            <span className="text-gray-500">Time in</span>
-                            <span className="text-gray-700 font-medium tabular-nums">
-                              {record.time_in || '—'}
-                            </span>
-                          </div>
-                          {record.remarks && record.remarks.trim() && (
-                            <p className="text-xs text-gray-500 pt-0.5 border-t border-gray-200/80">
-                              {record.remarks.trim()}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
+                  <div className="overflow-x-auto">
+                    <table className="attendance-records-table w-full border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Student ID
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Course/Subject
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Date
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Status
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {recentAttendance.map((record, index) => {
+                          const status = (record.status || '').trim() || '—';
+                          const statusColor =
+                            status.toLowerCase() === 'present'
+                              ? 'text-success-700 bg-success-50'
+                              : status.toLowerCase() === 'late'
+                                ? 'text-warning-700 bg-warning-50'
+                                : status.toLowerCase() === 'absent'
+                                  ? 'text-danger-700 bg-danger-50'
+                                  : 'text-gray-600 bg-gray-100';
+                          const displayDate = record.date
+                            ? (() => {
+                                const d = new Date(record.date + 'T12:00:00');
+                                return Number.isNaN(d.getTime()) ? record.date : d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+                              })()
+                            : record.date;
+                          const studentId = (record.student_code || record.student_id || '').trim() || '—';
+                          const tooltip = [
+                            record.time_in ? `Time in: ${record.time_in}` : '',
+                            record.remarks && record.remarks.trim() ? `Remarks: ${record.remarks.trim()}` : '',
+                          ]
+                            .filter(Boolean)
+                            .join('\n');
+
+                          return (
+                            <tr
+                              key={`${record.class_id}-${record.date}-${index}`}
+                              className="hover:bg-gray-50/60"
+                              title={tooltip || undefined}
+                            >
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900 whitespace-nowrap">
+                                {studentId}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-900">
+                                <div className="font-medium">{record.subject_code}</div>
+                                {record.subject_name ? (
+                                  <div className="text-xs text-gray-500">{record.subject_name}</div>
+                                ) : null}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                                {displayDate}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`text-xs font-medium px-2 py-0.5 rounded ${statusColor}`}>
+                                  {status}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
-            </CardBody>
-          </Card>
-
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader title="Quick Actions" />
-            <CardBody>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-                <Link
-                  to="attendance"
-                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200"
-                >
-                  <div className="flex-shrink-0">
-                    <div className="w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
-                      <ClipboardCheck className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">Attendance</h3>
-                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">View your attendance records.</p>
-                  </div>
-                </Link>
-                <Link
-                  to="equipment-reports"
-                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200"
-                >
-                  <div className="flex-shrink-0">
-                    <div className="w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
-                      <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                    </div>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">Feedback</h3>
-                      {stats.pending_feedback > 0 && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] sm:text-xs font-medium bg-red-100 text-red-800">
-                          {stats.pending_feedback}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">Review student issue reports.</p>
-                  </div>
-                </Link>
-                <Link
-                  to="login-history"
-                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200"
-                >
-                  <div className="flex-shrink-0">
-                    <div className="w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
-                      <Clock className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">View Login History</h3>
-                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">View your login and logout records.</p>
-                  </div>
-                </Link>
-              </div>
             </CardBody>
           </Card>
         </div>
@@ -483,7 +399,7 @@ function DashboardOverview() {
                               {session.session_name || 'Attendance'} · EDP {session.edp_code || '—'}
                             </p>
                             {session.paused_at && (
-                              <p className="text-[11px] text-amber-700 mt-1">Session is paused. Time In is temporarily disabled.</p>
+                              <p className="text-[11px] text-warning-700 mt-1">Session is paused. Time In is temporarily disabled.</p>
                             )}
                           </div>
                           <Button
@@ -516,10 +432,10 @@ function DashboardOverview() {
                             <p
                               className={`text-xs font-medium ${
                                 expectedStatus === 'late' && graceRemaining <= 0 && classRemaining > 0
-                                  ? 'text-amber-700'
+                                  ? 'text-warning-700'
                                   : classRemaining <= 0
-                                    ? 'text-red-700'
-                                    : 'text-emerald-700'
+                                    ? 'text-danger-700'
+                                    : 'text-success-700'
                               }`}
                             >
                               {statusMessage}
@@ -544,6 +460,59 @@ function DashboardOverview() {
               <BackendDashboardNotifications
                 emptyMessage="No new notifications."
               />
+            </CardBody>
+          </Card>
+
+          <Card className="h-fit">
+            <CardHeader title="Quick Actions" />
+            <CardBody>
+              <div className="space-y-2">
+                <Link
+                  to="attendance"
+                  className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-200 transition-colors p-3"
+                >
+                  <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                    <ClipboardCheck className="h-5 w-5 text-primary-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">Attendance</h3>
+                    <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">View your attendance records.</p>
+                  </div>
+                </Link>
+
+                <Link
+                  to="equipment-reports"
+                  className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-200 transition-colors p-3"
+                >
+                  <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                    <AlertCircle className="h-5 w-5 text-primary-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">Feedback</h3>
+                      {stats.pending_feedback > 0 && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] sm:text-xs font-medium bg-warning-100 text-warning-800">
+                          {stats.pending_feedback}
+                        </span>
+                      )}
+                    </div>
+                    <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">Review student issue reports.</p>
+                  </div>
+                </Link>
+
+                <Link
+                  to="login-history"
+                  className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-200 transition-colors p-3"
+                >
+                  <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                    <Clock className="h-5 w-5 text-primary-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">View Login History</h3>
+                    <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">View your login and logout records.</p>
+                  </div>
+                </Link>
+              </div>
             </CardBody>
           </Card>
         </div>

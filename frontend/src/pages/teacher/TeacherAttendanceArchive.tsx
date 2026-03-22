@@ -9,6 +9,8 @@ import {
   FileText,
   FileSpreadsheet,
   FileType,
+  Filter,
+  Search,
 } from 'lucide-react';
 import {
   ExportClasslistCSV,
@@ -46,6 +48,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
   const [archivedSheets, setArchivedSheets] = useState<any[]>([]);
   const [loadingAttendance, setLoadingAttendance] = useState(true);
   const [attendanceSearchTerm, setAttendanceSearchTerm] = useState('');
+  const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'today' | 'last7' | 'last30'>('all');
   const [attendanceEntriesPerPage, setAttendanceEntriesPerPage] = useState(10);
   const [attendanceCurrentPage, setAttendanceCurrentPage] = useState(1);
   const [filteredAttendance, setFilteredAttendance] = useState<any[]>([]);
@@ -57,6 +60,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
   const [archivedClasses, setArchivedClasses] = useState<Class[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [classSearchTerm, setClassSearchTerm] = useState('');
+  const [classSemesterFilter, setClassSemesterFilter] = useState<'all' | '1st Semester' | '2nd Semester' | 'Summer'>('all');
   const [classEntriesPerPage, setClassEntriesPerPage] = useState(10);
   const [classCurrentPage, setClassCurrentPage] = useState(1);
   const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
@@ -80,37 +84,49 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
 
   useEffect(() => {
     // Filter attendance records based on search term
-    if (!attendanceSearchTerm) {
-      setFilteredAttendance(archivedSheets);
-    } else {
+    const now = new Date();
+    const todayYMD = now.toISOString().slice(0, 10);
+
+    const filtered = archivedSheets.filter((sheet) => {
       const searchLower = attendanceSearchTerm.toLowerCase();
-      const filtered = archivedSheets.filter((sheet) => {
-        const subjectName = (sheet.subject_name || '').toLowerCase();
-        const subjectCode = (sheet.subject_code || '').toLowerCase();
-        const dateStr = new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).toLowerCase();
-        return subjectName.includes(searchLower) || subjectCode.includes(searchLower) || dateStr.includes(searchLower);
-      });
-      setFilteredAttendance(filtered);
-    }
+      const subjectName = (sheet.subject_name || '').toLowerCase();
+      const subjectCode = (sheet.subject_code || '').toLowerCase();
+      const dateStr = new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).toLowerCase();
+      const matchesSearch = !searchLower || subjectName.includes(searchLower) || subjectCode.includes(searchLower) || dateStr.includes(searchLower);
+
+      const sheetDate = new Date(sheet.date);
+      const diffDays = Number.isNaN(sheetDate.getTime()) ? Number.MAX_SAFE_INTEGER : Math.floor((now.getTime() - sheetDate.getTime()) / (1000 * 60 * 60 * 24));
+      const sheetYMD = Number.isNaN(sheetDate.getTime()) ? '' : sheetDate.toISOString().slice(0, 10);
+
+      const matchesFilter =
+        attendanceFilter === 'all' ||
+        (attendanceFilter === 'today' && sheetYMD === todayYMD) ||
+        (attendanceFilter === 'last7' && diffDays >= 0 && diffDays <= 7) ||
+        (attendanceFilter === 'last30' && diffDays >= 0 && diffDays <= 30);
+
+      return matchesSearch && matchesFilter;
+    });
+
+    setFilteredAttendance(filtered);
     setAttendanceCurrentPage(1);
-  }, [attendanceSearchTerm, archivedSheets]);
+  }, [attendanceSearchTerm, attendanceFilter, archivedSheets]);
 
   useEffect(() => {
     // Filter classes based on search term
-    if (!classSearchTerm) {
-      setFilteredClasses(archivedClasses);
-    } else {
-      const searchLower = classSearchTerm.toLowerCase();
-      const filtered = archivedClasses.filter((cls) => {
-        const subjectName = (cls.subject_name || '').toLowerCase();
-        const subjectCode = (cls.subject_code || '').toLowerCase();
-        const schoolYear = (cls.school_year || '').toLowerCase();
-        return subjectName.includes(searchLower) || subjectCode.includes(searchLower) || schoolYear.includes(searchLower);
-      });
-      setFilteredClasses(filtered);
-    }
+    const searchLower = classSearchTerm.toLowerCase();
+    const filtered = archivedClasses.filter((cls) => {
+      const subjectName = (cls.subject_name || '').toLowerCase();
+      const subjectCode = (cls.subject_code || '').toLowerCase();
+      const schoolYear = (cls.school_year || '').toLowerCase();
+      const semester = (cls.semester || '').toLowerCase();
+      const matchesSearch = !searchLower || subjectName.includes(searchLower) || subjectCode.includes(searchLower) || schoolYear.includes(searchLower);
+      const matchesFilter = classSemesterFilter === 'all' || semester === classSemesterFilter.toLowerCase();
+      return matchesSearch && matchesFilter;
+    });
+
+    setFilteredClasses(filtered);
     setClassCurrentPage(1);
-  }, [classSearchTerm, archivedClasses]);
+  }, [classSearchTerm, classSemesterFilter, archivedClasses]);
 
   const loadArchivedSheets = async () => {
     if (!user?.id) return;
@@ -345,34 +361,38 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
         <>
           {/* Controls Section */}
           <div className="flex-shrink-0 mb-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-700">Show</span>
-                <select
-                  value={attendanceEntriesPerPage}
-                  onChange={(e) => {
-                    setAttendanceEntriesPerPage(Number(e.target.value));
-                    setAttendanceCurrentPage(1);
-                  }}
-                  className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                  <option value={-1}>All</option>
-                </select>
-                <span className="text-sm text-gray-700">entries</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-700">Search</span>
-                <input
-                  type="text"
-                  value={attendanceSearchTerm}
-                  onChange={(e) => setAttendanceSearchTerm(e.target.value)}
-                  className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder=""
-                />
+            <div className="flex justify-end">
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+                <div className="relative w-72 max-w-full">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={attendanceSearchTerm}
+                    onChange={(e) => setAttendanceSearchTerm(e.target.value)}
+                    className="h-10 w-full rounded-md border border-gray-300 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Search attendance..."
+                  />
+                </div>
+                <div className={`flex h-10 w-full items-center gap-2 rounded-lg px-3 sm:w-56 ${
+                  attendanceFilter !== 'all'
+                    ? 'bg-primary-50 border border-primary-500 text-primary-700'
+                    : 'bg-white border border-gray-300 text-gray-700'
+                }`}>
+                  <Filter className="h-4 w-4" />
+                  <span className="text-sm font-medium">Filter</span>
+                  <select
+                    value={attendanceFilter}
+                    onChange={(e) => {
+                      setAttendanceFilter(e.target.value as 'all' | 'today' | 'last7' | 'last30');
+                    }}
+                    className="h-full min-w-0 flex-1 bg-transparent text-sm font-medium focus:outline-none"
+                  >
+                    <option value="all">Filter: All dates</option>
+                    <option value="today">Filter: Today</option>
+                    <option value="last7">Filter: Last 7 days</option>
+                    <option value="last30">Filter: Last 30 days</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -542,33 +562,38 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
         <>
           {/* Controls Section */}
           <div className="flex-shrink-0 mb-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-700">Show</span>
-                <select
-                  value={classEntriesPerPage}
-                  onChange={(e) => {
-                    setClassEntriesPerPage(Number(e.target.value));
-                    setClassCurrentPage(1);
-                  }}
-                  className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
-                >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                </select>
-                <span className="text-sm text-gray-700">entries</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-700">Search</span>
-                <input
-                  type="text"
-                  value={classSearchTerm}
-                  onChange={(e) => setClassSearchTerm(e.target.value)}
-                  className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder=""
-                />
+            <div className="flex justify-end">
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+                <div className="relative w-72 max-w-full">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={classSearchTerm}
+                    onChange={(e) => setClassSearchTerm(e.target.value)}
+                    className="h-10 w-full rounded-md border border-gray-300 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Search classes..."
+                  />
+                </div>
+                <div className={`flex h-10 w-full items-center gap-2 rounded-lg px-3 sm:w-56 ${
+                  classSemesterFilter !== 'all'
+                    ? 'bg-primary-50 border border-primary-500 text-primary-700'
+                    : 'bg-white border border-gray-300 text-gray-700'
+                }`}>
+                  <Filter className="h-4 w-4" />
+                  <span className="text-sm font-medium">Filter</span>
+                  <select
+                    value={classSemesterFilter}
+                    onChange={(e) => {
+                      setClassSemesterFilter(e.target.value as 'all' | '1st Semester' | '2nd Semester' | 'Summer');
+                    }}
+                    className="h-full min-w-0 flex-1 bg-transparent text-sm font-medium focus:outline-none"
+                  >
+                    <option value="all">Filter: All semesters</option>
+                    <option value="1st Semester">Filter: 1st Semester</option>
+                    <option value="2nd Semester">Filter: 2nd Semester</option>
+                    <option value="Summer">Filter: Summer</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>

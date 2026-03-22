@@ -120,7 +120,7 @@ function Table<T extends Record<string, any>>({
   return (
     <div className="bg-white rounded-xl shadow-soft border border-gray-200 overflow-hidden">
       <div className={`${stickyHeader ? 'overflow-x-auto overflow-y-auto max-h-[600px]' : 'overflow-x-auto'}`} style={{ WebkitOverflowScrolling: 'touch' }}>
-        <table className="w-full divide-y divide-gray-200 border border-gray-300 border-collapse" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+        <table className="w-full border-collapse" style={{ minWidth: '100%', tableLayout: 'auto' }}>
           <thead className={`bg-gray-50 ${stickyHeader ? 'sticky top-0 z-10 shadow-sm' : ''}`}>
             <tr>
               {columns.map((column) => (
@@ -130,7 +130,7 @@ function Table<T extends Record<string, any>>({
                   className={`
                     px-6 ${compact ? 'py-2.5' : 'py-3.5'}
                     text-xs font-semibold text-gray-700 uppercase tracking-wider
-                    border border-gray-300 align-middle
+                    border-b border-gray-200 align-middle
                     ${getAlignmentClass(column.align)}
                     ${column.sortable ? 'cursor-pointer select-none hover:bg-gray-100 transition-colors' : ''}
                     ${column.width ? '' : 'whitespace-nowrap'}
@@ -161,7 +161,7 @@ function Table<T extends Record<string, any>>({
               ))}
             </tr>
           </thead>
-          <tbody className={`bg-white divide-y divide-gray-200 ${striped ? '' : ''}`}>
+          <tbody className={`bg-white divide-y divide-gray-100 ${striped ? '' : ''}`}>
             {data.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="px-6 py-12 text-center">
@@ -202,7 +202,7 @@ function Table<T extends Record<string, any>>({
                       className={`
                         px-6 ${compact ? 'py-2.5' : 'py-4'}
                         text-sm text-gray-900
-                        border border-gray-300 align-middle
+                        align-middle
                         ${getAlignmentClass(column.align)}
                       `}
                       style={{ whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: column.width || 'none' }}

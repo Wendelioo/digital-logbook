@@ -62,10 +62,10 @@ function DetailsModal({ feedback, onClose }: { feedback: Feedback; onClose: () =
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 overflow-hidden max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-2 sm:mx-4 overflow-hidden max-h-[calc(100vh-2rem)] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 flex-shrink-0">
           <h3 className="text-lg font-semibold text-gray-900">Report Details</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <X className="h-5 w-5" />
@@ -73,7 +73,7 @@ function DetailsModal({ feedback, onClose }: { feedback: Feedback; onClose: () =
         </div>
 
         {/* Body */}
-        <div className="px-6 py-5 space-y-4 overflow-y-auto">
+        <div className="px-4 sm:px-6 py-4 sm:py-5 space-y-4 overflow-y-auto">
           {/* Date & Time */}
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Date & Time</p>
@@ -299,7 +299,7 @@ function FeedbackHistory() {
             <span className="text-sm text-gray-700">entries</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-64 relative">
+            <div className="w-64 max-w-full relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"

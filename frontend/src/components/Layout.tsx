@@ -16,6 +16,7 @@ import {
   Eye,
   EyeOff,
   Bell,
+  Search,
 } from 'lucide-react';
 import LogoutFeedbackModal from './LogoutFeedbackModal';
 
@@ -65,6 +66,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const [photoPreview, setPhotoPreview] = useState<string>(user?.photo_url || '');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [openDropdowns, setOpenDropdowns] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -86,7 +88,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
-  const canEditProfile = user?.role === 'student' || user?.role === 'working_student';
+  const canEditProfile = !!user;
 
   const navigate = useNavigate();
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -426,7 +428,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
         user.student_id || '',
         profileFormData.email,
         profileFormData.contactNumber,
-        '' // departmentCode - not available in User type
+        user.department_code || ''
       );
 
       const updatedUser = {
@@ -683,7 +685,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
           </ul>
         </nav>
 
-        <div className="border-t border-gray-200 p-2">
+        <div className="border-t border-gray-200 p-2 hidden">
           <div className="relative">
             <button
               onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
@@ -767,15 +769,31 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
           >
             <Menu className="w-6 h-6" />
           </button>
-          <div className="flex-1">
-            {title && (
-              <div className="section-highlight py-2 bg-gradient-to-r from-primary-50 to-white border-primary-100">
-                <h1 className="section-highlight-title">{title}</h1>
-                {subtitle && (
-                  <p className="section-highlight-subtitle">{subtitle}</p>
-                )}
+          <div className="flex-1 flex items-center gap-4">
+            <div className="flex-none">
+              {title && (
+                <div className="section-highlight py-2 bg-gradient-to-r from-primary-50 to-white border-primary-100">
+                  <h1 className="section-highlight-title">{title}</h1>
+                  {subtitle && (
+                    <p className="section-highlight-subtitle">{subtitle}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 flex justify-end">
+              <div className="relative w-72 max-w-full">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  type="text"
+                  placeholder="Search"
+                  className="w-full pl-10 pr-3 py-2 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  aria-label="Search"
+                />
               </div>
-            )}
+            </div>
           </div>
 
           {/* Notification Bell */}
@@ -843,9 +861,66 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
             )}
           </div>
 
+          {/* Profile */}
+          <div className="relative">
+            <button
+              onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+              data-profile-icon
+              className="w-10 h-10 rounded-full flex items-center justify-center text-gray-700 hover:bg-gray-100 active:bg-gray-200 transition-colors flex-shrink-0"
+              aria-label="Account menu"
+            >
+              {user?.photo_url || photoPreview ? (
+                <img
+                  src={photoPreview || user?.photo_url}
+                  alt="Profile"
+                  className="w-9 h-9 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center">
+                  <User className="w-4 h-4 text-gray-600" />
+                </div>
+              )}
+              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ml-[-0.25rem] ${profileDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {profileDropdownOpen && (
+              <div
+                ref={dropdownRef}
+                className="absolute right-0 top-12 w-56 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden z-50 animate-slideIn"
+              >
+                <div className="p-2">
+                  <button
+                    onClick={() => {
+                      setShowAccountModal(true);
+                      setProfileDropdownOpen(false);
+                    }}
+                    className="w-full flex items-center gap-4 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                  >
+                    <Settings className="w-4 h-4 text-gray-500" />
+                    <span className="font-medium">Account Settings</span>
+                  </button>
+
+                  <div className="border-t border-gray-200 my-1" />
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setProfileDropdownOpen(false);
+                      handleLogout();
+                    }}
+                    className="w-full flex items-center gap-4 px-3 py-2.5 text-sm text-danger-600 hover:bg-danger-50 rounded-xl transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span className="font-medium">Sign out</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
         </header>
 
-        <main className="flex-1 overflow-y-auto bg-slate-50">
+        <main className="flex-1 overflow-y-auto bg-sky-50 text-left">
           <div className="p-4 md:p-6">
             {children}
           </div>
@@ -857,8 +932,8 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
           className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[10000]"
           onClick={handleModalBackdropClick}
         >
-          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white">
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 bg-white">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
                   <Settings className="w-5 h-5 text-blue-600" />
@@ -873,7 +948,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
               </button>
             </div>
 
-            <div className="flex border-b border-gray-200 bg-white px-6">
+            <div className="flex border-b border-gray-200 bg-white px-4 sm:px-6">
               <button
                 onClick={() => setActiveTab('profile')}
                 className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
@@ -902,7 +977,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               {activeTab === 'profile' ? (
                 <div className="space-y-6">
                   <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
@@ -936,7 +1011,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                           <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors shadow-sm"
+                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-colors shadow-sm"
                           >
                             Choose Photo
                           </button>
@@ -944,7 +1019,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                           <button
                             type="button"
                             onClick={handlePhotoSave}
-                            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                              className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-xl hover:bg-primary-700 transition-colors shadow-sm"
                           >
                               Save Photo
                             </button>
@@ -961,94 +1036,82 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                     noValidate
                   >
                     {canEditProfile && profileError && (
-                      <div className="bg-danger-50 border-l-4 border-danger-500 p-4 rounded-lg">
+                      <div className="bg-danger-50 border-l-4 border-danger-500 p-4 rounded-xl">
                         <p className="text-sm text-danger-700">{profileError}</p>
                       </div>
                     )}
 
                     {canEditProfile && profileSuccess && (
-                      <div className="bg-success-50 border-l-4 border-success-500 p-4 rounded-lg">
+                      <div className="bg-success-50 border-l-4 border-success-500 p-4 rounded-xl">
                         <p className="text-sm text-success-700">{profileSuccess}</p>
                       </div>
                     )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          First Name <span className="text-danger-500">*</span>
-                        </label>
+                        <label className="label label-required">First Name</label>
                         <input
                           type="text"
                           value={profileFormData.firstName}
                           onChange={(e) => setProfileFormData({ ...profileFormData, firstName: e.target.value })}
                           disabled={!editingProfile || !canEditProfile}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+                          className="input"
                           required
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Middle Name
-                        </label>
+                        <label className="label">Middle Name</label>
                         <input
                           type="text"
                           value={profileFormData.middleName}
                           onChange={(e) => setProfileFormData({ ...profileFormData, middleName: e.target.value })}
                           disabled={!editingProfile || !canEditProfile}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+                          className="input"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Last Name <span className="text-danger-500">*</span>
-                        </label>
+                        <label className="label label-required">Last Name</label>
                         <input
                           type="text"
                           value={profileFormData.lastName}
                           onChange={(e) => setProfileFormData({ ...profileFormData, lastName: e.target.value })}
                           disabled={!editingProfile || !canEditProfile}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+                          className="input"
                           required
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Email
-                        </label>
+                        <label className="label">Email</label>
                         <input
                           type="email"
                           value={profileFormData.email}
                           onChange={(e) => setProfileFormData({ ...profileFormData, email: e.target.value })}
                           disabled={!editingProfile || !canEditProfile}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+                          className="input"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Contact Number
-                        </label>
+                        <label className="label">Contact Number</label>
                         <input
                           type="tel"
                           value={profileFormData.contactNumber}
                           onChange={(e) => setProfileFormData({ ...profileFormData, contactNumber: e.target.value })}
                           disabled={!editingProfile || !canEditProfile}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+                          className="input"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Designated Role
-                        </label>
+                        <label className="label">Designated Role</label>
                         <input
                           type="text"
                           value={user?.role ? user.role.replace('_', ' ') : ''}
                           disabled
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-600"
+                          className="input"
                         />
                       </div>
                     </div>
@@ -1069,40 +1132,18 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                               : 'Not available'}
                           </dd>
                         </div>
-                        <div>
-                          <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Account Validity</dt>
-                          <dd className="mt-1 text-sm text-gray-900">
-                            {user?.created
-                              ? (() => {
-                                  const d = new Date(user.created.replace(' ', 'T'));
-                                  if (Number.isNaN(d.getTime())) return 'Not available';
-                                  const expiry = new Date(d);
-                                  expiry.setFullYear(expiry.getFullYear() + 4);
-                                  const isExpired = expiry.getTime() < Date.now();
-                                  return (
-                                    <span className={isExpired ? 'text-red-600 font-medium' : ''}>
-                                      {expiry.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}
-                                      {isExpired && ' (Expired)'}
-                                    </span>
-                                  );
-                                })()
-                              : 'Not available'}
-                          </dd>
-                        </div>
                       </dl>
                     </div>
 
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pt-4">
-                      <p className="text-xs text-gray-500">
-                        Some fields are managed by your organization. Please contact an administrator to update your primary profile information.
-                      </p>
+                      <p className="text-xs text-gray-500">Update your personal details below.</p>
                       <div className="flex justify-end gap-3">
                         {canEditProfile && (
                           !editingProfile ? (
                             <button
                               type="button"
                               onClick={handleEditProfile}
-                              className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+                              className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-xl hover:bg-primary-700 transition-colors shadow-sm"
                             >
                               Edit Profile
                             </button>
@@ -1111,14 +1152,14 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                               <button
                                 type="button"
                                 onClick={handleCancelEditProfile}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
                               >
                                 Cancel
                               </button>
                               <button
                                 type="submit"
                                 disabled={savingProfile}
-                                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-xl hover:bg-primary-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {savingProfile ? 'Saving...' : 'Save Changes'}
                               </button>
@@ -1132,13 +1173,13 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
               ) : (
                 <form onSubmit={handlePasswordChange} className="space-y-6" noValidate>
                   {passwordError && (
-                    <div className="bg-danger-50 border-l-4 border-danger-500 p-4 rounded-lg">
+                    <div className="bg-danger-50 border-l-4 border-danger-500 p-4 rounded-xl">
                       <p className="text-sm text-danger-700">{passwordError}</p>
                     </div>
                   )}
 
                   {passwordSuccess && (
-                    <div className="bg-success-50 border-l-4 border-success-500 p-4 rounded-lg">
+                    <div className="bg-success-50 border-l-4 border-success-500 p-4 rounded-xl">
                       <p className="text-sm text-success-700">{passwordSuccess}</p>
                     </div>
                   )}
@@ -1152,7 +1193,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                         type={showOldPassword ? 'text' : 'password'}
                         value={oldPassword}
                         onChange={(e) => setOldPassword(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="input"
                         placeholder="Enter current password"
                         required
                       />
@@ -1176,7 +1217,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                         type={showNewPassword ? 'text' : 'password'}
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="input"
                         placeholder="Enter new password"
                         required
                       />
@@ -1190,22 +1231,22 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                       </button>
                     </div>
 
-                    <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+                    <div className="mt-3 rounded-xl border border-primary-100 bg-primary-50 px-4 py-3">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-700">
                         <div className="flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
                           <span>At least 8 characters</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
                           <span>Contains a number</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
                           <span>Contains a special character</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
                           <span>Case sensitive</span>
                         </div>
                       </div>
@@ -1221,7 +1262,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                         type={showConfirmPassword ? 'text' : 'password'}
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="input"
                         placeholder="Re-type new password"
                         required
                       />
@@ -1240,13 +1281,13 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                     <button
                       type="button"
                       onClick={handleCloseAccountModal}
-                      className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                      className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                      className="px-4 py-2.5 text-sm font-medium text-white bg-primary-600 rounded-xl hover:bg-primary-700 transition-colors shadow-sm"
                     >
                       Change Password
                     </button>

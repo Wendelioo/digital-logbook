@@ -116,18 +116,29 @@ export const StatCard: React.FC<StatCardProps> = ({
     green: 'bg-success-100 text-success-700',
     red: 'bg-danger-100 text-danger-700',
     yellow: 'bg-warning-100 text-warning-700',
-    purple: 'bg-purple-100 text-purple-700',
-    indigo: 'bg-indigo-100 text-indigo-700',
-    orange: 'bg-orange-100 text-orange-700',
+    // Keep non-neutral dashboard tones subtle and consistent.
+    purple: 'bg-primary-100 text-primary-700',
+    indigo: 'bg-primary-100 text-primary-700',
+    orange: 'bg-warning-100 text-warning-700',
+  };
+
+  const borderLClasses = {
+    blue: 'border-l-primary-200',
+    green: 'border-l-success-200',
+    red: 'border-l-danger-200',
+    yellow: 'border-l-warning-200',
+    purple: 'border-l-primary-200',
+    indigo: 'border-l-primary-200',
+    orange: 'border-l-warning-200',
   };
 
   return (
-    <Card className={`min-w-0 border-l-4 border-l-primary-200 ${className}`}>
+    <Card className={`min-w-0 border-l-4 ${borderLClasses[color]} ${className}`}>
       <CardBody noPadding className="p-3 sm:p-4">
         <div className="flex items-center gap-3 min-w-0">
           {icon && (
             <div className="flex-shrink-0">
-              <div className={`${colorClasses[color]} rounded-lg p-2`}>
+              <div className={`${colorClasses[color]} rounded-xl p-2`}>
                 <div className="[&>svg]:h-4 [&>svg]:w-4 sm:[&>svg]:h-5 sm:[&>svg]:w-5">
                   {icon}
                 </div>
@@ -186,7 +197,7 @@ export const InfoCard: React.FC<InfoCardProps> = ({
   return (
     <div className={`flex items-start space-x-4 ${className}`}>
       <div className="flex-shrink-0">
-        <div className={`w-12 h-12 ${iconColorClasses[iconColor]} rounded-lg flex items-center justify-center`}>
+        <div className={`w-12 h-12 ${iconColorClasses[iconColor]} rounded-xl flex items-center justify-center`}>
           {icon}
         </div>
       </div>

@@ -7,6 +7,8 @@ import {
   X,
   Archive,
   ArchiveRestore,
+  Filter,
+  Search,
 } from 'lucide-react';
 import {
   GetActiveStudentsForArchiving,
@@ -30,6 +32,7 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState<'active' | 'archived'>(archivedOnly ? 'archived' : 'active');
   const [searchTerm, setSearchTerm] = useState('');
+  const [studentFilter, setStudentFilter] = useState<'all' | 'with_email' | 'without_email' | 'urgent' | 'warning' | 'safe'>('all');
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
   const [showUnarchiveModal, setShowUnarchiveModal] = useState(false);
   const [studentToUnarchive, setStudentToUnarchive] = useState<ArchivedStudent | null>(null);
@@ -58,6 +61,10 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
 
   useEffect(() => {
     loadData();
+  }, [selectedTab, archivedOnly]);
+
+  useEffect(() => {
+    setStudentFilter('all');
   }, [selectedTab, archivedOnly]);
 
   const showNotification = (type: 'success' | 'error', message: string) => {
@@ -109,17 +116,34 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
     }
   };
 
-  const filteredActiveStudents = activeStudents.filter(student =>
-    student.student_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.last_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredActiveStudents = activeStudents.filter(student => {
+    const matchesSearch =
+      student.student_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.last_name?.toLowerCase().includes(searchTerm.toLowerCase());
 
-  const filteredArchivedStudents = archivedStudents.filter(student =>
-    student.student_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    student.last_name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    if (!matchesSearch) return false;
+
+    if (studentFilter === 'with_email') return !!student.email;
+    if (studentFilter === 'without_email') return !student.email;
+    return true;
+  });
+
+  const filteredArchivedStudents = archivedStudents.filter(student => {
+    const matchesSearch =
+      student.student_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.last_name.toLowerCase().includes(searchTerm.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    if (studentFilter === 'urgent') return student.days_until_deletion <= 30;
+    if (studentFilter === 'warning') return student.days_until_deletion > 30 && student.days_until_deletion <= 90;
+    if (studentFilter === 'safe') return student.days_until_deletion > 90;
+    return true;
+  });
+
+  const isArchivedView = archivedOnly || selectedTab === 'archived';
 
   return (
     <div className="p-6">
@@ -186,20 +210,47 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
       )}
 
       {/* Actions Bar */}
-      <div className="mb-6 flex items-center justify-between">
-        <div className="relative flex-1 max-w-md">
-          <input
-            type="text"
-            placeholder="Search students..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+      <div className="mb-6 flex justify-end">
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+          <div className="relative w-72 max-w-full">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search students..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="h-10 w-full rounded-md border border-gray-300 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div className={`flex h-10 w-full items-center gap-2 rounded-lg px-3 sm:w-56 ${
+            studentFilter !== 'all'
+              ? 'bg-primary-50 border border-primary-500 text-primary-700'
+              : 'bg-white border border-gray-300 text-gray-700'
+          }`}>
+            <Filter className="h-4 w-4" />
+            <span className="text-sm font-medium">Filter</span>
+            <select
+              value={studentFilter}
+              onChange={(e) => setStudentFilter(e.target.value as typeof studentFilter)}
+              className="h-full min-w-0 flex-1 bg-transparent text-sm font-medium focus:outline-none"
+            >
+              {isArchivedView ? (
+                <>
+                  <option value="all">Filter: All archived students</option>
+                  <option value="urgent">Filter: Urgent (30 days or less)</option>
+                  <option value="warning">Filter: Warning (31-90 days)</option>
+                  <option value="safe">Filter: Safe (91+ days)</option>
+                </>
+              ) : (
+                <>
+                  <option value="all">Filter: All active students</option>
+                  <option value="with_email">Filter: With email</option>
+                  <option value="without_email">Filter: Without email</option>
+                </>
+              )}
+            </select>
+          </div>
         </div>
-        {(archivedOnly || selectedTab === 'archived') && null}
       </div>
 
       {/* Content */}
@@ -348,8 +399,8 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
 
       {/* Restore Confirmation Modal */}
       {showUnarchiveModal && studentToUnarchive && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-2 sm:mx-4 p-4 sm:p-6 max-h-[calc(100vh-2rem)] overflow-y-auto">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
                 <ArchiveRestore className="h-6 w-6 text-green-600" />

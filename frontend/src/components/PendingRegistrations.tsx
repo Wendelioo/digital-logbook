@@ -506,15 +506,15 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
 
       {/* Reject Modal */}
       {showRejectModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-xl p-4 sm:p-6 max-w-md w-full mx-2 sm:mx-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
             <h3 className="text-xl font-bold text-gray-800 mb-4">Reject Registration</h3>
             <p className="text-gray-600 mb-4">Please provide a reason for rejecting this registration:</p>
             <textarea
               value={rejectionReason}
               onChange={(e) => setRejectionReason(e.target.value)}
               placeholder="e.g., Invalid student ID, missing verification documents..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
               rows={4}
             />
             <div className="flex gap-3 mt-6">

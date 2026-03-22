@@ -21,7 +21,6 @@ type printableExportDocument struct {
 	Title            string
 	Subtitle         string
 	Details          []printableExportField
-	TableTitle       string
 	TableNote        string
 	Headers          []string
 	Rows             [][]string
@@ -76,7 +75,7 @@ func buildPrintableCSVRows(doc printableExportDocument) [][]string {
 		}
 	}
 
-	rows = append(rows, []string{""}, []string{doc.TableTitle})
+	rows = append(rows, []string{""})
 	if strings.TrimSpace(doc.TableNote) != "" {
 		rows = append(rows, []string{doc.TableNote})
 	}
@@ -155,8 +154,6 @@ func writePrintablePDF(filename string, doc printableExportDocument) error {
 		pdf.Ln(3)
 	}
 
-	pdf.SetFont("Arial", "B", 10)
-	pdf.CellFormat(0, 6, doc.TableTitle, "", 1, "L", false, 0, "")
 	if strings.TrimSpace(doc.TableNote) != "" {
 		pdf.SetFont("Arial", "", 9)
 		pdf.CellFormat(0, 5, doc.TableNote, "", 1, "L", false, 0, "")
@@ -285,7 +282,6 @@ func generatePrintableDocx(doc printableExportDocument) ([]byte, error) {
 		}
 	}
 
-	sb.WriteString(docxParagraph(doc.TableTitle, true, 22, false))
 	if strings.TrimSpace(doc.TableNote) != "" {
 		sb.WriteString(docxParagraph(doc.TableNote, false, 18, false))
 	}

@@ -4,6 +4,7 @@ import { useNotifications, type BackendNotification } from '../contexts/Notifica
 
 export interface DashboardNotificationItem {
   id: string;
+  title?: string;
   message: string;
   createdAt: number;
   tone?: 'info' | 'warning' | 'success';
@@ -40,10 +41,22 @@ export default function DashboardNotifications({ items, emptyMessage }: Dashboar
 
   const visibleItems = useMemo(() => items.slice(0, 5), [items]);
 
+  const toneAccent = (tone?: DashboardNotificationItem['tone']) => {
+    switch (tone) {
+      case 'success':
+        return 'border-success-200';
+      case 'warning':
+        return 'border-warning-200';
+      case 'info':
+      default:
+        return 'border-primary-200';
+    }
+  };
+
   return (
     <div className="space-y-3">
       {visibleItems.length === 0 ? (
-        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
           <div className="flex items-center">
             <Bell className="h-5 w-5 text-primary-600 mr-3" />
             <span className="text-sm text-gray-700">{emptyMessage}</span>
@@ -54,10 +67,19 @@ export default function DashboardNotifications({ items, emptyMessage }: Dashboar
         visibleItems.map((item) => (
           <div
             key={item.id}
-            className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 shadow-sm"
+            className={`flex items-start justify-between p-3 bg-white rounded-xl border border-gray-200 border-l-4 ${toneAccent(item.tone)} shadow-sm`}
           >
             <div className="flex-1 pr-3">
-              <span className="text-sm text-gray-800">{item.message}</span>
+              {item.title && (
+                <p className="text-sm font-semibold text-gray-900">
+                  {item.title}
+                </p>
+              )}
+              <p
+                className={`text-xs ${item.title ? 'text-gray-600 mt-0.5' : 'text-gray-800 font-medium'}`}
+              >
+                {item.message}
+              </p>
             </div>
             <span className="text-xs text-gray-500 whitespace-nowrap">
               {getRelativeTime(item.createdAt, now)}
@@ -83,6 +105,7 @@ export function BackendDashboardNotifications({ category, emptyMessage }: Backen
 
   const items: DashboardNotificationItem[] = filtered.map(n => ({
     id: String(n.id),
+    title: n.title,
     message: n.message,
     createdAt: new Date(n.created_at).getTime(),
     tone: n.tone as DashboardNotificationItem['tone'],

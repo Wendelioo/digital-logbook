@@ -69,7 +69,7 @@ const UserManagement: React.FC = () => {
 
       {/* Filters */}
       <div className="flex gap-4">
-        <div className="flex-1 relative">
+        <div className="relative w-72 max-w-full">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
           <input
             type="text"

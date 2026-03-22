@@ -277,7 +277,7 @@ function AttendanceManagementDetail() {
 
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
-      <div className="min-h-screen p-4 md:p-8">
+      <div className="min-h-screen p-3 sm:p-4 md:p-8">
         {error && (
           <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md max-w-7xl mx-auto">
             {error}
@@ -321,7 +321,7 @@ function AttendanceManagementDetail() {
 
         {/* Attendance Sheet - Bond Paper Style */}
         {!loading && selectedClass && hasSelectedDate && (
-          <div className="bg-white max-w-4xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
+          <div className="bg-white max-w-4xl mx-auto my-4 sm:my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
             {/* Close Button */}
             <button
               onClick={handleCancelClick}

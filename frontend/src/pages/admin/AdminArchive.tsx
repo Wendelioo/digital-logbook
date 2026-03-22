@@ -622,7 +622,7 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
           )}
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <div className="flex items-center justify-end gap-2">
-              <div className="w-64 relative">
+              <div className="w-64 max-w-full relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type="text"
@@ -760,8 +760,8 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
 
           {/* Export Modal (same structure and text as active Log Entries) */}
           {showLogExportModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4 overflow-y-auto h-full w-full">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-2 sm:mx-4 overflow-hidden max-h-[calc(100vh-2rem)] overflow-y-auto">
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
                   <h3 className="text-lg font-semibold text-gray-900">Export Log Entries</h3>
                   <button onClick={() => setShowLogExportModal(false)} className="text-gray-400 hover:text-gray-600">
@@ -859,7 +859,7 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
           )}
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <div className="flex items-center justify-end gap-2">
-              <div className="w-64 relative">
+              <div className="w-64 max-w-full relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type="text"
@@ -997,8 +997,8 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
 
           {/* Export Modal (same structure and text as active Equipment Reports, no icons in modal) */}
           {showReportExportModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4 overflow-y-auto h-full w-full">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-2 sm:mx-4 overflow-hidden max-h-[calc(100vh-2rem)] overflow-y-auto">
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
                   <h3 className="text-lg font-semibold text-gray-900">Export Equipment Reports</h3>
                   <button onClick={() => setShowReportExportModal(false)} className="text-gray-400 hover:text-gray-600">

@@ -1,27 +1,13 @@
+-- Digital Logbook SQL Server DDL
+-- Run this file on SQL Server to create the schema objects for logbookdb.
 
-USE logbookdb;
+IF DB_ID('logbookdb') IS NULL
+BEGIN
+    CREATE DATABASE logbookdb;
+END;
 GO
 
-IF OBJECT_ID('notifications', 'U') IS NOT NULL DROP TABLE notifications;
-IF OBJECT_ID('password_reset_requests', 'U') IS NOT NULL DROP TABLE password_reset_requests;
-IF OBJECT_ID('registration_approvals', 'U') IS NOT NULL DROP TABLE registration_approvals;
-IF OBJECT_ID('feedback', 'U') IS NOT NULL DROP TABLE feedback;
-IF OBJECT_ID('user_session_heartbeats', 'U') IS NOT NULL DROP TABLE user_session_heartbeats;
-IF OBJECT_ID('log_entries', 'U') IS NOT NULL DROP TABLE log_entries;
-IF OBJECT_ID('attendance', 'U') IS NOT NULL DROP TABLE attendance;
-IF OBJECT_ID('attendance_sessions', 'U') IS NOT NULL DROP TABLE attendance_sessions;
-IF OBJECT_ID('student_archived_classes', 'U') IS NOT NULL DROP TABLE student_archived_classes;
--- Backward compatibility: old name used in previous build
-IF OBJECT_ID('student_hidden_classes', 'U') IS NOT NULL DROP TABLE student_hidden_classes;
-IF OBJECT_ID('classlist', 'U') IS NOT NULL DROP TABLE classlist;
-IF OBJECT_ID('classes', 'U') IS NOT NULL DROP TABLE classes;
-IF OBJECT_ID('subjects', 'U') IS NOT NULL DROP TABLE subjects;
-IF OBJECT_ID('students', 'U') IS NOT NULL DROP TABLE students;
-IF OBJECT_ID('teachers', 'U') IS NOT NULL DROP TABLE teachers;
-IF OBJECT_ID('admins', 'U') IS NOT NULL DROP TABLE admins;
-IF OBJECT_ID('profile_photos', 'U') IS NOT NULL DROP TABLE profile_photos;
-IF OBJECT_ID('departments', 'U') IS NOT NULL DROP TABLE departments;
-IF OBJECT_ID('users', 'U') IS NOT NULL DROP TABLE users;
+USE logbookdb;
 GO
 
 CREATE TABLE users (
@@ -31,11 +17,8 @@ CREATE TABLE users (
     user_type NVARCHAR(20) NOT NULL CHECK (user_type IN ('admin', 'teacher', 'student', 'working_student')),
     account_status NVARCHAR(20) DEFAULT 'active' CHECK (account_status IN ('pending', 'active', 'archived', 'deactivated', 'deleted', 'rejected')),
     is_active BIT DEFAULT 1,
-    -- Timestamp when account was manually archived by admin
     archived_at DATETIME NULL,
-    -- Auto-deactivated after 6+ months of inactivity
     deactivated_at DATETIME NULL,
-    -- Soft-delete flag: set when account has been deactivated for 4+ years (pending permanent removal)
     deleted_at DATETIME NULL,
     created_at DATETIME DEFAULT GETDATE(),
     updated_at DATETIME DEFAULT GETDATE()
@@ -73,7 +56,6 @@ CREATE TABLE admins (
     FOREIGN KEY (id) REFERENCES users(id) ON DELETE CASCADE
 );
 GO
-
 
 CREATE TABLE teachers (
     id INT PRIMARY KEY,
@@ -165,9 +147,6 @@ CREATE TABLE student_archived_classes (
 );
 GO
 
-/* ================================
-   ATTENDANCE
-================================ */
 CREATE TABLE attendance (
     id INT IDENTITY(1,1) PRIMARY KEY,
     class_id INT NOT NULL,
@@ -186,9 +165,6 @@ CREATE TABLE attendance (
 );
 GO
 
-/* ================================
-   ATTENDANCE SESSIONS
-================================ */
 CREATE TABLE attendance_sessions (
     session_id INT IDENTITY(1,1) PRIMARY KEY,
     class_id INT NOT NULL,
@@ -208,15 +184,6 @@ CREATE TABLE attendance_sessions (
 );
 GO
 
-ALTER TABLE attendance
-ADD CONSTRAINT FK_attendance_session_id
-FOREIGN KEY (session_id) REFERENCES attendance_sessions(session_id)
-ON DELETE SET NULL;
-GO
-
-/* ================================
-   LOG ENTRIES
-================================ */
 CREATE TABLE log_entries (
     id INT IDENTITY(1,1) PRIMARY KEY,
     user_id INT NOT NULL,
@@ -231,13 +198,12 @@ CREATE TABLE log_entries (
 );
 GO
 
-
 CREATE TABLE user_session_heartbeats (
-     user_id INT NOT NULL PRIMARY KEY,
-     last_seen DATETIME NOT NULL DEFAULT GETDATE(),
-     created_at DATETIME NOT NULL DEFAULT GETDATE(),
-     updated_at DATETIME NOT NULL DEFAULT GETDATE(),
-     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    user_id INT NOT NULL PRIMARY KEY,
+    last_seen DATETIME NOT NULL DEFAULT GETDATE(),
+    created_at DATETIME NOT NULL DEFAULT GETDATE(),
+    updated_at DATETIME NOT NULL DEFAULT GETDATE(),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 GO
 
@@ -274,7 +240,6 @@ CREATE TABLE feedback (
 );
 GO
 
-
 CREATE TABLE registration_approvals (
     id INT IDENTITY(1,1) PRIMARY KEY,
     user_id INT UNIQUE NOT NULL,
@@ -290,35 +255,32 @@ CREATE TABLE registration_approvals (
 GO
 
 CREATE TABLE password_reset_requests (
-    id                  INT IDENTITY(1,1) PRIMARY KEY,
-    student_user_id     INT NOT NULL,
-    teacher_user_id     INT NOT NULL,
-    new_password_hash   NVARCHAR(255) NOT NULL,
-    status              NVARCHAR(20) NOT NULL DEFAULT 'pending'
-                            CHECK (status IN ('pending', 'approved', 'rejected')),
-    requested_at        DATETIME DEFAULT GETDATE(),
-    resolved_at         DATETIME NULL,
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    student_user_id INT NOT NULL,
+    teacher_user_id INT NOT NULL,
+    new_password_hash NVARCHAR(255) NOT NULL,
+    status NVARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected')),
+    requested_at DATETIME DEFAULT GETDATE(),
+    resolved_at DATETIME NULL,
     CONSTRAINT fk_prr_student FOREIGN KEY (student_user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_prr_teacher FOREIGN KEY (teacher_user_id) REFERENCES users(id)
 );
 GO
 
-/* ================================
-   NOTIFICATIONS
-================================ */
 CREATE TABLE notifications (
-    id              INT IDENTITY(1,1) PRIMARY KEY,
-    user_id         INT NOT NULL,
-    category        NVARCHAR(50) NOT NULL,
-    title           NVARCHAR(200) NOT NULL,
-    message         NVARCHAR(500) NOT NULL,
-    tone            NVARCHAR(20) NOT NULL DEFAULT 'info'
-                        CHECK (tone IN ('info', 'warning', 'success')),
-    is_read         BIT NOT NULL DEFAULT 0,
-    reference_type  NVARCHAR(50) NULL,
-    reference_id    INT NULL,
-    created_at      DATETIME NOT NULL DEFAULT GETDATE(),
-    read_at         DATETIME NULL,
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    user_id INT NOT NULL,
+    category NVARCHAR(50) NOT NULL,
+    title NVARCHAR(200) NOT NULL,
+    message NVARCHAR(500) NOT NULL,
+    tone NVARCHAR(20) NOT NULL DEFAULT 'info'
+        CHECK (tone IN ('info', 'warning', 'success')),
+    is_read BIT NOT NULL DEFAULT 0,
+    reference_type NVARCHAR(50) NULL,
+    reference_id INT NULL,
+    created_at DATETIME NOT NULL DEFAULT GETDATE(),
+    read_at DATETIME NULL,
     CONSTRAINT FK_notifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 GO
@@ -460,7 +422,7 @@ BEGIN
     UPDATE attendance
     SET updated_at = GETDATE()
     FROM attendance a
-    INNER JOIN inserted i ON a.id = i.id;
+    INNER JOIN inserted i ON a.class_id = i.class_id AND a.student_id = i.student_id AND a.attendance_date = i.attendance_date;
 END;
 GO
 
@@ -488,3 +450,4 @@ BEGIN
     FROM registration_approvals ra
     INNER JOIN inserted i ON ra.id = i.id;
 END;
+GO

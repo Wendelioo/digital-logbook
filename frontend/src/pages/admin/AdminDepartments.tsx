@@ -298,7 +298,7 @@ function DepartmentManagement() {
       {/* Department Form Modal */}
       {showForm && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowForm(false);
@@ -307,7 +307,7 @@ function DepartmentManagement() {
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 relative max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
             {/* Close Button */}
             <button
               type="button"
@@ -322,14 +322,14 @@ function DepartmentManagement() {
             </button>
 
             {/* Header */}
-            <div className="text-center p-8 pb-4 flex-shrink-0">
+            <div className="text-center p-4 sm:p-8 pb-3 sm:pb-4 flex-shrink-0">
               <h3 className="text-2xl font-bold text-blue-600 mb-2">
                 {editingDepartment ? 'Edit Department' : 'Add Department'}
               </h3>
               <div className="w-24 h-0.5 bg-blue-600 mx-auto"></div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto px-8 pb-8 flex-1" noValidate>
+            <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto px-4 sm:px-8 pb-4 sm:pb-8 flex-1" noValidate>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Department Code *</label>
@@ -510,15 +510,15 @@ function DepartmentManagement() {
       {/* Archived Departments Modal */}
       {showArchivedModal && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowArchivedModal(false);
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl mx-4 relative h-[80vh] max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+            <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Archive className="h-5 w-5 text-gray-700" />
                 <h3 className="text-lg font-semibold text-gray-900">Archived Departments</h3>
@@ -606,8 +606,8 @@ function DepartmentManagement() {
 
       {/* Status Change Confirmation Modal */}
       {showStatusModal && selectedDeptForStatus && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-2 sm:mx-4 p-4 sm:p-6 max-h-[calc(100vh-2rem)] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">

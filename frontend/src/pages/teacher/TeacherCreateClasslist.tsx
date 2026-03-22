@@ -147,14 +147,14 @@ function CreateClasslist() {
       )}
 
       <div
-        className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4"
+        className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
         onClick={(e) => {
           if (e.target === e.currentTarget) {
             navigate('/teacher/class-management');
           }
         }}
       >
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 relative max-h-[90vh] flex flex-col">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
           <button
             type="button"
             onClick={() => navigate('/teacher/class-management')}
@@ -170,7 +170,7 @@ function CreateClasslist() {
           </div>
 
           <form onSubmit={handleSubmit} className="flex-1 overflow-hidden flex flex-col" noValidate>
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               <div className="space-y-6">
                 {/* Basic Information Section */}
                 <div>
@@ -307,7 +307,7 @@ function CreateClasslist() {
             </div>
 
             {/* Footer Buttons */}
-            <div className="flex-shrink-0 border-t px-6 py-4 flex justify-end gap-3">
+            <div className="flex-shrink-0 border-t px-4 sm:px-6 py-3 sm:py-4 flex justify-end gap-3">
               <Button
                 type="button"
                 onClick={() => navigate('/teacher/class-management')}

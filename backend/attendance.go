@@ -438,7 +438,6 @@ func buildAttendancePrintableDocument(title string, classInfo attendanceExportCl
 			{Label: "Room", Value: classInfo.Room},
 		},
 		// Match section/title text and column labels with the UI
-		TableTitle:       "DAILY ATTENDANCE RECORD",
 		TableNote:        fmt.Sprintf("Total Students: %d", len(exportRows)),
 		Headers:          []string{"NO.", "STUDENT ID", "STUDENT NAME", "TIME IN", "REMARKS"},
 		Rows:             exportRows,

@@ -1046,9 +1046,9 @@ function AttendanceClassSelection() {
       )}
 
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between px-6 py-4 border-b">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-2 sm:mx-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b">
               <h3 className="text-lg font-semibold text-gray-900">Take Attendance Today</h3>
               <button
                 onClick={() => {
@@ -1060,7 +1060,7 @@ function AttendanceClassSelection() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="px-6 py-4">
+            <div className="px-4 sm:px-6 py-4 sm:py-5">
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Select Class
@@ -1116,7 +1116,7 @@ function AttendanceClassSelection() {
                 />
               </div>
             </div>
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t bg-gray-50">
+            <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 border-t bg-gray-50">
               <Button
                 onClick={() => {
                   setShowAddModal(false);

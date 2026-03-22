@@ -689,7 +689,6 @@ func (a *App) buildClasslistPrintableDocument(classID int) (printableExportDocum
 			{Label: "Schedule", Value: scheduleValue},
 			{Label: "Room", Value: roomValue},
 		},
-		TableTitle:       "STUDENTS LIST",
 		TableNote:        fmt.Sprintf("Total: %d", len(exportRows)),
 		Headers:          []string{"NO.", "STUDENT ID", "NAME", "EMAIL", "CONTACT"},
 		Rows:             exportRows,

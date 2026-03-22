@@ -270,7 +270,7 @@ function ClassManagementDetail() {
 
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
-      <div className="min-h-screen p-4 md:p-8">
+      <div className="min-h-screen p-3 sm:p-4 md:p-8">
         {error && (
           <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md">
             {error}
@@ -278,7 +278,7 @@ function ClassManagementDetail() {
         )}
 
         {/* Single Class List Sheet - Bond Paper Style */}
-        <div className="bg-white max-w-4xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
+        <div className="bg-white max-w-4xl mx-auto my-4 sm:my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
           {/* Close Button - Inside Sheet */}
           <button
             onClick={() => {
@@ -478,14 +478,14 @@ function ClassManagementDetail() {
       {/* Add Student Modal */}
       {showAddModal && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowAddModal(false);
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 relative max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
             <button
               type="button"
               onClick={() => setShowAddModal(false)}
@@ -494,13 +494,13 @@ function ClassManagementDetail() {
               ×
             </button>
 
-            <div className="text-center p-8 pb-4 flex-shrink-0">
+            <div className="text-center p-4 sm:p-8 pb-3 sm:pb-4 flex-shrink-0">
               <h2 className="text-2xl font-bold text-blue-600 mb-2">Add</h2>
               <div className="w-24 h-0.5 bg-blue-600 mx-auto"></div>
               <p className="text-gray-600 mt-4">Select students to enroll in {classInfo?.subject_code}</p>
             </div>
 
-            <div className="px-8 pb-8 flex-1 overflow-hidden flex flex-col">
+            <div className="px-4 sm:px-8 pb-4 sm:pb-8 flex-1 overflow-hidden flex flex-col">
               <div className="mb-4 flex-shrink-0">
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -622,14 +622,14 @@ function ClassManagementDetail() {
       {/* Edit Class Modal */}
       {showEditModal && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowEditModal(false);
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 relative max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
             <button
               type="button"
               onClick={() => setShowEditModal(false)}
@@ -638,12 +638,12 @@ function ClassManagementDetail() {
               ×
             </button>
 
-            <div className="text-center p-8 pb-4 flex-shrink-0">
+            <div className="text-center p-4 sm:p-8 pb-3 sm:pb-4 flex-shrink-0">
               <h2 className="text-2xl font-bold text-blue-600 mb-2">Edit Class</h2>
               <div className="w-24 h-0.5 bg-blue-600 mx-auto"></div>
             </div>
 
-            <div className="px-8 pb-8 flex-1 overflow-y-auto">
+            <div className="px-4 sm:px-8 pb-4 sm:pb-8 flex-1 overflow-y-auto">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">School Year</label>
