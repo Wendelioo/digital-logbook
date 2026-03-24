@@ -9,14 +9,14 @@ html {
     color: #2d2b2f;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue',
+        ui-sans-serif, sans-serif;
 }
 
 body {
     margin: 0;
     color: #2d2b2f;
-    font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont,
-    'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Helvetica Neue',
-    sans-serif;
+    font-family: inherit;
     font-size: 14px;
     line-height: 1.5;
     background: radial-gradient(circle at top left, #f3f4f6 0%, #fafaf9 38%, #f8fafc 100%);
@@ -67,6 +67,31 @@ tbody td {
 
     .surface-panel {
         @apply bg-white/90 backdrop-blur-sm border border-gray-200 rounded-2xl shadow-soft;
+    }
+
+    /* All dialogs: primary-tinted scrim + bordered white panel (matches Modal.tsx) */
+    .modal-backdrop {
+        @apply fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-4 animate-fadeIn;
+        @apply bg-primary-950/50 backdrop-blur-sm;
+    }
+
+    .modal-backdrop-dense {
+        @apply fixed inset-0 z-50 overflow-y-auto animate-fadeIn;
+        @apply bg-primary-950/90 backdrop-blur-md;
+    }
+
+    .modal-surface {
+        @apply bg-white rounded-xl border border-primary-200/90 shadow-2xl;
+        box-shadow:
+            0 25px 50px -12px rgba(52, 62, 79, 0.2),
+            0 0 0 1px rgba(91, 109, 143, 0.06);
+    }
+
+    .modal-surface-2xl {
+        @apply bg-white rounded-2xl border border-primary-200/90 shadow-2xl;
+        box-shadow:
+            0 25px 50px -12px rgba(52, 62, 79, 0.2),
+            0 0 0 1px rgba(91, 109, 143, 0.06);
     }
 
     .section-highlight {
@@ -183,6 +208,32 @@ main h2 {
     
     .icon-warning {
         @apply text-warning-600;
+    }
+
+    /* Table row action clusters — consistent spacing and tap targets */
+    .table-action-group {
+        @apply inline-flex flex-wrap items-center justify-end gap-2;
+    }
+
+    .table-action-group > button {
+        @apply shrink-0;
+    }
+
+    /* Semantic action tones for dense tables (pair with Button or plain buttons) */
+    .table-action-view {
+        @apply inline-flex items-center gap-1.5 rounded-lg border border-primary-200 bg-primary-50 px-2.5 py-1.5 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100;
+    }
+
+    .table-action-positive {
+        @apply inline-flex items-center gap-1.5 rounded-lg border border-success-200 bg-success-50 px-2.5 py-1.5 text-xs font-medium text-success-700 transition-colors hover:bg-success-100;
+    }
+
+    .table-action-destructive {
+        @apply inline-flex items-center gap-1.5 rounded-lg border border-danger-200 bg-danger-50 px-2.5 py-1.5 text-xs font-medium text-danger-700 transition-colors hover:bg-danger-100;
+    }
+
+    .table-action-neutral {
+        @apply inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50;
     }
 }
 
@@ -319,7 +370,7 @@ main h2 {
 }
 
 .react-datepicker {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", sans-serif;
+    font-family: inherit;
     border: 1px solid #ebebea;
     border-radius: 0.75rem;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.03);

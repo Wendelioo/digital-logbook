@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
+import Modal from '../../components/Modal';
 import TeacherStoredArchiveModal from '../../components/TeacherStoredArchiveModal';
 import LoadingDots from '../../components/LoadingDots';
+import { ArchiveIcon } from '../../components/icons/ArchiveIcons';
 import {
   Edit,
-  Archive,
   Eye,
   Save,
   Plus,
@@ -116,6 +117,8 @@ function AttendanceClassSelection() {
   }, [openExportDropdown]);
   const [attendanceSessions, setAttendanceSessions] = useState<AttendanceSession[]>([]);
   const [sessionBusyId, setSessionBusyId] = useState<number | null>(null);
+  const [sessionToRename, setSessionToRename] = useState<AttendanceSession | null>(null);
+  const [renameSessionName, setRenameSessionName] = useState('');
   const [classDuration, setClassDuration] = useState('90');
   const [gracePeriod, setGracePeriod] = useState('10');
   const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
@@ -349,15 +352,34 @@ function AttendanceClassSelection() {
     }
   };
 
-  const handleRenameSession = async (session: AttendanceSession) => {
-    const newName = window.prompt('Rename attendance session:', session.session_name || '');
-    if (!newName || !newName.trim()) return;
+  const openRenameSessionModal = (session: AttendanceSession) => {
+    setSessionToRename(session);
+    setRenameSessionName(session.session_name || '');
+  };
 
-    setSessionBusyId(session.session_id);
+  const closeRenameSessionModal = () => {
+    setSessionToRename(null);
+    setRenameSessionName('');
+  };
+
+  const submitRenameSession = async () => {
+    if (!sessionToRename || !user?.id) return;
+    const trimmed = renameSessionName.trim();
+    if (!trimmed) {
+      setNotice({ type: 'error', text: 'Session name is required.' });
+      return;
+    }
+
+    setSessionBusyId(sessionToRename.session_id);
     setNotice(null);
     try {
-      await (window as any).go.backend.App.RenameAttendanceSession(session.session_id, newName.trim(), user?.id || 0);
-      setRefreshKey(prev => prev + 1);
+      await (window as any).go.backend.App.RenameAttendanceSession(
+        sessionToRename.session_id,
+        trimmed,
+        user.id
+      );
+      closeRenameSessionModal();
+      setRefreshKey((prev) => prev + 1);
     } catch (error) {
       console.error('Failed to rename session:', error);
       setNotice({ type: 'error', text: 'Failed to rename attendance session.' });
@@ -538,7 +560,7 @@ function AttendanceClassSelection() {
               onClick={() => setShowArchiveModal(true)}
               variant="outline"
               size="sm"
-              icon={<Archive className="h-4 w-4" />}
+              icon={<ArchiveIcon />}
             >
               Archive
             </Button>
@@ -656,7 +678,7 @@ function AttendanceClassSelection() {
                     title="View Session"
                   />
                   <Button
-                    onClick={() => handleRenameSession(session)}
+                    onClick={() => openRenameSessionModal(session)}
                     variant="outline"
                     size="sm"
                     disabled={sessionBusyId === session.session_id}
@@ -950,7 +972,7 @@ function AttendanceClassSelection() {
                               variant="outline"
                               size="sm"
                               className="text-orange-600 hover:bg-orange-50"
-                              icon={<Archive className="h-3 w-3" />}
+                              icon={<ArchiveIcon size="xs" />}
                               title="Archive"
                             />
                           )}
@@ -1046,8 +1068,8 @@ function AttendanceClassSelection() {
       )}
 
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-2 sm:mx-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+        <div className="modal-backdrop">
+          <div className="modal-surface w-full max-w-md mx-2 sm:mx-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b">
               <h3 className="text-lg font-semibold text-gray-900">Take Attendance Today</h3>
               <button
@@ -1144,6 +1166,41 @@ function AttendanceClassSelection() {
         initialTab="attendance"
         onAttendanceUnarchived={() => setRefreshKey((prev) => prev + 1)}
       />
+
+      <Modal
+        isOpen={!!sessionToRename}
+        onClose={closeRenameSessionModal}
+        title="Rename attendance session"
+        size="md"
+        footer={
+          <>
+            <Button variant="outline" onClick={closeRenameSessionModal} disabled={sessionBusyId !== null}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={submitRenameSession}
+              disabled={sessionBusyId !== null || !sessionToRename}
+            >
+              {sessionBusyId === sessionToRename?.session_id ? 'Saving…' : 'Save'}
+            </Button>
+          </>
+        }
+      >
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="rename-session-name">
+            Session name
+          </label>
+          <input
+            id="rename-session-name"
+            type="text"
+            value={renameSessionName}
+            onChange={(e) => setRenameSessionName(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            autoFocus
+          />
+        </div>
+      </Modal>
 
     </div>
   );

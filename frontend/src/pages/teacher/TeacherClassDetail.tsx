@@ -23,6 +23,7 @@ import {
 } from '../../../wailsjs/go/backend/App';
 import { openExportSaveDialog, defaultClasslistFilename } from '../../utils/exportSaveDialog';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppUi } from '../../contexts/AppUiContext';
 import { Class, ClasslistEntry, ClassStudent } from './types';
 
 function ClassManagementDetail() {
@@ -31,6 +32,7 @@ function ClassManagementDetail() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const { toast, confirm } = useAppUi();
   const isEditMode = searchParams.get('mode') === 'edit';
   const [classInfo, setClassInfo] = useState<Class | null>(null);
   const [students, setStudents] = useState<ClasslistEntry[]>([]);
@@ -62,10 +64,10 @@ function ClassManagementDetail() {
         return;
       }
       const filePath = await ExportClasslistCSV(classId, savePath);
-      alert(`Classlist exported successfully!\nFile saved to: ${filePath}`);
+      toast(`Classlist exported successfully. File saved to: ${filePath}`, 'success');
     } catch (error) {
       console.error('Failed to export classlist:', error);
-      alert('Failed to export classlist. Please try again.');
+      toast('Failed to export classlist. Please try again.', 'error');
     } finally {
       setExportingClasslist(false);
     }
@@ -132,17 +134,21 @@ function ClassManagementDetail() {
   }, [id, user?.id]);
 
   const handleRemoveStudent = async (studentId: number, classId: number) => {
-    if (!confirm('Are you sure you want to remove this student from the class?')) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Remove student',
+      message: 'Are you sure you want to remove this student from the class?',
+      variant: 'danger',
+      confirmLabel: 'Remove',
+    });
+    if (!ok) return;
 
     try {
       await UnenrollStudentFromClassByIDs(studentId, classId);
       await loadClassDetails();
-      alert('Student removed successfully!');
+      toast('Student removed successfully!', 'success');
     } catch (error) {
       console.error('Failed to remove student:', error);
-      alert('Failed to remove student. Please try again.');
+      toast('Failed to remove student. Please try again.', 'error');
     }
   };
 
@@ -157,7 +163,7 @@ function ClassManagementDetail() {
       setSearchTerm('');
     } catch (error) {
       console.error('Failed to load available students:', error);
-      alert('Failed to load students. Please try again.');
+      toast('Failed to load students. Please try again.', 'error');
     }
   };
 
@@ -171,10 +177,10 @@ function ClassManagementDetail() {
 
       setShowAddModal(false);
       await loadClassDetails();
-      alert(`Successfully enrolled ${selectedStudents.size} student(s)!`);
+      toast(`Successfully enrolled ${selectedStudents.size} student(s)!`, 'success');
     } catch (error) {
       console.error('Failed to enroll students:', error);
-      alert('Failed to enroll some students. Please try again.');
+      toast('Failed to enroll some students. Please try again.', 'error');
     } finally {
       setEnrolling(false);
     }
@@ -201,10 +207,10 @@ function ClassManagementDetail() {
       );
       setShowEditModal(false);
       await loadClassDetails();
-      alert('Class updated successfully!');
+      toast('Class updated successfully!', 'success');
     } catch (error) {
       console.error('Failed to update class:', error);
-      alert('Failed to update class. Please try again.');
+      toast('Failed to update class. Please try again.', 'error');
     } finally {
       setSaving(false);
     }
@@ -269,7 +275,7 @@ function ClassManagementDetail() {
   const isFromArchivedClasslistView = archiveState?.fromArchiveModal && archiveState.returnToArchiveTab === 'classes';
 
   return (
-    <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
+    <div className="modal-backdrop-dense">
       <div className="min-h-screen p-3 sm:p-4 md:p-8">
         {error && (
           <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md">
@@ -478,14 +484,14 @@ function ClassManagementDetail() {
       {/* Add Student Modal */}
       {showAddModal && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
+          className="modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowAddModal(false);
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+          <div className="modal-surface w-full max-w-3xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
             <button
               type="button"
               onClick={() => setShowAddModal(false)}
@@ -622,14 +628,14 @@ function ClassManagementDetail() {
       {/* Edit Class Modal */}
       {showEditModal && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
+          className="modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowEditModal(false);
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+          <div className="modal-surface w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
             <button
               type="button"
               onClick={() => setShowEditModal(false)}

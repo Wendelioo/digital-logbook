@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useAppUi } from '../contexts/AppUiContext';
 import { Card, CardBody } from './Card';
 import Button from './Button';
 import { Badge } from './Badge';
 import LoadingDots from './LoadingDots';
+import { ArchiveRestoreIcon } from './icons/ArchiveIcons';
 import {
   ChevronRight,
   ChevronDown,
-  ArchiveRestore,
   Trash2,
   Calendar,
   Eye,
@@ -47,6 +48,7 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
   onView,
   loading = false
 }) => {
+  const { confirm } = useAppUi();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedLogs, setSelectedLogs] = useState<Set<number>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
@@ -201,7 +203,13 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
 
   const handleDelete = async () => {
     if (!onDelete || selectedLogs.size === 0) return;
-    if (!confirm(`Are you sure you want to permanently delete ${selectedLogs.size} log(s)?`)) return;
+    const ok = await confirm({
+      title: 'Delete logs',
+      message: `Are you sure you want to permanently delete ${selectedLogs.size} log(s)?`,
+      variant: 'danger',
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
     try {
       await onDelete(Array.from(selectedLogs));
       setSelectedLogs(new Set());
@@ -268,7 +276,7 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
               <Button
                 variant="success"
                 onClick={handleRestore}
-                icon={<ArchiveRestore className="h-4 w-4" />}
+                icon={<ArchiveRestoreIcon />}
               >
                 Restore ({selectedLogs.size})
               </Button>

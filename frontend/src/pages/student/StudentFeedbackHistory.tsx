@@ -62,8 +62,8 @@ function DetailsModal({ feedback, onClose }: { feedback: Feedback; onClose: () =
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-2 sm:mx-4 overflow-hidden max-h-[calc(100vh-2rem)] flex flex-col">
+    <div className="modal-backdrop">
+      <div className="modal-surface w-full max-w-lg mx-2 sm:mx-4 overflow-hidden max-h-[calc(100vh-2rem)] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 flex-shrink-0">
           <h3 className="text-lg font-semibold text-gray-900">Report Details</h3>

@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
 import LoadingDots from '../../components/LoadingDots';
+import { ArchiveIcon } from '../../components/icons/ArchiveIcons';
 import {
   Calendar,
   X,
-  Archive,
   Download,
 } from 'lucide-react';
 import {
@@ -276,7 +276,7 @@ function AttendanceManagementDetail() {
   }
 
   return (
-    <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
+    <div className="modal-backdrop-dense">
       <div className="min-h-screen p-3 sm:p-4 md:p-8">
         {error && (
           <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md max-w-7xl mx-auto">
@@ -334,7 +334,7 @@ function AttendanceManagementDetail() {
             {/* Archived Banner */}
             {attendanceRecords.length > 0 && attendanceRecords[0].is_archived && (
               <div className="mb-4 bg-orange-50 border border-orange-200 rounded-md px-4 py-2 flex items-center gap-2">
-                <Archive className="h-4 w-4 text-orange-600" />
+                <ArchiveIcon className="text-warning-600" />
                 <span className="text-sm font-medium text-orange-700">This attendance is archived and cannot be edited</span>
               </div>
             )}

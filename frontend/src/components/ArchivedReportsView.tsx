@@ -3,10 +3,10 @@ import { Card, CardBody } from './Card';
 import Button from './Button';
 import { Badge } from './Badge';
 import LoadingDots from './LoadingDots';
+import { ArchiveRestoreIcon } from './icons/ArchiveIcons';
 import {
   ChevronRight,
   ChevronDown,
-  ArchiveRestore,
   Calendar,
   Eye,
   Search,
@@ -216,7 +216,7 @@ const ArchivedReportsView: React.FC<ArchivedReportsViewProps> = ({
               <Button
                 variant="success"
                 onClick={handleRestore}
-                icon={<ArchiveRestore className="h-4 w-4" />}
+                icon={<ArchiveRestoreIcon />}
               >
                 Restore ({selectedReports.size})
               </Button>

@@ -121,7 +121,9 @@ function Table<T extends Record<string, any>>({
     <div className="bg-white rounded-xl shadow-soft border border-gray-200 overflow-hidden">
       <div className={`${stickyHeader ? 'overflow-x-auto overflow-y-auto max-h-[600px]' : 'overflow-x-auto'}`} style={{ WebkitOverflowScrolling: 'touch' }}>
         <table className="w-full border-collapse" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-          <thead className={`bg-gray-50 ${stickyHeader ? 'sticky top-0 z-10 shadow-sm' : ''}`}>
+          <thead
+            className={`bg-gradient-to-r from-gray-50 via-primary-50/30 to-gray-50 ${stickyHeader ? 'sticky top-0 z-10 shadow-sm' : ''}`}
+          >
             <tr>
               {columns.map((column) => (
                 <th
@@ -130,7 +132,7 @@ function Table<T extends Record<string, any>>({
                   className={`
                     px-6 ${compact ? 'py-2.5' : 'py-3.5'}
                     text-xs font-semibold text-gray-700 uppercase tracking-wider
-                    border-b border-gray-200 align-middle
+                    border-b border-gray-200/90 align-middle
                     ${getAlignmentClass(column.align)}
                     ${column.sortable ? 'cursor-pointer select-none hover:bg-gray-100 transition-colors' : ''}
                     ${column.width ? '' : 'whitespace-nowrap'}
@@ -144,14 +146,14 @@ function Table<T extends Record<string, any>>({
                       <span className="inline-flex flex-col">
                         {sortKey === column.key ? (
                           sortDirection === 'asc' ? (
-                            <ChevronUp className="h-4 w-4 text-primary-600" />
+                            <ChevronUp className="h-4 w-4 text-primary-600" strokeWidth={2} />
                           ) : (
-                            <ChevronDown className="h-4 w-4 text-primary-600" />
+                            <ChevronDown className="h-4 w-4 text-primary-600" strokeWidth={2} />
                           )
                         ) : (
-                          <div className="flex flex-col opacity-30">
-                            <ChevronUp className="h-3 w-3 -mb-1" />
-                            <ChevronDown className="h-3 w-3" />
+                          <div className="flex flex-col opacity-35 text-gray-400">
+                            <ChevronUp className="h-3.5 w-3.5 -mb-1" strokeWidth={2} />
+                            <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
                           </div>
                         )}
                       </span>
@@ -161,7 +163,7 @@ function Table<T extends Record<string, any>>({
               ))}
             </tr>
           </thead>
-          <tbody className={`bg-white divide-y divide-gray-100 ${striped ? '' : ''}`}>
+          <tbody className="divide-y divide-gray-100/90">
             {data.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="px-6 py-12 text-center">
@@ -190,8 +192,14 @@ function Table<T extends Record<string, any>>({
                 <tr
                   key={index}
                   className={`
-                    ${striped && index % 2 === 0 ? 'bg-white' : striped ? 'bg-gray-50/50' : 'bg-white'}
-                    ${hoverable ? 'hover:bg-gray-50 transition-colors' : ''}
+                    ${
+                      striped
+                        ? index % 2 === 0
+                          ? 'bg-white'
+                          : 'bg-slate-50/70'
+                        : 'bg-white'
+                    }
+                    ${hoverable ? 'hover:bg-primary-50/40 transition-colors duration-150' : ''}
                     ${onRowClick ? 'cursor-pointer' : ''}
                   `}
                   onClick={() => onRowClick && onRowClick(item, index)}
@@ -200,10 +208,11 @@ function Table<T extends Record<string, any>>({
                     <td
                       key={column.key}
                       className={`
-                        px-6 ${compact ? 'py-2.5' : 'py-4'}
+                        px-6 ${compact ? 'py-2.5' : 'py-3.5'}
                         text-sm text-gray-900
                         align-middle
                         ${getAlignmentClass(column.align)}
+                        ${column.key === 'actions' ? '[&_button]:shadow-sm' : ''}
                       `}
                       style={{ whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: column.width || 'none' }}
                     >

@@ -1,4 +1,4 @@
-import Modal from './Modal';
+import Modal, { MODAL_BODY_MIN_HEIGHT_CLASS } from './Modal';
 import ArchivedStudentsManagement from '../pages/working-student/WorkingStudentArchiving';
 
 interface WorkingStudentArchivedStudentsModalProps {
@@ -13,6 +13,7 @@ function WorkingStudentArchivedStudentsModal({ isOpen, onClose }: WorkingStudent
       onClose={onClose}
       title="Archive"
       size="2xl"
+      contentMinHeightClassName={MODAL_BODY_MIN_HEIGHT_CLASS}
     >
       <ArchivedStudentsManagement hideHeader archivedOnly />
     </Modal>

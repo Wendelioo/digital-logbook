@@ -5,11 +5,10 @@ import {
   Users,
   Trash2,
   X,
-  Archive,
-  ArchiveRestore,
   Filter,
   Search,
 } from 'lucide-react';
+import { ArchiveIcon, ArchiveRestoreIcon } from '../../components/icons/ArchiveIcons';
 import {
   GetActiveStudentsForArchiving,
   ArchiveStudent,
@@ -18,6 +17,7 @@ import {
   DeleteExpiredStudents,
 } from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppUi } from '../../contexts/AppUiContext';
 import { User, ArchivedStudent } from './types';
 
 interface ArchivedStudentsManagementProps {
@@ -27,6 +27,7 @@ interface ArchivedStudentsManagementProps {
 
 function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }: ArchivedStudentsManagementProps) {
   const { user } = useAuth();
+  const { confirm: confirmDialog } = useAppUi();
   const [activeStudents, setActiveStudents] = useState<User[]>([]);
   const [archivedStudents, setArchivedStudents] = useState<ArchivedStudent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,9 +100,14 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
   };
 
   const handleDeleteExpired = async () => {
-    if (!window.confirm('This will permanently delete all students whose accounts have passed the 360-day retention period. This action cannot be undone. Continue?')) {
-      return;
-    }
+    const ok = await confirmDialog({
+      title: 'Delete expired accounts',
+      message:
+        'This will permanently delete all students whose accounts have passed the 360-day retention period. This action cannot be undone. Continue?',
+      variant: 'danger',
+      confirmLabel: 'Delete permanently',
+    });
+    if (!ok) return;
 
     try {
       const count = await DeleteExpiredStudents();
@@ -202,7 +208,7 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
             >
-              <Archive className="h-4 w-4" />
+              <ArchiveIcon />
               Archived Students ({archivedStudents.length})
             </button>
           </nav>
@@ -304,7 +310,7 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
                           variant="warning"
                           size="sm"
                           onClick={() => handleArchiveStudent(student)}
-                          icon={<Archive className="h-4 w-4" />}
+                          icon={<ArchiveIcon />}
                         >
                           Archive
                         </Button>
@@ -379,7 +385,7 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
                             setStudentToUnarchive(student);
                             setShowUnarchiveModal(true);
                           }}
-                          icon={<ArchiveRestore className="h-4 w-4" />}
+                          icon={<ArchiveRestoreIcon />}
                           title="Restore"
                         />
                       </td>
@@ -399,11 +405,11 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
 
       {/* Restore Confirmation Modal */}
       {showUnarchiveModal && studentToUnarchive && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-2 sm:mx-4 p-4 sm:p-6 max-h-[calc(100vh-2rem)] overflow-y-auto">
+        <div className="modal-backdrop">
+          <div className="modal-surface w-full max-w-md mx-2 sm:mx-4 p-4 sm:p-6 max-h-[calc(100vh-2rem)] overflow-y-auto">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                <ArchiveRestore className="h-6 w-6 text-green-600" />
+                <ArchiveRestoreIcon size="lg" className="text-success-600" />
               </div>
               <h3 className="text-lg font-semibold text-gray-900">Restore Student Account</h3>
             </div>
@@ -428,7 +434,7 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
               <Button
                 variant="success"
                 onClick={handleUnarchiveStudent}
-                icon={<ArchiveRestore className="h-4 w-4" />}
+                icon={<ArchiveRestoreIcon />}
               >
                 Restore
               </Button>

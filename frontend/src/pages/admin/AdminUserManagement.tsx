@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import Table from '../../components/Table';
 import { StatusBadge } from '../../components/Badge';
-import Modal from '../../components/Modal';
+import Modal, { MODAL_BODY_MIN_HEIGHT_CLASS } from '../../components/Modal';
+import { ArchiveIcon, ArchiveRestoreIcon } from '../../components/icons/ArchiveIcons';
 import LoadingDots from '../../components/LoadingDots';
 import {
   UserPlus,
@@ -17,11 +18,11 @@ import {
   User,
   Users,
   Settings,
-  Archive,
-  ArchiveRestore,
   UserCheck,
   UserX,
   Clock,
+  GraduationCap,
+  Wrench,
 } from 'lucide-react';
 import {
   GetUsers,
@@ -29,19 +30,42 @@ import {
   SearchUsers,
   CreateUser,
   UpdateUser,
-  DeleteUser,
   GetDepartments,
   ArchiveUser,
   GetArchivedUsers,
   UnarchiveUser,
   ResetPasswordByRole,
   DeactivateTeacher,
-  DeleteExpiredDeactivatedUsers,
   GetUsersByActivityStatus,
   ReactivateUser,
 } from '../../../wailsjs/go/backend/App';
 import { User as UserType, Department } from './types';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppUi } from '../../contexts/AppUiContext';
+
+const INITIAL_USER_FORM = {
+  password: '',
+  confirmPassword: '',
+  name: '',
+  firstName: '',
+  middleName: '',
+  lastName: '',
+  role: 'teacher',
+  employeeId: '',
+  studentId: '',
+  email: '',
+  contactNumber: '',
+  departmentCode: '',
+};
+
+function validateStrongPasswordClient(pw: string): string | null {
+  if (pw.length < 8) return 'Password must be at least 8 characters.';
+  if (!/[A-Z]/.test(pw)) return 'Include at least one uppercase letter.';
+  if (!/[a-z]/.test(pw)) return 'Include at least one lowercase letter.';
+  if (!/[0-9]/.test(pw)) return 'Include at least one number.';
+  if (!/[^A-Za-z0-9]/.test(pw)) return 'Include at least one special character.';
+  return null;
+}
 
 // ── Frontend time-ago helper ─────────────────────────────────────────────────
 function timeAgoFE(isoDateStr: string): string {
@@ -97,17 +121,17 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
+      className="modal-backdrop"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
         }
       }}
     >
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
+      <div className="modal-surface w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
         {/* Header */}
-        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex items-center gap-2">
-          <Eye className="h-5 w-5 text-gray-700" />
+        <div className="px-4 sm:px-6 py-3.5 border-b border-primary-200/80 flex items-center gap-2 bg-gradient-to-r from-primary-50/95 to-gray-50/90">
+          <Eye className="h-5 w-5 text-primary-600" strokeWidth={1.75} />
           <h3 className="text-lg font-semibold text-gray-900">{getTitle()}</h3>
         </div>
 
@@ -176,6 +200,7 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
 
 function UserManagement() {
   const { user: currentUser } = useAuth();
+  const { confirm } = useAppUi();
   const [users, setUsers] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -186,20 +211,8 @@ function UserManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [formData, setFormData] = useState({
-    password: '',
-    confirmPassword: '',
-    name: '',
-    firstName: '',
-    middleName: '',
-    lastName: '',
-    role: 'teacher',
-    employeeId: '',
-    studentId: '',
-    email: '',
-    contactNumber: '',
-    departmentCode: ''
-  });
+  const [formData, setFormData] = useState(() => ({ ...INITIAL_USER_FORM }));
+  const [formSubmitting, setFormSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -207,7 +220,6 @@ function UserManagement() {
   const [showArchivedModal, setShowArchivedModal] = useState(false);
   const [archivedUsers, setArchivedUsers] = useState<UserType[]>([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
-  const [deleteExpiredLoading, setDeleteExpiredLoading] = useState(false);
 
   // Activity-status tabs (Active / Archived / Deactivated / Deleted)
   type ActivityTab = 'active' | 'archived' | 'deactivated' | 'deleted';
@@ -224,10 +236,15 @@ function UserManagement() {
     role: '',
     created: ''
   });
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   // Pagination state
   const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [resetPasswordUser, setResetPasswordUser] = useState<UserType | null>(null);
+  const [adminResetPassword, setAdminResetPassword] = useState('');
+  const [adminResetPasswordConfirm, setAdminResetPasswordConfirm] = useState('');
+  const [showAdminResetPassword, setShowAdminResetPassword] = useState(false);
+  const [showAdminResetPasswordConfirm, setShowAdminResetPasswordConfirm] = useState(false);
+  const [resetPasswordSubmitting, setResetPasswordSubmitting] = useState(false);
 
   const toggleSort = (key: SortKey) => {
     setSortKey((prevKey) => {
@@ -250,54 +267,11 @@ function UserManagement() {
     setCurrentPage(1);
   };
 
-  const toggleSelectRow = (id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
     setTimeout(() => {
       setNotification(null);
     }, 5000); // Hide notification after 5 seconds
-  };
-
-  const copySelected = async (rows: UserType[]) => {
-    try {
-      const header = ['User ID', 'Full Name', 'User Type'];
-      const lines = rows.map((u) => {
-        const fullName = u.first_name && u.last_name
-          ? `${u.last_name}, ${u.first_name}${u.middle_name ? ' ' + u.middle_name : ''}`
-          : u.name;
-        const loginId = u.employee_id || u.student_id || u.name || '-';
-        return [loginId, fullName, u.role.replace('_', ' ')].join('\t');
-      });
-      const text = [header.join('\t'), ...lines].join('\n');
-      await navigator.clipboard.writeText(text);
-      alert(`Copied ${rows.length} row(s) to clipboard`);
-    } catch (err) {
-      console.error('Failed to copy:', err);
-      alert('Copy to clipboard failed.');
-    }
-  };
-
-  const deleteSelected = async (ids: number[]) => {
-    if (ids.length === 0) return;
-    if (!confirm(`Delete ${ids.length} selected user(s)? This cannot be undone.`)) return;
-    try {
-      await Promise.all(ids.map((id) => DeleteUser(id)));
-      setSelectedIds(new Set());
-      showNotification('success', `${ids.length} user(s) deleted successfully!`);
-      loadUsers();
-    } catch (err) {
-      console.error('Bulk delete failed:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to delete users. Please try again.';
-      showNotification('error', errorMessage);
-    }
   };
 
   useEffect(() => {
@@ -350,7 +324,7 @@ function UserManagement() {
     }
   };
 
-  const loadArchivedUsers = async () => {
+  const loadArchivedUsers = async (opts?: { silent?: boolean }) => {
     setArchivedLoading(true);
     try {
       const data = await GetArchivedUsers();
@@ -358,14 +332,19 @@ function UserManagement() {
     } catch (error) {
       console.error('Failed to load archived users:', error);
       setArchivedUsers([]);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load archived accounts.';
-      showNotification('error', errorMessage);
+      if (!opts?.silent) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load archived accounts.';
+        showNotification('error', errorMessage);
+      }
     } finally {
       setArchivedLoading(false);
     }
   };
 
-  const loadActivityUsers = async (tab: 'active' | 'archived' | 'deactivated' | 'deleted') => {
+  const loadActivityUsers = async (
+    tab: 'active' | 'archived' | 'deactivated' | 'deleted',
+    opts?: { silent?: boolean }
+  ) => {
     setActivityLoading(true);
     try {
       const data = await GetUsersByActivityStatus(tab);
@@ -373,8 +352,10 @@ function UserManagement() {
     } catch (error) {
       console.error('Failed to load activity users:', error);
       setActivityUsers([]);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load accounts.';
-      showNotification('error', errorMessage);
+      if (!opts?.silent) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load accounts.';
+        showNotification('error', errorMessage);
+      }
     } finally {
       setActivityLoading(false);
     }
@@ -382,11 +363,17 @@ function UserManagement() {
 
   const handleReactivate = async (user: UserType) => {
     const name = user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.name;
-    if (!confirm(`Reactivate ${name}? Their account will be restored to active status.`)) return;
+    const ok = await confirm({
+      title: 'Reactivate account',
+      message: `Reactivate ${name}? Their account will be restored to active status.`,
+      variant: 'default',
+      confirmLabel: 'Reactivate',
+    });
+    if (!ok) return;
     try {
       await ReactivateUser(user.id);
       showNotification('success', `${name} has been reactivated.`);
-      loadActivityUsers(activityTab);
+      loadActivityUsers(activityTab, { silent: true });
       loadUsers();
     } catch (error) {
       console.error('Failed to reactivate user:', error);
@@ -397,6 +384,7 @@ function UserManagement() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      setFormSubmitting(true);
       if (!formData.firstName || !formData.lastName) {
         showNotification('error', 'First Name and Last Name are required');
         return;
@@ -445,6 +433,14 @@ function UserManagement() {
         return;
       }
 
+      if (!editingUser && password_to_pass) {
+        const pwErr = validateStrongPasswordClient(password_to_pass);
+        if (pwErr) {
+          showNotification('error', pwErr);
+          return;
+        }
+      }
+
       const departmentCode = (formData.role === 'teacher' || formData.role === 'student' || formData.role === 'working_student')
         ? formData.departmentCode
         : '';
@@ -467,7 +463,7 @@ function UserManagement() {
 
       setShowForm(false);
       setEditingUser(null);
-      setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', email: '', contactNumber: '', departmentCode: '' });
+      setFormData({ ...INITIAL_USER_FORM });
       setAvatarFile(null);
       setAvatarPreview(null);
       loadUsers();
@@ -475,6 +471,8 @@ function UserManagement() {
       console.error('Failed to save user:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to save user. Please try again.';
       showNotification('error', errorMessage);
+    } finally {
+      setFormSubmitting(false);
     }
   };
 
@@ -511,25 +509,6 @@ function UserManagement() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this user permanently? This cannot be undone.')) {
-      return;
-    }
-    try {
-      await DeleteUser(id);
-      showNotification('success', 'User deleted successfully!');
-      loadUsers();
-      loadActivityUsers(activityTab);
-      if (showArchivedModal) {
-        loadArchivedUsers();
-      }
-    } catch (error) {
-      console.error('Failed to delete user:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to delete user. Please try again.';
-      showNotification('error', errorMessage);
-    }
-  };
-
   const handleArchive = async (user: UserType) => {
     if (user.role === 'teacher') {
       showNotification('error', 'Teacher accounts cannot be archived. Please delete the account instead.');
@@ -541,7 +520,7 @@ function UserManagement() {
       showNotification('success', 'User archived successfully!');
       loadUsers();
       if (showArchivedModal) {
-        loadArchivedUsers();
+        loadArchivedUsers({ silent: true });
       }
     } catch (error) {
       console.error('Failed to archive user:', error);
@@ -554,9 +533,9 @@ function UserManagement() {
     try {
       await UnarchiveUser(id);
       showNotification('success', 'Account unarchived successfully!');
-      loadArchivedUsers();
+      loadArchivedUsers({ silent: true });
       loadUsers();
-      loadActivityUsers(activityTab);
+      loadActivityUsers(activityTab, { silent: true });
     } catch (error) {
       console.error('Failed to unarchive user:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to unarchive account. Please try again.';
@@ -564,72 +543,56 @@ function UserManagement() {
     }
   };
 
-  const handleDeleteArchivedUser = async (user: UserType) => {
-    const name = user.first_name && user.last_name
-      ? `${user.first_name} ${user.last_name}`
-      : user.name;
-    if (!confirm(`Permanently delete ${name}? This cannot be undone.`)) return;
-    try {
-      await DeleteUser(user.id);
-      showNotification('success', 'Account deleted permanently.');
-      loadArchivedUsers();
-      loadUsers();
-      loadActivityUsers(activityTab);
-    } catch (error) {
-      console.error('Failed to delete archived user:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to delete account. Please try again.';
-      showNotification('error', errorMessage);
-    }
-  };
-
-  const handleDeleteExpiredDeactivated = async (days: number) => {
-    if (!confirm(`Permanently delete all accounts that have been deactivated for more than ${days} days? This cannot be undone.`)) return;
-    setDeleteExpiredLoading(true);
-    try {
-      const count = await DeleteExpiredDeactivatedUsers(days);
-      showNotification('success', `${count} expired deactivated account(s) deleted permanently.`);
-      loadArchivedUsers();
-      loadUsers();
-      loadActivityUsers(activityTab);
-    } catch (error) {
-      console.error('Failed to delete expired deactivated users:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to delete expired accounts. Please try again.';
-      showNotification('error', errorMessage);
-    } finally {
-      setDeleteExpiredLoading(false);
-    }
-  };
-
-  const handleResetPassword = async (targetUser: UserType) => {
+  const openResetPasswordModal = (targetUser: UserType) => {
     if (!currentUser) {
       showNotification('error', 'Current session not found. Please login again.');
       return;
     }
+    setResetPasswordUser(targetUser);
+    setAdminResetPassword('');
+    setAdminResetPasswordConfirm('');
+    setShowAdminResetPassword(false);
+    setShowAdminResetPasswordConfirm(false);
+  };
 
-    const newPassword = window.prompt(`Set new password for ${targetUser.first_name || targetUser.name}:`);
-    if (newPassword === null) return;
+  const closeResetPasswordModal = () => {
+    setResetPasswordUser(null);
+    setAdminResetPassword('');
+    setAdminResetPasswordConfirm('');
+    setResetPasswordSubmitting(false);
+  };
 
-    const trimmedPassword = newPassword.trim();
+  const submitAdminResetPassword = async () => {
+    if (!currentUser || !resetPasswordUser) return;
+
+    const trimmedPassword = adminResetPassword.trim();
     if (!trimmedPassword) {
       showNotification('error', 'New password is required.');
       return;
     }
 
-    const confirmPassword = window.prompt('Confirm new password:');
-    if (confirmPassword === null) return;
+    const policyError = validateStrongPasswordClient(trimmedPassword);
+    if (policyError) {
+      showNotification('error', policyError);
+      return;
+    }
 
-    if (trimmedPassword !== confirmPassword.trim()) {
+    if (trimmedPassword !== adminResetPasswordConfirm.trim()) {
       showNotification('error', 'Passwords do not match.');
       return;
     }
 
+    setResetPasswordSubmitting(true);
     try {
-      await ResetPasswordByRole(currentUser.id, targetUser.id, trimmedPassword);
+      await ResetPasswordByRole(currentUser.id, resetPasswordUser.id, trimmedPassword);
       showNotification('success', 'Password reset successful.');
+      closeResetPasswordModal();
     } catch (error) {
       console.error('Failed to reset password:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to reset password.';
       showNotification('error', errorMessage);
+    } finally {
+      setResetPasswordSubmitting(false);
     }
   };
 
@@ -705,13 +668,23 @@ function UserManagement() {
 
       {/* Notification */}
       {notification && (
-        <div className="fixed top-4 right-4 z-50 max-w-sm">
-          <div className={`bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out animate-slideIn ${
-            notification.type === 'success' ? 'border-l-4 border-success-500' : 'border-l-4 border-danger-500'
-          }`}>
-            <div className="p-4">
-              <div className="flex items-start">
-                <div className="flex-shrink-0">
+        <div className="fixed top-4 right-4 z-50 w-[min(100vw-2rem,22rem)] sm:w-[min(100vw-2rem,26rem)] max-w-md">
+          <div
+            className={`relative bg-white shadow-lg rounded-xl pointer-events-auto ring-1 ring-primary-900/8 transform transition-all duration-300 ease-in-out animate-slideIn ${
+              notification.type === 'success' ? 'border-l-4 border-success-500' : 'border-l-4 border-danger-500'
+            }`}
+          >
+            <button
+              type="button"
+              className="absolute top-3 right-3 rounded-lg p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-0"
+              onClick={() => setNotification(null)}
+              aria-label="Dismiss notification"
+            >
+              <X className="h-4 w-4" strokeWidth={2} />
+            </button>
+            <div className="p-4 pr-11">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 mt-0.5">
                   {notification.type === 'success' ? (
                     <svg className="h-6 w-6 text-success-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -722,22 +695,13 @@ function UserManagement() {
                     </svg>
                   )}
                 </div>
-                <div className="ml-3 w-0 flex-1 pt-0.5">
-                  <p className={`text-sm font-medium ${
+                <p
+                  className={`text-sm font-medium leading-snug break-words min-w-0 flex-1 ${
                     notification.type === 'success' ? 'text-success-800' : 'text-danger-800'
-                  }`}>
-                    {notification.message}
-                  </p>
-                </div>
-                <div className="ml-4 flex-shrink-0 flex">
-                  <button
-                    className="bg-white rounded-md inline-flex text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-                    onClick={() => setNotification(null)}
-                  >
-                    <span className="sr-only">Close</span>
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
+                  }`}
+                >
+                  {notification.message}
+                </p>
               </div>
             </div>
           </div>
@@ -748,212 +712,319 @@ function UserManagement() {
       <Modal
         isOpen={showForm}
         onClose={() => {
+          if (formSubmitting) return;
           setShowForm(false);
           setEditingUser(null);
-          setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', email: '', contactNumber: '', departmentCode: '' });
+          setFormData({ ...INITIAL_USER_FORM });
           setAvatarFile(null);
           setAvatarPreview(null);
+          setShowPassword(false);
+          setShowConfirmPassword(false);
         }}
-        title={editingUser ? `Edit ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}` : `Add New ${formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working Student'}`}
-        size="lg"
+        title={editingUser ? 'Edit user' : 'Add user'}
+        size="xl"
+        showVariantIcon={false}
+        contentMinHeightClassName="min-h-[min(380px,65vh)]"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              disabled={formSubmitting}
+              onClick={() => {
+                setShowForm(false);
+                setEditingUser(null);
+                setFormData({ ...INITIAL_USER_FORM });
+                setAvatarFile(null);
+                setAvatarPreview(null);
+                setShowPassword(false);
+                setShowConfirmPassword(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="admin-user-form"
+              variant="primary"
+              size="md"
+              loading={formSubmitting}
+              icon={editingUser ? <Edit className="h-4 w-4" strokeWidth={1.75} /> : <UserPlus className="h-4 w-4" strokeWidth={1.75} />}
+            >
+              {editingUser ? 'Save changes' : 'Create user'}
+            </Button>
+          </>
+        }
       >
-        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-          {/* Role Selection - Only shown when adding new user */}
+        <form id="admin-user-form" onSubmit={handleSubmit} className="space-y-5" noValidate>
           {!editingUser && (
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">User Type</label>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { value: 'teacher', label: 'Teacher' },
-                  { value: 'student', label: 'Student' },
-                  { value: 'working_student', label: 'Working Student' }
-                ].map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, role: option.value })}
-                    className={`p-3 rounded-lg border-2 transition-all ${
-                      formData.role === option.value
-                        ? 'border-blue-600 bg-blue-50 shadow-sm'
-                        : 'border-gray-300 bg-white hover:border-blue-300'
-                    }`}
-                  >
-                    <div className={`text-sm font-semibold ${
-                      formData.role === option.value ? 'text-blue-900' : 'text-gray-700'
-                    }`}>
-                      {option.label}
-                    </div>
-                  </button>
-                ))}
+            <p className="text-sm text-gray-600 -mt-1">
+              New account type:{' '}
+              <span className="font-semibold text-gray-900">
+                {formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working student'}
+              </span>
+            </p>
+          )}
+
+          {!editingUser && (
+            <div className="rounded-xl border border-gray-200/90 bg-gray-50/50 p-4 sm:p-5">
+              <p className="label mb-3">Account type</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {(
+                  [
+                    { value: 'teacher', label: 'Teacher', hint: 'Faculty', Icon: Users },
+                    { value: 'student', label: 'Student', hint: 'Learner', Icon: GraduationCap },
+                    { value: 'working_student', label: 'Working student', hint: 'Lab assistant', Icon: Wrench },
+                  ] as const
+                ).map(({ value, label, hint, Icon }) => {
+                  const selected = formData.role === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, role: value })}
+                      className={`flex flex-col items-start gap-1 rounded-xl border-2 px-3.5 py-3 text-left transition-all ${
+                        selected
+                          ? 'border-primary-500 bg-primary-50/80 shadow-sm ring-1 ring-primary-200'
+                          : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/80'
+                      }`}
+                    >
+                      <Icon
+                        className={`h-5 w-5 shrink-0 ${selected ? 'text-primary-600' : 'text-gray-400'}`}
+                        strokeWidth={1.75}
+                      />
+                      <span className={`text-sm font-semibold ${selected ? 'text-primary-900' : 'text-gray-800'}`}>
+                        {label}
+                      </span>
+                      <span className="text-xs text-gray-500 leading-tight">{hint}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Personal Information */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Personal Information</label>
-            <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl border border-gray-200/90 bg-white p-4 sm:p-5 shadow-soft space-y-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Personal</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  First Name <span className="text-red-500">*</span>
+                <label className="label" htmlFor="user-first-name">
+                  First name <span className="text-danger-500">*</span>
                 </label>
                 <input
+                  id="user-first-name"
                   type="text"
+                  autoComplete="given-name"
                   value={formData.firstName}
                   onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="input"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Middle Name
+                <label className="label" htmlFor="user-middle-name">
+                  Middle name
                 </label>
                 <input
+                  id="user-middle-name"
                   type="text"
+                  autoComplete="additional-name"
                   value={formData.middleName}
                   onChange={(e) => setFormData({ ...formData, middleName: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="input"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Last Name <span className="text-red-500">*</span>
+                <label className="label" htmlFor="user-last-name">
+                  Last name <span className="text-danger-500">*</span>
                 </label>
                 <input
+                  id="user-last-name"
                   type="text"
+                  autoComplete="family-name"
                   value={formData.lastName}
                   onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="input"
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Contact Number
+                <label className="label" htmlFor="user-contact">
+                  Contact number
                 </label>
                 <input
+                  id="user-contact"
                   type="tel"
+                  autoComplete="tel"
                   value={formData.contactNumber}
                   onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="input"
                 />
               </div>
             </div>
           </div>
 
-          {/* Account Information */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Account Information</label>
-            <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl border border-gray-200/90 bg-white p-4 sm:p-5 shadow-soft space-y-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Account & sign-in</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {(formData.role === 'teacher' || formData.role === 'student' || formData.role === 'working_student') && (
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Department {(formData.role === 'student' || formData.role === 'working_student') && <span className="text-red-500">*</span>}
+                <div className="sm:col-span-2">
+                  <label className="label" htmlFor="user-department">
+                    Department{' '}
+                    {(formData.role === 'student' || formData.role === 'working_student') && (
+                      <span className="text-danger-500">*</span>
+                    )}
                   </label>
                   <select
+                    id="user-department"
                     value={formData.departmentCode}
                     onChange={(e) => setFormData({ ...formData, departmentCode: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="select"
                     required={formData.role === 'student' || formData.role === 'working_student'}
                   >
-                    <option value="">Select Department</option>
-                    {departments.filter(dept => dept.is_active).map(dept => (
+                    <option value="">Select department</option>
+                    {departments.filter((dept) => dept.is_active).map((dept) => (
                       <option key={dept.department_code} value={dept.department_code}>
-                        {dept.department_code} - {dept.department_name}
+                        {dept.department_code} — {dept.department_name}
                       </option>
                     ))}
                   </select>
+                  {formData.role === 'teacher' && (
+                    <p className="mt-1.5 text-xs text-gray-500">Optional for teachers; required for students and working students.</p>
+                  )}
                 </div>
               )}
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email Address
+              <div className="sm:col-span-2">
+                <label className="label" htmlFor="user-email">
+                  Email <span className="text-gray-400 font-normal">(optional)</span>
                 </label>
                 <input
+                  id="user-email"
                   type="email"
+                  autoComplete="email"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="input"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Username {formData.role === 'teacher' ? '(Employee ID)' : '(Student ID)'} <span className="text-red-500">*</span>
+              <div className="sm:col-span-2 sm:max-w-md">
+                <label className="label" htmlFor="user-login-id">
+                  {formData.role === 'teacher' ? 'Employee ID' : 'Student ID'}{' '}
+                  <span className="text-danger-500">*</span>
                 </label>
                 <input
+                  id="user-login-id"
                   type="text"
+                  inputMode="numeric"
+                  autoComplete="username"
+                  maxLength={7}
+                  placeholder="7 digits"
                   value={formData.role === 'teacher' ? formData.employeeId : formData.studentId}
                   onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, '').slice(0, 7);
                     if (formData.role === 'teacher') {
-                      setFormData({ ...formData, employeeId: e.target.value, password: e.target.value });
+                      setFormData((prev) =>
+                        editingUser
+                          ? { ...prev, employeeId: v }
+                          : { ...prev, employeeId: v, password: v }
+                      );
                     } else {
-                      setFormData({ ...formData, studentId: e.target.value, password: e.target.value });
+                      setFormData((prev) =>
+                        editingUser
+                          ? { ...prev, studentId: v }
+                          : { ...prev, studentId: v, password: v }
+                      );
                     }
                   }}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="input font-mono tabular-nums"
                   required
                 />
+                <p className="mt-1.5 text-xs text-gray-500">
+                  Exactly 7 digits. For new users, the initial password is set to this value until you enter a different password below.
+                </p>
               </div>
+
+              {!editingUser && (
+                <div className="sm:col-span-2 rounded-lg border border-primary-100 bg-primary-50/50 px-3 py-2.5">
+                  <p className="text-xs font-medium text-gray-800">Password requirements</p>
+                  <ul className="mt-1.5 text-xs text-gray-600 list-disc list-inside space-y-0.5">
+                    <li>At least 8 characters</li>
+                    <li>Uppercase, lowercase, number, and special character</li>
+                  </ul>
+                </div>
+              )}
+
+              {editingUser && (
+                <p className="sm:col-span-2 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                  Leave password fields empty to keep the current password. To change it, enter and confirm a new strong password.
+                </p>
+              )}
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Password {!editingUser && <span className="text-red-500">*</span>}
+                <label className="label" htmlFor="user-password">
+                  Password {!editingUser && <span className="text-danger-500">*</span>}
                 </label>
                 <div className="relative">
                   <input
-                    type={showPassword ? "text" : "password"}
+                    id="user-password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete={editingUser ? 'new-password' : 'new-password'}
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-3 py-2 text-sm pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="input pr-10"
                     required={!editingUser}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={1.75} /> : <Eye className="h-4 w-4" strokeWidth={1.75} />}
                   </button>
                 </div>
               </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Confirm Password {!editingUser && <span className="text-red-500">*</span>}
+              <div>
+                <label className="label" htmlFor="user-password-confirm">
+                  Confirm password {!editingUser && <span className="text-danger-500">*</span>}
                 </label>
                 <div className="relative">
                   <input
-                    type={showConfirmPassword ? "text" : "password"}
+                    id="user-password-confirm"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
                     value={formData.confirmPassword}
                     onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                    className="w-full px-3 py-2 text-sm pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="input pr-10"
                     required={!editingUser}
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showConfirmPassword ? <EyeOff className="h-4 w-4" strokeWidth={1.75} /> : <Eye className="h-4 w-4" strokeWidth={1.75} />}
                   </button>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Profile Photo Upload */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Profile Photo</label>
-            <div className="flex items-start space-x-6">
-              <div className="flex-shrink-0">
-                <div className="w-32 h-32 rounded-lg bg-gray-100 border-2 border-gray-300 border-dashed flex items-center justify-center overflow-hidden">
+          <div className="rounded-xl border border-gray-200/90 bg-white p-4 sm:p-5 shadow-soft">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Profile photo</h3>
+            <div className="flex flex-col sm:flex-row sm:items-start gap-5">
+              <div className="flex-shrink-0 mx-auto sm:mx-0">
+                <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-xl bg-gray-50 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden ring-1 ring-gray-100">
                   {avatarPreview ? (
-                    <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
+                    <img src={avatarPreview} alt="" className="w-full h-full object-cover" />
                   ) : (
-                    <User className="h-16 w-16 text-gray-400" />
+                    <User className="h-14 w-14 text-gray-300" strokeWidth={1.25} />
                   )}
                 </div>
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0 text-center sm:text-left">
                 <input
                   type="file"
                   id="avatar-upload"
@@ -961,53 +1032,93 @@ function UserManagement() {
                   onChange={handleAvatarChange}
                   className="hidden"
                 />
-                <label
-                  htmlFor="avatar-upload"
-                  className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-50 transition-colors"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Choose Photo
+                <label htmlFor="avatar-upload">
+                  <span className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-300 bg-white text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-50 transition-colors shadow-sm">
+                    <Upload className="h-4 w-4 text-gray-500" strokeWidth={1.75} />
+                    Choose image
+                  </span>
                 </label>
-                <p className="mt-2 text-sm text-gray-500">
-                  {avatarFile ? avatarFile.name : 'No file selected'}
+                <p className="mt-2 text-xs text-gray-500 truncate">
+                  {avatarFile ? avatarFile.name : 'PNG or JPG recommended.'}
                 </p>
               </div>
             </div>
           </div>
-
-          {/* Action Buttons */}
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                setShowForm(false);
-                setEditingUser(null);
-                setFormData({ password: '', confirmPassword: '', name: '', firstName: '', middleName: '', lastName: '', role: 'teacher', employeeId: '', studentId: '', email: '', contactNumber: '', departmentCode: '' });
-                setAvatarFile(null);
-                setAvatarPreview(null);
-              }}
-              className="px-5 py-2 text-sm bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center space-x-2"
-            >
-              {editingUser ? (
-                <>
-                  <Edit className="h-4 w-4" />
-                  <span>Update User</span>
-                </>
-              ) : (
-                <>
-                  <UserPlus className="h-4 w-4" />
-                  <span>Create User</span>
-                </>
-              )}
-            </button>
-          </div>
         </form>
+      </Modal>
+
+      <Modal
+        isOpen={!!resetPasswordUser}
+        onClose={closeResetPasswordModal}
+        title={
+          resetPasswordUser
+            ? `Reset password — ${resetPasswordUser.first_name || resetPasswordUser.name}`
+            : 'Reset password'
+        }
+        size="md"
+        footer={
+          <>
+            <Button variant="outline" onClick={closeResetPasswordModal} disabled={resetPasswordSubmitting}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={submitAdminResetPassword} disabled={resetPasswordSubmitting}>
+              {resetPasswordSubmitting ? 'Saving…' : 'Save password'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Choose a strong password. It must be at least 8 characters and include uppercase, lowercase, a number, and a
+            special character.
+          </p>
+          <div>
+            <label className="label" htmlFor="admin-reset-password">
+              New password
+            </label>
+            <div className="relative">
+              <input
+                id="admin-reset-password"
+                type={showAdminResetPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={adminResetPassword}
+                onChange={(e) => setAdminResetPassword(e.target.value)}
+                className="input pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowAdminResetPassword(!showAdminResetPassword)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                aria-label={showAdminResetPassword ? 'Hide password' : 'Show password'}
+              >
+                {showAdminResetPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="label" htmlFor="admin-reset-password-confirm">
+              Confirm new password
+            </label>
+            <div className="relative">
+              <input
+                id="admin-reset-password-confirm"
+                type={showAdminResetPasswordConfirm ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={adminResetPasswordConfirm}
+                onChange={(e) => setAdminResetPasswordConfirm(e.target.value)}
+                className="input pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowAdminResetPasswordConfirm(!showAdminResetPasswordConfirm)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                aria-label={showAdminResetPasswordConfirm ? 'Hide password' : 'Show password'}
+              >
+                {showAdminResetPasswordConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+        </div>
       </Modal>
 
       {error && (
@@ -1029,6 +1140,7 @@ function UserManagement() {
         onClose={() => setShowArchivedModal(false)}
         title="Archive"
         size="2xl"
+        contentMinHeightClassName={MODAL_BODY_MIN_HEIGHT_CLASS}
       >
         {archivedLoading ? (
           <div className="flex items-center justify-center h-40">
@@ -1040,25 +1152,6 @@ function UserManagement() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
-              <span>Permanently delete accounts deactivated for:</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleDeleteExpiredDeactivated(30)}
-                disabled={deleteExpiredLoading}
-              >
-                {deleteExpiredLoading ? '…' : '30+ days'}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleDeleteExpiredDeactivated(365)}
-                disabled={deleteExpiredLoading}
-              >
-                365+ days
-              </Button>
-            </div>
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
             <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
@@ -1083,22 +1176,14 @@ function UserManagement() {
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{user.role.replace('_', ' ')}</td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{user.created || '-'}</td>
                     <td className="px-4 py-4 whitespace-nowrap text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="table-action-group">
                         <Button
                           onClick={() => handleUnarchiveUser(user.id)}
                           variant="success"
                           size="sm"
-                          className="h-9 w-9 px-0 py-0"
-                          icon={<ArchiveRestore className="h-4 w-4" />}
+                          className="h-9 w-9 px-0 py-0 min-w-[2.25rem]"
+                          icon={<ArchiveRestoreIcon />}
                           title="Unarchive"
-                        />
-                        <Button
-                          onClick={() => handleDeleteArchivedUser(user)}
-                          variant="danger"
-                          size="sm"
-                          className="h-9 w-9 px-0 py-0"
-                          icon={<Trash2 className="h-4 w-4" />}
-                          title="Delete permanently"
                         />
                       </div>
                     </td>
@@ -1119,7 +1204,7 @@ function UserManagement() {
             {(
               [
                 { key: 'active',      label: 'Active',      icon: <UserCheck className="h-4 w-4" />,  color: 'text-green-600',  border: 'border-green-500'  },
-                { key: 'archived',    label: 'Archived',    icon: <Archive className="h-4 w-4" />,    color: 'text-yellow-600', border: 'border-yellow-500' },
+                { key: 'archived',    label: 'Archived',    icon: <ArchiveIcon />,    color: 'text-warning-700', border: 'border-warning-500' },
                 { key: 'deactivated', label: 'Deactivated', icon: <UserX className="h-4 w-4" />,      color: 'text-orange-600', border: 'border-orange-500' },
                 { key: 'deleted',     label: 'Pending Deletion', icon: <Trash2 className="h-4 w-4" />, color: 'text-red-600',  border: 'border-red-500'    },
               ] as const
@@ -1147,13 +1232,13 @@ function UserManagement() {
             <span className="flex items-center gap-1"><UserCheck className="h-3.5 w-3.5 text-green-500" /> Currently active accounts — last login within the past 6 months.</span>
           )}
           {activityTab === 'archived' && (
-            <span className="flex items-center gap-1"><Archive className="h-3.5 w-3.5 text-yellow-500" /> Manually archived accounts. Unarchive to allow login again.</span>
+            <span className="flex items-center gap-1.5"><ArchiveIcon size="xs" className="text-warning-600" /> Manually archived accounts. Unarchive to allow login again.</span>
           )}
           {activityTab === 'deactivated' && (
             <span className="flex items-center gap-1"><UserX className="h-3.5 w-3.5 text-orange-500" /> Auto-deactivated after 6+ months of inactivity — only admin can reactivate. Accounts deactivated for 4+ years are flagged for deletion.</span>
           )}
           {activityTab === 'deleted' && (
-            <span className="flex items-center gap-1"><Trash2 className="h-3.5 w-3.5 text-red-500" /> Accounts inactive for 4+ years — pending permanent deletion. Admin can still restore them or remove them now.</span>
+            <span className="flex items-center gap-1"><Trash2 className="h-3.5 w-3.5 text-red-500" /> Accounts inactive for 4+ years — flagged for removal by system policy. Admins can restore accounts from this list; permanent deletion is not done from the app.</span>
           )}
         </div>
 
@@ -1242,38 +1327,19 @@ function UserManagement() {
                           <div className="flex items-center justify-end gap-1.5">
                             {/* Archived tab actions */}
                             {activityTab === 'archived' && (
-                              <>
-                                <Button onClick={() => handleUnarchiveUser(user.id)} variant="success" size="sm" icon={<ArchiveRestore className="h-3 w-3" />} title="Unarchive" />
-                                <Button onClick={() => handleDeleteArchivedUser(user)} variant="danger" size="sm" icon={<Trash2 className="h-3 w-3" />} title="Delete permanently" />
-                              </>
+                              <Button onClick={() => handleUnarchiveUser(user.id)} variant="success" size="sm" icon={<ArchiveRestoreIcon size="xs" />} title="Unarchive" />
                             )}
                             {/* Deactivated tab actions */}
                             {activityTab === 'deactivated' && (
-                              <>
-                                <Button onClick={() => handleReactivate(user)} variant="success" size="sm" icon={<UserCheck className="h-3 w-3" />} title="Reactivate account" >
-                                  Reactivate
-                                </Button>
-                                <Button onClick={() => handleDelete(user.id)} variant="danger" size="sm" icon={<Trash2 className="h-3 w-3" />} title="Permanently delete" />
-                              </>
+                              <Button onClick={() => handleReactivate(user)} variant="success" size="sm" icon={<UserCheck className="h-3 w-3" />} title="Reactivate account" >
+                                Reactivate
+                              </Button>
                             )}
                             {/* Deleted (pending deletion) tab actions */}
                             {activityTab === 'deleted' && (
-                              <>
-                                <Button onClick={() => handleReactivate(user)} variant="success" size="sm" icon={<UserCheck className="h-3 w-3" />} title="Restore account" >
-                                  Restore
-                                </Button>
-                                <Button
-                                  onClick={async () => {
-                                    const name = user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.name;
-                                    if (!confirm(`Permanently delete ${name}? This cannot be undone.`)) return;
-                                    try { await DeleteUser(user.id); showNotification('success', 'Account permanently deleted.'); loadActivityUsers(activityTab); }
-                                    catch (error) { showNotification('error', error instanceof Error ? error.message : 'Failed to delete.'); }
-                                  }}
-                                  variant="danger" size="sm" icon={<Trash2 className="h-3 w-3" />} title="Delete permanently"
-                                >
-                                  Delete Now
-                                </Button>
-                              </>
+                              <Button onClick={() => handleReactivate(user)} variant="success" size="sm" icon={<UserCheck className="h-3 w-3" />} title="Restore account" >
+                                Restore
+                              </Button>
                             )}
                           </div>
                         </td>
@@ -1396,7 +1462,7 @@ function UserManagement() {
                         />
                         {user.role !== 'admin' && (
                           <Button
-                            onClick={() => handleResetPassword(user)}
+                            onClick={() => openResetPasswordModal(user)}
                             variant="outline"
                             size="sm"
                             icon={<Settings className="h-3 w-3" />}
@@ -1406,9 +1472,14 @@ function UserManagement() {
                         {user.role === 'teacher' ? (
                           <Button
                             onClick={async () => {
-                              if (!confirm('Deactivate this teacher account? It will become inactive but remain for records and can be restored within 30 days.')) {
-                                return;
-                              }
+                              const ok = await confirm({
+                                title: 'Deactivate teacher',
+                                message:
+                                  'Deactivate this teacher account? It will become inactive but remain for records and can be restored within 30 days.',
+                                variant: 'danger',
+                                confirmLabel: 'Deactivate',
+                              });
+                              if (!ok) return;
                               try {
                                 await DeactivateTeacher(user.id);
                                 showNotification('success', 'Teacher account deactivated.');
@@ -1421,7 +1492,7 @@ function UserManagement() {
                             }}
                             variant="outline"
                             size="sm"
-                            icon={<Archive className="h-3 w-3" />}
+                            icon={<ArchiveIcon size="xs" />}
                             title="Deactivate"
                           />
                         ) : user.role !== 'admin' ? (
@@ -1429,7 +1500,7 @@ function UserManagement() {
                             onClick={() => handleArchive(user)}
                             variant="outline"
                             size="sm"
-                            icon={<Archive className="h-3 w-3" />}
+                            icon={<ArchiveIcon size="xs" />}
                             title="Archive"
                           />
                         ) : null}

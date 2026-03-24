@@ -4,7 +4,7 @@ import { GetPendingRegistrations, ProcessRegistration, GetRegistrationHistory } 
 import Button from '../components/Button';
 import { Card } from '../components/Card';
 import LoadingDots from '../components/LoadingDots';
-import Modal from '../components/Modal';
+import Modal, { MODAL_BODY_MIN_HEIGHT_CLASS } from '../components/Modal';
 import { backend } from '../../wailsjs/go/models';
 
 type PendingRegistration = backend.PendingRegistration;
@@ -303,6 +303,7 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
         title="Registration History"
         size="xl"
         showVariantIcon={false}
+        contentMinHeightClassName={MODAL_BODY_MIN_HEIGHT_CLASS}
       >
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -506,8 +507,8 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
 
       {/* Reject Modal */}
       {showRejectModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
-          <div className="bg-white rounded-xl p-4 sm:p-6 max-w-md w-full mx-2 sm:mx-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+        <div className="modal-backdrop">
+          <div className="modal-surface p-4 sm:p-6 max-w-md w-full mx-2 sm:mx-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
             <h3 className="text-xl font-bold text-gray-800 mb-4">Reject Registration</h3>
             <p className="text-gray-600 mb-4">Please provide a reason for rejecting this registration:</p>
             <textarea

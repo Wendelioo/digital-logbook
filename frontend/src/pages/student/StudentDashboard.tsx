@@ -10,8 +10,8 @@ import {
   Library,
   ClipboardCheck,
   MessageSquare,
-  Archive,
 } from 'lucide-react';
+import { ArchiveIcon } from '../../components/icons/ArchiveIcons';
 import {
   GetStudentDashboard,
   GetStudentLoginLogs,
@@ -20,6 +20,7 @@ import {
 } from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
+import { useAppUi } from '../../contexts/AppUiContext';
 import { backend } from '../../../wailsjs/go/models';
 import { BackendDashboardNotifications } from '../../components/DashboardNotifications';
 import { StudentDashboardData, LoginLog } from './types';
@@ -44,6 +45,7 @@ function DashboardOverview() {
   const DASHBOARD_POLL_INTERVAL_MS = 30000;
   const { user } = useAuth();
   const { refresh: refreshNotifications } = useNotifications();
+  const { toast } = useAppUi();
   const [dashboardData, setDashboardData] = useState<StudentDashboardData>(new backend.StudentDashboard({
     attendance: [],
     today_log: undefined
@@ -212,7 +214,7 @@ function DashboardOverview() {
       setOpenSessions(sessions || []);
     } catch (error: any) {
       console.error('Failed to time in:', error);
-      alert(error?.message || 'Failed to time in. Please try again.');
+      toast(error?.message || 'Failed to time in. Please try again.', 'error');
     } finally {
       setTimingInSession(null);
     }
@@ -242,7 +244,7 @@ function DashboardOverview() {
             <StatCard
               title="Archived Classes"
               value={dashboardData.archived_classes || 0}
-              icon={<Archive />}
+              icon={<ArchiveIcon />}
               color="yellow"
             />
           </div>

@@ -1,4 +1,4 @@
-import Modal from './Modal';
+import Modal, { MODAL_BODY_MIN_HEIGHT_CLASS } from './Modal';
 import ArchiveManagement, { ArchiveTab } from '../pages/admin/AdminArchive';
 
 interface AdminArchiveModalProps {
@@ -16,6 +16,7 @@ function AdminArchiveModal({ isOpen, onClose, initialTab }: AdminArchiveModalPro
       onClose={onClose}
       title={title}
       size="2xl"
+      contentMinHeightClassName={MODAL_BODY_MIN_HEIGHT_CLASS}
     >
       <ArchiveManagement initialTab={initialTab} hideHeader />
     </Modal>

@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Button from '../../components/Button';
 import LoadingDots from '../../components/LoadingDots';
+import { ArchiveRestoreIcon } from '../../components/icons/ArchiveIcons';
 import {
   Eye,
-  ArchiveRestore,
   Download,
   FileText,
   FileSpreadsheet,
@@ -26,6 +26,7 @@ import {
 } from '../../../wailsjs/go/backend/App';
 import { openExportSaveDialog, defaultClasslistFilename, defaultAttendanceFilename, type ExportFormat } from '../../utils/exportSaveDialog';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppUi } from '../../contexts/AppUiContext';
 import { Class } from './types';
 
 export type AttendanceArchiveTab = 'attendance' | 'classes';
@@ -39,6 +40,7 @@ interface AttendanceArchiveProps {
 
 function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarchived, onAttendanceUnarchived }: AttendanceArchiveProps) {
   const { user } = useAuth();
+  const { toast } = useAppUi();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const resolvedInitialTab: AttendanceArchiveTab = initialTab || (searchParams.get('tab') === 'classes' ? 'classes' : 'attendance');
@@ -165,7 +167,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
       if (sid > 0 && user?.id != null) {
         await UnarchiveAttendanceSession(sid, Number(user.id));
       } else {
-        alert('Cannot restore: this sheet has no session. Only individual sheets can be restored.');
+        toast('Cannot restore: this sheet has no session. Only individual sheets can be restored.', 'error');
         return;
       }
       await loadArchivedSheets();
@@ -173,7 +175,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
     } catch (error) {
       console.error('Failed to restore:', error);
       const msg = error instanceof Error ? error.message : 'Failed to unarchive attendance. Please try again.';
-      alert(msg);
+      toast(msg, 'error');
     } finally {
       setUnarchivingAttendance(null);
     }
@@ -209,10 +211,10 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
       } else {
         filePath = await ExportClasslistDOCX(cls.class_id, savePath);
       }
-      alert(`Archived classlist exported successfully.\nFile saved to: ${filePath}`);
+      toast(`Archived classlist exported successfully. File saved to: ${filePath}`, 'success');
     } catch (error) {
       console.error('Failed to download archived classlist:', error);
-      alert('Failed to download archived classlist. Please try again.');
+      toast('Failed to download archived classlist. Please try again.', 'error');
     } finally {
       setDownloadingClasslist(null);
     }
@@ -239,10 +241,10 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
       } else {
         filePath = await ExportArchivedAttendanceDOCXByDate(sheet.class_id, sheet.date, sessionId, savePath);
       }
-      alert(`Archived attendance sheet exported successfully.\nFile saved to: ${filePath}`);
+      toast(`Archived attendance sheet exported successfully. File saved to: ${filePath}`, 'success');
     } catch (error) {
       console.error('Failed to download archived attendance:', error);
-      alert('Failed to download archived attendance. Please try again.');
+      toast('Failed to download archived attendance. Please try again.', 'error');
     } finally {
       setDownloadingAttendance(null);
     }
@@ -467,7 +469,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                               variant="outline"
                               size="sm"
                               className="text-green-600 hover:bg-green-50"
-                              icon={<ArchiveRestore className="h-3 w-3" />}
+                              icon={<ArchiveRestoreIcon size="xs" />}
                               title="Restore"
                               disabled={unarchivingAttendance === (sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`)}
                             />
@@ -653,7 +655,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                               variant="outline"
                               size="sm"
                               className="text-green-600 hover:bg-green-50"
-                              icon={<ArchiveRestore className="h-3 w-3" />}
+                              icon={<ArchiveRestoreIcon size="xs" />}
                               title="Restore"
                               disabled={unarchivingClass === cls.class_id}
                             />

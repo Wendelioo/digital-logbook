@@ -365,7 +365,7 @@ function ViewLogs() {
                         const hasPartialRange = Boolean(pendingFilterFromRow || pendingFilterToRow);
 
                         if (hasPartialRange && !isPendingRowRangeValid) {
-                          alert('Enter a valid row range from 1 to 500 (From must be less than or equal to To).');
+                          showExportToast('error', 'Enter a valid row range from 1 to 500 (From must be less than or equal to To).');
                           return;
                         }
 
@@ -584,11 +584,11 @@ function ViewLogs() {
 
       {/* Export Modal */}
       {showExportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-2 sm:mx-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+        <div className="modal-backdrop">
+          <div className="modal-surface-2xl w-full max-w-md mx-2 sm:mx-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <h3 className="text-lg font-semibold text-gray-900">Export Log Entries</h3>
+            <div className="flex items-center justify-between px-6 py-3.5 border-b border-primary-200/80 bg-gradient-to-r from-primary-50/95 to-gray-50/90">
+              <h3 className="text-lg font-semibold text-primary-950">Export Log Entries</h3>
               <button onClick={() => setShowExportModal(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="h-5 w-5" />
               </button>

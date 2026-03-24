@@ -469,10 +469,10 @@ function LoginPage() {
 
       {/* Forgot Password Modal */}
       {showForgotModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+        <div className="modal-backdrop p-4">
+          <div className="modal-surface-2xl w-full max-w-md">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between px-6 py-3.5 border-b border-primary-200/80 bg-gradient-to-r from-primary-50/95 to-gray-50/90">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-teal-100 rounded-full flex items-center justify-center">
                   <KeyRound className="h-5 w-5 text-teal-600" />

@@ -9,8 +9,8 @@ import {
   Library,
   ClipboardCheck,
   PauseCircle,
-  Archive,
 } from 'lucide-react';
+import { ArchiveIcon } from '../../components/icons/ArchiveIcons';
 import {
   GetTeacherClassesByUserID,
   GetPendingPasswordResets,
@@ -140,7 +140,7 @@ function DashboardOverview() {
               <StatCard
                 title="Archived Classes"
                 value={archivedClasses}
-                icon={<Archive />}
+                icon={<ArchiveIcon />}
                 color="yellow"
               />
               <StatCard

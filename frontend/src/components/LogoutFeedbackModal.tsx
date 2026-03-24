@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, CheckCircle2 } from 'lucide-react';
+import { useAppUi } from '../contexts/AppUiContext';
 
 interface LogoutFeedbackModalProps {
   onClose: () => void;
@@ -140,6 +141,7 @@ function EquipmentItem({ label, value, onChange, issueOnly = false }: EquipmentI
 }
 
 function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedbackModalProps) {
+  const { toast } = useAppUi();
   const [feedback, setFeedback] = useState<FeedbackData>({
     computer: { status: null, issue: '' },
     mouse: { status: null, issue: '' },
@@ -163,7 +165,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
     if (mode === 'logout') {
       if (isOtherPC) {
         if (!feedback.targetPCNumber.trim()) {
-          alert('Please enter the lab and PC number you are reporting for.');
+          toast('Please enter the lab and PC number you are reporting for.', 'error');
           return;
         }
         const items = [
@@ -174,46 +176,46 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
         ];
         for (const { eq, name } of items) {
           if (eq.status === null) {
-            alert(`Please indicate status for the ${name} (Working or Issue).`);
+            toast(`Please indicate status for the ${name} (Working or Issue).`, 'error');
             return;
           }
           if (eq.status === 'no' && !eq.issue.trim()) {
-            alert(`Please describe the issue with the ${name}.`);
+            toast(`Please describe the issue with the ${name}.`, 'error');
             return;
           }
         }
       } else {
         if (!feedback.computer.status || !feedback.mouse.status ||
             !feedback.keyboard.status || !feedback.monitor.status) {
-          alert('Please answer all equipment questions');
+          toast('Please answer all equipment questions', 'error');
           return;
         }
         if (feedback.computer.status === 'no' && !feedback.computer.issue.trim()) {
-          alert('Please describe the issue with the Computer');
+          toast('Please describe the issue with the Computer', 'error');
           return;
         }
         if (feedback.mouse.status === 'no' && !feedback.mouse.issue.trim()) {
-          alert('Please describe the issue with the Mouse');
+          toast('Please describe the issue with the Mouse', 'error');
           return;
         }
         if (feedback.keyboard.status === 'no' && !feedback.keyboard.issue.trim()) {
-          alert('Please describe the issue with the Keyboard');
+          toast('Please describe the issue with the Keyboard', 'error');
           return;
         }
         if (feedback.monitor.status === 'no' && !feedback.monitor.issue.trim()) {
-          alert('Please describe the issue with the Monitor');
+          toast('Please describe the issue with the Monitor', 'error');
           return;
         }
       }
     }
 
     if (mode === 'manual' && !feedback.issueDescription.trim()) {
-      alert('Please describe the issue you are reporting.');
+      toast('Please describe the issue you are reporting.', 'error');
       return;
     }
 
     if (feedback.reportingContext === 'other_pc' && !feedback.targetPCNumber.trim()) {
-      alert('Please enter the lab and PC number you are reporting for.');
+      toast('Please enter the lab and PC number you are reporting for.', 'error');
       return;
     }
 
@@ -249,13 +251,12 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
 
   return (
     <div 
-      className="fixed inset-0 bg-black/40 backdrop-blur-sm overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4"
+      className="modal-backdrop p-4"
       onClick={handleBackdropClick}
-      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
     >
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[calc(100vh-2rem)] overflow-y-auto">
+      <div className="relative modal-surface-2xl w-full max-w-4xl max-h-[calc(100vh-2rem)] overflow-y-auto">
         {/* Header */}
-        <div className="border-b border-gray-100 px-4 sm:px-8 py-4 sm:py-5 sticky top-0 bg-white z-10 rounded-t-2xl">
+        <div className="border-b border-primary-200/70 px-4 sm:px-8 py-4 sm:py-5 sticky top-0 bg-gradient-to-r from-primary-50/90 to-white z-10 rounded-t-2xl">
           <div className="flex justify-between items-start">
             <div className="flex-1">
               <h3 className="text-xl font-bold text-gray-900">{mode === 'logout' ? 'Equipment Check' : 'Report Lab Issue'}</h3>

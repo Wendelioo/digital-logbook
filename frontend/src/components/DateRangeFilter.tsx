@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Button from './Button';
+import { useAppUi } from '../contexts/AppUiContext';
 import { Calendar } from 'lucide-react';
 
 interface DateRangeFilterProps {
@@ -13,6 +14,8 @@ const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
   maxDate, 
   className = '' 
 }) => {
+  const { toast } = useAppUi();
+
   const getYesterdayDate = () => {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -31,7 +34,7 @@ const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
   const handleApply = () => {
     if (startDate && endDate) {
       if (new Date(startDate) > new Date(endDate)) {
-        alert('Start date cannot be after end date');
+        toast('Start date cannot be after end date', 'error');
         return;
       }
       onApply(startDate, endDate);

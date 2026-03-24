@@ -60,7 +60,7 @@ func (a *App) Login(username, password string) (*User, error) {
 	if user.Role == "student" || user.Role == "working_student" {
 		expiryDate := createdAt.AddDate(4, 0, 0)
 		if time.Now().After(expiryDate) {
-			if err := a.DeleteUser(user.ID); err != nil {
+			if err := a.deleteUserByID(user.ID); err != nil {
 				log.Printf("Failed to auto-delete expired student account %d: %v", user.ID, err)
 				return nil, fmt.Errorf("student account has expired and could not be removed automatically. Please contact your administrator.")
 			}

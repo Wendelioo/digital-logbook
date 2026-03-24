@@ -5,7 +5,6 @@ import {
   SearchUsers,
   CreateUser,
   UpdateUser,
-  DeleteUser,
 } from '../../wailsjs/go/backend/App';
 
 interface User {
@@ -149,22 +148,6 @@ export const useUsers = () => {
     }
   }, [fetchUsers]);
 
-  const deleteUser = useCallback(async (id: number) => {
-    setLoading(true);
-    setError(null);
-    try {
-      await DeleteUser(id);
-      await fetchUsers(); // Refresh the list
-      return true;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete user');
-      console.error('Error deleting user:', err);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchUsers]);
-
   return {
     users,
     loading,
@@ -174,6 +157,5 @@ export const useUsers = () => {
     searchUsers,
     createUser,
     updateUser,
-    deleteUser,
   };
 };

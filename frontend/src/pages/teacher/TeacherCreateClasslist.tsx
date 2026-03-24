@@ -147,14 +147,14 @@ function CreateClasslist() {
       )}
 
       <div
-        className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
+        className="modal-backdrop"
         onClick={(e) => {
           if (e.target === e.currentTarget) {
             navigate('/teacher/class-management');
           }
         }}
       >
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+        <div className="modal-surface w-full max-w-3xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
           <button
             type="button"
             onClick={() => navigate('/teacher/class-management')}

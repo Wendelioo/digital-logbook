@@ -6,18 +6,18 @@ import {
   Search,
   Loader2,
   Eye,
-  Archive,
-  ArchiveRestore,
   Filter,
   ChevronDown,
   ChevronRight
 } from 'lucide-react';
+import { ArchiveIcon, ArchiveRestoreIcon } from '../../components/icons/ArchiveIcons';
 import {
   GetStudentArchivedClasses,
   GetClassStudents,
   UnarchiveStudentEnrollment,
 } from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppUi } from '../../contexts/AppUiContext';
 import { CourseClass, ClasslistEntry, SemesterGroup } from './types';
 
 interface ArchivedClassesProps {
@@ -27,6 +27,7 @@ interface ArchivedClassesProps {
 
 function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClassesProps) {
   const { user } = useAuth();
+  const { toast, confirm } = useAppUi();
   const [archivedClasses, setArchivedClasses] = useState<CourseClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -72,7 +73,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
       setClasslistStudents(Array.isArray(students) ? students : []);
     } catch (error) {
       console.error('Failed to load classlist:', error);
-      alert('Failed to load classlist. Please try again.');
+      toast('Failed to load classlist. Please try again.', 'error');
       setClasslistStudents([]);
     } finally {
       setLoadingClasslist(false);
@@ -87,11 +88,14 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
   const handleUnarchiveClass = async (classInfo: CourseClass) => {
     if (!user) return;
     
-    const confirmRestore = window.confirm(
-      `Are you sure you want to restore "${classInfo.subject_code}" to My Classes?`
-    );
-    
-    if (!confirmRestore) return;
+    const ok = await confirm({
+      title: 'Restore class',
+      message: `Are you sure you want to restore "${classInfo.subject_code}" to My Classes?`,
+      variant: 'default',
+      confirmLabel: 'Restore',
+    });
+
+    if (!ok) return;
     
     try {
       await UnarchiveStudentEnrollment(user.id, classInfo.class_id);
@@ -99,7 +103,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
       onClassRestored?.();
     } catch (error) {
       console.error('Failed to restore class:', error);
-      alert(`Failed to restore class. ${error instanceof Error ? error.message : 'Please try again.'}`);
+      toast(`Failed to restore class. ${error instanceof Error ? error.message : 'Please try again.'}`, 'error');
     }
   };
 
@@ -182,7 +186,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
         <div className="flex-shrink-0 mb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Archive className="h-6 w-6 text-gray-600" />
+              <ArchiveIcon size="lg" className="text-gray-600" />
               <h2 className="text-2xl font-bold text-gray-900">Archived Classes</h2>
             </div>
             <div className="text-sm text-gray-500">
@@ -340,7 +344,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                                     className="h-9 w-9 inline-flex items-center justify-center text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors"
                                     title="Restore to My Classes"
                                   >
-                                    <ArchiveRestore className="h-4 w-4" />
+                                    <ArchiveRestoreIcon />
                                   </button>
                                 )}
                               </div>
@@ -375,7 +379,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
 
       {/* Classlist Modal */}
       {viewingClasslist && (
-        <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
+        <div className="modal-backdrop-dense">
           <div className="min-h-screen p-3 sm:p-4 md:p-8">
             {/* Bond Paper Style Class List Sheet */}
             <div className="bg-white max-w-4xl mx-auto my-4 sm:my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>

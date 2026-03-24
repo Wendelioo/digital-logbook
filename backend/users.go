@@ -349,74 +349,26 @@ func (a *App) UpdateUser(id int, name, firstName, middleName, lastName, role, em
 	return err
 }
 
-// DeleteUser deletes a user
-func (a *App) DeleteUser(id int) error {
+// deleteUserByID removes a user row. Used only for automated system flows (not admin UI).
+func (a *App) deleteUserByID(id int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
-
 	query := `DELETE FROM users WHERE id = ?`
 	_, err := a.db.Exec(query, id)
 	return err
 }
 
-// DeleteExpiredDeactivatedUsers permanently deletes accounts that have been deactivated
-// for more than the given number of days. Intended to be run by an administrator
-// (e.g. after 30 days for students, 365 days for teachers who might return).
+// DeleteUser is bound for Wails; administrators cannot permanently delete accounts from the app.
+func (a *App) DeleteUser(id int) error {
+	_ = id
+	return fmt.Errorf("manual account deletion is not supported")
+}
+
+// DeleteExpiredDeactivatedUsers is bound for Wails; bulk deletion from the admin UI is not supported.
 func (a *App) DeleteExpiredDeactivatedUsers(days int) (int, error) {
-	if err := a.checkDB(); err != nil {
-		return 0, err
-	}
-	if days < 1 {
-		days = 30
-	}
-
-	rows, err := a.db.Query(`
-		SELECT id
-		FROM users
-		WHERE account_status = 'deactivated'
-		  AND is_active = 0
-		  AND updated_at <= DATEADD(DAY, -?, GETDATE())
-	`, days)
-	if err != nil {
-		return 0, fmt.Errorf("failed to query expired deactivated users: %w", err)
-	}
-	defer rows.Close()
-
-	var ids []int
-	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err != nil {
-			return 0, fmt.Errorf("failed to scan deactivated user id: %w", err)
-		}
-		ids = append(ids, id)
-	}
-
-	if len(ids) == 0 {
-		return 0, nil
-	}
-
-	placeholders := "?"
-	args := make([]interface{}, len(ids))
-	args[0] = ids[0]
-	for i := 1; i < len(ids); i++ {
-		placeholders += ",?"
-		args[i] = ids[i]
-	}
-
-	deleteQuery := fmt.Sprintf(`DELETE FROM users WHERE id IN (%s)`, placeholders)
-	result, err := a.db.Exec(deleteQuery, args...)
-	if err != nil {
-		return 0, fmt.Errorf("failed to delete expired deactivated users: %w", err)
-	}
-
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get affected row count: %w", err)
-	}
-
-	log.Printf("Deleted %d expired deactivated user account(s) (deactivated >%d days)", affected, days)
-	return int(affected), nil
+	_ = days
+	return 0, fmt.Errorf("bulk account deletion is not supported")
 }
 
 // DeactivateTeacher deactivates a teacher account instead of immediate deletion.
@@ -493,9 +445,10 @@ func (a *App) ArchiveUser(id int) error {
 		return err
 	}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
+	rows, rowsErr := result.RowsAffected()
+	if rowsErr != nil {
+		// SQL Server ODBC driver can return RowsAffected errors even when UPDATE succeeded
+		return nil
 	}
 	if rows == 0 {
 		return fmt.Errorf("user is already archived or not eligible for archiving")
@@ -522,9 +475,10 @@ func (a *App) UnarchiveUser(id int) error {
 		return err
 	}
 
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return err
+	rows, rowsErr := result.RowsAffected()
+	if rowsErr != nil {
+		// SQL Server ODBC driver can return RowsAffected errors even when UPDATE succeeded
+		return nil
 	}
 	if rows == 0 {
 		return fmt.Errorf("user is not archived")

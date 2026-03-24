@@ -562,14 +562,14 @@ function EquipmentReports() {
 
       {showForwardModal && selectedFeedback && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
+          className="modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowForwardModal(false);
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
+          <div className="modal-surface w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
             <Button
               variant="outline"
               size="sm"
@@ -708,7 +708,7 @@ function EquipmentReports() {
 
       {showConfirmModal && confirmFeedback && confirmDecision && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
+          className="modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowConfirmModal(false);
@@ -718,7 +718,7 @@ function EquipmentReports() {
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
+          <div className="modal-surface w-full max-w-lg mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
             <Button
               variant="outline"
               size="sm"
@@ -799,14 +799,14 @@ function EquipmentReports() {
 
       {showBatchForwardModal && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
+          className="modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowBatchForwardModal(false);
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
+          <div className="modal-surface w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
             <Button
               variant="outline"
               size="sm"
@@ -884,14 +884,14 @@ function EquipmentReports() {
 
       {showDetailsModal && selectedReportForDetails && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-3 sm:p-4"
+          className="modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowDetailsModal(false);
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
+          <div className="modal-surface w-full max-w-3xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
             <Button
               variant="outline"
               size="sm"

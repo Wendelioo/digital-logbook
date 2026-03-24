@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
+import { useAppUi } from '../contexts/AppUiContext';
 import { UpdateUserPhoto, ChangePassword, SaveEquipmentFeedback, UpdateUser, GetPendingFeedback, GetConfirmedFeedback, GetPendingRegistrations } from '../../wailsjs/go/backend/App';
 import { compressImage, isImageFile, isValidFileSize } from '../utils/imageUtils';
 import {
@@ -50,6 +51,7 @@ function getNotifRelativeTime(dateStr: string): string {
 function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const { user, logout, updateUser } = useAuth();
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
+  const { toast } = useAppUi();
   const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
   const notifDropdownRef = useRef<HTMLDivElement>(null);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
@@ -236,17 +238,17 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
       if (feedbackMode === 'manual') {
         setShowFeedbackModal(false);
-        alert('Issue report submitted successfully. The working student will review it first.');
+        toast('Issue report submitted successfully. The working student will review it first.', 'success');
         return;
       }
     } catch (error) {
       console.error('Failed to save feedback:', error);
       if (feedbackMode === 'manual') {
-        alert('Failed to submit issue report. Please try again.');
+        toast('Failed to submit issue report. Please try again.', 'error');
         return;
       }
 
-      alert('Failed to save feedback. You will still be logged out.');
+      toast('Failed to save feedback. You will still be logged out.', 'error');
     }
 
     setShowFeedbackModal(false);
@@ -263,12 +265,12 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
     if (!file) return;
 
     if (!isImageFile(file)) {
-      alert('Please select an image file.');
+      toast('Please select an image file.', 'error');
       return;
     }
 
     if (!isValidFileSize(file, 5)) {
-      alert('Image size must be less than 5MB.');
+      toast('Image size must be less than 5MB.', 'error');
       return;
     }
 
@@ -278,13 +280,13 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       setPhotoPreview(compressedDataUrl);
     } catch (error) {
       console.error('Failed to process image:', error);
-      alert('Failed to process the image file. Please try again.');
+      toast('Failed to process the image file. Please try again.', 'error');
     }
   };
 
   const handlePhotoSave = async () => {
     if (!photoFile || !user || !photoPreview) {
-      alert('Please select an image first.');
+      toast('Please select an image first.', 'error');
       return;
     }
 
@@ -303,7 +305,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
       setPhotoFile(null);
 
-      alert('Profile photo updated successfully!');
+      toast('Profile photo updated successfully!', 'success');
     } catch (error: any) {
       console.error('Failed to update profile photo:', error);
 
@@ -313,9 +315,12 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
       const errorMessage = error?.message || error?.toString() || 'Unknown error';
       if (errorMessage.toLowerCase().includes('database not connected')) {
-        alert('Database connection is not available. Your session was restored from a previous login, but the database is currently unreachable. Please restart the application.');
+        toast(
+          'Database connection is not available. Your session was restored from a previous login, but the database is currently unreachable. Please restart the application.',
+          'error'
+        );
       } else {
-        alert(`Failed to update profile photo: ${errorMessage}`);
+        toast(`Failed to update profile photo: ${errorMessage}`, 'error');
       }
     }
   };
@@ -929,10 +934,10 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
       {showAccountModal && (
         <div
-          className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[10000]"
+          className="modal-backdrop !z-[10000] p-4"
           onClick={handleModalBackdropClick}
         >
-          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+          <div className="relative modal-surface-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 bg-white">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
@@ -1300,8 +1305,8 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       )}
 
       {showPendingTasksModal && (
-        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[10001]">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+        <div className="modal-backdrop !z-[10001] p-4">
+          <div className="modal-surface-2xl w-full max-w-md p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-warning-50 rounded-lg flex items-center justify-center flex-shrink-0">
                 <svg className="w-5 h-5 text-warning-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
@@ -1344,8 +1349,8 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       )}
 
       {showLogoutConfirmModal && (
-        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[10001]">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+        <div className="modal-backdrop !z-[10001] p-4">
+          <div className="modal-surface-2xl w-full max-w-md p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Confirm Logout</h3>
             <p className="text-sm text-gray-600 mb-6">
               Are you sure you want to log out? You'll be asked to provide equipment feedback.

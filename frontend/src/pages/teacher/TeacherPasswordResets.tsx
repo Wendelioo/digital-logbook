@@ -8,7 +8,7 @@ import {
 } from '../../../wailsjs/go/backend/App';
 import { backend } from '../../../wailsjs/go/models';
 import { useAuth } from '../../contexts/AuthContext';
-import Modal from '../../components/Modal';
+import Modal, { MODAL_BODY_MIN_HEIGHT_CLASS } from '../../components/Modal';
 import LoadingDots from '../../components/LoadingDots';
 
 type PasswordResetRequest = backend.PasswordResetRequest;
@@ -249,6 +249,7 @@ function TeacherPasswordResets() {
         title="Password Reset Request History"
         size="xl"
         showVariantIcon={false}
+        contentMinHeightClassName={MODAL_BODY_MIN_HEIGHT_CLASS}
       >
         <div className="space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">

@@ -2,6 +2,9 @@ import React, { ReactNode, useEffect } from 'react';
 import { X, AlertCircle, CheckCircle, Info, AlertTriangle } from 'lucide-react';
 import Button from './Button';
 
+/** Use on modals with filters or variable-length lists so the shell height stays stable. */
+export const MODAL_BODY_MIN_HEIGHT_CLASS = 'min-h-[min(480px,72vh)]';
+
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -13,6 +16,11 @@ interface ModalProps {
   footer?: ReactNode;
   variant?: 'default' | 'danger' | 'success' | 'warning' | 'info';
   showVariantIcon?: boolean;
+  /** Applied to the scrollable body so short filtered results do not shrink the dialog. */
+  contentMinHeightClassName?: string;
+  contentClassName?: string;
+  /** Merged with `modal-backdrop` (e.g. `!z-[60]` to stack above another modal). */
+  backdropClassName?: string;
 }
 
 /**
@@ -55,6 +63,9 @@ const Modal: React.FC<ModalProps> = ({
   footer,
   variant = 'default',
   showVariantIcon = true,
+  contentMinHeightClassName,
+  contentClassName,
+  backdropClassName,
 }) => {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -87,14 +98,14 @@ const Modal: React.FC<ModalProps> = ({
 
   const variantIcons = {
     default: null,
-    danger: <AlertCircle className="h-6 w-6 text-danger-600" />,
-    success: <CheckCircle className="h-6 w-6 text-success-600" />,
-    warning: <AlertTriangle className="h-6 w-6 text-warning-600" />,
-    info: <Info className="h-6 w-6 text-info-600" />,
+    danger: <AlertCircle className="h-5 w-5 text-danger-600 shrink-0" strokeWidth={1.75} />,
+    success: <CheckCircle className="h-5 w-5 text-success-600 shrink-0" strokeWidth={1.75} />,
+    warning: <AlertTriangle className="h-5 w-5 text-warning-600 shrink-0" strokeWidth={1.75} />,
+    info: <Info className="h-5 w-5 text-info-600 shrink-0" strokeWidth={1.75} />,
   };
 
   const variantHeaderColors = {
-    default: 'border-gray-200 bg-white',
+    default: 'border-primary-200/80 bg-gradient-to-r from-primary-50/95 via-white to-gray-50/90',
     danger: 'border-danger-200 bg-danger-50',
     success: 'border-success-200 bg-success-50',
     warning: 'border-warning-200 bg-warning-50',
@@ -107,42 +118,48 @@ const Modal: React.FC<ModalProps> = ({
     }
   };
 
+  const backdropClasses = ['modal-backdrop', backdropClassName].filter(Boolean).join(' ');
+
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-fadeIn"
+      className={backdropClasses}
       onClick={handleOverlayClick}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
     >
-      <div className={`relative bg-white rounded-xl shadow-2xl w-full ${sizeClasses[size]} max-h-[calc(100vh-2rem)] flex flex-col animate-slideIn`}>
+      <div
+        className={`relative modal-surface w-full ${sizeClasses[size]} max-h-[calc(100vh-2rem)] min-h-0 flex flex-col animate-slideIn`}
+      >
         {/* Header */}
-        <div className={`flex items-center justify-between px-4 sm:px-6 py-4 border-b ${variantHeaderColors[variant]}`}>
-          <div className={`flex items-center ${showVariantIcon ? 'gap-3' : ''}`}>
+        <div className={`flex items-center justify-between gap-3 px-4 sm:px-6 py-3.5 border-b shrink-0 ${variantHeaderColors[variant]}`}>
+          <div className={`flex items-center min-w-0 ${showVariantIcon ? 'gap-2.5' : ''}`}>
             {showVariantIcon ? variantIcons[variant] : null}
-            <h2 id="modal-title" className="text-lg font-semibold text-gray-900">
+            <h2 id="modal-title" className="text-base font-semibold text-gray-900 truncate tracking-tight">
               {title}
             </h2>
           </div>
           {showCloseButton && (
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-700 transition-colors p-1.5 rounded-xl hover:bg-gray-100"
+              className="text-primary-500 hover:text-primary-800 transition-colors p-2 rounded-lg hover:bg-primary-100/80 shrink-0"
               aria-label="Close modal"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4" strokeWidth={1.75} />
             </button>
           )}
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5">
+        <div
+          className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-4 sm:py-5 ${contentMinHeightClassName ?? ''} ${contentClassName ?? ''}`.trim()}
+        >
           {children}
         </div>
 
         {/* Footer */}
         {footer && (
-          <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-4 bg-gray-50 border-t border-gray-200 rounded-b-xl">
+          <div className="flex items-center justify-end gap-3 px-4 sm:px-6 py-3.5 bg-primary-50/50 border-t border-primary-200/80 rounded-b-xl shrink-0">
             {footer}
           </div>
         )}

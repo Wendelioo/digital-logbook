@@ -7,7 +7,17 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        'sans': ['Segoe UI', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Roboto', 'sans-serif'],
+        /* Inter: tuned for UI + dense tables; bundled via @fontsource/inter */
+        sans: [
+          'Inter',
+          'system-ui',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'Roboto',
+          'Helvetica Neue',
+          'ui-sans-serif',
+          'sans-serif',
+        ],
       },
       colors: {
         // Soft, warm primary accent (muted blue-gray)
