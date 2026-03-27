@@ -1,4 +1,4 @@
-import Modal from './Modal';
+import Modal, { MODAL_BODY_MIN_HEIGHT_CLASS } from './Modal';
 import TeacherAttendanceArchive, { AttendanceArchiveTab } from '../pages/teacher/TeacherAttendanceArchive';
 
 interface TeacherStoredArchiveModalProps {
@@ -18,6 +18,7 @@ function TeacherStoredArchiveModal({ isOpen, onClose, initialTab, onClassUnarchi
       onClose={onClose}
       title={title}
       size="2xl"
+      contentMinHeightClassName={MODAL_BODY_MIN_HEIGHT_CLASS}
     >
       <TeacherAttendanceArchive initialTab={initialTab} hideHeader onClassUnarchived={onClassUnarchived} onAttendanceUnarchived={onAttendanceUnarchived} />
     </Modal>

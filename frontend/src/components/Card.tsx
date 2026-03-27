@@ -43,15 +43,15 @@ export const CardHeader: React.FC<CardHeaderProps> = ({
   className = '' 
 }) => {
   return (
-    <div className={`px-6 py-4 border-b border-gray-200/80 bg-gradient-to-r from-gray-50 to-white ${className}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+    <div className={`px-5 py-3.5 border-b border-gray-200/90 bg-gray-50/90 ${className}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-[0.9375rem] font-semibold text-gray-900 tracking-tight">{title}</h3>
           {subtitle && (
-            <p className="mt-1 text-sm text-gray-600">{subtitle}</p>
+            <p className="mt-1 text-sm text-gray-600 leading-snug">{subtitle}</p>
           )}
         </div>
-        {action && <div className="flex items-center gap-2">{action}</div>}
+        {action && <div className="flex items-center gap-2 shrink-0">{action}</div>}
       </div>
     </div>
   );
@@ -70,7 +70,7 @@ export const CardBody: React.FC<CardBodyProps> = ({
   noPadding = false 
 }) => {
   return (
-    <div className={`${noPadding ? '' : 'p-6'} ${className}`}>
+    <div className={`${noPadding ? '' : 'p-5 sm:p-6'} ${className}`}>
       {children}
     </div>
   );
@@ -84,7 +84,7 @@ interface CardFooterProps {
 
 export const CardFooter: React.FC<CardFooterProps> = ({ children, className = '' }) => {
   return (
-    <div className={`px-6 py-4 bg-gray-50/80 border-t border-gray-200 rounded-b-2xl ${className}`}>
+    <div className={`px-5 py-3.5 bg-gray-50/90 border-t border-gray-200/90 rounded-b-2xl ${className}`}>
       {children}
     </div>
   );
@@ -116,18 +116,29 @@ export const StatCard: React.FC<StatCardProps> = ({
     green: 'bg-success-100 text-success-700',
     red: 'bg-danger-100 text-danger-700',
     yellow: 'bg-warning-100 text-warning-700',
-    purple: 'bg-purple-100 text-purple-700',
-    indigo: 'bg-indigo-100 text-indigo-700',
-    orange: 'bg-orange-100 text-orange-700',
+    // Keep non-neutral dashboard tones subtle and consistent.
+    purple: 'bg-primary-100 text-primary-700',
+    indigo: 'bg-primary-100 text-primary-700',
+    orange: 'bg-warning-100 text-warning-700',
+  };
+
+  const borderLClasses = {
+    blue: 'border-l-primary-200',
+    green: 'border-l-success-200',
+    red: 'border-l-danger-200',
+    yellow: 'border-l-warning-200',
+    purple: 'border-l-primary-200',
+    indigo: 'border-l-primary-200',
+    orange: 'border-l-warning-200',
   };
 
   return (
-    <Card className={`min-w-0 border-l-4 border-l-primary-200 ${className}`}>
+    <Card className={`min-w-0 border-l-4 ${borderLClasses[color]} ${className}`}>
       <CardBody noPadding className="p-3 sm:p-4">
         <div className="flex items-center gap-3 min-w-0">
           {icon && (
             <div className="flex-shrink-0">
-              <div className={`${colorClasses[color]} rounded-lg p-2`}>
+              <div className={`${colorClasses[color]} rounded-xl p-2`}>
                 <div className="[&>svg]:h-4 [&>svg]:w-4 sm:[&>svg]:h-5 sm:[&>svg]:w-5">
                   {icon}
                 </div>
@@ -184,9 +195,11 @@ export const InfoCard: React.FC<InfoCardProps> = ({
   };
 
   return (
-    <div className={`flex items-start space-x-4 ${className}`}>
+    <div className={`flex items-start gap-3 ${className}`}>
       <div className="flex-shrink-0">
-        <div className={`w-12 h-12 ${iconColorClasses[iconColor]} rounded-lg flex items-center justify-center`}>
+        <div
+          className={`w-10 h-10 ${iconColorClasses[iconColor]} rounded-lg flex items-center justify-center [&>svg]:h-5 [&>svg]:w-5`}
+        >
           {icon}
         </div>
       </div>

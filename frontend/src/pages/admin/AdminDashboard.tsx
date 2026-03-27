@@ -15,7 +15,6 @@ import {
 } from '../../../wailsjs/go/backend/App';
 import { BackendDashboardNotifications } from '../../components/DashboardNotifications';
 import { DashboardStats } from './types';
-import { StatusBadge } from '../../components/Badge';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 
@@ -107,34 +106,32 @@ function DashboardOverview() {
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
         <div className="md:col-span-2 space-y-6">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-            <div className="mb-4">
-              <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Overview</h3>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Overview</h3>
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
               <StatCard
                 title="All User Accounts"
                 value={totalUserAccounts}
-                icon={<Users className="h-6 w-6" />}
-                color="purple"
+                icon={<Users />}
+                color="blue"
               />
               <StatCard
                 title="Students"
                 value={stats.total_students}
-                icon={<Users className="h-6 w-6" />}
+                icon={<Users />}
                 color="blue"
               />
               <StatCard
                 title="Teachers"
                 value={stats.total_teachers}
-                icon={<Users className="h-6 w-6" />}
+                icon={<Users />}
                 color="green"
               />
               <StatCard
                 title="Working Students"
                 value={stats.working_students}
-                icon={<Users className="h-6 w-6" />}
-                color="indigo"
+                icon={<Users />}
+                color="yellow"
               />
             </div>
           </div>
@@ -142,34 +139,60 @@ function DashboardOverview() {
           <Card>
             <CardHeader title="Online Users" />
             <CardBody>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="flex items-center p-4 bg-blue-50 rounded-lg">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
-                    <User className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Students Online</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.students_logged_in}</p>
-                  </div>
-                </div>
-                <div className="flex items-center p-4 bg-green-50 rounded-lg">
-                  <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
-                    <User className="h-6 w-6 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Teachers Online</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.teachers_logged_in}</p>
-                  </div>
-                </div>
-                <div className="flex items-center p-4 bg-indigo-50 rounded-lg">
-                  <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mr-4">
-                    <User className="h-6 w-6 text-indigo-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Working Students Online</p>
-                    <p className="text-2xl font-bold text-gray-900">{stats.working_students_logged_in}</p>
-                  </div>
-                </div>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Count
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    <tr className="hover:bg-gray-50/50">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                            <User className="h-5 w-5 text-primary-600" />
+                          </span>
+                          <span className="text-sm font-medium text-gray-800">Students Online</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <span className="text-lg font-bold text-gray-900 tabular-nums">{stats.students_logged_in}</span>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-gray-50/50">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="w-10 h-10 rounded-xl bg-success-50 flex items-center justify-center">
+                            <User className="h-5 w-5 text-success-600" />
+                          </span>
+                          <span className="text-sm font-medium text-gray-800">Teachers Online</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <span className="text-lg font-bold text-gray-900 tabular-nums">{stats.teachers_logged_in}</span>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-gray-50/50">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="w-10 h-10 rounded-xl bg-warning-50 flex items-center justify-center">
+                            <User className="h-5 w-5 text-warning-600" />
+                          </span>
+                          <span className="text-sm font-medium text-gray-800">Working Students Online</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <span className="text-lg font-bold text-gray-900 tabular-nums">{stats.working_students_logged_in}</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </CardBody>
           </Card>
@@ -177,72 +200,60 @@ function DashboardOverview() {
           <Card>
             <CardHeader title="Today's Activity" />
             <CardBody>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center">
-                    <ClipboardList className="h-5 w-5 text-blue-600 mr-3" />
-                    <span className="text-sm font-medium text-gray-700">Total Logins</span>
-                  </div>
-                  <span className="text-lg font-bold text-gray-900">{stats.today_logins}</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center">
-                    <UserPlus className="h-5 w-5 text-green-600 mr-3" />
-                    <span className="text-sm font-medium text-gray-700">New Users</span>
-                  </div>
-                  <span className="text-lg font-bold text-gray-900">{stats.today_new_users}</span>
-                </div>
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center">
-                    <BarChart3 className="h-5 w-5 text-purple-600 mr-3" />
-                    <span className="text-sm font-medium text-gray-700">Recent Activity (24h)</span>
-                  </div>
-                  <span className="text-lg font-bold text-gray-900">{stats.recent_logins}</span>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardHeader title="Quick Actions" />
-            <CardBody>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-                <Link
-                  to="users"
-                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-primary-300 transition-colors"
-                >
-                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-primary-50 flex items-center justify-center">
-                    <UserPlus className="h-5 w-5 sm:h-6 sm:w-6 text-primary-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words">Manage Users</h3>
-                    <p className="text-xs sm:text-sm text-gray-500 leading-snug break-words">Create or update student and teacher accounts.</p>
-                  </div>
-                </Link>
-                <Link
-                  to="logs"
-                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-primary-300 transition-colors"
-                >
-                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-primary-50 flex items-center justify-center">
-                    <ClipboardList className="h-5 w-5 sm:h-6 sm:w-6 text-primary-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words">View Logs</h3>
-                    <p className="text-xs sm:text-sm text-gray-500 leading-snug break-words">Monitor daily login and attendance activity.</p>
-                  </div>
-                </Link>
-                <Link
-                  to="reports"
-                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-primary-300 transition-colors"
-                >
-                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-lg bg-primary-50 flex items-center justify-center">
-                    <FileText className="h-5 w-5 sm:h-6 sm:w-6 text-primary-600" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words">Export Reports</h3>
-                    <p className="text-xs sm:text-sm text-gray-500 leading-snug break-words">Generate logs and feedback report files.</p>
-                  </div>
-                </Link>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Activity
+                      </th>
+                      <th className="px-3 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        Value
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    <tr className="hover:bg-gray-50/50">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                            <ClipboardList className="h-5 w-5 text-primary-600" />
+                          </span>
+                          <span className="text-sm font-medium text-gray-800">Total Logins</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <span className="text-lg font-bold text-gray-900 tabular-nums">{stats.today_logins}</span>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-gray-50/50">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="w-10 h-10 rounded-xl bg-success-50 flex items-center justify-center">
+                            <UserPlus className="h-5 w-5 text-success-600" />
+                          </span>
+                          <span className="text-sm font-medium text-gray-800">New Users</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <span className="text-lg font-bold text-gray-900 tabular-nums">{stats.today_new_users}</span>
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-gray-50/50">
+                      <td className="px-3 py-3">
+                        <div className="flex items-center gap-3">
+                          <span className="w-10 h-10 rounded-xl bg-warning-50 flex items-center justify-center">
+                            <BarChart3 className="h-5 w-5 text-warning-600" />
+                          </span>
+                          <span className="text-sm font-medium text-gray-800">Recent Activity (24h)</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <span className="text-lg font-bold text-gray-900 tabular-nums">{stats.recent_logins}</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </CardBody>
           </Card>
@@ -250,13 +261,68 @@ function DashboardOverview() {
 
         <div className="md:border-l md:border-gray-300 md:pl-6 space-y-6">
           <Card className="h-fit">
+            <CardHeader title="Notifications" />
+            <CardBody>
+              <BackendDashboardNotifications
+                emptyMessage="No new notifications."
+              />
+            </CardBody>
+          </Card>
+
+          <Card className="h-fit">
+            <CardHeader title="Quick Actions" />
+            <CardBody>
+              <div className="space-y-2">
+                <Link
+                  to="users"
+                  className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-200 transition-colors p-3"
+                >
+                  <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                    <UserPlus className="h-5 w-5 text-primary-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">Manage Users</h3>
+                    <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">Create or update student and teacher accounts.</p>
+                  </div>
+                </Link>
+
+                <Link
+                  to="logs"
+                  className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-200 transition-colors p-3"
+                >
+                  <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                    <ClipboardList className="h-5 w-5 text-primary-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">View Logs</h3>
+                    <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">Monitor daily login and attendance activity.</p>
+                  </div>
+                </Link>
+
+                <Link
+                  to="reports"
+                  className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-200 transition-colors p-3"
+                >
+                  <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                    <FileText className="h-5 w-5 text-primary-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">Export Reports</h3>
+                    <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">Generate logs and feedback report files.</p>
+                  </div>
+                </Link>
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card className="h-fit">
             <CardHeader title="Critical Alerts (Today)" />
             <CardBody>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div
                   className={`p-3 rounded-lg border ${
                     nonIssueFeedbackCount > 0
-                      ? 'bg-green-50 border-green-200'
+                      ? 'bg-success-50 border-success-200'
                       : 'bg-gray-50 border-gray-200'
                   }`}
                 >
@@ -266,7 +332,7 @@ function DashboardOverview() {
                     </span>
                     <span
                       className={`text-2xl font-bold ${
-                        nonIssueFeedbackCount > 0 ? 'text-green-700' : 'text-gray-500'
+                        nonIssueFeedbackCount > 0 ? 'text-success-700' : 'text-gray-500'
                       }`}
                     >
                       {nonIssueFeedbackCount > 0 ? nonIssueFeedbackCount : '0'}
@@ -276,25 +342,16 @@ function DashboardOverview() {
 
                 <Link
                   to="reports"
-                  className="flex flex-col p-3 bg-yellow-50 rounded-lg hover:bg-yellow-100 border border-yellow-200 transition-colors"
+                  className="flex flex-col p-3 bg-warning-50 rounded-lg hover:bg-warning-100 border border-warning-200 transition-colors"
                 >
                   <span className="text-sm font-semibold text-gray-800 mb-2">
                     Issue Feedback
                   </span>
-                  <span className="text-2xl font-bold text-yellow-700">
+                  <span className="text-2xl font-bold text-warning-700">
                     {issueFeedbackCount}
                   </span>
                 </Link>
               </div>
-            </CardBody>
-          </Card>
-
-          <Card className="h-fit">
-            <CardHeader title="Notifications" />
-            <CardBody>
-              <BackendDashboardNotifications
-                emptyMessage="No new notifications."
-              />
             </CardBody>
           </Card>
         </div>

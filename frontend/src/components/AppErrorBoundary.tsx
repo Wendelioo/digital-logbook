@@ -26,7 +26,7 @@ class AppErrorBoundary extends React.Component<React.PropsWithChildren, AppError
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-          <div className="w-full max-w-md bg-white border border-gray-200 rounded-lg p-6 text-center shadow-sm">
+          <div className="w-full max-w-md bg-white border border-gray-200 rounded-xl p-6 text-center shadow-sm">
             <h1 className="text-lg font-semibold text-gray-900">Something went wrong</h1>
             <p className="mt-2 text-sm text-gray-600">
               The app encountered an unexpected error. Please reload to continue.
@@ -34,7 +34,7 @@ class AppErrorBoundary extends React.Component<React.PropsWithChildren, AppError
             <button
               type="button"
               onClick={this.handleReload}
-              className="mt-4 inline-flex items-center justify-center px-4 py-2 rounded-md bg-primary-600 text-white text-sm font-medium hover:bg-primary-700"
+              className="mt-4 inline-flex items-center justify-center px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-medium hover:bg-primary-700"
             >
               Reload App
             </button>

@@ -1,15 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardBody } from './Card';
-import Table from './Table';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useAppUi } from '../contexts/AppUiContext';
+import { Card, CardBody } from './Card';
 import Button from './Button';
 import { Badge } from './Badge';
 import LoadingDots from './LoadingDots';
+import { ArchiveRestoreIcon } from './icons/ArchiveIcons';
 import {
   ChevronRight,
   ChevronDown,
-  ArchiveRestore,
   Trash2,
-  Download,
   Calendar,
   Eye,
   Search,
@@ -49,9 +48,9 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
   onView,
   loading = false
 }) => {
+  const { confirm } = useAppUi();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [selectedLogs, setSelectedLogs] = useState<Set<number>>(new Set());
-  const [groupedLogs, setGroupedLogs] = useState<GroupedLogs>({});
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
@@ -79,53 +78,74 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
     setCurrentPage(1);
   };
 
-  // Group logs by archive date (we'll extract from login_time for demo),
-  // applying search and filters similar to the active logs table.
-  useEffect(() => {
+  const groupedLogs = useMemo(() => {
     const grouped: GroupedLogs = {};
-    try {
-      const searchLower = searchQuery.toLowerCase();
+    const searchLower = searchQuery.toLowerCase();
 
-      (archivedLogs || []).forEach((log) => {
-        const matchesSearch =
-          !searchLower ||
-          log.user_name?.toLowerCase().includes(searchLower) ||
-          log.user_id_number?.toLowerCase().includes(searchLower) ||
-          log.user_type?.toLowerCase().includes(searchLower) ||
-          (log.pc_number || '').toLowerCase().includes(searchLower);
+    (archivedLogs || []).forEach((log) => {
+      const matchesSearch =
+        !searchLower ||
+        log.user_name?.toLowerCase().includes(searchLower) ||
+        log.user_id_number?.toLowerCase().includes(searchLower) ||
+        log.user_type?.toLowerCase().includes(searchLower) ||
+        (log.pc_number || '').toLowerCase().includes(searchLower);
 
-        const logDate = log.login_time ? log.login_time.split(/[T\s]/)[0] : '';
-        const matchesDate =
-          (!filterDateFrom || logDate >= filterDateFrom) &&
-          (!filterDateTo || logDate <= filterDateTo);
+      const logDate = log.login_time ? log.login_time.split(/[T\s]/)[0] : '';
+      const matchesDate =
+        (!filterDateFrom || logDate >= filterDateFrom) &&
+        (!filterDateTo || logDate <= filterDateTo);
 
-        const matchesType = !filterUserType || log.user_type === filterUserType;
+      const matchesType = !filterUserType || log.user_type === filterUserType;
 
-        if (!matchesSearch || !matchesDate || !matchesType) return;
+      if (!matchesSearch || !matchesDate || !matchesType) return;
 
-        const raw = log?.login_time;
-        const date = typeof raw === 'string' ? raw.split(' ')[0] : '';
-        if (!date) return;
-        if (!grouped[date]) {
-          grouped[date] = [];
-        }
-        grouped[date].push(log);
+      const raw = log?.login_time;
+      const date = typeof raw === 'string' ? raw.split(' ')[0] : '';
+      if (!date) return;
+
+      if (!grouped[date]) grouped[date] = [];
+      grouped[date].push(log);
+    });
+
+    return grouped;
+  }, [archivedLogs, searchQuery, filterUserType, filterDateFrom, filterDateTo]);
+
+  const sortedDates = useMemo(
+    () => Object.keys(groupedLogs).sort((a, b) => b.localeCompare(a)),
+    [groupedLogs]
+  );
+
+  useEffect(() => {
+    const validDates = new Set(sortedDates);
+
+    setExpandedGroups((prev) => {
+      const next = new Set<string>();
+      prev.forEach((date) => {
+        if (validDates.has(date)) next.add(date);
       });
 
-      setGroupedLogs(grouped);
-
-      const dates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
-      if (dates.length > 0) {
-        setExpandedGroups(new Set([dates[0]]));
-      } else {
-        setExpandedGroups(new Set());
+      if (next.size === 0 && sortedDates.length > 0) {
+        next.add(sortedDates[0]);
       }
-      setCurrentPage(1);
-    } catch (err) {
-      console.error('ArchivedLogsView: failed to group logs', err);
-      setGroupedLogs({});
-    }
-  }, [archivedLogs, searchQuery, filterUserType, filterDateFrom, filterDateTo]);
+
+      return next;
+    });
+  }, [sortedDates]);
+
+  useEffect(() => {
+    const allVisibleIDs = new Set<number>();
+    Object.values(groupedLogs).forEach((logs) => {
+      logs.forEach((log) => allVisibleIDs.add(log.id));
+    });
+
+    setSelectedLogs((prev) => {
+      const next = new Set<number>();
+      prev.forEach((id) => {
+        if (allVisibleIDs.has(id)) next.add(id);
+      });
+      return next;
+    });
+  }, [groupedLogs]);
 
   const toggleGroup = (date: string) => {
     const newExpanded = new Set(expandedGroups);
@@ -183,7 +203,13 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
 
   const handleDelete = async () => {
     if (!onDelete || selectedLogs.size === 0) return;
-    if (!confirm(`Are you sure you want to permanently delete ${selectedLogs.size} log(s)?`)) return;
+    const ok = await confirm({
+      title: 'Delete logs',
+      message: `Are you sure you want to permanently delete ${selectedLogs.size} log(s)?`,
+      variant: 'danger',
+      confirmLabel: 'Delete',
+    });
+    if (!ok) return;
     try {
       await onDelete(Array.from(selectedLogs));
       setSelectedLogs(new Set());
@@ -223,10 +249,19 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
     );
   }
 
-  const sortedDates = Object.keys(groupedLogs).sort((a, b) => b.localeCompare(a));
-
   // Pagination
   const totalPages = Math.ceil(sortedDates.length / itemsPerPage);
+
+  useEffect(() => {
+    if (totalPages === 0) {
+      setCurrentPage(1);
+      return;
+    }
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedDates = sortedDates.slice(startIndex, endIndex);
@@ -241,7 +276,7 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
               <Button
                 variant="success"
                 onClick={handleRestore}
-                icon={<ArchiveRestore className="h-4 w-4" />}
+                icon={<ArchiveRestoreIcon />}
               >
                 Restore ({selectedLogs.size})
               </Button>
@@ -260,7 +295,7 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
           )}
 
           <div className="flex items-center gap-2">
-            <div className="w-64 relative">
+            <div className="w-64 max-w-full relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"
@@ -530,7 +565,17 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
                 {isExpanded && (
                   <div className="p-6 bg-white">
                     <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
+                      <table className="min-w-full table-fixed divide-y divide-gray-200">
+                        <colgroup>
+                          <col style={{ width: '44px' }} />
+                          <col style={{ width: '22%' }} />
+                          <col style={{ width: '14%' }} />
+                          <col style={{ width: '14%' }} />
+                          <col style={{ width: '10%' }} />
+                          <col style={{ width: '16%' }} />
+                          <col style={{ width: '16%' }} />
+                          <col style={{ width: '8%' }} />
+                        </colgroup>
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="w-12 px-6 py-3 text-left">
@@ -575,10 +620,10 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
                                   className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
                                 />
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 truncate" title={log.user_name}>
                                 {log.user_name}
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 truncate" title={log.user_id_number}>
                                 {log.user_id_number}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap">
@@ -591,7 +636,7 @@ const ArchivedLogsView: React.FC<ArchivedLogsViewProps> = ({
                                   {log.user_type.replace('_', ' ')}
                                 </Badge>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 truncate" title={log.pc_number || 'N/A'}>
                                 {log.pc_number || 'N/A'}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">

@@ -4,7 +4,7 @@ import { GetPendingRegistrations, ProcessRegistration, GetRegistrationHistory } 
 import Button from '../components/Button';
 import { Card } from '../components/Card';
 import LoadingDots from '../components/LoadingDots';
-import Modal from '../components/Modal';
+import Modal, { MODAL_BODY_MIN_HEIGHT_CLASS } from '../components/Modal';
 import { backend } from '../../wailsjs/go/models';
 
 type PendingRegistration = backend.PendingRegistration;
@@ -13,6 +13,40 @@ type RegistrationHistoryEntry = backend.RegistrationHistoryEntry;
 interface PendingRegistrationsProps {
   workingStudentUserId: number;
 }
+
+const mapRegistrationWorkflowError = (
+  err: unknown,
+  fallback: string
+): string => {
+  const rawMessage = err instanceof Error ? err.message : '';
+  const message = rawMessage.toLowerCase();
+
+  if (message.includes('rejection reason is required')) {
+    return 'Please provide a rejection reason before rejecting the registration.';
+  }
+
+  if (message.includes('invalid action')) {
+    return 'Invalid registration action. Please refresh and try again.';
+  }
+
+  if (
+    message.includes('pending registration') ||
+    message.includes("account_status = 'pending'") ||
+    message.includes('where id = ? and account_status =')
+  ) {
+    return 'This request is no longer pending. It may have already been processed by another user.';
+  }
+
+  if (message.includes('database') || message.includes('transaction failed') || message.includes('connection')) {
+    return 'Unable to process this registration right now. Please try again in a moment.';
+  }
+
+  if (rawMessage.trim().length > 0) {
+    return rawMessage;
+  }
+
+  return fallback;
+};
 
 const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStudentUserId }) => {
   const [registrations, setRegistrations] = useState<PendingRegistration[]>([]);
@@ -47,8 +81,8 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
       const data = await GetPendingRegistrations();
       setRegistrations(data || []);
       setError('');
-    } catch (err: any) {
-      setError(err.message || 'Failed to load pending registrations');
+    } catch (err) {
+      setError(mapRegistrationWorkflowError(err, 'Failed to load pending registrations.'));
     } finally {
       setLoading(false);
     }
@@ -143,8 +177,8 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
       });
       await loadRegistrations();
       await loadHistory();
-    } catch (err: any) {
-      setError(err.message || 'Failed to approve registration');
+    } catch (err) {
+      setError(mapRegistrationWorkflowError(err, 'Failed to approve registration.'));
     } finally {
       setProcessing(null);
     }
@@ -170,8 +204,8 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
       setShowRejectModal(false);
       setRejectionReason('');
       setSelectedUserId(null);
-    } catch (err: any) {
-      setError(err.message || 'Failed to reject registration');
+    } catch (err) {
+      setError(mapRegistrationWorkflowError(err, 'Failed to reject registration.'));
     } finally {
       setProcessing(null);
     }
@@ -303,6 +337,7 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
         title="Registration History"
         size="xl"
         showVariantIcon={false}
+        contentMinHeightClassName={MODAL_BODY_MIN_HEIGHT_CLASS}
       >
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -506,15 +541,15 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
 
       {/* Reject Modal */}
       {showRejectModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+        <div className="modal-backdrop">
+          <div className="modal-surface p-4 sm:p-6 max-w-md w-full mx-2 sm:mx-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
             <h3 className="text-xl font-bold text-gray-800 mb-4">Reject Registration</h3>
             <p className="text-gray-600 mb-4">Please provide a reason for rejecting this registration:</p>
             <textarea
               value={rejectionReason}
               onChange={(e) => setRejectionReason(e.target.value)}
               placeholder="e.g., Invalid student ID, missing verification documents..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
               rows={4}
             />
             <div className="flex gap-3 mt-6">

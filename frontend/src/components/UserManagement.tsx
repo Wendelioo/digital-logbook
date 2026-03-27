@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { UserPlus, Edit, Trash2, Search } from 'lucide-react';
+import { UserPlus, Edit, Search } from 'lucide-react';
 import Button from './Button';
 import LoadingDots from './LoadingDots';
 import Modal from './Modal';
@@ -19,11 +19,10 @@ import { useUsers } from '../hooks/useUsers';
  * AFTER: ~150 lines focused on presentation logic
  */
 const UserManagement: React.FC = () => {
-  const { users, loading, error, fetchUsers, deleteUser } = useUsers();
+  const { users, loading, error, fetchUsers } = useUsers();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUserType, setSelectedUserType] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<number | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -39,15 +38,6 @@ const UserManagement: React.FC = () => {
     
     return matchesSearch && matchesType;
   });
-
-  const handleDeleteUser = async (userId: number) => {
-    try {
-      await deleteUser(userId);
-      setUserToDelete(null);
-    } catch (err) {
-      // Error is already handled by the hook
-    }
-  };
 
   if (loading && users.length === 0) {
     return (
@@ -69,7 +59,7 @@ const UserManagement: React.FC = () => {
 
       {/* Filters */}
       <div className="flex gap-4">
-        <div className="flex-1 relative">
+        <div className="relative w-72 max-w-full">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
           <input
             type="text"
@@ -134,14 +124,6 @@ const UserManagement: React.FC = () => {
                   <Button variant="outline" size="sm" icon={<Edit className="h-3 w-3" />}>
                     Edit
                   </Button>
-                  <Button 
-                    variant="danger" 
-                    size="sm" 
-                    icon={<Trash2 className="h-3 w-3" />}
-                    onClick={() => setUserToDelete(user.id)}
-                  >
-                    Delete
-                  </Button>
                 </td>
               </tr>
             ))}
@@ -169,25 +151,6 @@ const UserManagement: React.FC = () => {
         </div>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={userToDelete !== null}
-        onClose={() => setUserToDelete(null)}
-        title="Confirm Deletion"
-        size="sm"
-      >
-        <p className="text-gray-600">Are you sure you want to delete this user? This action cannot be undone.</p>
-        <div className="mt-6 flex justify-end gap-3">
-          <Button variant="outline" onClick={() => setUserToDelete(null)}>Cancel</Button>
-          <Button 
-            variant="danger" 
-            onClick={() => userToDelete && handleDeleteUser(userToDelete)}
-            loading={loading}
-          >
-            Delete User
-          </Button>
-        </div>
-      </Modal>
     </div>
   );
 };

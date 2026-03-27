@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import Button from '../../components/Button';
-import Modal from '../../components/Modal';
+import Modal, { MODAL_BODY_MIN_HEIGHT_CLASS } from '../../components/Modal';
 import { CheckCircle2, History, Filter, X, Search } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { GetStudentOpenAttendanceSessions, StudentTimeIn, GetStudentAttendanceHistory } from '../../../wailsjs/go/backend/App';
@@ -305,6 +305,7 @@ function StudentAttendance() {
         title="Attendance History"
         size="xl"
         showVariantIcon={false}
+        contentMinHeightClassName={MODAL_BODY_MIN_HEIGHT_CLASS}
       >
         <div>
           <div className="flex items-center justify-between mb-3">

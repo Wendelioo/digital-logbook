@@ -3,10 +3,10 @@ import { Card, CardBody } from './Card';
 import Button from './Button';
 import { Badge } from './Badge';
 import LoadingDots from './LoadingDots';
+import { ArchiveRestoreIcon } from './icons/ArchiveIcons';
 import {
   ChevronRight,
   ChevronDown,
-  ArchiveRestore,
   Calendar,
   Eye,
   Search,
@@ -216,7 +216,7 @@ const ArchivedReportsView: React.FC<ArchivedReportsViewProps> = ({
               <Button
                 variant="success"
                 onClick={handleRestore}
-                icon={<ArchiveRestore className="h-4 w-4" />}
+                icon={<ArchiveRestoreIcon />}
               >
                 Restore ({selectedReports.size})
               </Button>
@@ -226,7 +226,7 @@ const ArchivedReportsView: React.FC<ArchivedReportsViewProps> = ({
           )}
 
           <div className="flex items-center gap-2">
-            <div className="w-64 relative">
+            <div className="w-64 max-w-full relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"

@@ -37,7 +37,21 @@ const mapRegistrationErrorMessage = (err: unknown): string => {
     return 'This Student ID is already registered. Please use a different Student ID or contact support.';
   }
 
+  if (
+    (message.includes('unique') || message.includes('duplicate')) &&
+    (message.includes('student') || message.includes('username') || message.includes('users'))
+  ) {
+    return 'This Student ID is already registered. Please use a different Student ID.';
+  }
+
   if (message.includes('email already') || message.includes('email is already registered')) {
+    return 'This email is already in use. Please use another email address.';
+  }
+
+  if (
+    (message.includes('unique') || message.includes('duplicate')) &&
+    (message.includes('email') || message.includes('students'))
+  ) {
     return 'This email is already in use. Please use another email address.';
   }
 
@@ -336,8 +350,8 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
 
   if (success) {
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-8 text-center relative">
+      <div className="modal-backdrop">
+      <div className="modal-surface max-w-md w-full p-5 sm:p-8 text-center relative max-h-[calc(100vh-2rem)] overflow-y-auto">
           <button
             onClick={onClose}
             className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -369,16 +383,16 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden">
-        <div className="px-8 pt-6 pb-4 border-b border-gray-100">
+    <div className="modal-backdrop">
+      <div className="modal-surface-2xl max-w-xl w-full max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+        <div className="px-4 sm:px-8 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-primary-200/80 bg-gradient-to-r from-primary-50/90 to-white">
           <h2 className="text-2xl font-bold text-gray-900">Create Your Account</h2>
           <p className="mt-1 text-sm text-gray-500">
             Please fill in the details below to register as a student.
           </p>
         </div>
 
-        <div className="px-8 py-4 space-y-6 overflow-y-auto">
+        <div className="px-4 sm:px-8 py-4 sm:py-5 space-y-6 overflow-y-auto">
           {/* Error Message */}
           {error && (
             <div className="p-3.5 bg-red-50 border border-red-200 text-red-800 rounded-lg flex items-start gap-2">

@@ -22,14 +22,12 @@ import { openExportSaveDialog, defaultLogsRowRangeFilename, type ExportFormat } 
 import { LoginLog } from './types';
 
 function ViewLogs() {
-  const pageSizeOptions = [1, 25, 50, 100, 200, 300, 400, 500];
-
   // All logs
   const [logs, setLogs] = useState<LoginLog[]>([]);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(25);
+  const itemsPerPage = 25;
   
   // UI states
   const [loading, setLoading] = useState(true);
@@ -41,11 +39,11 @@ function ViewLogs() {
   // Filters
   const [showFilters, setShowFilters] = useState(false);
   const [filterUserType, setFilterUserType] = useState('');
-  const [filterDateFrom, setFilterDateFrom] = useState('');
-  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterFromRow, setFilterFromRow] = useState('');
+  const [filterToRow, setFilterToRow] = useState('');
   const [pendingFilterUserType, setPendingFilterUserType] = useState('');
-  const [pendingFilterDateFrom, setPendingFilterDateFrom] = useState('');
-  const [pendingFilterDateTo, setPendingFilterDateTo] = useState('');
+  const [pendingFilterFromRow, setPendingFilterFromRow] = useState('');
+  const [pendingFilterToRow, setPendingFilterToRow] = useState('');
 
   // Export modal
   const [showExportModal, setShowExportModal] = useState(false);
@@ -63,6 +61,26 @@ function ViewLogs() {
     parsedToRow >= 1 &&
     parsedFromRow <= parsedToRow &&
     parsedToRow <= 500;
+
+  const parseRowInput = (value: string): number | null => {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (!/^\d+$/.test(trimmed)) return null;
+    const parsed = Number.parseInt(trimmed, 10);
+    return parsed > 0 ? parsed : null;
+  };
+
+  const filterFromRowNumber = parseRowInput(filterFromRow);
+  const filterToRowNumber = parseRowInput(filterToRow);
+
+  const pendingFromRowNumber = parseRowInput(pendingFilterFromRow);
+  const pendingToRowNumber = parseRowInput(pendingFilterToRow);
+
+  const isPendingRowRangeValid =
+    pendingFromRowNumber !== null &&
+    pendingToRowNumber !== null &&
+    pendingFromRowNumber <= pendingToRowNumber &&
+    pendingToRowNumber <= 500;
 
   // Load all logs on mount
   useEffect(() => {
@@ -116,14 +134,15 @@ function ViewLogs() {
 
   const clearSearch = () => { setSearchQuery(''); setCurrentPage(1); };
 
-  const activeFilterCount = [filterUserType, filterDateFrom, filterDateTo].filter(Boolean).length;
+  const hasActiveRowRange = Boolean(filterFromRow || filterToRow);
+  const activeFilterCount = (filterUserType ? 1 : 0) + (hasActiveRowRange ? 1 : 0);
   const clearFilters = () => {
     setFilterUserType('');
-    setFilterDateFrom('');
-    setFilterDateTo('');
+    setFilterFromRow('');
+    setFilterToRow('');
     setPendingFilterUserType('');
-    setPendingFilterDateFrom('');
-    setPendingFilterDateTo('');
+    setPendingFilterFromRow('');
+    setPendingFilterToRow('');
     setCurrentPage(1);
   };
 
@@ -155,7 +174,7 @@ function ViewLogs() {
     setTimeout(() => setExportToast(null), 5000);
   };
 
-  const filteredLogs = logs.filter((log) => {
+  const baseFilteredLogs = logs.filter((log) => {
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch = !searchLower || (
       log.user_name?.toLowerCase().includes(searchLower) ||
@@ -164,11 +183,15 @@ function ViewLogs() {
       (log.pc_number || '').toLowerCase().includes(searchLower)
     );
     const matchesType = !filterUserType || log.user_type === filterUserType;
-    const logDate = log.login_time ? log.login_time.split(/[T\s]/)[0] : '';
-    const matchesDate =
-      (!filterDateFrom || logDate >= filterDateFrom) &&
-      (!filterDateTo || logDate <= filterDateTo);
-    return matchesSearch && matchesType && matchesDate;
+    return matchesSearch && matchesType;
+  });
+
+  const filteredLogs = baseFilteredLogs.filter((_, index) => {
+    if (!filterFromRow && !filterToRow) return true;
+    const rowNumber = index + 1;
+    const matchesFrom = filterFromRowNumber === null || rowNumber >= filterFromRowNumber;
+    const matchesTo = filterToRowNumber === null || rowNumber <= filterToRowNumber;
+    return matchesFrom && matchesTo;
   });
 
   if (loading) {
@@ -215,7 +238,7 @@ function ViewLogs() {
       {/* Search + Export Toolbar */}
       <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
-          <div className="w-full sm:w-64 relative">
+          <div className="w-64 max-w-full relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
               type="text"
@@ -237,7 +260,15 @@ function ViewLogs() {
           {/* Filter button */}
           <div className="relative">
             <button
-              onClick={() => setShowFilters(!showFilters)}
+              onClick={() => {
+                const nextOpen = !showFilters;
+                if (nextOpen) {
+                  setPendingFilterUserType(filterUserType);
+                  setPendingFilterFromRow(filterFromRow);
+                  setPendingFilterToRow(filterToRow);
+                }
+                setShowFilters(nextOpen);
+              }}
               className={`flex items-center gap-1.5 px-3 py-2.5 border rounded-lg text-sm font-medium transition-colors ${
                 showFilters || activeFilterCount > 0
                   ? 'bg-primary-50 border-primary-500 text-primary-700'
@@ -264,30 +295,33 @@ function ViewLogs() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Date Range</label>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Row Range</label>
                     <div className="flex items-center gap-2">
                       <div className="relative flex-1 min-w-0">
                         <input
-                          type="date"
-                          value={pendingFilterDateFrom}
-                          onChange={(e) => {
-                            setPendingFilterDateFrom(e.target.value);
-                          }}
+                          type="number"
+                          min={1}
+                          max={500}
+                          placeholder="From"
+                          value={pendingFilterFromRow}
+                          onChange={(e) => setPendingFilterFromRow(e.target.value)}
                           className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                         />
                       </div>
                       <span className="text-xs font-medium text-gray-500 shrink-0">to</span>
                       <div className="relative flex-1 min-w-0">
                         <input
-                          type="date"
-                          value={pendingFilterDateTo}
-                          onChange={(e) => {
-                            setPendingFilterDateTo(e.target.value);
-                          }}
+                          type="number"
+                          min={1}
+                          max={500}
+                          placeholder="To"
+                          value={pendingFilterToRow}
+                          onChange={(e) => setPendingFilterToRow(e.target.value)}
                           className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                         />
                       </div>
                     </div>
+                    <p className="mt-1 text-[11px] text-gray-500">Latest-first rows, max 500.</p>
                   </div>
 
                   <div>
@@ -313,11 +347,11 @@ function ViewLogs() {
                       type="button"
                       onClick={() => {
                         setPendingFilterUserType('');
-                        setPendingFilterDateFrom('');
-                        setPendingFilterDateTo('');
+                        setPendingFilterFromRow('');
+                        setPendingFilterToRow('');
                         setFilterUserType('');
-                        setFilterDateFrom('');
-                        setFilterDateTo('');
+                        setFilterFromRow('');
+                        setFilterToRow('');
                         setCurrentPage(1);
                         setShowFilters(false);
                       }}
@@ -328,9 +362,16 @@ function ViewLogs() {
                     <button
                       type="button"
                       onClick={() => {
+                        const hasPartialRange = Boolean(pendingFilterFromRow || pendingFilterToRow);
+
+                        if (hasPartialRange && !isPendingRowRangeValid) {
+                          showExportToast('error', 'Enter a valid row range from 1 to 500 (From must be less than or equal to To).');
+                          return;
+                        }
+
                         setFilterUserType(pendingFilterUserType);
-                        setFilterDateFrom(pendingFilterDateFrom);
-                        setFilterDateTo(pendingFilterDateTo);
+                        setFilterFromRow(pendingFilterFromRow.trim());
+                        setFilterToRow(pendingFilterToRow.trim());
                         setCurrentPage(1);
                         setShowFilters(false);
                       }}
@@ -357,22 +398,6 @@ function ViewLogs() {
             <span>Export</span>
           </button>
 
-          <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-sm text-gray-700">
-            <span className="text-gray-500">Show</span>
-            <select
-              value={itemsPerPage}
-              onChange={(e) => {
-                setItemsPerPage(Number(e.target.value));
-                setCurrentPage(1);
-              }}
-              className="bg-transparent border-none p-0 pr-6 text-sm font-medium text-gray-900 focus:outline-none focus:ring-0"
-            >
-              {pageSizeOptions.map((size) => (
-                <option key={size} value={size}>{size}</option>
-              ))}
-            </select>
-            <span className="text-gray-500">entries</span>
-          </div>
         </div>
       </div>
 
@@ -559,11 +584,11 @@ function ViewLogs() {
 
       {/* Export Modal */}
       {showExportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+        <div className="modal-backdrop">
+          <div className="modal-surface-2xl w-full max-w-md mx-2 sm:mx-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <h3 className="text-lg font-semibold text-gray-900">Export Log Entries</h3>
+            <div className="flex items-center justify-between px-6 py-3.5 border-b border-primary-200/80 bg-gradient-to-r from-primary-50/95 to-gray-50/90">
+              <h3 className="text-lg font-semibold text-primary-950">Export Log Entries</h3>
               <button onClick={() => setShowExportModal(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="h-5 w-5" />
               </button>

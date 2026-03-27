@@ -3,14 +3,13 @@ import { useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
 import StudentArchivedClassesModal from '../../components/StudentArchivedClassesModal';
 import LoadingDots from '../../components/LoadingDots';
+import { ArchiveIcon, ArchiveRestoreIcon } from '../../components/icons/ArchiveIcons';
 import {
   X,
   Plus,
   Loader2,
   Users,
   Eye,
-  Archive,
-  ArchiveRestore,
   Filter,
 } from 'lucide-react';
 import {
@@ -21,11 +20,13 @@ import {
   ArchiveStudentEnrollment,
 } from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppUi } from '../../contexts/AppUiContext';
 import { CourseClass, ClasslistEntry } from './types';
 
 function MyClasses() {
   const location = useLocation();
   const { user } = useAuth();
+  const { toast } = useAppUi();
   const [classes, setClasses] = useState<CourseClass[]>([]);
   const [filteredClasses, setFilteredClasses] = useState<CourseClass[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,7 +98,7 @@ function MyClasses() {
       setClasslistStudents(Array.isArray(students) ? students : []);
     } catch (error) {
       console.error('Failed to load classlist:', error);
-      alert('Failed to load classlist. Please try again.');
+      toast('Failed to load classlist. Please try again.', 'error');
       setClasslistStudents([]);
     } finally {
       setLoadingClasslist(false);
@@ -123,7 +124,7 @@ function MyClasses() {
       await loadClasses(); // Refresh the list
     } catch (error) {
       console.error('Failed to archive class:', error);
-      alert(`Failed to archive class. ${error instanceof Error ? error.message : 'Please try again.'}`);
+      toast(`Failed to archive class. ${error instanceof Error ? error.message : 'Please try again.'}`, 'error');
     }
   };
 
@@ -221,7 +222,7 @@ function MyClasses() {
               onClick={() => setShowArchiveModal(true)}
               variant="outline"
               size="sm"
-              icon={<ArchiveRestore className="h-4 w-4" />}
+              icon={<ArchiveIcon />}
             >
               Archive
             </Button>
@@ -368,7 +369,7 @@ function MyClasses() {
       {/* Join Class Modal */}
       {showJoinForm && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          className="modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowJoinForm(false);
@@ -378,7 +379,7 @@ function MyClasses() {
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4 relative">
+          <div className="modal-surface w-full max-w-md mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
             <Button
               type="button"
               onClick={() => {
@@ -394,7 +395,7 @@ function MyClasses() {
               ×
             </Button>
 
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <div className="mb-6">
                 <h3 className="text-2xl font-bold text-gray-900 mb-2">Join a Class</h3>
                 <p className="text-sm text-gray-600">Enter the EDP Code to join a class</p>
@@ -516,8 +517,9 @@ function MyClasses() {
                           onClick={() => handleArchiveClass(cls)}
                           className="text-gray-500 hover:text-gray-700 transition-colors p-1"
                           title="Archive Class"
+                          type="button"
                         >
-                          <Archive className="h-5 w-5" />
+                          <ArchiveIcon size="md" />
                         </button>
                       </div>
                     </td>
@@ -586,10 +588,10 @@ function MyClasses() {
 
       {/* Classlist Modal */}
       {viewingClasslist && (
-        <div className="fixed inset-0 bg-gray-900 bg-opacity-95 z-50 overflow-y-auto">
-          <div className="min-h-screen p-4 md:p-8">
+        <div className="modal-backdrop-dense">
+          <div className="min-h-screen p-3 sm:p-4 md:p-8">
             {/* Bond Paper Style Class List Sheet */}
-            <div className="bg-white max-w-4xl mx-auto my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
+            <div className="bg-white max-w-4xl mx-auto my-4 sm:my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
               {/* Close Button */}
               <button
                 onClick={() => {

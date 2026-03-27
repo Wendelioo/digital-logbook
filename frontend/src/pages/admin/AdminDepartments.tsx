@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import LoadingDots from '../../components/LoadingDots';
+import { ArchiveIcon, ArchiveRestoreIcon } from '../../components/icons/ArchiveIcons';
 import {
   Plus,
   Edit,
-  Archive,
-  ArchiveRestore,
   Search,
   X,
   AlertCircle
@@ -197,7 +196,7 @@ function DepartmentManagement() {
           <Button
             onClick={() => setShowArchivedModal(true)}
             variant="outline"
-            icon={<Archive className="w-5 h-5" />}
+            icon={<ArchiveIcon size="md" />}
           >
             Archived
           </Button>
@@ -298,7 +297,7 @@ function DepartmentManagement() {
       {/* Department Form Modal */}
       {showForm && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          className="modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowForm(false);
@@ -307,7 +306,7 @@ function DepartmentManagement() {
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 relative max-h-[90vh] flex flex-col">
+          <div className="modal-surface w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
             {/* Close Button */}
             <button
               type="button"
@@ -322,14 +321,14 @@ function DepartmentManagement() {
             </button>
 
             {/* Header */}
-            <div className="text-center p-8 pb-4 flex-shrink-0">
+            <div className="text-center p-4 sm:p-8 pb-3 sm:pb-4 flex-shrink-0">
               <h3 className="text-2xl font-bold text-blue-600 mb-2">
                 {editingDepartment ? 'Edit Department' : 'Add Department'}
               </h3>
               <div className="w-24 h-0.5 bg-blue-600 mx-auto"></div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto px-8 pb-8 flex-1" noValidate>
+            <form onSubmit={handleSubmit} className="space-y-6 overflow-y-auto px-4 sm:px-8 pb-4 sm:pb-8 flex-1" noValidate>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Department Code *</label>
@@ -455,7 +454,7 @@ function DepartmentManagement() {
                         size="sm"
                         className="h-9 w-9 px-0 py-0"
                         disabled={dept.is_active}
-                        icon={<Archive className="h-3 w-3" />}
+                        icon={<ArchiveIcon size="xs" />}
                         title="Archive"
                       />
                     </div>
@@ -510,25 +509,27 @@ function DepartmentManagement() {
       {/* Archived Departments Modal */}
       {showArchivedModal && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
+          className="modal-backdrop"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setShowArchivedModal(false);
             }
           }}
         >
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl mx-4 relative h-[80vh] max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="modal-surface w-full max-w-5xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+            <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Archive className="h-5 w-5 text-gray-700" />
-                <h3 className="text-lg font-semibold text-gray-900">Archived Departments</h3>
+                <ArchiveIcon size="md" className="text-gray-700" />
+                <h3 className="text-base font-semibold text-gray-900 tracking-tight">Archived Departments</h3>
                 <span className="text-sm text-gray-500">({archivedDepartments.length})</span>
               </div>
               <button
                 onClick={() => setShowArchivedModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100"
+                type="button"
+                aria-label="Close"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" strokeWidth={1.75} />
               </button>
             </div>
             <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0">
@@ -551,10 +552,10 @@ function DepartmentManagement() {
                 )}
               </div>
             </div>
-            <div className="flex-1 overflow-hidden">
-              <div className="h-full overflow-x-auto overflow-y-auto">
+            <div className="flex-1 overflow-hidden min-h-[min(480px,72vh)] min-w-0">
+              <div className="h-full min-h-[inherit] overflow-x-auto overflow-y-auto">
                 <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-                  <thead className="bg-gray-50 sticky top-0 z-10">
+                  <thead className="bg-gradient-to-r from-gray-50 via-primary-50/30 to-gray-50 sticky top-0 z-10">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '220px' }}>
                         Name
@@ -568,8 +569,11 @@ function DepartmentManagement() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredArchivedDepartments.map((dept) => (
-                      <tr key={dept.department_code} className="hover:bg-gray-50">
+                    {filteredArchivedDepartments.map((dept, idx) => (
+                      <tr
+                        key={dept.department_code}
+                        className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-primary-50/40 transition-colors`}
+                      >
                         <td className="px-6 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
                           <div className="font-medium text-gray-900">{dept.department_name}</div>
                           <div className="text-xs text-gray-500 mt-0.5">{dept.department_code}</div>
@@ -583,7 +587,7 @@ function DepartmentManagement() {
                             variant="success"
                             size="sm"
                             className="h-9 w-9 px-0 py-0"
-                            icon={<ArchiveRestore className="h-3 w-3" />}
+                            icon={<ArchiveRestoreIcon size="xs" />}
                             title="Unarchive"
                           />
                         </td>
@@ -606,8 +610,8 @@ function DepartmentManagement() {
 
       {/* Status Change Confirmation Modal */}
       {showStatusModal && selectedDeptForStatus && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+        <div className="modal-backdrop">
+          <div className="modal-surface w-full max-w-md mx-2 sm:mx-4 p-4 sm:p-6 max-h-[calc(100vh-2rem)] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">

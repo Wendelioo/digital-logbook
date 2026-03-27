@@ -26,8 +26,6 @@ import { Feedback } from './types';
 import { useAuth } from '../../contexts/AuthContext';
 
 function Reports() {
-  const pageSizeOptions = [1, 25, 50, 100, 200, 300, 400, 500];
-
   const { user } = useAuth();
   const [reports, setReports] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,17 +33,17 @@ function Reports() {
 
   // Pagination
   const [reportsPage, setReportsPage] = useState(1);
-  const [reportsPerPage, setReportsPerPage] = useState(25);
+  const reportsPerPage = 25;
 
   // General search
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filters
-  const [dateRangeStart, setDateRangeStart] = useState('');
-  const [dateRangeEnd, setDateRangeEnd] = useState('');
+  const [filterFromRow, setFilterFromRow] = useState('');
+  const [filterToRow, setFilterToRow] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [pendingDateRangeStart, setPendingDateRangeStart] = useState('');
-  const [pendingDateRangeEnd, setPendingDateRangeEnd] = useState('');
+  const [pendingFilterFromRow, setPendingFilterFromRow] = useState('');
+  const [pendingFilterToRow, setPendingFilterToRow] = useState('');
   const [pendingFilterStatus, setPendingFilterStatus] = useState('');
 
   const [showArchiveModal, setShowArchiveModal] = useState(false);
@@ -69,13 +67,33 @@ function Reports() {
     parsedFromRow <= parsedToRow &&
     parsedToRow <= 500;
 
+  const parseRowInput = (value: string): number | null => {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (!/^\d+$/.test(trimmed)) return null;
+    const parsed = Number.parseInt(trimmed, 10);
+    return parsed > 0 ? parsed : null;
+  };
+
+  const filterFromRowNumber = parseRowInput(filterFromRow);
+  const filterToRowNumber = parseRowInput(filterToRow);
+
+  const pendingFromRowNumber = parseRowInput(pendingFilterFromRow);
+  const pendingToRowNumber = parseRowInput(pendingFilterToRow);
+
+  const isPendingRowRangeValid =
+    pendingFromRowNumber !== null &&
+    pendingToRowNumber !== null &&
+    pendingFromRowNumber <= pendingToRowNumber &&
+    pendingToRowNumber <= 500;
+
   // Pending issues modal visibility
   const [showPendingModal, setShowPendingModal] = useState(false);
 
   // Reset to page 1 whenever any filter/search changes
   useEffect(() => {
     setReportsPage(1);
-  }, [searchQuery, dateRangeStart, dateRangeEnd, filterStatus]);
+  }, [searchQuery, filterFromRow, filterToRow, filterStatus]);
 
   useEffect(() => {
     loadReports();
@@ -106,16 +124,17 @@ function Reports() {
     }
   };
 
-  const activeFilterCount = (dateRangeStart || dateRangeEnd ? 1 : 0) + (filterStatus ? 1 : 0);
+  const hasActiveRowRange = Boolean(filterFromRow || filterToRow);
+  const activeFilterCount = (hasActiveRowRange ? 1 : 0) + (filterStatus ? 1 : 0);
 
   const clearFilters = () => {
     setSearchQuery('');
-    setDateRangeStart('');
-    setDateRangeEnd('');
+    setFilterFromRow('');
+    setFilterToRow('');
     setFilterStatus('');
     setShowFilters(false);
-    setPendingDateRangeStart('');
-    setPendingDateRangeEnd('');
+    setPendingFilterFromRow('');
+    setPendingFilterToRow('');
     setPendingFilterStatus('');
   };
 
@@ -165,20 +184,13 @@ function Reports() {
       report.mouse_condition,
     ].filter(c => c && c.toLowerCase() !== 'good').length;
 
-  const filteredReports = reports.filter(report => {
+  const baseFilteredReports = reports.filter(report => {
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch = !searchQuery || (
       report.student_name?.toLowerCase().includes(searchLower) ||
       report.student_id_str?.toLowerCase().includes(searchLower) ||
       report.pc_number?.toString().toLowerCase().includes(searchLower) ||
       report.forwarded_by_name?.toLowerCase().includes(searchLower)
-    );
-
-    const reportDate = report.date_submitted ? report.date_submitted.split(/[T\s]/)[0] : '';
-    const matchesDate = !dateRangeStart && !dateRangeEnd ? true : (
-      reportDate &&
-      (!dateRangeStart || reportDate >= dateRangeStart) &&
-      (!dateRangeEnd || reportDate <= dateRangeEnd)
     );
 
     const isResolved = (report.admin_status || '').toLowerCase() === 'resolved';
@@ -189,7 +201,15 @@ function Reports() {
           ? !isNoIssueReport(report)
           : isNoIssueReport(report));
 
-    return matchesSearch && matchesDate && matchesStatus;
+    return matchesSearch && matchesStatus;
+  });
+
+  const filteredReports = baseFilteredReports.filter((_, index) => {
+    if (!filterFromRow && !filterToRow) return true;
+    const rowNumber = index + 1;
+    const matchesFrom = filterFromRowNumber === null || rowNumber >= filterFromRowNumber;
+    const matchesTo = filterToRowNumber === null || rowNumber <= filterToRowNumber;
+    return matchesFrom && matchesTo;
   });
 
   const pendingReports = filteredReports.filter(
@@ -294,7 +314,7 @@ function Reports() {
 
             {/* Right: search, filters, export */}
             <div className="flex items-center gap-2">
-              <div className="w-64 relative">
+              <div className="w-64 max-w-full relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
               type="text"
@@ -319,8 +339,8 @@ function Reports() {
               onClick={() => {
                 const nextOpen = !showFilters;
                 if (nextOpen) {
-                  setPendingDateRangeStart(dateRangeStart);
-                  setPendingDateRangeEnd(dateRangeEnd);
+                  setPendingFilterFromRow(filterFromRow);
+                  setPendingFilterToRow(filterToRow);
                   setPendingFilterStatus(filterStatus);
                 }
                 setShowFilters(nextOpen);
@@ -344,28 +364,35 @@ function Reports() {
               {showFilters && (
                 <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden">
                   <div className="p-4 space-y-3">
-                    {/* Filter by Date Range: [from] to [to] with calendar icons */}
+                    {/* Filter by row range: [from] to [to] */}
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Date Range</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Row Range</label>
                       <div className="flex items-center gap-2">
                         <div className="relative flex-1 min-w-0">
                           <input
-                            type="date"
-                            value={pendingDateRangeStart}
-                            onChange={(e) => setPendingDateRangeStart(e.target.value)}
+                            type="number"
+                            min={1}
+                            max={500}
+                            placeholder="From"
+                            value={pendingFilterFromRow}
+                            onChange={(e) => setPendingFilterFromRow(e.target.value)}
                             className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                           />
                         </div>
                         <span className="text-xs font-medium text-gray-500 shrink-0">to</span>
                         <div className="relative flex-1 min-w-0">
                           <input
-                            type="date"
-                            value={pendingDateRangeEnd}
-                            onChange={(e) => setPendingDateRangeEnd(e.target.value)}
+                            type="number"
+                            min={1}
+                            max={500}
+                            placeholder="To"
+                            value={pendingFilterToRow}
+                            onChange={(e) => setPendingFilterToRow(e.target.value)}
                             className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                           />
                         </div>
                       </div>
+                      <p className="mt-1 text-[11px] text-gray-500">Latest-first rows, max 500.</p>
                     </div>
 
                     {/* Status dropdown */}
@@ -395,11 +422,11 @@ function Reports() {
                       <button
                         type="button"
                         onClick={() => {
-                          setPendingDateRangeStart('');
-                          setPendingDateRangeEnd('');
+                          setPendingFilterFromRow('');
+                          setPendingFilterToRow('');
                           setPendingFilterStatus('');
-                          setDateRangeStart('');
-                          setDateRangeEnd('');
+                          setFilterFromRow('');
+                          setFilterToRow('');
                           setFilterStatus('');
                           setShowFilters(false);
                         }}
@@ -410,8 +437,15 @@ function Reports() {
                       <button
                         type="button"
                         onClick={() => {
-                          setDateRangeStart(pendingDateRangeStart);
-                          setDateRangeEnd(pendingDateRangeEnd);
+                          const hasPartialRange = Boolean(pendingFilterFromRow || pendingFilterToRow);
+
+                          if (hasPartialRange && !isPendingRowRangeValid) {
+                            showExportToast('error', 'Enter a valid row range from 1 to 500 (From must be less than or equal to To).');
+                            return;
+                          }
+
+                          setFilterFromRow(pendingFilterFromRow.trim());
+                          setFilterToRow(pendingFilterToRow.trim());
                           setFilterStatus(pendingFilterStatus);
                           setShowFilters(false);
                         }}
@@ -438,22 +472,6 @@ function Reports() {
                 <span>Export</span>
               </button>
 
-              <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-sm text-gray-700">
-                <span className="text-gray-500">Show</span>
-                <select
-                  value={reportsPerPage}
-                  onChange={(e) => {
-                    setReportsPerPage(Number(e.target.value));
-                    setReportsPage(1);
-                  }}
-                  className="bg-transparent border-none p-0 pr-6 text-sm font-medium text-gray-900 focus:outline-none focus:ring-0"
-                >
-                  {pageSizeOptions.map((size) => (
-                    <option key={size} value={size}>{size}</option>
-                  ))}
-                </select>
-                <span className="text-gray-500">entries</span>
-              </div>
             </div>
           </div>
 
@@ -830,11 +848,11 @@ function Reports() {
       />
       {/* Export Modal */}
       {showExportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+        <div className="modal-backdrop">
+          <div className="modal-surface-2xl w-full max-w-md mx-2 sm:mx-4 overflow-hidden max-h-[calc(100vh-2rem)] overflow-y-auto">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <h3 className="text-lg font-semibold text-gray-900">Export Equipment Reports</h3>
+            <div className="flex items-center justify-between px-6 py-3.5 border-b border-primary-200/80 bg-gradient-to-r from-primary-50/95 to-gray-50/90">
+              <h3 className="text-lg font-semibold text-primary-950">Export Equipment Reports</h3>
               <button onClick={() => setShowExportModal(false)} className="text-gray-400 hover:text-gray-600">
                 <X className="h-5 w-5" />
               </button>

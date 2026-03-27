@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
+import { useAppUi } from '../contexts/AppUiContext';
 import { UpdateUserPhoto, ChangePassword, SaveEquipmentFeedback, UpdateUser, GetPendingFeedback, GetConfirmedFeedback, GetPendingRegistrations } from '../../wailsjs/go/backend/App';
 import { compressImage, isImageFile, isValidFileSize } from '../utils/imageUtils';
 import {
@@ -16,6 +17,7 @@ import {
   Eye,
   EyeOff,
   Bell,
+  Search,
 } from 'lucide-react';
 import LogoutFeedbackModal from './LogoutFeedbackModal';
 
@@ -49,6 +51,7 @@ function getNotifRelativeTime(dateStr: string): string {
 function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const { user, logout, updateUser } = useAuth();
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
+  const { toast } = useAppUi();
   const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
   const notifDropdownRef = useRef<HTMLDivElement>(null);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
@@ -65,6 +68,9 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const [photoPreview, setPhotoPreview] = useState<string>(user?.photo_url || '');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [openDropdowns, setOpenDropdowns] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const searchBoxRef = useRef<HTMLDivElement>(null);
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -86,11 +92,55 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
-  const canEditProfile = user?.role === 'student' || user?.role === 'working_student';
+  const canEditProfile = !!user;
 
   const navigate = useNavigate();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const searchableNavigation = useMemo(() => {
+    const items: Array<{ name: string; href: string }> = [];
+    navigationItems.forEach((item) => {
+      if (item.isDivider) return;
+      if (item.href) items.push({ name: item.name, href: item.href });
+      if (item.children?.length) {
+        item.children.forEach((child) => {
+          if (child.href) {
+            items.push({ name: `${item.name} - ${child.name}`, href: child.href });
+          }
+        });
+      }
+    });
+    return items;
+  }, [navigationItems]);
+
+  const searchResults = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return [];
+    return searchableNavigation
+      .filter((item) => item.name.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [searchTerm, searchableNavigation]);
+
+  const runHeaderSearch = (targetHref?: string) => {
+    const query = searchTerm.trim();
+    if (!query && !targetHref) return;
+
+    if (targetHref) {
+      navigate(targetHref);
+      setSearchTerm('');
+      setSearchFocused(false);
+      return;
+    }
+
+    if (searchResults.length > 0) {
+      navigate(searchResults[0].href);
+      setSearchTerm('');
+      setSearchFocused(false);
+    } else {
+      toast(`No dashboard page found for "${query}".`, 'error');
+    }
+  };
 
   const handleLogout = async () => {
     if (user?.role === 'student') {
@@ -234,17 +284,17 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
       if (feedbackMode === 'manual') {
         setShowFeedbackModal(false);
-        alert('Issue report submitted successfully. The working student will review it first.');
+        toast('Issue report submitted successfully. The working student will review it first.', 'success');
         return;
       }
     } catch (error) {
       console.error('Failed to save feedback:', error);
       if (feedbackMode === 'manual') {
-        alert('Failed to submit issue report. Please try again.');
+        toast('Failed to submit issue report. Please try again.', 'error');
         return;
       }
 
-      alert('Failed to save feedback. You will still be logged out.');
+      toast('Failed to save feedback. You will still be logged out.', 'error');
     }
 
     setShowFeedbackModal(false);
@@ -261,12 +311,12 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
     if (!file) return;
 
     if (!isImageFile(file)) {
-      alert('Please select an image file.');
+      toast('Please select an image file.', 'error');
       return;
     }
 
     if (!isValidFileSize(file, 5)) {
-      alert('Image size must be less than 5MB.');
+      toast('Image size must be less than 5MB.', 'error');
       return;
     }
 
@@ -276,13 +326,13 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       setPhotoPreview(compressedDataUrl);
     } catch (error) {
       console.error('Failed to process image:', error);
-      alert('Failed to process the image file. Please try again.');
+      toast('Failed to process the image file. Please try again.', 'error');
     }
   };
 
   const handlePhotoSave = async () => {
     if (!photoFile || !user || !photoPreview) {
-      alert('Please select an image first.');
+      toast('Please select an image first.', 'error');
       return;
     }
 
@@ -301,7 +351,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
       setPhotoFile(null);
 
-      alert('Profile photo updated successfully!');
+      toast('Profile photo updated successfully!', 'success');
     } catch (error: any) {
       console.error('Failed to update profile photo:', error);
 
@@ -311,9 +361,12 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
       const errorMessage = error?.message || error?.toString() || 'Unknown error';
       if (errorMessage.toLowerCase().includes('database not connected')) {
-        alert('Database connection is not available. Your session was restored from a previous login, but the database is currently unreachable. Please restart the application.');
+        toast(
+          'Database connection is not available. Your session was restored from a previous login, but the database is currently unreachable. Please restart the application.',
+          'error'
+        );
       } else {
-        alert(`Failed to update profile photo: ${errorMessage}`);
+        toast(`Failed to update profile photo: ${errorMessage}`, 'error');
       }
     }
   };
@@ -426,7 +479,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
         user.student_id || '',
         profileFormData.email,
         profileFormData.contactNumber,
-        '' // departmentCode - not available in User type
+        user.department_code || ''
       );
 
       const updatedUser = {
@@ -526,6 +579,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setProfileDropdownOpen(false);
+        setSearchFocused(false);
         if (showAccountModal) {
           handleCloseAccountModal();
         }
@@ -544,6 +598,16 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       setShowAccountModal(false);
       setProfileDropdownOpen(false);
     };
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target as Node)) {
+        setSearchFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   return (
@@ -683,7 +747,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
           </ul>
         </nav>
 
-        <div className="border-t border-gray-200 p-2">
+        <div className="border-t border-gray-200 p-2 hidden">
           <div className="relative">
             <button
               onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
@@ -767,15 +831,56 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
           >
             <Menu className="w-6 h-6" />
           </button>
-          <div className="flex-1">
-            {title && (
-              <div className="section-highlight py-2 bg-gradient-to-r from-primary-50 to-white border-primary-100">
-                <h1 className="section-highlight-title">{title}</h1>
-                {subtitle && (
-                  <p className="section-highlight-subtitle">{subtitle}</p>
+          <div className="flex-1 flex items-center gap-4">
+            <div className="flex-none">
+              {title && (
+                <div className="section-highlight py-2 bg-gradient-to-r from-primary-50 to-white border-primary-100">
+                  <h1 className="section-highlight-title">{title}</h1>
+                  {subtitle && (
+                    <p className="section-highlight-subtitle">{subtitle}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 flex justify-end">
+              <div className="relative w-72 max-w-full" ref={searchBoxRef}>
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      runHeaderSearch();
+                    }
+                  }}
+                  type="text"
+                  placeholder="Search dashboard pages..."
+                  className="w-full pl-10 pr-3 py-2 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  aria-label="Search"
+                />
+                {searchFocused && searchTerm.trim() && (
+                  <div className="absolute top-full mt-2 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                    {searchResults.length > 0 ? (
+                      searchResults.map((result) => (
+                        <button
+                          key={`${result.href}-${result.name}`}
+                          type="button"
+                          onClick={() => runHeaderSearch(result.href)}
+                          className="w-full text-left px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                          {result.name}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2.5 text-sm text-gray-500">No matching dashboard pages</div>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
+            </div>
           </div>
 
           {/* Notification Bell */}
@@ -843,9 +948,66 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
             )}
           </div>
 
+          {/* Profile */}
+          <div className="relative">
+            <button
+              onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+              data-profile-icon
+              className="w-10 h-10 rounded-full flex items-center justify-center text-gray-700 hover:bg-gray-100 active:bg-gray-200 transition-colors flex-shrink-0"
+              aria-label="Account menu"
+            >
+              {user?.photo_url || photoPreview ? (
+                <img
+                  src={photoPreview || user?.photo_url}
+                  alt="Profile"
+                  className="w-9 h-9 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center">
+                  <User className="w-4 h-4 text-gray-600" />
+                </div>
+              )}
+              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ml-[-0.25rem] ${profileDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {profileDropdownOpen && (
+              <div
+                ref={dropdownRef}
+                className="absolute right-0 top-12 w-56 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden z-50 animate-slideIn"
+              >
+                <div className="p-2">
+                  <button
+                    onClick={() => {
+                      setShowAccountModal(true);
+                      setProfileDropdownOpen(false);
+                    }}
+                    className="w-full flex items-center gap-4 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+                  >
+                    <Settings className="w-4 h-4 text-gray-500" />
+                    <span className="font-medium">Account Settings</span>
+                  </button>
+
+                  <div className="border-t border-gray-200 my-1" />
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setProfileDropdownOpen(false);
+                      handleLogout();
+                    }}
+                    className="w-full flex items-center gap-4 px-3 py-2.5 text-sm text-danger-600 hover:bg-danger-50 rounded-xl transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span className="font-medium">Sign out</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
         </header>
 
-        <main className="flex-1 overflow-y-auto bg-slate-50">
+        <main className="flex-1 overflow-y-auto bg-sky-50 text-left">
           <div className="p-4 md:p-6">
             {children}
           </div>
@@ -854,11 +1016,11 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
       {showAccountModal && (
         <div
-          className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[10000]"
+          className="modal-backdrop !z-[10000] p-4"
           onClick={handleModalBackdropClick}
         >
-          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-white">
+          <div className="relative modal-surface-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 bg-white">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
                   <Settings className="w-5 h-5 text-blue-600" />
@@ -873,7 +1035,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
               </button>
             </div>
 
-            <div className="flex border-b border-gray-200 bg-white px-6">
+            <div className="flex border-b border-gray-200 bg-white px-4 sm:px-6">
               <button
                 onClick={() => setActiveTab('profile')}
                 className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
@@ -902,7 +1064,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               {activeTab === 'profile' ? (
                 <div className="space-y-6">
                   <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
@@ -936,7 +1098,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                           <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors shadow-sm"
+                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-colors shadow-sm"
                           >
                             Choose Photo
                           </button>
@@ -944,7 +1106,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                           <button
                             type="button"
                             onClick={handlePhotoSave}
-                            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                              className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-xl hover:bg-primary-700 transition-colors shadow-sm"
                           >
                               Save Photo
                             </button>
@@ -961,94 +1123,82 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                     noValidate
                   >
                     {canEditProfile && profileError && (
-                      <div className="bg-danger-50 border-l-4 border-danger-500 p-4 rounded-lg">
+                      <div className="bg-danger-50 border-l-4 border-danger-500 p-4 rounded-xl">
                         <p className="text-sm text-danger-700">{profileError}</p>
                       </div>
                     )}
 
                     {canEditProfile && profileSuccess && (
-                      <div className="bg-success-50 border-l-4 border-success-500 p-4 rounded-lg">
+                      <div className="bg-success-50 border-l-4 border-success-500 p-4 rounded-xl">
                         <p className="text-sm text-success-700">{profileSuccess}</p>
                       </div>
                     )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          First Name <span className="text-danger-500">*</span>
-                        </label>
+                        <label className="label label-required">First Name</label>
                         <input
                           type="text"
                           value={profileFormData.firstName}
                           onChange={(e) => setProfileFormData({ ...profileFormData, firstName: e.target.value })}
                           disabled={!editingProfile || !canEditProfile}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+                          className="input"
                           required
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Middle Name
-                        </label>
+                        <label className="label">Middle Name</label>
                         <input
                           type="text"
                           value={profileFormData.middleName}
                           onChange={(e) => setProfileFormData({ ...profileFormData, middleName: e.target.value })}
                           disabled={!editingProfile || !canEditProfile}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+                          className="input"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Last Name <span className="text-danger-500">*</span>
-                        </label>
+                        <label className="label label-required">Last Name</label>
                         <input
                           type="text"
                           value={profileFormData.lastName}
                           onChange={(e) => setProfileFormData({ ...profileFormData, lastName: e.target.value })}
                           disabled={!editingProfile || !canEditProfile}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+                          className="input"
                           required
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Email
-                        </label>
+                        <label className="label">Email</label>
                         <input
                           type="email"
                           value={profileFormData.email}
                           onChange={(e) => setProfileFormData({ ...profileFormData, email: e.target.value })}
                           disabled={!editingProfile || !canEditProfile}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+                          className="input"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Contact Number
-                        </label>
+                        <label className="label">Contact Number</label>
                         <input
                           type="tel"
                           value={profileFormData.contactNumber}
                           onChange={(e) => setProfileFormData({ ...profileFormData, contactNumber: e.target.value })}
                           disabled={!editingProfile || !canEditProfile}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+                          className="input"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                          Designated Role
-                        </label>
+                        <label className="label">Designated Role</label>
                         <input
                           type="text"
                           value={user?.role ? user.role.replace('_', ' ') : ''}
                           disabled
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-gray-50 text-gray-600"
+                          className="input"
                         />
                       </div>
                     </div>
@@ -1069,40 +1219,18 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                               : 'Not available'}
                           </dd>
                         </div>
-                        <div>
-                          <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Account Validity</dt>
-                          <dd className="mt-1 text-sm text-gray-900">
-                            {user?.created
-                              ? (() => {
-                                  const d = new Date(user.created.replace(' ', 'T'));
-                                  if (Number.isNaN(d.getTime())) return 'Not available';
-                                  const expiry = new Date(d);
-                                  expiry.setFullYear(expiry.getFullYear() + 4);
-                                  const isExpired = expiry.getTime() < Date.now();
-                                  return (
-                                    <span className={isExpired ? 'text-red-600 font-medium' : ''}>
-                                      {expiry.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}
-                                      {isExpired && ' (Expired)'}
-                                    </span>
-                                  );
-                                })()
-                              : 'Not available'}
-                          </dd>
-                        </div>
                       </dl>
                     </div>
 
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pt-4">
-                      <p className="text-xs text-gray-500">
-                        Some fields are managed by your organization. Please contact an administrator to update your primary profile information.
-                      </p>
+                      <p className="text-xs text-gray-500">Update your personal details below.</p>
                       <div className="flex justify-end gap-3">
                         {canEditProfile && (
                           !editingProfile ? (
                             <button
                               type="button"
                               onClick={handleEditProfile}
-                              className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors shadow-sm"
+                              className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-xl hover:bg-primary-700 transition-colors shadow-sm"
                             >
                               Edit Profile
                             </button>
@@ -1111,14 +1239,14 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                               <button
                                 type="button"
                                 onClick={handleCancelEditProfile}
-                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
                               >
                                 Cancel
                               </button>
                               <button
                                 type="submit"
                                 disabled={savingProfile}
-                                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-xl hover:bg-primary-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                               >
                                 {savingProfile ? 'Saving...' : 'Save Changes'}
                               </button>
@@ -1132,13 +1260,13 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
               ) : (
                 <form onSubmit={handlePasswordChange} className="space-y-6" noValidate>
                   {passwordError && (
-                    <div className="bg-danger-50 border-l-4 border-danger-500 p-4 rounded-lg">
+                    <div className="bg-danger-50 border-l-4 border-danger-500 p-4 rounded-xl">
                       <p className="text-sm text-danger-700">{passwordError}</p>
                     </div>
                   )}
 
                   {passwordSuccess && (
-                    <div className="bg-success-50 border-l-4 border-success-500 p-4 rounded-lg">
+                    <div className="bg-success-50 border-l-4 border-success-500 p-4 rounded-xl">
                       <p className="text-sm text-success-700">{passwordSuccess}</p>
                     </div>
                   )}
@@ -1152,7 +1280,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                         type={showOldPassword ? 'text' : 'password'}
                         value={oldPassword}
                         onChange={(e) => setOldPassword(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="input"
                         placeholder="Enter current password"
                         required
                       />
@@ -1176,7 +1304,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                         type={showNewPassword ? 'text' : 'password'}
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="input"
                         placeholder="Enter new password"
                         required
                       />
@@ -1190,22 +1318,22 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                       </button>
                     </div>
 
-                    <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+                    <div className="mt-3 rounded-xl border border-primary-100 bg-primary-50 px-4 py-3">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-700">
                         <div className="flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
                           <span>At least 8 characters</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
                           <span>Contains a number</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
                           <span>Contains a special character</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
                           <span>Case sensitive</span>
                         </div>
                       </div>
@@ -1221,7 +1349,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                         type={showConfirmPassword ? 'text' : 'password'}
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="input"
                         placeholder="Re-type new password"
                         required
                       />
@@ -1240,13 +1368,13 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                     <button
                       type="button"
                       onClick={handleCloseAccountModal}
-                      className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                      className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                      className="px-4 py-2.5 text-sm font-medium text-white bg-primary-600 rounded-xl hover:bg-primary-700 transition-colors shadow-sm"
                     >
                       Change Password
                     </button>
@@ -1259,8 +1387,8 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       )}
 
       {showPendingTasksModal && (
-        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[10001]">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+        <div className="modal-backdrop !z-[10001] p-4">
+          <div className="modal-surface-2xl w-full max-w-md p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-warning-50 rounded-lg flex items-center justify-center flex-shrink-0">
                 <svg className="w-5 h-5 text-warning-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
@@ -1303,8 +1431,8 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       )}
 
       {showLogoutConfirmModal && (
-        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-[10001]">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+        <div className="modal-backdrop !z-[10001] p-4">
+          <div className="modal-surface-2xl w-full max-w-md p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">Confirm Logout</h3>
             <p className="text-sm text-gray-600 mb-6">
               Are you sure you want to log out? You'll be asked to provide equipment feedback.

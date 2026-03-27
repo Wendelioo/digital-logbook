@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { StatCard } from '../../components/Card';
-import { Card, CardHeader, CardBody } from '../../components/Card';
+import { Card, CardHeader, CardBody, StatCard } from '../../components/Card';
 import {
   Users,
   BookOpen,
@@ -10,8 +9,8 @@ import {
   Library,
   ClipboardCheck,
   PauseCircle,
-  Archive,
 } from 'lucide-react';
+import { ArchiveIcon } from '../../components/icons/ArchiveIcons';
 import {
   GetTeacherClassesByUserID,
   GetPendingPasswordResets,
@@ -109,14 +108,14 @@ function DashboardOverview() {
     <div className="p-6">
       {/* Error Message */}
       {error && (
-        <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md">
+        <div className="mb-6 bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-md">
           <p>{error}</p>
         </div>
       )}
 
       {/* Loading indicator */}
       {loading && (
-        <div className="mb-6 bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-md">
+        <div className="mb-6 bg-primary-50 border border-primary-200 text-primary-700 px-4 py-3 rounded-md">
           <p>Loading your dashboard data...</p>
         </div>
       )}
@@ -129,32 +128,32 @@ function DashboardOverview() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
         {/* Quick Stats */}
         <div className="md:col-span-2 space-y-6">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Overview</h3>
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Overview</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatCard
                 title="Active Classes"
                 value={activeClasses}
-                icon={<Library className="h-6 w-6" />}
-                color="blue"
+                icon={<Library />}
+                color="green"
               />
               <StatCard
                 title="Archived Classes"
                 value={archivedClasses}
-                icon={<Archive className="h-6 w-6" />}
-                color="indigo"
+                icon={<ArchiveIcon />}
+                color="yellow"
               />
               <StatCard
                 title="Inactive Classes"
                 value={inactiveClasses}
-                icon={<PauseCircle className="h-6 w-6" />}
+                icon={<PauseCircle />}
                 color="yellow"
               />
               <StatCard
                 title="Total Students"
                 value={totalStudents}
-                icon={<Users className="h-6 w-6" />}
-                color="green"
+                icon={<Users />}
+                color="blue"
               />
             </div>
           </div>
@@ -172,8 +171,8 @@ function DashboardOverview() {
                       className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
                     >
                       <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <BookOpen className="h-5 w-5 text-blue-600" />
+                        <div className="w-10 h-10 bg-primary-50 rounded-lg flex items-center justify-center">
+                          <BookOpen className="h-5 w-5 text-primary-600" />
                         </div>
                         <div>
                           <h4 className="font-semibold text-gray-900">{cls.subject_name}</h4>
@@ -192,50 +191,6 @@ function DashboardOverview() {
             </Card>
           )}
 
-          {/* Quick Actions */}
-          <Card>
-            <CardHeader title="Quick Actions" />
-            <CardBody>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-                <Link
-                  to="attendance"
-                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border-2 border-gray-200 rounded-lg hover:border-indigo-500 hover:shadow-md transition-all duration-200"
-                >
-                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-500 transition-colors duration-200">
-                    <ClipboardCheck className="h-5 w-5 sm:h-6 sm:w-6 text-indigo-600 group-hover:text-white transition-colors duration-200" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-indigo-600 transition-colors">Take Attendance</h3>
-                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">Check and update today's attendance.</p>
-                  </div>
-                </Link>
-                <Link
-                  to="login-history"
-                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:shadow-md transition-all duration-200"
-                >
-                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-500 transition-colors duration-200">
-                    <Clock className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600 group-hover:text-white transition-colors duration-200" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">View Login History</h3>
-                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">Review your login and logout records.</p>
-                  </div>
-                </Link>
-                <Link
-                  to="class-management"
-                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border-2 border-gray-200 rounded-lg hover:border-green-500 hover:shadow-md transition-all duration-200"
-                >
-                  <div className="flex-shrink-0 w-10 h-10 sm:w-11 sm:h-11 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-500 transition-colors duration-200">
-                    <Library className="h-5 w-5 sm:h-6 sm:w-6 text-green-600 group-hover:text-white transition-colors duration-200" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-green-600 transition-colors">Manage Classes</h3>
-                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">View and manage your classes.</p>
-                  </div>
-                </Link>
-              </div>
-            </CardBody>
-          </Card>
         </div>
 
         <div className="md:border-l md:border-gray-300 md:pl-6 space-y-6">
@@ -246,7 +201,7 @@ function DashboardOverview() {
                 <span className="flex items-center gap-2">
                   Password Resets
                   {pendingResetCount > 0 && (
-                    <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-orange-500 text-white text-xs font-bold">
+                    <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-warning-600 text-white text-xs font-bold">
                       {pendingResetCount}
                     </span>
                   )}
@@ -256,14 +211,14 @@ function DashboardOverview() {
             <CardBody>
               {pendingResetCount > 0 ? (
                 <p className="text-sm text-gray-600 mb-3">
-                  You have <span className="font-semibold text-orange-600">{pendingResetCount}</span> student password reset request{pendingResetCount !== 1 ? 's' : ''} waiting for your approval.
+                  You have <span className="font-semibold text-warning-600">{pendingResetCount}</span> student password reset request{pendingResetCount !== 1 ? 's' : ''} waiting for your approval.
                 </p>
               ) : (
                 <p className="text-sm text-gray-500 mb-3">No pending password reset requests.</p>
               )}
               <Link
                 to="password-resets"
-                className="inline-flex items-center px-4 py-2 text-sm font-semibold bg-orange-50 text-orange-700 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors"
+                className="inline-flex items-center px-4 py-2 text-sm font-semibold bg-warning-50 text-warning-700 border border-warning-200 rounded-lg hover:bg-warning-100 transition-colors"
               >
                 Manage Requests
               </Link>
@@ -276,6 +231,52 @@ function DashboardOverview() {
               <BackendDashboardNotifications
                 emptyMessage="No new notifications."
               />
+            </CardBody>
+          </Card>
+
+          <Card className="h-fit">
+            <CardHeader title="Quick Actions" />
+            <CardBody>
+              <div className="space-y-2">
+                <Link
+                  to="attendance"
+                  className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-200 transition-colors p-3"
+                >
+                  <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                    <ClipboardCheck className="h-5 w-5 text-primary-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">Take Attendance</h3>
+                    <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">Check and update today's attendance.</p>
+                  </div>
+                </Link>
+
+                <Link
+                  to="login-history"
+                  className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-200 transition-colors p-3"
+                >
+                  <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                    <Clock className="h-5 w-5 text-primary-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">View Login History</h3>
+                    <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">Review your login and logout records.</p>
+                  </div>
+                </Link>
+
+                <Link
+                  to="class-management"
+                  className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-200 transition-colors p-3"
+                >
+                  <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                    <Library className="h-5 w-5 text-primary-600" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">Manage Classes</h3>
+                    <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">View and manage your classes.</p>
+                  </div>
+                </Link>
+              </div>
             </CardBody>
           </Card>
         </div>

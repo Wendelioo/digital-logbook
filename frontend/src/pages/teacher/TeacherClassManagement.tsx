@@ -3,11 +3,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
 import TeacherStoredArchiveModal from '../../components/TeacherStoredArchiveModal';
 import LoadingDots from '../../components/LoadingDots';
+import { ArchiveIcon } from '../../components/icons/ArchiveIcons';
 import {
   Eye,
   Edit,
   Plus,
-  Archive,
   AlertCircle,
   X,
   Filter,
@@ -27,12 +27,14 @@ import {
 } from '../../../wailsjs/go/backend/App';
 import { openExportSaveDialog, defaultClasslistFilename, type ExportFormat } from '../../utils/exportSaveDialog';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppUi } from '../../contexts/AppUiContext';
 import { Class } from './types';
 
 function ClassManagement() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { toast } = useAppUi();
   const [classes, setClasses] = useState<Class[]>([]);
   const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
@@ -171,7 +173,7 @@ function ClassManagement() {
       setSelectedClassForStatus(null);
     } catch (error) {
       console.error('Failed to change class status:', error);
-      alert('Failed to change class status. ' + (error instanceof Error ? error.message : 'Please try again.'));
+      toast('Failed to change class status. ' + (error instanceof Error ? error.message : 'Please try again.'), 'error');
     } finally {
       setChangingStatus(false);
     }
@@ -181,10 +183,10 @@ function ClassManagement() {
     try {
       await ArchiveClass(classId);
       await loadClasses();
-      alert('Class archived successfully!');
+      toast('Class archived successfully!', 'success');
     } catch (error) {
       console.error('Failed to archive class:', error);
-      alert('Failed to archive class. ' + (error instanceof Error ? error.message : 'Please try again.'));
+      toast('Failed to archive class. ' + (error instanceof Error ? error.message : 'Please try again.'), 'error');
     }
   };
 
@@ -291,7 +293,7 @@ function ClassManagement() {
               onClick={() => setShowArchiveModal(true)}
               variant="outline"
               size="sm"
-              icon={<Archive className="h-4 w-4" />}
+              icon={<ArchiveIcon />}
             >
               Archive
             </Button>
@@ -338,7 +340,7 @@ function ClassManagement() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full sm:w-auto px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              className="w-72 max-w-full px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Search..."
             />
             {/* Filter toggle button */}
@@ -556,7 +558,7 @@ function ClassManagement() {
                             variant="outline"
                             size="xs"
                             className="text-orange-600 hover:bg-orange-50"
-                            icon={<Archive className="h-3 w-3" />}
+                            icon={<ArchiveIcon size="xs" />}
                             title="Archive Class"
                             disabled={cls.is_active}
                           />
@@ -652,8 +654,8 @@ function ClassManagement() {
 
       {/* Status Change Confirmation Modal */}
       {showStatusModal && selectedClassForStatus && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+        <div className="modal-backdrop">
+          <div className="modal-surface w-full max-w-md mx-2 sm:mx-4 p-4 sm:p-6 max-h-[calc(100vh-2rem)] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">

@@ -6,7 +6,6 @@ import LoadingDots from '../../components/LoadingDots';
 import {
   Download,
   Filter,
-  Archive,
   Search,
   X,
 } from 'lucide-react';
@@ -29,6 +28,7 @@ import {
 } from '../../utils/exportSaveDialog';
 import { parseReportContext } from '../../utils/feedbackComments';
 import { LoginLog, Feedback } from './types';
+import { useAppUi } from '../../contexts/AppUiContext';
 
 export type ArchiveTab = 'archived-logs' | 'reports';
 
@@ -38,6 +38,7 @@ interface ArchiveManagementProps {
 }
 
 function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }: ArchiveManagementProps) {
+  const { toast } = useAppUi();
   const [activeTab, setActiveTab] = useState<ArchiveTab>(initialTab);
   const [archivedLogs, setArchivedLogs] = useState<LoginLog[]>([]);
   const [archivedFeedback, setArchivedFeedback] = useState<Feedback[]>([]);
@@ -236,7 +237,7 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
     const isReportsTab = activeTab === 'reports';
 
     if (!isLogsTab && !isReportsTab) {
-      alert('Range export is available in Logs and Reports tabs only.');
+      toast('Range export is available in Logs and Reports tabs only.', 'error');
       return;
     }
 
@@ -244,12 +245,12 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
     const exportEnd = appliedEndDate || rangeEndDate;
 
     if (!exportStart || !exportEnd) {
-      alert('Please apply a valid filter range before exporting.');
+      toast('Please apply a valid filter range before exporting.', 'error');
       return;
     }
 
     if (exportStart > exportEnd) {
-      alert('Start date cannot be later than end date.');
+      toast('Start date cannot be later than end date.', 'error');
       return;
     }
 
@@ -269,7 +270,7 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
       .sort((a, b) => a.localeCompare(b));
 
     if (availableDates.length === 0) {
-      alert('No archived records found for the selected date range.');
+      toast('No archived records found for the selected date range.', 'error');
       return;
     }
 
@@ -312,9 +313,12 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
         }
       }
 
-      alert(`Exported ${availableDates.length} date file(s) as ${format.toUpperCase()} for ${exportStart} to ${exportEnd}.`);
+      toast(
+        `Exported ${availableDates.length} date file(s) as ${format.toUpperCase()} for ${exportStart} to ${exportEnd}.`,
+        'success'
+      );
     } catch (err: any) {
-      alert(err.message || 'Failed to export selected date range.');
+      toast(err.message || 'Failed to export selected date range.', 'error');
     } finally {
       setRangeExporting(false);
     }
@@ -322,12 +326,12 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
 
   const handleApplyFilter = () => {
     if (!rangeStartDate || !rangeEndDate) {
-      alert('Please select both start and end dates.');
+      toast('Please select both start and end dates.', 'error');
       return;
     }
 
     if (rangeStartDate > rangeEndDate) {
-      alert('Start date cannot be later than end date.');
+      toast('Start date cannot be later than end date.', 'error');
       return;
     }
 
@@ -622,7 +626,7 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
           )}
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <div className="flex items-center justify-end gap-2">
-              <div className="w-64 relative">
+              <div className="w-64 max-w-full relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type="text"
@@ -760,10 +764,10 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
 
           {/* Export Modal (same structure and text as active Log Entries) */}
           {showLogExportModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
-                  <h3 className="text-lg font-semibold text-gray-900">Export Log Entries</h3>
+            <div className="modal-backdrop">
+              <div className="modal-surface-2xl w-full max-w-md mx-2 sm:mx-4 overflow-hidden max-h-[calc(100vh-2rem)] overflow-y-auto">
+                <div className="flex items-center justify-between px-6 py-3.5 border-b border-primary-200/80 bg-gradient-to-r from-primary-50/95 to-gray-50/90">
+                  <h3 className="text-lg font-semibold text-primary-950">Export Log Entries</h3>
                   <button onClick={() => setShowLogExportModal(false)} className="text-gray-400 hover:text-gray-600">
                     <X className="h-5 w-5" />
                   </button>
@@ -859,7 +863,7 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
           )}
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <div className="flex items-center justify-end gap-2">
-              <div className="w-64 relative">
+              <div className="w-64 max-w-full relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type="text"
@@ -997,10 +1001,10 @@ function ArchiveManagement({ initialTab = 'archived-logs', hideHeader = false }:
 
           {/* Export Modal (same structure and text as active Equipment Reports, no icons in modal) */}
           {showReportExportModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
-                  <h3 className="text-lg font-semibold text-gray-900">Export Equipment Reports</h3>
+            <div className="modal-backdrop">
+              <div className="modal-surface-2xl w-full max-w-md mx-2 sm:mx-4 overflow-hidden max-h-[calc(100vh-2rem)] overflow-y-auto">
+                <div className="flex items-center justify-between px-6 py-3.5 border-b border-primary-200/80 bg-gradient-to-r from-primary-50/95 to-gray-50/90">
+                  <h3 className="text-lg font-semibold text-primary-950">Export Equipment Reports</h3>
                   <button onClick={() => setShowReportExportModal(false)} className="text-gray-400 hover:text-gray-600">
                     <X className="h-5 w-5" />
                   </button>
