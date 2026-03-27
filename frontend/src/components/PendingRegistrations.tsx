@@ -14,6 +14,40 @@ interface PendingRegistrationsProps {
   workingStudentUserId: number;
 }
 
+const mapRegistrationWorkflowError = (
+  err: unknown,
+  fallback: string
+): string => {
+  const rawMessage = err instanceof Error ? err.message : '';
+  const message = rawMessage.toLowerCase();
+
+  if (message.includes('rejection reason is required')) {
+    return 'Please provide a rejection reason before rejecting the registration.';
+  }
+
+  if (message.includes('invalid action')) {
+    return 'Invalid registration action. Please refresh and try again.';
+  }
+
+  if (
+    message.includes('pending registration') ||
+    message.includes("account_status = 'pending'") ||
+    message.includes('where id = ? and account_status =')
+  ) {
+    return 'This request is no longer pending. It may have already been processed by another user.';
+  }
+
+  if (message.includes('database') || message.includes('transaction failed') || message.includes('connection')) {
+    return 'Unable to process this registration right now. Please try again in a moment.';
+  }
+
+  if (rawMessage.trim().length > 0) {
+    return rawMessage;
+  }
+
+  return fallback;
+};
+
 const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStudentUserId }) => {
   const [registrations, setRegistrations] = useState<PendingRegistration[]>([]);
   const [history, setHistory] = useState<RegistrationHistoryEntry[]>([]);
@@ -47,8 +81,8 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
       const data = await GetPendingRegistrations();
       setRegistrations(data || []);
       setError('');
-    } catch (err: any) {
-      setError(err.message || 'Failed to load pending registrations');
+    } catch (err) {
+      setError(mapRegistrationWorkflowError(err, 'Failed to load pending registrations.'));
     } finally {
       setLoading(false);
     }
@@ -143,8 +177,8 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
       });
       await loadRegistrations();
       await loadHistory();
-    } catch (err: any) {
-      setError(err.message || 'Failed to approve registration');
+    } catch (err) {
+      setError(mapRegistrationWorkflowError(err, 'Failed to approve registration.'));
     } finally {
       setProcessing(null);
     }
@@ -170,8 +204,8 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
       setShowRejectModal(false);
       setRejectionReason('');
       setSelectedUserId(null);
-    } catch (err: any) {
-      setError(err.message || 'Failed to reject registration');
+    } catch (err) {
+      setError(mapRegistrationWorkflowError(err, 'Failed to reject registration.'));
     } finally {
       setProcessing(null);
     }

@@ -37,7 +37,21 @@ const mapRegistrationErrorMessage = (err: unknown): string => {
     return 'This Student ID is already registered. Please use a different Student ID or contact support.';
   }
 
+  if (
+    (message.includes('unique') || message.includes('duplicate')) &&
+    (message.includes('student') || message.includes('username') || message.includes('users'))
+  ) {
+    return 'This Student ID is already registered. Please use a different Student ID.';
+  }
+
   if (message.includes('email already') || message.includes('email is already registered')) {
+    return 'This email is already in use. Please use another email address.';
+  }
+
+  if (
+    (message.includes('unique') || message.includes('duplicate')) &&
+    (message.includes('email') || message.includes('students'))
+  ) {
     return 'This email is already in use. Please use another email address.';
   }
 

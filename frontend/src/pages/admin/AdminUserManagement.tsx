@@ -27,7 +27,6 @@ import {
 import {
   GetUsers,
   GetUsersByType,
-  SearchUsers,
   CreateUser,
   UpdateUser,
   GetDepartments,
@@ -277,7 +276,7 @@ function UserManagement() {
   useEffect(() => {
     loadUsers();
     loadDepartments();
-  }, [userTypeFilter, searchTerm]); // Reload when filters change
+  }, [userTypeFilter]); // Reload when user type changes
 
   // Reload activity tab users whenever the selected tab changes
   useEffect(() => {
@@ -302,12 +301,8 @@ function UserManagement() {
     try {
       let data;
 
-      // Use server-side filtering for better performance
-      if (searchTerm && userTypeFilter) {
-        data = await SearchUsers(searchTerm, userTypeFilter);
-      } else if (searchTerm) {
-        data = await SearchUsers(searchTerm, '');
-      } else if (userTypeFilter) {
+      // Keep user-type filtering server-side; search is handled client-side.
+      if (userTypeFilter) {
         data = await GetUsersByType(userTypeFilter);
       } else {
         data = await GetUsers();
@@ -604,17 +599,32 @@ function UserManagement() {
     );
   }
 
-  // Derived table data (filters, sort, pagination)
-  // Note: userTypeFilter and searchTerm are now handled server-side
+  // Derived table data (search, column filters, sort, pagination)
   // Build a lookup map from activityUsers (which contains last-login data) keyed by user ID
   const activityByID = new Map(activityUsers.map((u) => [u.id, u]));
 
-  // Only column-specific filters are applied here
+  // Global search + column-specific filters are applied client-side.
   const filteredUsers = users.filter((u) => {
+    const q = searchTerm.trim().toLowerCase();
+    const searchable = [
+      u.name,
+      u.first_name,
+      u.middle_name,
+      u.last_name,
+      u.employee_id,
+      u.student_id,
+      u.email,
+      u.contact_number,
+      u.role,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    const inSearch = !q || searchable.includes(q);
     const inName = u.name.toLowerCase().includes(filters.name.toLowerCase());
     const inRole = u.role.toLowerCase().includes(filters.role.toLowerCase());
     const inCreated = (u.created || '').toLowerCase().includes(filters.created.toLowerCase());
-    return inName && inRole && inCreated;
+    return inSearch && inName && inRole && inCreated;
   });
 
   const sortedUsers = [...filteredUsers].sort((a, b) => {

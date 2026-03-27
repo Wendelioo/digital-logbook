@@ -67,8 +67,40 @@ const mapLoginErrorMessage = (err: unknown): string => {
     return 'Your account is pending approval. Please wait for verification.';
   }
 
-  if (message.includes('archived') || message.includes('deactivated') || message.includes('deleted') || message.includes('inactive')) {
-    return 'Your account is not active. Please contact your administrator.';
+  if (message.includes('registration was rejected') || message.includes('account rejected')) {
+    return 'Your registration was rejected. Please contact your administrator.';
+  }
+
+  if (message.includes('archived')) {
+    return 'Your account is archived. Please contact your administrator.';
+  }
+
+  if (message.includes('deactivated')) {
+    return 'Your account is deactivated. Please contact your administrator.';
+  }
+
+  if (message.includes('deleted')) {
+    return 'Your account was deleted. Please contact your administrator.';
+  }
+
+  if (message.includes('inactive')) {
+    return 'Your account is inactive. Please contact your administrator.';
+  }
+
+  if (message.includes('expired after 4 years') || message.includes('account has expired')) {
+    return 'Your student account has expired after 4 years. Please register a new account.';
+  }
+
+  if (
+    message.includes('username is required') ||
+    message.includes('password is required') ||
+    message.includes('must be at least')
+  ) {
+    return rawMessage;
+  }
+
+  if (message.includes('runtime not initialized') || message.includes('run the app via wails')) {
+    return 'Application runtime is not ready. Please restart the app.';
   }
 
   if (message.includes('database') || message.includes('connection') || message.includes('connect')) {
@@ -80,6 +112,51 @@ const mapLoginErrorMessage = (err: unknown): string => {
   }
 
   return 'Login failed. Please try again.';
+};
+
+const mapRegistrationErrorMessage = (err: unknown): string => {
+  const rawMessage = getErrorText(err);
+  const message = rawMessage.toLowerCase();
+
+  if (message.includes('pending registration')) {
+    return 'Your registration is already pending approval. Please wait for verification.';
+  }
+
+  if (message.includes('already active') || message.includes('already registered to an active account')) {
+    return 'This account is already active. Please sign in instead.';
+  }
+
+  if (
+    message.includes('student id already registered') ||
+    message.includes('student id is already') ||
+    ((message.includes('unique') || message.includes('duplicate')) &&
+      (message.includes('student') || message.includes('username') || message.includes('users')))
+  ) {
+    return 'This Student ID is already registered. Please use a different Student ID.';
+  }
+
+  if (
+    message.includes('email already') ||
+    message.includes('email is already registered') ||
+    ((message.includes('unique') || message.includes('duplicate')) &&
+      (message.includes('email') || message.includes('students')))
+  ) {
+    return 'This email is already in use. Please use another email address.';
+  }
+
+  if (message.includes('department') && (message.includes('inactive') || message.includes('invalid') || message.includes('required'))) {
+    return 'Please select a valid active department.';
+  }
+
+  if (message.includes('database') || message.includes('connection') || message.includes('transaction failed')) {
+    return 'Unable to process registration right now. Please try again in a moment.';
+  }
+
+  if (rawMessage.trim().length > 0) {
+    return rawMessage;
+  }
+
+  return 'Registration failed. Please try again.';
 };
 
 function LoginPage() {
@@ -273,7 +350,7 @@ function LoginPage() {
       }, 3000);
     } catch (err) {
       console.error('Registration error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+      const errorMessage = mapRegistrationErrorMessage(err);
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -357,7 +434,7 @@ function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-5" noValidate>
+          <form onSubmit={handleLogin} className="space-y-5" noValidate autoComplete="off">
             {/* Username/ID Field */}
             <div>
               <label htmlFor="username" className="sr-only">
@@ -371,9 +448,12 @@ function LoginPage() {
                 <input
                   type="text"
                   id="username"
+                  name="login-username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full pl-36 pr-4 py-3 border-0 rounded-lg focus:outline-none focus:ring-0"
+                  autoComplete="off"
+                  spellCheck={false}
                   required
                 />
               </div>
@@ -392,9 +472,11 @@ function LoginPage() {
                 <input
                   type={showPassword ? "text" : "password"}
                   id="password"
+                  name="login-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="login-password-input w-full pl-36 pr-11 py-3 border-0 rounded-lg focus:outline-none focus:ring-0"
+                  autoComplete="new-password"
                   required
                 />
                 <button

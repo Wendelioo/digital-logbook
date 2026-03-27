@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -69,6 +69,8 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [openDropdowns, setOpenDropdowns] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const searchBoxRef = useRef<HTMLDivElement>(null);
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -95,6 +97,50 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const navigate = useNavigate();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const searchableNavigation = useMemo(() => {
+    const items: Array<{ name: string; href: string }> = [];
+    navigationItems.forEach((item) => {
+      if (item.isDivider) return;
+      if (item.href) items.push({ name: item.name, href: item.href });
+      if (item.children?.length) {
+        item.children.forEach((child) => {
+          if (child.href) {
+            items.push({ name: `${item.name} - ${child.name}`, href: child.href });
+          }
+        });
+      }
+    });
+    return items;
+  }, [navigationItems]);
+
+  const searchResults = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return [];
+    return searchableNavigation
+      .filter((item) => item.name.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [searchTerm, searchableNavigation]);
+
+  const runHeaderSearch = (targetHref?: string) => {
+    const query = searchTerm.trim();
+    if (!query && !targetHref) return;
+
+    if (targetHref) {
+      navigate(targetHref);
+      setSearchTerm('');
+      setSearchFocused(false);
+      return;
+    }
+
+    if (searchResults.length > 0) {
+      navigate(searchResults[0].href);
+      setSearchTerm('');
+      setSearchFocused(false);
+    } else {
+      toast(`No dashboard page found for "${query}".`, 'error');
+    }
+  };
 
   const handleLogout = async () => {
     if (user?.role === 'student') {
@@ -533,6 +579,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setProfileDropdownOpen(false);
+        setSearchFocused(false);
         if (showAccountModal) {
           handleCloseAccountModal();
         }
@@ -551,6 +598,16 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       setShowAccountModal(false);
       setProfileDropdownOpen(false);
     };
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target as Node)) {
+        setSearchFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   return (
@@ -787,16 +844,41 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
             </div>
 
             <div className="flex-1 flex justify-end">
-              <div className="relative w-72 max-w-full">
+              <div className="relative w-72 max-w-full" ref={searchBoxRef}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      runHeaderSearch();
+                    }
+                  }}
                   type="text"
-                  placeholder="Search"
+                  placeholder="Search dashboard pages..."
                   className="w-full pl-10 pr-3 py-2 rounded-xl bg-gray-50 border border-gray-200 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   aria-label="Search"
                 />
+                {searchFocused && searchTerm.trim() && (
+                  <div className="absolute top-full mt-2 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+                    {searchResults.length > 0 ? (
+                      searchResults.map((result) => (
+                        <button
+                          key={`${result.href}-${result.name}`}
+                          type="button"
+                          onClick={() => runHeaderSearch(result.href)}
+                          className="w-full text-left px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                          {result.name}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-2.5 text-sm text-gray-500">No matching dashboard pages</div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
