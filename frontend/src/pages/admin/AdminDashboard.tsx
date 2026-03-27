@@ -261,6 +261,46 @@ function DashboardOverview() {
 
         <div className="md:border-l md:border-gray-300 md:pl-6 space-y-6">
           <Card className="h-fit">
+            <CardHeader title="Critical Alerts (Today)" />
+            <CardBody>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div
+                  className={`p-3 rounded-lg border ${
+                    nonIssueFeedbackCount > 0
+                      ? 'bg-success-50 border-success-200'
+                      : 'bg-gray-50 border-gray-200'
+                  }`}
+                >
+                  <div className="flex flex-col items-start gap-2">
+                    <span className="text-sm font-semibold text-gray-800">
+                      {nonIssueFeedbackCount > 0 ? 'No Issue (All Working)' : 'No Issue Feedback'}
+                    </span>
+                    <span
+                      className={`text-2xl font-bold ${
+                        nonIssueFeedbackCount > 0 ? 'text-success-700' : 'text-gray-500'
+                      }`}
+                    >
+                      {nonIssueFeedbackCount > 0 ? nonIssueFeedbackCount : '0'}
+                    </span>
+                  </div>
+                </div>
+
+                <Link
+                  to="reports"
+                  className="flex flex-col p-3 bg-warning-50 rounded-lg hover:bg-warning-100 border border-warning-200 transition-colors"
+                >
+                  <span className="text-sm font-semibold text-gray-800 mb-2">
+                    Issue Feedback
+                  </span>
+                  <span className="text-2xl font-bold text-warning-700">
+                    {issueFeedbackCount}
+                  </span>
+                </Link>
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card className="h-fit">
             <CardHeader title="Notifications" />
             <CardBody>
               <BackendDashboardNotifications
@@ -315,45 +355,6 @@ function DashboardOverview() {
             </CardBody>
           </Card>
 
-          <Card className="h-fit">
-            <CardHeader title="Critical Alerts (Today)" />
-            <CardBody>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div
-                  className={`p-3 rounded-lg border ${
-                    nonIssueFeedbackCount > 0
-                      ? 'bg-success-50 border-success-200'
-                      : 'bg-gray-50 border-gray-200'
-                  }`}
-                >
-                  <div className="flex flex-col items-start gap-2">
-                    <span className="text-sm font-semibold text-gray-800">
-                      {nonIssueFeedbackCount > 0 ? 'No Issue (All Working)' : 'No Issue Feedback'}
-                    </span>
-                    <span
-                      className={`text-2xl font-bold ${
-                        nonIssueFeedbackCount > 0 ? 'text-success-700' : 'text-gray-500'
-                      }`}
-                    >
-                      {nonIssueFeedbackCount > 0 ? nonIssueFeedbackCount : '0'}
-                    </span>
-                  </div>
-                </div>
-
-                <Link
-                  to="reports"
-                  className="flex flex-col p-3 bg-warning-50 rounded-lg hover:bg-warning-100 border border-warning-200 transition-colors"
-                >
-                  <span className="text-sm font-semibold text-gray-800 mb-2">
-                    Issue Feedback
-                  </span>
-                  <span className="text-2xl font-bold text-warning-700">
-                    {issueFeedbackCount}
-                  </span>
-                </Link>
-              </div>
-            </CardBody>
-          </Card>
         </div>
       </div>
     </div>
