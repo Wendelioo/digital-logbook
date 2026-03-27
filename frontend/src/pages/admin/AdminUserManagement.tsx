@@ -414,8 +414,7 @@ function UserManagement() {
         return;
       }
 
-      // For new users, password is required
-      // For editing, if password is empty, we keep the old password (backend handles this)
+      // Password is only collected in the add-user flow; use Change password in the row actions to reset.
       let password_to_pass = formData.password;
 
       if (!editingUser && !password_to_pass) {
@@ -951,74 +950,73 @@ function UserManagement() {
                   required
                 />
                 <p className="mt-1.5 text-xs text-gray-500">
-                  Exactly 7 digits. For new users, the initial password is set to this value until you enter a different password below.
+                  Exactly 7 digits.
+                  {!editingUser && (
+                    <> For new users, the initial password is set to this value until you enter a different password below.</>
+                  )}
                 </p>
               </div>
 
               {!editingUser && (
-                <div className="sm:col-span-2 rounded-lg border border-primary-100 bg-primary-50/50 px-3 py-2.5">
-                  <p className="text-xs font-medium text-gray-800">Password requirements</p>
-                  <ul className="mt-1.5 text-xs text-gray-600 list-disc list-inside space-y-0.5">
-                    <li>At least 8 characters</li>
-                    <li>Uppercase, lowercase, number, and special character</li>
-                  </ul>
-                </div>
-              )}
+                <>
+                  <div className="sm:col-span-2 rounded-lg border border-primary-100 bg-primary-50/50 px-3 py-2.5">
+                    <p className="text-xs font-medium text-gray-800">Password requirements</p>
+                    <ul className="mt-1.5 text-xs text-gray-600 list-disc list-inside space-y-0.5">
+                      <li>At least 8 characters</li>
+                      <li>Uppercase, lowercase, number, and special character</li>
+                    </ul>
+                  </div>
 
-              {editingUser && (
-                <p className="sm:col-span-2 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                  Leave password fields empty to keep the current password. To change it, enter and confirm a new strong password.
-                </p>
+                  <div>
+                    <label className="label" htmlFor="user-password">
+                      Password <span className="text-danger-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="user-password"
+                        type={showPassword ? 'text' : 'password'}
+                        autoComplete="new-password"
+                        value={formData.password}
+                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        className="input pr-10"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={1.75} /> : <Eye className="h-4 w-4" strokeWidth={1.75} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="user-password-confirm">
+                      Confirm password <span className="text-danger-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="user-password-confirm"
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        autoComplete="new-password"
+                        value={formData.confirmPassword}
+                        onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                        className="input pr-10"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                        aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" strokeWidth={1.75} /> : <Eye className="h-4 w-4" strokeWidth={1.75} />}
+                      </button>
+                    </div>
+                  </div>
+                </>
               )}
-
-              <div>
-                <label className="label" htmlFor="user-password">
-                  Password {!editingUser && <span className="text-danger-500">*</span>}
-                </label>
-                <div className="relative">
-                  <input
-                    id="user-password"
-                    type={showPassword ? 'text' : 'password'}
-                    autoComplete={editingUser ? 'new-password' : 'new-password'}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="input pr-10"
-                    required={!editingUser}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={1.75} /> : <Eye className="h-4 w-4" strokeWidth={1.75} />}
-                  </button>
-                </div>
-              </div>
-              <div>
-                <label className="label" htmlFor="user-password-confirm">
-                  Confirm password {!editingUser && <span className="text-danger-500">*</span>}
-                </label>
-                <div className="relative">
-                  <input
-                    id="user-password-confirm"
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    autoComplete="new-password"
-                    value={formData.confirmPassword}
-                    onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                    className="input pr-10"
-                    required={!editingUser}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showConfirmPassword ? <EyeOff className="h-4 w-4" strokeWidth={1.75} /> : <Eye className="h-4 w-4" strokeWidth={1.75} />}
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
 
