@@ -1,5 +1,7 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Login, Logout } from '../../wailsjs/go/main/App';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { Login, Logout, UnlockScreen, LockScreen, IsKioskMode } from '../../wailsjs/go/backend/App';
+import type { User } from '../types';
+import { useInactivityDetection, useWindowUnload } from '../hooks/useInactivity';
 
 // Extend Window interface to include Wails runtime
 declare global {
@@ -8,47 +10,101 @@ declare global {
       main?: {
         App?: any;
       };
+      backend?: {
+        App?: any;
+      };
     };
   }
 }
 
-interface User {
-  id: number;
-  name: string;
-  role: string;
-  first_name?: string;
-  middle_name?: string;
-  last_name?: string;
-  employee_id?: string;
-  student_id?: string;
-  email?: string;
-  contact_number?: string;
-  photo_url?: string;
-  created?: string;
-}
-
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string) => Promise<User>;
+  login: (username: string, password: string, rememberMe: boolean) => Promise<User>;
   logout: () => Promise<void>;
   updateUser: (updatedUser: Partial<User>) => void;
   isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
+const REMEMBER_ME_KEY = 'rememberMe';
+const HEARTBEAT_INTERVAL_MS = 30 * 1000;
+const RUNTIME_WAIT_TIMEOUT_MS = 5000;
+const RUNTIME_WAIT_INTERVAL_MS = 50;
+
+function isWailsRuntimeReady() {
+  return !!window.go?.backend?.App;
+}
+
+async function waitForWailsRuntime(timeoutMs = RUNTIME_WAIT_TIMEOUT_MS): Promise<boolean> {
+  if (isWailsRuntimeReady()) return true;
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    await new Promise((resolve) => window.setTimeout(resolve, RUNTIME_WAIT_INTERVAL_MS));
+    if (isWailsRuntimeReady()) return true;
+  }
+
+  return false;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isRememberedSession, setIsRememberedSession] = useState(false);
+  const logoutInProgressRef = useRef(false);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const sendHeartbeat = () => {
+      if (!window.go?.backend?.App?.TouchSession) return;
+      window.go.backend.App.TouchSession(user.id).catch(() => {});
+    };
+
+    sendHeartbeat();
+    const heartbeatTimer = window.setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(heartbeatTimer);
+    };
+  }, [user]);
+
+  const clearLocalSession = useCallback(() => {
+    setUser(null);
+    setIsAuthenticated(false);
+    setIsRememberedSession(false);
+    localStorage.removeItem('user');
+    sessionStorage.clear();
+    window.dispatchEvent(new CustomEvent(AUTH_STATUS_CHANGED_EVENT));
+  }, []);
 
   // Check for saved user session on mount
   useEffect(() => {
+    const sessionUser = sessionStorage.getItem('user');
+    if (sessionUser) {
+      try {
+        const parsedSessionUser = JSON.parse(sessionUser);
+        setUser(parsedSessionUser);
+        setIsAuthenticated(true);
+        setIsRememberedSession(false);
+        UnlockScreen().catch(() => {});
+        return;
+      } catch (error) {
+        console.error('Failed to parse session user:', error);
+        sessionStorage.removeItem('user');
+      }
+    }
+
     const savedUser = localStorage.getItem('user');
     if (savedUser) {
       try {
         const parsedUser = JSON.parse(savedUser);
         setUser(parsedUser);
         setIsAuthenticated(true);
+        setIsRememberedSession(true);
+        // If user session exists, unlock screen (kiosk mode - user was already logged in)
+        UnlockScreen().catch(() => {});
       } catch (error) {
         console.error('Failed to parse saved user:', error);
         localStorage.removeItem('user');
@@ -56,142 +112,118 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Handle automatic logout on window/app close, timeout, or inactivity
-  useEffect(() => {
-    if (!user) return;
+  // Handle inactivity timeout — calls backend to record logout, then clears local session
+  const handleAutoLogout = useCallback(async () => {
+    if (logoutInProgressRef.current) {
+      return;
+    }
 
-    let inactivityTimer: ReturnType<typeof setTimeout> | null = null;
-    const INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes of inactivity
-
-    // Function to reset inactivity timer
-    const resetInactivityTimer = () => {
-      if (inactivityTimer) {
-        clearTimeout(inactivityTimer);
-      }
-      inactivityTimer = setTimeout(async () => {
-        // Auto logout after inactivity
-        try {
-          if (window.go && window.go.main && window.go.main.App) {
-            await Logout(user.id);
-          }
-        } catch (error) {
-          console.error('Auto logout on inactivity failed:', error);
-        } finally {
-          setUser(null);
-          setIsAuthenticated(false);
-          localStorage.removeItem('user');
-        }
-      }, INACTIVITY_TIMEOUT);
-    };
-
-    // Reset timer on user activity
-    const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
-    activityEvents.forEach(event => {
-      document.addEventListener(event, resetInactivityTimer, true);
-    });
-
-    // Start inactivity timer
-    resetInactivityTimer();
-
-    // Handle window/app close - use synchronous approach
-    const handleBeforeUnload = () => {
-      // Use sendBeacon or synchronous XMLHttpRequest for reliable logout on close
-      if (window.go && window.go.main && window.go.main.App && user) {
-        // Try to call logout - use fire-and-forget approach
-        // Note: We can't await in beforeunload, so we'll try our best
-        const logoutPromise = Logout(user.id);
-        // Store in a way that might complete
-        (window as any).__pendingLogout = logoutPromise;
-      }
-    };
-
-    // Handle component unmount (app closing)
-    const handleUnload = async () => {
-      if (window.go && window.go.main && window.go.main.App && user) {
-        try {
-          await Logout(user.id);
-        } catch (error) {
-          console.error('Logout on unload failed:', error);
-        }
-      }
-    };
-
-    // Add event listeners
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    window.addEventListener('unload', handleUnload);
-
-    // Cleanup
-    return () => {
-      if (inactivityTimer) {
-        clearTimeout(inactivityTimer);
-      }
-      activityEvents.forEach(event => {
-        document.removeEventListener(event, resetInactivityTimer, true);
-      });
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      window.removeEventListener('unload', handleUnload);
-      
-      // Also try to logout on cleanup (component unmount)
-      if (window.go && window.go.main && window.go.main.App && user) {
-        Logout(user.id).catch(err => console.error('Logout on cleanup failed:', err));
-      }
-    };
-  }, [user]);
-
-  const login = async (username: string, password: string): Promise<User> => {
+    logoutInProgressRef.current = true;
     try {
-      // Clear any existing user data first
-      setUser(null);
-      setIsAuthenticated(false);
-      localStorage.removeItem('user');
+      if (user && window.go?.backend?.App) {
+        await Logout(user.id);
+      }
+    } catch (error) {
+      console.error('Auto logout failed:', error);
+    } finally {
+      clearLocalSession();
 
-      // Check if Wails runtime is available
-      if (!window.go || !window.go.main || !window.go.main.App) {
-        throw new Error('Application runtime not initialized. Please restart the application.');
+      // Lock screen in kiosk mode on auto-logout
+      try {
+        await LockScreen();
+      } catch (e) {
+        // Silently ignore if not in kiosk mode
       }
 
-      // Call the backend Login function
+      logoutInProgressRef.current = false;
+    }
+  }, [clearLocalSession, user]);
+
+  // Handle window/app close — only clears local session.
+  // The Go OnBeforeClose + OnShutdown hooks reliably handle DB session cleanup
+  // on the backend side, so no async backend call is needed here.
+  const handleWindowClose = useCallback(() => {
+    clearLocalSession();
+  }, [clearLocalSession]);
+
+  useInactivityDetection(handleAutoLogout, !!user);
+  useWindowUnload(handleWindowClose, !!user);
+
+  const login = async (username: string, password: string, rememberMe: boolean): Promise<User> => {
+    logoutInProgressRef.current = false;
+
+    // Clear existing state
+    setUser(null);
+    setIsAuthenticated(false);
+    setIsRememberedSession(false);
+    localStorage.removeItem('user');
+    sessionStorage.removeItem('user');
+
+    try {
+      // Check Wails runtime availability (allow short delay for runtime injection)
+      const runtimeReady = await waitForWailsRuntime();
+      if (!runtimeReady) {
+        throw new Error('Application runtime not initialized. Please run the app via Wails (wails dev or built app).');
+      }
+
       const userData = await Login(username, password);
-      
       if (!userData) {
         throw new Error('Invalid credentials');
       }
 
-      // Set user data
+      // Update state and persist
       setUser(userData);
       setIsAuthenticated(true);
+      setIsRememberedSession(rememberMe);
 
-      // Save to localStorage for persistence
-      localStorage.setItem('user', JSON.stringify(userData));
+      if (rememberMe) {
+        localStorage.setItem('user', JSON.stringify(userData));
+        sessionStorage.removeItem('user');
+      } else {
+        sessionStorage.setItem('user', JSON.stringify(userData));
+        localStorage.removeItem('user');
+      }
+
+      localStorage.setItem(REMEMBER_ME_KEY, String(rememberMe));
+      window.dispatchEvent(new CustomEvent(AUTH_STATUS_CHANGED_EVENT));
+
+      // Unlock screen in kiosk mode so user can freely use Windows
+      try {
+        await UnlockScreen();
+      } catch (e) {
+        // Silently ignore if not in kiosk mode
+      }
       
       return userData;
     } catch (error) {
       console.error('Login failed:', error);
-      // Ensure state is cleared on login failure
-      setUser(null);
-      setIsAuthenticated(false);
-      localStorage.removeItem('user');
       throw error;
     }
   };
 
   const logout = async () => {
+    if (logoutInProgressRef.current) {
+      return;
+    }
+
+    logoutInProgressRef.current = true;
     try {
-      // Call backend logout if user exists
-      if (user && window.go && window.go.main && window.go.main.App) {
+      if (user && window.go?.backend?.App) {
         await Logout(user.id);
       }
     } catch (error) {
       console.error('Backend logout failed:', error);
-      // Continue with frontend logout even if backend fails
     } finally {
-      // Always clear frontend state
-      setUser(null);
-      setIsAuthenticated(false);
-      localStorage.removeItem('user');
-      
-      // Clear any other potential state
-      sessionStorage.clear();
+      clearLocalSession();
+
+      // Lock screen in kiosk mode so next user must login
+      try {
+        await LockScreen();
+      } catch (e) {
+        // Silently ignore if not in kiosk mode
+      }
+
+      logoutInProgressRef.current = false;
     }
   };
 
@@ -199,7 +231,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user) {
       const updatedUser = { ...user, ...updatedUserData };
       setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      if (isRememberedSession) {
+        localStorage.setItem('user', JSON.stringify(updatedUser));
+      } else {
+        sessionStorage.setItem('user', JSON.stringify(updatedUser));
+      }
     }
   };
 
@@ -223,4 +259,3 @@ export function useAuth() {
   }
   return context;
 }
-
