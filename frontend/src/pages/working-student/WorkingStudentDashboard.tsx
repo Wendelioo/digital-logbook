@@ -1,21 +1,23 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardBody, StatCard } from '../../components/Card';
 import Button from '../../components/Button';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Users,
   UserCheck,
   Calendar,
   Clock,
+  MapPin,
   AlertCircle,
   ClipboardCheck,
   CheckCircle,
   XCircle,
 } from 'lucide-react';
-import { GetWorkingStudentDashboard, GetStudentDashboard, GetStudentOpenAttendanceSessions, StudentTimeIn } from '../../../wailsjs/go/main/App';
+import { GetWorkingStudentDashboard, GetStudentDashboard, GetStudentOpenAttendanceSessions, GetStudentLoginLogs, StudentTimeIn } from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
-import { main } from '../../../wailsjs/go/models';
-import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
+import { backend } from '../../../wailsjs/go/models';
+import { BackendDashboardNotifications } from '../../components/DashboardNotifications';
 import { DashboardStats } from './types';
 
 interface AttendanceSession {
@@ -27,9 +29,20 @@ interface AttendanceSession {
   class_duration_minutes?: number;
   grace_period_minutes?: number;
   opened_at?: string;
+  paused_at?: string;
   subject_code: string;
   subject_name: string;
   edp_code: string;
+}
+
+interface LoginLog {
+  id: number;
+  user_id: number;
+  user_name: string;
+  user_type: string;
+  pc_number?: string;
+  login_time: string;
+  logout_time?: string;
 }
 
 const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
@@ -40,20 +53,20 @@ function DashboardOverview() {
     students_registered: 0,
     pending_feedback: 0,
     today_registrations: 0,
-    active_students_now: 0
+    active_students_now: 0,
+    pending_registrations: 0,
   });
-  const [studentDashboard, setStudentDashboard] = useState<main.StudentDashboard>(new main.StudentDashboard({
+  const [studentDashboard, setStudentDashboard] = useState<backend.StudentDashboard>(new backend.StudentDashboard({
     attendance: [],
     attendance_rate: 0,
     currently_logged_in: false,
     enrolled_classes: 0
   }));
   const [openSessions, setOpenSessions] = useState<AttendanceSession[]>([]);
+  const [lastLogin, setLastLogin] = useState<LoginLog | null>(null);
   const [timingInSession, setTimingInSession] = useState<number | null>(null);
   const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
   const [loading, setLoading] = useState(true);
-  const [notifications, setNotifications] = useState<DashboardNotificationItem[]>([]);
-  const previousStatsRef = useRef<DashboardStats | null>(null);
 
   const normalizeStatus = (status?: string) => (status || '').trim().toLowerCase();
   const parseSessionDateTime = (value?: string): Date | null => {
@@ -67,19 +80,51 @@ function DashboardOverview() {
     const secs = seconds % 60;
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
-  const getExpectedTimeInStatus = (session?: AttendanceSession): 'present' | 'late' => {
+  const getExpectedTimeInStatus = (session?: AttendanceSession, referenceTimeMs?: number): 'present' | 'late' => {
     const openedAt = parseSessionDateTime(session?.opened_at);
     if (!openedAt) return 'present';
     const graceMinutes = Math.max(0, session?.grace_period_minutes || 0);
     const lateCutoff = openedAt.getTime() + graceMinutes * 60 * 1000;
-    return Date.now() >= lateCutoff ? 'late' : 'present';
+    const nowMs = referenceTimeMs ?? Date.now();
+    return nowMs >= lateCutoff ? 'late' : 'present';
+  };
+
+  const parseSqlDateTimeLocal = (value?: string): Date | null => {
+    if (!value) return null;
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if (!match) return null;
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const hour = Number(match[4]);
+    const minute = Number(match[5]);
+    const second = Number(match[6] || '0');
+
+    const localDate = new Date(year, month - 1, day, hour, minute, second);
+    return Number.isNaN(localDate.getTime()) ? null : localDate;
+  };
+
+  const formatSqlDateTimeLocal = (value?: string): string => {
+    const parsed = parseSqlDateTimeLocal(value);
+    if (!parsed) return 'N/A';
+    return parsed.toLocaleString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
   };
 
   const handleTimeIn = async (sessionId: number) => {
     if (!user?.id) return;
     setTimingInSession(sessionId);
     try {
-      await StudentTimeIn(user.id, sessionId);
+      await StudentTimeIn(sessionId, user.id);
+      const refreshedDashboard = await GetStudentDashboard(user.id);
+      setStudentDashboard(refreshedDashboard);
       const next = await GetStudentOpenAttendanceSessions(user.id);
       setOpenSessions(next || []);
     } catch (error) {
@@ -87,32 +132,6 @@ function DashboardOverview() {
     } finally {
       setTimingInSession(null);
     }
-  };
-
-  const pushNotification = (message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
-    setNotifications((prev) => [
-      {
-        id: `${Date.now()}-${Math.random()}`,
-        message,
-        createdAt: Date.now(),
-        tone,
-      },
-      ...prev,
-    ].slice(0, 10));
-  };
-  const upsertNotification = (id: string, message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
-    setNotifications((prev) => {
-      const next = prev.filter((item) => item.id !== id);
-      return [
-        {
-          id,
-          message,
-          createdAt: Date.now(),
-          tone,
-        },
-        ...next,
-      ].slice(0, 10);
-    });
   };
 
   useEffect(() => {
@@ -129,6 +148,18 @@ function DashboardOverview() {
             // Not enrolled or not a student — leave attendance empty
           }
           try {
+            const loginLogs = await GetStudentLoginLogs(user.id);
+            if (loginLogs && loginLogs.length > 0) {
+              const completedLogs = loginLogs.filter((log) => !!log.logout_time);
+              const selectedLog = completedLogs.length > 0 ? completedLogs[0] : loginLogs[0];
+              setLastLogin(selectedLog);
+            } else {
+              setLastLogin(null);
+            }
+          } catch {
+            setLastLogin(null);
+          }
+          try {
             const sessions = await GetStudentOpenAttendanceSessions(user.id);
             setOpenSessions(sessions || []);
           } catch {
@@ -136,46 +167,6 @@ function DashboardOverview() {
           }
         }
 
-        upsertNotification(
-          'working-pending-feedback',
-          data.pending_feedback > 0
-            ? `${data.pending_feedback} feedback report(s) waiting for review.`
-            : 'No pending feedback reports.',
-          data.pending_feedback > 0 ? 'warning' : 'success'
-        );
-        upsertNotification(
-          'working-today-registrations',
-          `Today's registrations: ${data.today_registrations}.`,
-          'info'
-        );
-        upsertNotification(
-          'working-active-students',
-          `Students online: ${data.active_students_now}.`,
-          'info'
-        );
-
-        const previous = previousStatsRef.current;
-        if (!previous) {
-          pushNotification('Working-student dashboard is connected and receiving live updates.', 'success');
-        } else {
-          if (data.pending_feedback !== previous.pending_feedback) {
-            if (data.pending_feedback > previous.pending_feedback) {
-              pushNotification(`${data.pending_feedback} feedback report(s) are waiting for review.`, 'warning');
-            } else {
-              pushNotification('Pending feedback queue has been reduced.', 'success');
-            }
-          }
-
-          if (data.today_registrations !== previous.today_registrations) {
-            pushNotification(`Today's registrations changed to ${data.today_registrations}.`, 'info');
-          }
-
-          if (data.active_students_now !== previous.active_students_now) {
-            pushNotification(`Students online changed to ${data.active_students_now}.`, 'info');
-          }
-        }
-
-        previousStatsRef.current = data;
       } catch (error) {
         console.error('Failed to load working student dashboard:', error);
       } finally {
@@ -212,42 +203,51 @@ function DashboardOverview() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
 
   return (
     <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Welcome back, {user?.first_name || user?.name}!</h2>
+        <p className="text-sm text-gray-500">Here's what's going on today.</p>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
-        {/* Stats Cards */}
         <div className="md:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard
-              title="Students Registered"
-              value={stats.students_registered}
-              icon={<Users className="h-6 w-6" />}
-              color="blue"
-            />
-            <StatCard
-              title="Pending Feedback"
-              value={stats.pending_feedback}
-              icon={<AlertCircle className="h-6 w-6" />}
-              color="yellow"
-            />
-            <StatCard
-              title="Active Students Now"
-              value={stats.active_students_now}
-              icon={<UserCheck className="h-6 w-6" />}
-              color="green"
-            />
-          </div>
-
-          {/* Today's Activity */}
+          {/* Overview */}
           <Card>
-            <CardHeader title="Today's Activity" />
+            <CardHeader title="Overview" />
             <CardBody>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="flex items-center p-4 bg-indigo-50 rounded-lg">
+                  <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mr-4">
+                    <Users className="h-6 w-6 text-indigo-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Students Registered</p>
+                    <p className="text-2xl font-bold text-gray-900">{stats.students_registered}</p>
+                  </div>
+                </div>
+                <div className="flex items-center p-4 bg-yellow-50 rounded-lg">
+                  <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
+                    <AlertCircle className="h-6 w-6 text-yellow-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Pending Feedback</p>
+                    <p className="text-2xl font-bold text-gray-900">{stats.pending_feedback}</p>
+                  </div>
+                </div>
+                <div className="flex items-center p-4 bg-emerald-50 rounded-lg">
+                  <div className="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center mr-4">
+                    <UserCheck className="h-6 w-6 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Pending Registration Requests</p>
+                    <p className="text-2xl font-bold text-gray-900">{stats.pending_registrations}</p>
+                  </div>
+                </div>
                 <div className="flex items-center p-4 bg-blue-50 rounded-lg">
                   <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
                     <Calendar className="h-6 w-6 text-blue-600" />
@@ -269,6 +269,34 @@ function DashboardOverview() {
               </div>
             </CardBody>
           </Card>
+
+          {lastLogin && (
+            <Card>
+              <CardHeader title="Login Information" />
+              <CardBody>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="flex items-center p-4 bg-blue-50 rounded-lg">
+                    <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
+                      <Clock className="h-6 w-6 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Last Login</p>
+                      <p className="text-sm font-semibold text-gray-900">{formatSqlDateTimeLocal(lastLogin.login_time)}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center p-4 bg-purple-50 rounded-lg">
+                    <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-4">
+                      <MapPin className="h-6 w-6 text-purple-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Last PC Used</p>
+                      <p className="text-sm font-semibold text-gray-900">{lastLogin.pc_number || 'Unknown'}</p>
+                    </div>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
+          )}
 
           {/* Attendance Summary — shown for all; empty if not enrolled in IT classes */}
           <Card>
@@ -317,7 +345,7 @@ function DashboardOverview() {
                       const displayDate = record.date
                         ? (() => {
                             const d = new Date(record.date + 'T12:00:00');
-                            return Number.isNaN(d.getTime()) ? record.date : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                            return Number.isNaN(d.getTime()) ? record.date : d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
                           })()
                         : record.date;
                       return (
@@ -375,20 +403,6 @@ function DashboardOverview() {
                   </div>
                 </Link>
                 <Link
-                  to="manage-users"
-                  className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200"
-                >
-                  <div className="flex-shrink-0">
-                    <div className="w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform duration-200">
-                      <Users className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">Student Management</h3>
-                    <p className="text-xs sm:text-sm text-gray-500 mt-0.5 leading-snug break-words">Approve and manage student registrations.</p>
-                  </div>
-                </Link>
-                <Link
                   to="equipment-reports"
                   className="group min-w-0 flex items-start gap-3 sm:gap-4 p-3 sm:p-4 bg-white border border-gray-200 rounded-xl hover:border-blue-300 hover:shadow-lg transition-all duration-200"
                 >
@@ -399,7 +413,7 @@ function DashboardOverview() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">Equipment Reports</h3>
+                      <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight break-words group-hover:text-blue-600 transition-colors">Feedback</h3>
                       {stats.pending_feedback > 0 && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] sm:text-xs font-medium bg-red-100 text-red-800">
                           {stats.pending_feedback}
@@ -430,29 +444,21 @@ function DashboardOverview() {
 
         <div className="md:border-l md:border-gray-300 md:pl-6 space-y-6">
           <Card className="h-fit">
-            <CardHeader title="Notifications" />
-            <CardBody>
-              <DashboardNotifications
-                items={notifications}
-                emptyMessage="No new working-student alerts."
-              />
-            </CardBody>
-          </Card>
-
-          <Card className="h-fit">
             <CardHeader title="Attendance Today" />
             <CardBody>
               {openSessions.length > 0 ? (
                 <div className="space-y-4">
                   {openSessions.map((session) => {
                     const openedAt = parseSessionDateTime(session.opened_at);
+                    const pausedAt = parseSessionDateTime(session.paused_at);
+                    const effectiveNow = pausedAt ? pausedAt.getTime() : nowTimestamp;
                     const classMinutes = Math.max(0, session.class_duration_minutes || 0);
                     const graceMinutes = Math.max(0, session.grace_period_minutes || 0);
                     const classDeadline = openedAt ? new Date(openedAt.getTime() + classMinutes * 60 * 1000) : null;
                     const graceDeadline = openedAt ? new Date(openedAt.getTime() + graceMinutes * 60 * 1000) : null;
-                    const classRemaining = classDeadline ? Math.max(0, Math.floor((classDeadline.getTime() - nowTimestamp) / 1000)) : 0;
-                    const graceRemaining = graceDeadline ? Math.max(0, Math.floor((graceDeadline.getTime() - nowTimestamp) / 1000)) : 0;
-                    const expectedStatus = getExpectedTimeInStatus(session);
+                    const classRemaining = classDeadline ? Math.max(0, Math.floor((classDeadline.getTime() - effectiveNow) / 1000)) : 0;
+                    const graceRemaining = graceDeadline ? Math.max(0, Math.floor((graceDeadline.getTime() - effectiveNow) / 1000)) : 0;
+                    const expectedStatus = getExpectedTimeInStatus(session, effectiveNow);
                     const statusMessage =
                       classRemaining <= 0
                         ? 'Session ended. Time in no longer available—you will be marked Absent if you did not time in.'
@@ -476,15 +482,22 @@ function DashboardOverview() {
                             <p className="text-xs text-gray-500 mt-1">
                               {session.session_name || 'Attendance'} · EDP {session.edp_code || '—'}
                             </p>
+                            {session.paused_at && (
+                              <p className="text-[11px] text-amber-700 mt-1">Session is paused. Time In is temporarily disabled.</p>
+                            )}
                           </div>
                           <Button
                             onClick={() => handleTimeIn(session.session_id)}
                             variant="primary"
                             size="sm"
-                            disabled={timingInSession === session.session_id}
+                            disabled={timingInSession === session.session_id || !!session.paused_at}
                             className="flex-shrink-0"
                           >
-                            {timingInSession === session.session_id ? 'Submitting...' : 'Time In'}
+                            {timingInSession === session.session_id
+                              ? 'Submitting...'
+                              : session.paused_at
+                                ? 'Paused'
+                                : 'Time In'}
                           </Button>
                         </div>
 
@@ -522,6 +535,15 @@ function DashboardOverview() {
                   No open attendance sessions for your classes.
                 </p>
               )}
+            </CardBody>
+          </Card>
+
+          <Card className="h-fit">
+            <CardHeader title="Notifications" />
+            <CardBody>
+              <BackendDashboardNotifications
+                emptyMessage="No new notifications."
+              />
             </CardBody>
           </Card>
         </div>

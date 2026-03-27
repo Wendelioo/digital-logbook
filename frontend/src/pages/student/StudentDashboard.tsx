@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardHeader, CardBody, StatCard, InfoCard } from '../../components/Card';
 import Button from '../../components/Button';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Clock,
   CheckCircle,
@@ -11,16 +12,18 @@ import {
   Library,
   ClipboardCheck,
   MessageSquare,
+  Archive,
 } from 'lucide-react';
 import {
   GetStudentDashboard,
   GetStudentLoginLogs,
   GetStudentOpenAttendanceSessions,
   StudentTimeIn,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
-import { main } from '../../../wailsjs/go/models';
-import DashboardNotifications, { DashboardNotificationItem } from '../../components/DashboardNotifications';
+import { useNotifications } from '../../contexts/NotificationContext';
+import { backend } from '../../../wailsjs/go/models';
+import { BackendDashboardNotifications } from '../../components/DashboardNotifications';
 import { StudentDashboardData, LoginLog } from './types';
 
 interface AttendanceSession {
@@ -32,14 +35,18 @@ interface AttendanceSession {
   class_duration_minutes?: number;
   grace_period_minutes?: number;
   opened_at?: string;
+  paused_at?: string;
   subject_code: string;
   subject_name: string;
   edp_code: string;
 }
 
 function DashboardOverview() {
+  const SESSION_POLL_INTERVAL_MS = 8000;
+  const DASHBOARD_POLL_INTERVAL_MS = 30000;
   const { user } = useAuth();
-  const [dashboardData, setDashboardData] = useState<StudentDashboardData>(new main.StudentDashboard({
+  const { refresh: refreshNotifications } = useNotifications();
+  const [dashboardData, setDashboardData] = useState<StudentDashboardData>(new backend.StudentDashboard({
     attendance: [],
     today_log: undefined
   }));
@@ -48,8 +55,6 @@ function DashboardOverview() {
   const [timingInSession, setTimingInSession] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
-  const [notifications, setNotifications] = useState<DashboardNotificationItem[]>([]);
-  const previousMetricsRef = useRef<{ absentCount: number; openSessions: number; currentlyLoggedIn: boolean } | null>(null);
 
   const normalizeStatus = (status?: string) => (status || '').trim().toLowerCase();
 
@@ -59,6 +64,35 @@ function DashboardOverview() {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   };
 
+  const parseSqlDateTimeLocal = (value?: string): Date | null => {
+    if (!value) return null;
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if (!match) return null;
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const hour = Number(match[4]);
+    const minute = Number(match[5]);
+    const second = Number(match[6] || '0');
+
+    const localDate = new Date(year, month - 1, day, hour, minute, second);
+    return Number.isNaN(localDate.getTime()) ? null : localDate;
+  };
+
+  const formatSqlDateTimeLocal = (value?: string): string => {
+    const parsed = parseSqlDateTimeLocal(value);
+    if (!parsed) return 'N/A';
+    return parsed.toLocaleString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  };
+
   const formatRemaining = (seconds: number): string => {
     if (seconds <= 0) return '00:00';
     const mins = Math.floor(seconds / 60);
@@ -66,39 +100,14 @@ function DashboardOverview() {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  const getExpectedTimeInStatus = (session?: AttendanceSession): 'present' | 'late' => {
+  const getExpectedTimeInStatus = (session?: AttendanceSession, referenceTimeMs?: number): 'present' | 'late' => {
     const openedAt = parseSessionDateTime(session?.opened_at);
     if (!openedAt) return 'present';
 
     const graceMinutes = Math.max(0, session?.grace_period_minutes || 0);
     const lateCutoff = openedAt.getTime() + graceMinutes * 60 * 1000;
-    return Date.now() >= lateCutoff ? 'late' : 'present';
-  };
-
-  const pushNotification = (message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
-    setNotifications((prev) => [
-      {
-        id: `${Date.now()}-${Math.random()}`,
-        message,
-        createdAt: Date.now(),
-        tone,
-      },
-      ...prev,
-    ].slice(0, 10));
-  };
-  const upsertNotification = (id: string, message: string, tone: DashboardNotificationItem['tone'] = 'info') => {
-    setNotifications((prev) => {
-      const next = prev.filter((item) => item.id !== id);
-      return [
-        {
-          id,
-          message,
-          createdAt: Date.now(),
-          tone,
-        },
-        ...next,
-      ].slice(0, 10);
-    });
+    const nowMs = referenceTimeMs ?? Date.now();
+    return nowMs >= lateCutoff ? 'late' : 'present';
   };
 
   useEffect(() => {
@@ -113,11 +122,13 @@ function DashboardOverview() {
         try {
           const loginLogs = await GetStudentLoginLogs(user.id);
           if (loginLogs && loginLogs.length > 0) {
-            // Get the most recent completed login (one that has been logged out)
-            // If no completed login exists, use the most recent login
-            const completedLogs = loginLogs.filter(log => log.logout_time);
-            const lastLog = completedLogs.length > 0 ? completedLogs[0] : loginLogs[0];
-            setLastLogin(lastLog);
+            // Prefer the latest completed session as "Last Login".
+            // Fallback to the newest login record when no completed session exists yet.
+            const completedLogs = loginLogs.filter((log) => !!log.logout_time);
+            const selectedLog = completedLogs.length > 0 ? completedLogs[0] : loginLogs[0];
+            setLastLogin(selectedLog);
+          } else {
+            setLastLogin(null);
           }
         } catch (error) {
           console.error('Failed to load last login:', error);
@@ -132,56 +143,6 @@ function DashboardOverview() {
         } catch (error) {
           console.error('Failed to load open attendance sessions:', error);
         }
-
-        const nextAbsentCount = (data.attendance || []).filter(a => normalizeStatus(a.status) === 'absent').length;
-        const nextOpenSessions = sessions.length;
-        const nextCurrentlyLoggedIn = !!data.currently_logged_in;
-        upsertNotification(
-          'student-open-sessions',
-          `Open attendance sessions: ${nextOpenSessions}.`,
-          nextOpenSessions > 0 ? 'warning' : 'success'
-        );
-        upsertNotification(
-          'student-absences',
-          `Absences recorded: ${nextAbsentCount}.`,
-          nextAbsentCount > 0 ? 'warning' : 'success'
-        );
-        upsertNotification(
-          'student-login-status',
-          nextCurrentlyLoggedIn ? 'Account status: Logged in on a lab PC.' : 'Account status: Not logged in on a lab PC.',
-          nextCurrentlyLoggedIn ? 'info' : 'success'
-        );
-        const previous = previousMetricsRef.current;
-
-        if (!previous) {
-          pushNotification('Student dashboard is connected and receiving live updates.', 'success');
-        } else {
-          if (nextOpenSessions !== previous.openSessions) {
-            if (nextOpenSessions > previous.openSessions) {
-              pushNotification(`${nextOpenSessions} attendance session(s) are open for your classes.`, 'warning');
-            } else {
-              pushNotification('One or more attendance sessions have closed.', 'info');
-            }
-          }
-
-          if (nextAbsentCount !== previous.absentCount) {
-            if (nextAbsentCount > previous.absentCount) {
-              pushNotification(`Absence count increased to ${nextAbsentCount}.`, 'warning');
-            } else {
-              pushNotification('Absence count has improved.', 'success');
-            }
-          }
-
-          if (nextCurrentlyLoggedIn !== previous.currentlyLoggedIn) {
-            pushNotification(nextCurrentlyLoggedIn ? 'Your account is now logged in on a lab PC.' : 'Your account is now logged out.', 'info');
-          }
-        }
-
-        previousMetricsRef.current = {
-          absentCount: nextAbsentCount,
-          openSessions: nextOpenSessions,
-          currentlyLoggedIn: nextCurrentlyLoggedIn,
-        };
       } catch (error) {
         console.error('Failed to load student dashboard:', error);
       } finally {
@@ -191,13 +152,31 @@ function DashboardOverview() {
 
     loadDashboard();
 
-    // Auto-refresh every 30 seconds to keep dashboard data up-to-date
+    // Auto-refresh dashboard data periodically.
     const refreshInterval = setInterval(() => {
       if (user) loadDashboard();
-    }, 30000);
+    }, DASHBOARD_POLL_INTERVAL_MS);
 
     return () => clearInterval(refreshInterval);
-  }, [user]);
+  }, [user, DASHBOARD_POLL_INTERVAL_MS]);
+
+  // Poll open attendance sessions more frequently so newly opened sessions
+  // show up in the "Attendance Today" card with less delay.
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const pollOpenSessions = async () => {
+      try {
+        const sessions = await GetStudentOpenAttendanceSessions(user.id);
+        setOpenSessions(sessions || []);
+      } catch (error) {
+        console.error('Failed to refresh open attendance sessions:', error);
+      }
+    };
+
+    const interval = setInterval(pollOpenSessions, SESSION_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [user?.id, SESSION_POLL_INTERVAL_MS]);
 
   useEffect(() => {
     const ticker = window.setInterval(() => {
@@ -210,7 +189,7 @@ function DashboardOverview() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
@@ -230,12 +209,9 @@ function DashboardOverview() {
     setTimingInSession(sessionId);
     try {
       await StudentTimeIn(sessionId, user.id);
-      pushNotification(
-        expectedStatus === 'late'
-          ? 'Time In recorded as Late.'
-          : 'Time In recorded as Present.',
-        expectedStatus === 'late' ? 'warning' : 'success'
-      );
+
+      // Refresh notifications so the bell icon picks up the backend-created notification
+      refreshNotifications();
 
       const refreshedDashboard = await GetStudentDashboard(user.id);
       setDashboardData(refreshedDashboard);
@@ -251,15 +227,13 @@ function DashboardOverview() {
 
   return (
     <div>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Welcome back, {user?.first_name || user?.name}!</h2>
+        <p className="text-sm text-gray-500">Here's what's going on today.</p>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
         <div className="md:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <StatCard
-              title="Attendance Rate"
-              value={`${dashboardData.attendance_rate?.toFixed(1) || 0}%`}
-              icon={<CheckCircle className="h-6 w-6" />}
-              color="green"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <StatCard
               title="Current PC Used"
               value={dashboardData.currently_logged_in ? (dashboardData.current_pc_number || 'Logged In') : 'Not Logged In'}
@@ -272,6 +246,12 @@ function DashboardOverview() {
               icon={<Library className="h-6 w-6" />}
               color="purple"
             />
+            <StatCard
+              title="Archived Classes"
+              value={dashboardData.archived_classes || 0}
+              icon={<Archive className="h-6 w-6" />}
+              color="orange"
+            />
           </div>
 
           {lastLogin && (
@@ -282,14 +262,7 @@ function DashboardOverview() {
                   <InfoCard
                     icon={<Clock className="h-6 w-6" />}
                     label="Last Login"
-                    value={lastLogin.login_time ? new Date(lastLogin.login_time).toLocaleString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      hour12: true
-                    }) : 'N/A'}
+                    value={formatSqlDateTimeLocal(lastLogin.login_time)}
                     iconColor="blue"
                   />
                   <InfoCard
@@ -351,7 +324,7 @@ function DashboardOverview() {
                       const displayDate = record.date
                         ? (() => {
                             const d = new Date(record.date + 'T12:00:00');
-                            return Number.isNaN(d.getTime()) ? record.date : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                            return Number.isNaN(d.getTime()) ? record.date : d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
                           })()
                         : record.date;
                       return (
@@ -436,29 +409,21 @@ function DashboardOverview() {
 
         <div className="space-y-6 md:border-l md:border-gray-300 md:pl-6">
           <Card className="h-fit">
-            <CardHeader title="Notifications" />
-            <CardBody>
-              <DashboardNotifications
-                items={notifications}
-                emptyMessage="No new attendance notifications."
-              />
-            </CardBody>
-          </Card>
-
-          <Card className="h-fit">
             <CardHeader title="Attendance Today" />
             <CardBody>
               {openSessions.length > 0 ? (
                 <div className="space-y-4">
                   {openSessions.map((session) => {
                     const openedAt = parseSessionDateTime(session.opened_at);
+                    const pausedAt = parseSessionDateTime(session.paused_at);
+                    const effectiveNow = pausedAt ? pausedAt.getTime() : nowTimestamp;
                     const classMinutes = Math.max(0, session.class_duration_minutes || 0);
                     const graceMinutes = Math.max(0, session.grace_period_minutes || 0);
                     const classDeadline = openedAt ? new Date(openedAt.getTime() + classMinutes * 60 * 1000) : null;
                     const graceDeadline = openedAt ? new Date(openedAt.getTime() + graceMinutes * 60 * 1000) : null;
-                    const classRemaining = classDeadline ? Math.max(0, Math.floor((classDeadline.getTime() - nowTimestamp) / 1000)) : 0;
-                    const graceRemaining = graceDeadline ? Math.max(0, Math.floor((graceDeadline.getTime() - nowTimestamp) / 1000)) : 0;
-                    const expectedStatus = getExpectedTimeInStatus(session);
+                    const classRemaining = classDeadline ? Math.max(0, Math.floor((classDeadline.getTime() - effectiveNow) / 1000)) : 0;
+                    const graceRemaining = graceDeadline ? Math.max(0, Math.floor((graceDeadline.getTime() - effectiveNow) / 1000)) : 0;
+                    const expectedStatus = getExpectedTimeInStatus(session, effectiveNow);
                     const statusMessage =
                       classRemaining <= 0
                         ? 'Session ended. Time in no longer available—you will be marked Absent if you did not time in.'
@@ -482,15 +447,22 @@ function DashboardOverview() {
                             <p className="text-xs text-gray-500 mt-1">
                               {session.session_name || 'Attendance'} · EDP {session.edp_code || '—'}
                             </p>
+                            {session.paused_at && (
+                              <p className="text-[11px] text-amber-700 mt-1">Session is paused. Time In is temporarily disabled.</p>
+                            )}
                           </div>
                           <Button
                             onClick={() => handleTimeIn(session.session_id)}
                             variant="primary"
                             size="sm"
-                            disabled={timingInSession === session.session_id}
+                            disabled={timingInSession === session.session_id || !!session.paused_at}
                             className="flex-shrink-0"
                           >
-                            {timingInSession === session.session_id ? 'Submitting...' : 'Time In'}
+                            {timingInSession === session.session_id
+                              ? 'Submitting...'
+                              : session.paused_at
+                                ? 'Paused'
+                                : 'Time In'}
                           </Button>
                         </div>
 
@@ -530,6 +502,17 @@ function DashboardOverview() {
               )}
             </CardBody>
           </Card>
+
+          <Card className="h-fit">
+            <CardHeader title="Notifications" />
+            <CardBody>
+              <BackendDashboardNotifications
+                category="attendance"
+                emptyMessage="No new notifications."
+              />
+            </CardBody>
+          </Card>
+
         </div>
       </div>
     </div>

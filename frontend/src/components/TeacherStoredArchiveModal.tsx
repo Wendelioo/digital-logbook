@@ -6,9 +6,10 @@ interface TeacherStoredArchiveModalProps {
   onClose: () => void;
   initialTab: AttendanceArchiveTab;
   onClassUnarchived?: () => void;
+  onAttendanceUnarchived?: () => void;
 }
 
-function TeacherStoredArchiveModal({ isOpen, onClose, initialTab, onClassUnarchived }: TeacherStoredArchiveModalProps) {
+function TeacherStoredArchiveModal({ isOpen, onClose, initialTab, onClassUnarchived, onAttendanceUnarchived }: TeacherStoredArchiveModalProps) {
   const title = initialTab === 'classes' ? 'Archived Classlist' : 'Archived Attendance';
 
   return (
@@ -18,7 +19,7 @@ function TeacherStoredArchiveModal({ isOpen, onClose, initialTab, onClassUnarchi
       title={title}
       size="2xl"
     >
-      <TeacherAttendanceArchive initialTab={initialTab} hideHeader onClassUnarchived={onClassUnarchived} />
+      <TeacherAttendanceArchive initialTab={initialTab} hideHeader onClassUnarchived={onClassUnarchived} onAttendanceUnarchived={onAttendanceUnarchived} />
     </Modal>
   );
 }

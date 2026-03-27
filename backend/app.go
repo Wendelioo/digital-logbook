@@ -1,10 +1,12 @@
-package main
+package backend
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,6 +23,48 @@ type App struct {
 	db           *sql.DB
 	kioskMode    bool
 	screenLocked bool
+}
+
+// SetFeedbackAdminStatus updates the admin-facing workflow status for a feedback entry.
+// Valid statuses: "pending", "resolved".
+func (a *App) SetFeedbackAdminStatus(feedbackID int, adminUserID int, status string) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	status = strings.ToLower(strings.TrimSpace(status))
+	if status != "pending" && status != "resolved" {
+		return fmt.Errorf("invalid admin status: %s", status)
+	}
+	if err := ValidatePositiveID(feedbackID, "feedback ID"); err != nil {
+		return err
+	}
+	if err := ValidatePositiveID(adminUserID, "admin user ID"); err != nil {
+		return err
+	}
+
+	query := `
+		UPDATE feedback
+		SET admin_status = ?,
+			admin_resolved_at = CASE WHEN ? = 'resolved' THEN GETDATE() ELSE NULL END
+		WHERE id = ?
+	`
+
+	result, err := a.db.Exec(query, status, status, feedbackID)
+	if err != nil {
+		return fmt.Errorf("failed to update admin_status: %w", err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return fmt.Errorf("feedback not found")
+	}
+
+	log.Printf("SetFeedbackAdminStatus: feedback %d set to %s by admin %d", feedbackID, status, adminUserID)
+	return nil
 }
 
 // NewApp creates a new App application struct
@@ -63,8 +107,23 @@ func (a *App) startup(ctx context.Context) {
 		if err := a.ensureSessionHeartbeatTable(); err != nil {
 			log.Printf("Failed to ensure session heartbeat table: %v", err)
 		}
+		if err := a.ensureActivityTrackingColumns(); err != nil {
+			log.Printf("Failed to ensure activity tracking columns: %v", err)
+		}
+		if err := a.ensureAccountStatusConstraint(); err != nil {
+			log.Printf("Failed to ensure account status constraint: %v", err)
+		}
 		if err := a.closeStaleSessions(); err != nil {
 			log.Printf("Failed to close stale sessions on startup: %v", err)
+		}
+		if err := a.ensureNotificationsTable(); err != nil {
+			log.Printf("Failed to ensure notifications table: %v", err)
+		}
+		if err := a.ensureFeedbackAdminResolvedAtColumn(); err != nil {
+			log.Printf("Failed to ensure feedback admin resolved timestamp column: %v", err)
+		}
+		if err := a.CleanOldNotifications(); err != nil {
+			log.Printf("Failed to clean old notifications: %v", err)
 		}
 	}
 
@@ -85,6 +144,31 @@ func (a *App) shutdown(ctx context.Context) {
 	if err := a.CloseSessionsForCurrentHost(); err != nil {
 		log.Printf("Failed to close sessions on app shutdown: %v", err)
 	}
+}
+
+// SaveFileDialog opens the native Save As dialog so the user can choose where to save a file
+// (e.g. Documents or any folder). Returns the chosen path, or empty string if cancelled.
+// defaultFilename is the suggested name (e.g. "classlist_math_20240101.csv").
+// filterDisplayName and filterPattern set the file type filter (e.g. "CSV files", "*.csv").
+func (a *App) SaveFileDialog(title string, defaultFilename string, filterDisplayName string, filterPattern string) (string, error) {
+	homeDir, _ := os.UserHomeDir()
+	defaultDir := filepath.Join(homeDir, "Documents")
+	// DefaultDirectory must exist; fallback to home if Documents is missing
+	if _, err := os.Stat(defaultDir); err != nil {
+		defaultDir = homeDir
+	}
+	path, err := wailsRuntime.SaveFileDialog(a.ctx, wailsRuntime.SaveDialogOptions{
+		Title:            title,
+		DefaultFilename:  defaultFilename,
+		DefaultDirectory: defaultDir,
+		Filters: []wailsRuntime.FileFilter{
+			{DisplayName: filterDisplayName, Pattern: filterPattern},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // ==============================================================================
@@ -144,6 +228,12 @@ type User struct {
 	DepartmentCode *string `json:"department_code"`
 	Created        string  `json:"created"`
 	LoginLogID     int     `json:"login_log_id"` // Track the login session
+	// Activity tracking fields (populated by GetUsersByActivityStatus)
+	LastLoginAt    *string `json:"last_login_at,omitempty"`   // ISO datetime of last login
+	LastLoginAgo   string  `json:"last_login_ago,omitempty"`  // Human-readable "2 months ago"
+	DeactivatedAt  *string `json:"deactivated_at,omitempty"`  // When auto-deactivated by system
+	DeletedAt      *string `json:"deleted_at,omitempty"`      // When soft-deleted (4-year rule)
+	ActivityStatus string  `json:"activity_status,omitempty"` // active | archived | deactivated | deleted
 }
 
 // LoginLog represents a user login/logout session
@@ -175,7 +265,9 @@ type Feedback struct {
 	Comments            *string `json:"comments,omitempty"`
 	DateSubmitted       string  `json:"date_submitted"`
 	Status              string  `json:"status"`
-	Priority            string  `json:"priority"` // Issue priority (low/medium/high/critical)
+	Priority            string  `json:"priority"`     // Issue priority (low/medium/high/critical)
+	AdminStatus         string  `json:"admin_status"` // Admin workflow status: "pending" | "resolved"
+	AdminResolvedAt     *string `json:"admin_resolved_at,omitempty"`
 	VerifiedByUserID    *int    `json:"verified_by_user_id,omitempty"`
 	VerifiedAt          *string `json:"verified_at,omitempty"`
 	ForwardedByUserID   *int    `json:"forwarded_by_user_id,omitempty"`
@@ -230,7 +322,6 @@ type AdminDashboard struct {
 	WorkingStudentsLoggedIn int `json:"working_students_logged_in"`
 	TodayLogins             int `json:"today_logins"`
 	TodayNewUsers           int `json:"today_new_users"`
-	LockedAccounts          int `json:"locked_accounts"`
 	PendingFeedback         int `json:"pending_feedback"`
 }
 
@@ -319,12 +410,6 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 		WHERE CAST(created_at AS DATE) = CAST(GETDATE() AS DATE)
 	`).Scan(&dashboard.TodayNewUsers)
 
-	// Count locked accounts
-	a.db.QueryRow(`
-		SELECT COUNT(*) FROM users 
-		WHERE account_lock = 1
-	`).Scan(&dashboard.LockedAccounts)
-
 	// Count pending feedback (forwarded to admin but not archived)
 	a.db.QueryRow(`
 		SELECT COUNT(*) FROM feedback 
@@ -332,19 +417,6 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	`).Scan(&dashboard.PendingFeedback)
 
 	return dashboard, nil
-}
-
-// ==============================================================================
-// TEACHER DASHBOARD
-// ==============================================================================
-
-// TeacherDashboard represents teacher dashboard data
-type TeacherDashboard struct {
-	Classes              []CourseClass `json:"classes"`
-	Attendance           []Attendance  `json:"attendance"`
-	TotalAttendanceWeek  int           `json:"total_attendance_week"`
-	TotalAttendanceMonth int           `json:"total_attendance_month"`
-	TodayClasses         []CourseClass `json:"today_classes"`
 }
 
 // Subject represents a course/subject
@@ -408,129 +480,6 @@ type Attendance struct {
 	IsEditable     bool    `json:"is_editable"`
 }
 
-// GetTeacherDashboard returns teacher dashboard data
-func (a *App) GetTeacherDashboard(teacherUserID int) (TeacherDashboard, error) {
-	var dashboard TeacherDashboard
-
-	if err := a.checkDB(); err != nil {
-		return dashboard, err
-	}
-
-	// Get classes for this teacher
-	classes, err := a.GetTeacherClasses(teacherUserID)
-	if err != nil {
-		return dashboard, err
-	}
-	dashboard.Classes = classes
-
-	// Get attendance for these classes (recent records)
-	if len(classes) > 0 {
-		// Get attendance from the last 7 days for all classes
-		classIDs := make([]int, len(classes))
-		for i, class := range classes {
-			classIDs[i] = class.ID
-		}
-
-		attendance, err := a.GetRecentAttendance(classIDs, 7)
-		if err != nil {
-			log.Printf("Failed to get recent attendance: %v", err)
-		} else {
-			dashboard.Attendance = attendance
-		}
-
-		// Count attendance records this week
-		a.db.QueryRow(`
-			SELECT COUNT(*) FROM attendance 
-			WHERE class_id IN (`+strings.Repeat("?,", len(classIDs)-1)+`?) 
-			AND attendance_date >= DATEADD(DAY, -7, CAST(GETDATE() AS DATE))
-		`, convertToInterfaceSlice(classIDs)...).Scan(&dashboard.TotalAttendanceWeek)
-
-		// Count attendance records this month
-		a.db.QueryRow(`
-			SELECT COUNT(*) FROM attendance 
-			WHERE class_id IN (`+strings.Repeat("?,", len(classIDs)-1)+`?) 
-			AND attendance_date >= DATEADD(DAY, -30, CAST(GETDATE() AS DATE))
-		`, convertToInterfaceSlice(classIDs)...).Scan(&dashboard.TotalAttendanceMonth)
-	}
-
-	// Filter today's classes (simplified - returns all active classes)
-	dashboard.TodayClasses = classes
-
-	return dashboard, nil
-}
-
-// Helper function to convert int slice to interface slice for variadic SQL args
-func convertToInterfaceSlice(nums []int) []interface{} {
-	result := make([]interface{}, len(nums))
-	for i, v := range nums {
-		result[i] = v
-	}
-	return result
-}
-
-// GetRecentAttendance gets attendance records for given class IDs within the last N days
-func (a *App) GetRecentAttendance(classIDs []int, days int) ([]Attendance, error) {
-	if err := a.checkDB(); err != nil {
-		return nil, err
-	}
-
-	if len(classIDs) == 0 {
-		return []Attendance{}, nil
-	}
-
-	// Build query with placeholders for class IDs
-	placeholders := make([]string, len(classIDs))
-	args := make([]interface{}, len(classIDs)+1)
-	for i, id := range classIDs {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	args[len(classIDs)] = days
-
-	query := fmt.Sprintf(`
-		SELECT 
-			a.id, a.class_id, c.subject_code, s.name, c.section, c.schedule,
-			a.student_id, st.student_id, 
-			COALESCE(u.first_name, '') + ' ' + COALESCE(u.middle_name, '') + ' ' + COALESCE(u.last_name, '') as student_name,
-			a.attendance_date, a.status, a.remarks,
-			a.recorded_by,
-			COALESCE(rec.first_name, '') + ' ' + COALESCE(rec.middle_name, '') + ' ' + COALESCE(rec.last_name, '') as recorded_by_name
-		FROM attendance a
-		JOIN classlist c ON a.class_id = c.id
-		JOIN subjects s ON c.subject_code = s.code
-		JOIN students st ON a.student_id = st.id
-		JOIN users u ON st.id = u.id
-		LEFT JOIN users rec ON a.recorded_by = rec.id
-		WHERE a.class_id IN (%s)
-		AND a.attendance_date >= DATEADD(DAY, -?, CAST(GETDATE() AS DATE))
-		ORDER BY a.attendance_date DESC
-	`, strings.Join(placeholders, ","))
-
-	rows, err := a.db.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var attendance []Attendance
-	for rows.Next() {
-		var att Attendance
-		err := rows.Scan(
-			&att.ID, &att.ClassID, &att.SubjectCode, &att.SubjectName, &att.Section, &att.Schedule,
-			&att.StudentUserID, &att.StudentID, &att.StudentName,
-			&att.AttendanceDate, &att.Status, &att.Remarks,
-			&att.RecordedBy, &att.RecordedByName,
-		)
-		if err != nil {
-			log.Printf("Failed to scan attendance: %v", err)
-			continue
-		}
-		attendance = append(attendance, att)
-	}
-
-	return attendance, nil
-}
-
 // ==============================================================================
 // STUDENT DASHBOARD
 // ==============================================================================
@@ -543,6 +492,7 @@ type StudentDashboard struct {
 	CurrentlyLoggedIn bool         `json:"currently_logged_in"`
 	CurrentPCNumber   *string      `json:"current_pc_number"`
 	EnrolledClasses   int          `json:"enrolled_classes"`
+	ArchivedClasses   int          `json:"archived_classes"`
 }
 
 // GetStudentDashboard returns student dashboard data
@@ -664,6 +614,20 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 		WHERE student_id = ? AND status = 'active'
 	`, userID).Scan(&dashboard.EnrolledClasses)
 
+	// Count archived classes (teacher-archived via classes.is_archived OR student self-archived via student_archived_classes)
+	a.db.QueryRow(`
+		SELECT COUNT(DISTINCT cl.class_id)
+		FROM classlist cl
+		JOIN classes c ON cl.class_id = c.class_id
+		LEFT JOIN student_archived_classes sac ON sac.student_id = cl.student_id AND sac.class_id = cl.class_id
+		WHERE cl.student_id = ?
+		  AND cl.status = 'active'
+		  AND (
+			COALESCE(c.is_archived, 0) = 1
+			OR sac.class_id IS NOT NULL
+		  )
+	`, userID).Scan(&dashboard.ArchivedClasses)
+
 	return dashboard, nil
 }
 
@@ -673,11 +637,12 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 
 // WorkingStudentDashboard represents working student dashboard data
 type WorkingStudentDashboard struct {
-	StudentsRegistered int `json:"students_registered"`
-	ClasslistsCreated  int `json:"classlists_created"`
-	PendingFeedback    int `json:"pending_feedback"`
-	TodayRegistrations int `json:"today_registrations"`
-	ActiveStudentsNow  int `json:"active_students_now"`
+	StudentsRegistered   int `json:"students_registered"`
+	ClasslistsCreated    int `json:"classlists_created"`
+	PendingFeedback      int `json:"pending_feedback"`
+	TodayRegistrations   int `json:"today_registrations"`
+	ActiveStudentsNow    int `json:"active_students_now"`
+	PendingRegistrations int `json:"pending_registrations"`
 }
 
 // GetWorkingStudentDashboard returns working student dashboard data
@@ -724,6 +689,9 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
 			)
 	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.ActiveStudentsNow)
+
+	// Count pending registrations
+	a.db.QueryRow(`SELECT COUNT(*) FROM users WHERE account_status = 'pending'`).Scan(&dashboard.PendingRegistrations)
 
 	return dashboard, nil
 }

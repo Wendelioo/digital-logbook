@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"database/sql"
@@ -62,29 +62,6 @@ func (a *App) SaveProfilePhoto(userID int, photoDataURL string) error {
 
 	log.Printf("Profile photo saved to database for user %d (%d bytes)", userID, len(decoded))
 	return nil
-}
-
-// GetProfilePhotoURL retrieves the base64 data URL for a user's profile photo.
-// Returns empty string if no photo exists.
-func (a *App) GetProfilePhotoURL(userID int) (string, error) {
-	if err := a.checkDB(); err != nil {
-		return "", err
-	}
-
-	var photoData sql.NullString
-	err := a.db.QueryRow(`SELECT photo_data FROM profile_photos WHERE user_id = ?`, userID).Scan(&photoData)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return "", nil
-		}
-		return "", err
-	}
-
-	if !photoData.Valid {
-		return "", nil
-	}
-
-	return photoData.String, nil
 }
 
 // DeleteProfilePhoto removes a user's profile photo from the database.

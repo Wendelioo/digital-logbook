@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
-import { GetStudentLoginLogs } from '../../wailsjs/go/main/App';
+import { useEffect, useRef, useState } from 'react';
+import { GetStudentLoginLogs } from '../../wailsjs/go/backend/App';
 import { useAuth } from '../contexts/AuthContext';
 import Button from './Button';
-import { Search, X, SlidersHorizontal } from 'lucide-react';
+import { Search, X, Filter } from 'lucide-react';
+import LoadingDots from './LoadingDots';
+
+type TimePeriod = 'all' | '7days' | 'last_week' | 'last_month' | '3months';
 
 interface LoginLog {
   id: number;
@@ -15,30 +18,42 @@ interface LoginLog {
 }
 
 interface LoginHistoryProps {
-  /** Whether to show the Status column (default: true) */
-  showStatus?: boolean;
   /** Whether to show pagination controls (default: true) */
   showPagination?: boolean;
-  /** Whether to use dropdown filter UI vs inline (default: false for inline) */
-  useDropdownFilter?: boolean;
+  /** Backward-compatible no-op prop used by older route usage */
+  showStatus?: boolean;
 }
 
 export default function LoginHistory({ 
-  showStatus = true, 
   showPagination = true,
-  useDropdownFilter = false 
 }: LoginHistoryProps) {
   const { user } = useAuth();
   const [logs, setLogs] = useState<LoginLog[]>([]);
   const [filtered, setFiltered] = useState<LoginLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [dateRangeStart, setDateRangeStart] = useState('');
+  const [dateRangeEnd, setDateRangeEnd] = useState('');
+  const [timePeriod, setTimePeriod] = useState<TimePeriod>('all');
   const [error, setError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [entriesPerPage, setEntriesPerPage] = useState(10);
-  const [autoDeleteDays, setAutoDeleteDays] = useState<number>(30);
   const [showFilters, setShowFilters] = useState(false);
+  const filterPanelRef = useRef<HTMLDivElement>(null);
+  const [pendingDateRangeStart, setPendingDateRangeStart] = useState('');
+  const [pendingDateRangeEnd, setPendingDateRangeEnd] = useState('');
+  const [pendingTimePeriod, setPendingTimePeriod] = useState<TimePeriod>('all');
+
+  // Close filter panel when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
+        setShowFilters(false);
+      }
+    };
+    if (showFilters) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showFilters]);
 
   useEffect(() => {
     const load = async () => {
@@ -64,21 +79,65 @@ export default function LoginHistory({
     return () => clearInterval(t);
   }, [user]);
 
+  const getTimePeriodDates = (period: TimePeriod): { start: Date | null; end: Date | null } => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    switch (period) {
+      case '7days':
+        return { start: new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000), end: null };
+      case 'last_week': {
+        const startOfThisWeek = new Date(today.getTime() - today.getDay() * 24 * 60 * 60 * 1000);
+        const startOfLastWeek = new Date(startOfThisWeek.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const endOfLastWeek = new Date(startOfThisWeek.getTime() - 24 * 60 * 60 * 1000);
+        return { start: startOfLastWeek, end: endOfLastWeek };
+      }
+      case 'last_month': {
+        const firstOfThisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const firstOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const lastOfLastMonth = new Date(firstOfThisMonth.getTime() - 24 * 60 * 60 * 1000);
+        return { start: firstOfLastMonth, end: lastOfLastMonth };
+      }
+      case '3months':
+        return { start: new Date(today.getFullYear(), today.getMonth() - 3, today.getDate()), end: null };
+      default:
+        return { start: null, end: null };
+    }
+  };
+
   useEffect(() => {
     let f = logs;
-    if (selectedDate) {
-      f = f.filter(l => new Date(l.login_time).toDateString() === selectedDate.toDateString());
+    if (dateRangeStart || dateRangeEnd) {
+      f = f.filter(l => {
+        const logDate = l.login_time ? l.login_time.split(/[T\s]/)[0] : '';
+        if (!logDate) return false;
+        if (dateRangeStart && logDate < dateRangeStart) return false;
+        if (dateRangeEnd && logDate > dateRangeEnd) return false;
+        return true;
+      });
+    }
+    if (timePeriod !== 'all') {
+      const { start, end } = getTimePeriodDates(timePeriod);
+      f = f.filter(l => {
+        const logDate = l.login_time ? new Date(l.login_time.replace(' ', 'T')) : null;
+        if (!logDate) return false;
+        if (start && logDate < start) return false;
+        if (end) {
+          const endOfDay = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
+          if (logDate > endOfDay) return false;
+        }
+        return true;
+      });
     }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      f = f.filter(l => 
-        (l.pc_number || '').toLowerCase().includes(q) || 
+      f = f.filter(l =>
+        (l.pc_number || '').toLowerCase().includes(q) ||
         (l.login_time || '').toLowerCase().includes(q)
       );
     }
     setFiltered(f);
     setCurrentPage(1);
-  }, [logs, selectedDate, searchQuery]);
+  }, [logs, dateRangeStart, dateRangeEnd, timePeriod, searchQuery]);
 
   // Pagination calculations
   const totalPages = Math.ceil(filtered.length / entriesPerPage);
@@ -89,37 +148,29 @@ export default function LoginHistory({
     : filtered;
 
   const clearFilters = () => {
-    setSelectedDate(null);
+    setDateRangeStart('');
+    setDateRangeEnd('');
+    setTimePeriod('all');
     setSearchQuery('');
+    setPendingDateRangeStart('');
+    setPendingDateRangeEnd('');
+    setPendingTimePeriod('all');
   };
 
-  const activeFilterCount = selectedDate ? 1 : 0;
+  const activeFilterCount = (dateRangeStart || dateRangeEnd ? 1 : 0) + (timePeriod !== 'all' ? 1 : 0);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent" />
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Login History</h2>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-700">Auto-delete logs after:</span>
-          <select
-            value={autoDeleteDays}
-            onChange={(e) => setAutoDeleteDays(Number(e.target.value))}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-          >
-            <option value={30}>30 days</option>
-            <option value={60}>60 days</option>
-            <option value={90}>90 days</option>
-            <option value={180}>180 days</option>
-          </select>
-        </div>
       </div>
 
       <div className="mb-6 bg-white shadow rounded-lg p-4">
@@ -149,7 +200,7 @@ export default function LoginHistory({
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search..."
+                placeholder="Search by PC or date..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -165,67 +216,124 @@ export default function LoginHistory({
               )}
             </div>
 
-            {useDropdownFilter ? (
-              <div className="relative">
-                <Button
-                  onClick={() => setShowFilters(!showFilters)}
-                  variant={showFilters ? 'primary' : 'outline'}
-                  icon={<SlidersHorizontal className="h-5 w-5" />}
-                  className={showFilters ? 'bg-primary-50 border-primary-500 text-primary-700' : ''}
-                >
-                  Filters
-                  {activeFilterCount > 0 && (
-                    <span className="ml-1 px-2 py-0.5 bg-primary-500 text-white rounded-full text-xs">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </Button>
+            {/* Funnel filter button + dropdown panel */}
+            <div className="relative" ref={filterPanelRef}>
+              <button
+                onClick={() => {
+                  const nextOpen = !showFilters;
+                  if (nextOpen) {
+                    setPendingDateRangeStart(dateRangeStart);
+                    setPendingDateRangeEnd(dateRangeEnd);
+                    setPendingTimePeriod(timePeriod);
+                  }
+                  setShowFilters(nextOpen);
+                }}
+                className={`inline-flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+                  showFilters || activeFilterCount > 0
+                    ? 'bg-primary-50 border-primary-400 text-primary-700'
+                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+                title="Filter logs"
+              >
+                <Filter className="h-4 w-4" />
+                <span>Filter</span>
+                {activeFilterCount > 0 && (
+                  <span className="inline-flex items-center justify-center w-5 h-5 bg-primary-500 text-white rounded-full text-xs font-semibold">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
 
-                {showFilters && (
-                  <div className="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                    <div className="p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <label className="text-sm font-medium text-gray-700">Filter by Date:</label>
-                      </div>
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-xs text-gray-600 mb-1">Select Date</label>
+              {showFilters && (
+                <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-lg z-20 overflow-hidden">
+                  <div className="p-4 space-y-3">
+                    {/* Filter by Date Range */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Date Range</label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1 min-w-0">
                           <input
                             type="date"
-                            value={selectedDate ? selectedDate.toISOString().split('T')[0] : ''}
-                            onChange={(e) => setSelectedDate(e.target.value ? new Date(e.target.value) : null)}
-                            max={new Date().toISOString().split('T')[0]}
-                            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            value={pendingDateRangeStart}
+                            onChange={(e) => setPendingDateRangeStart(e.target.value)}
+                            max={pendingDateRangeEnd || new Date().toISOString().split('T')[0]}
+                            className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                           />
                         </div>
-                        {selectedDate && (
-                          <Button
-                            onClick={() => setSelectedDate(null)}
-                            variant="secondary"
-                            size="sm"
-                            className="w-full text-xs text-gray-600 hover:text-gray-900 underline text-left !p-1"
-                          >
-                            Clear Date Filter
-                          </Button>
-                        )}
+                        <span className="text-xs font-medium text-gray-500 shrink-0">to</span>
+                        <div className="relative flex-1 min-w-0">
+                          <input
+                            type="date"
+                            value={pendingDateRangeEnd}
+                            onChange={(e) => setPendingDateRangeEnd(e.target.value)}
+                            min={pendingDateRangeStart}
+                            max={new Date().toISOString().split('T')[0]}
+                            className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="relative">
-                <input
-                  type="date"
-                  value={selectedDate ? selectedDate.toISOString().split('T')[0] : ''}
-                  onChange={(e) => setSelectedDate(e.target.value ? new Date(e.target.value) : null)}
-                  className="border border-gray-300 rounded-md px-3 py-2 text-sm"
-                />
-              </div>
-            )}
 
-            {(searchQuery || selectedDate) && (
-              <Button onClick={clearFilters} variant="outline">
+                    {/* Time Period dropdown */}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Time Period</label>
+                      <div className="relative">
+                        <select
+                          value={pendingTimePeriod}
+                          onChange={(e) => setPendingTimePeriod(e.target.value as TimePeriod)}
+                          className="w-full py-2 pl-3 pr-9 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 appearance-none bg-white text-gray-800"
+                        >
+                          <option value="all">All time</option>
+                          <option value="7days">Last 7 days</option>
+                          <option value="last_week">Last week</option>
+                          <option value="last_month">Last month</option>
+                          <option value="3months">Last 3 months</option>
+                        </select>
+                        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500">
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Apply & Clear */}
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingDateRangeStart('');
+                          setPendingDateRangeEnd('');
+                          setPendingTimePeriod('all');
+                          setDateRangeStart('');
+                          setDateRangeEnd('');
+                          setTimePeriod('all');
+                          setShowFilters(false);
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDateRangeStart(pendingDateRangeStart);
+                          setDateRangeEnd(pendingDateRangeEnd);
+                          setTimePeriod(pendingTimePeriod);
+                          setShowFilters(false);
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 border border-primary-600 rounded-lg hover:bg-primary-700"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {(searchQuery || activeFilterCount > 0) && (
+              <Button onClick={clearFilters} variant="outline" size="sm">
                 Clear All
               </Button>
             )}
@@ -246,46 +354,38 @@ export default function LoginHistory({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="min-w-full table-fixed divide-y divide-gray-200">
+              <colgroup>
+                <col className="w-1/4" />
+                <col className="w-1/4" />
+                <col className="w-1/4" />
+                <col className="w-1/4" />
+              </colgroup>
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left align-middle text-xs font-medium text-gray-500 uppercase tracking-wider">
                     PC Number
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left align-middle text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Login Time
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left align-middle text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Logout Time
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left align-middle text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Date
                   </th>
-                  {showStatus && (
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                  )}
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {currentRecords.map((log) => (
                   <tr key={log.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                          </svg>
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {log.pc_number || <span className="text-gray-400 italic">Unknown</span>}
-                          </div>
-                        </div>
+                    <td className="px-6 py-4 whitespace-nowrap align-middle">
+                      <div className="text-sm font-medium text-gray-900">
+                        {log.pc_number || <span className="text-gray-400 italic">Unknown</span>}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                    <td className="px-6 py-4 whitespace-nowrap align-middle text-sm text-gray-700 tabular-nums">
                       {log.login_time ? new Date(log.login_time).toLocaleTimeString('en-US', {
                         hour: '2-digit',
                         minute: '2-digit',
@@ -293,7 +393,7 @@ export default function LoginHistory({
                         hour12: true
                       }) : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                    <td className="px-6 py-4 whitespace-nowrap align-middle text-sm text-gray-700 tabular-nums">
                       {log.logout_time ? (
                         new Date(log.logout_time).toLocaleTimeString('en-US', {
                           hour: '2-digit',
@@ -302,32 +402,16 @@ export default function LoginHistory({
                           hour12: true
                         })
                       ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          Active
-                        </span>
+                        '-'
                       )}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                    <td className="px-6 py-4 whitespace-nowrap align-middle text-sm text-gray-700 tabular-nums">
                       {log.login_time ? new Date(log.login_time).toLocaleDateString('en-US', {
                         year: 'numeric',
-                        month: 'short',
-                        day: 'numeric'
+                        month: '2-digit',
+                        day: '2-digit'
                       }) : '-'}
                     </td>
-                    {showStatus && (
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {log.logout_time ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                            Completed
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            <span className="w-2 h-2 mr-1.5 bg-green-600 rounded-full animate-pulse"></span>
-                            Active Session
-                          </span>
-                        )}
-                      </td>
-                    )}
                   </tr>
                 ))}
               </tbody>

@@ -1,4 +1,4 @@
-import { main } from '../../../wailsjs/go/models';
+import { backend } from '../../../wailsjs/go/models';
 
 export interface DashboardStats {
   total_students: number;
@@ -11,7 +11,6 @@ export interface DashboardStats {
   working_students_logged_in: number;
   today_logins: number;
   today_new_users: number;
-  locked_accounts: number;
   pending_feedback: number;
 }
 
@@ -29,6 +28,12 @@ export interface User {
   contact_number?: string;
   department_code?: string;
   created: string;
+  // Activity tracking fields (populated by GetUsersByActivityStatus)
+  last_login_at?: string;
+  last_login_ago?: string;
+  deactivated_at?: string;
+  deleted_at?: string;
+  activity_status?: string; // "active" | "archived" | "deactivated" | "deleted"
 }
 
 export interface LoginLog {
@@ -43,7 +48,7 @@ export interface LoginLog {
 }
 
 // Use the generated Feedback model from main
-export type Feedback = main.Feedback;
+export type Feedback = backend.Feedback;
 
 // Archive sheet types
 export interface ArchivedLogSheet {

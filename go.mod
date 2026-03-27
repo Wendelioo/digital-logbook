@@ -5,7 +5,6 @@ go 1.23.0
 require (
 	github.com/denisenkom/go-mssqldb v0.12.3
 	github.com/jung-kurt/gofpdf v1.16.2
-	github.com/lukasjarosch/go-docx v0.5.0
 	github.com/wailsapp/wails/v2 v2.11.0
 )
 

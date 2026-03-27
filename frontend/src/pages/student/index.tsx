@@ -32,7 +32,7 @@ function StudentDashboard() {
         <Route path="classes" element={<MyClasses />} />
         <Route path="archived-classes" element={<ArchivedClasses />} />
         <Route path="attendance" element={<StudentAttendance />} />
-        <Route path="login-history" element={<LoginHistory useDropdownFilter={true} />} />
+        <Route path="login-history" element={<LoginHistory />} />
         <Route path="feedback" element={<FeedbackHistory />} />
       </Routes>
     </Layout>

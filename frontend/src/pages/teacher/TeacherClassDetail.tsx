@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Users,
   Edit,
@@ -19,7 +20,8 @@ import {
   UnenrollStudentFromClassByIDs,
   GetTeacherClassesByUserID,
   GetClassByID,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
+import { openExportSaveDialog, defaultClasslistFilename } from '../../utils/exportSaveDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class, ClasslistEntry, ClassStudent } from './types';
 
@@ -54,7 +56,12 @@ function ClassManagementDetail() {
   const handleExportClasslist = async (classId: number) => {
     setExportingClasslist(true);
     try {
-      const filePath = await ExportClasslistCSV(classId);
+      const savePath = await openExportSaveDialog('Save classlist', defaultClasslistFilename('csv'), 'csv');
+      if (!savePath) {
+        setExportingClasslist(false);
+        return;
+      }
+      const filePath = await ExportClasslistCSV(classId, savePath);
       alert(`Classlist exported successfully!\nFile saved to: ${filePath}`);
     } catch (error) {
       console.error('Failed to export classlist:', error);
@@ -236,7 +243,7 @@ function ClassManagementDetail() {
     return (
       <div className="p-6">
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+          <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
         </div>
       </div>
     );
@@ -372,6 +379,12 @@ function ClassManagementDetail() {
                   <td className="px-4 py-2 text-gray-900">{classInfo.subject_name || 'N/A'}</td>
                   <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Room:</td>
                   <td className="px-4 py-2 text-gray-900" colSpan={3}>{classInfo.room || 'N/A'}</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Semester:</td>
+                  <td className="px-4 py-2 text-gray-900">{classInfo.semester || 'N/A'}</td>
+                  <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">School Year:</td>
+                  <td className="px-4 py-2 text-gray-900" colSpan={3}>{classInfo.school_year || 'N/A'}</td>
                 </tr>
                 <tr>
                   <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Instructor:</td>

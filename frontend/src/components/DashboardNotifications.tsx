@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { Bell } from 'lucide-react';
+import { useNotifications, type BackendNotification } from '../contexts/NotificationContext';
 
 export interface DashboardNotificationItem {
   id: string;
@@ -29,18 +30,6 @@ function getRelativeTime(timestamp: number, now: number): string {
   return `${days}d ago`;
 }
 
-function ToneIcon({ tone }: { tone: DashboardNotificationItem['tone'] }) {
-  if (tone === 'warning') {
-    return <AlertCircle className="h-4 w-4 text-yellow-600" />;
-  }
-
-  if (tone === 'success') {
-    return <CheckCircle2 className="h-4 w-4 text-green-600" />;
-  }
-
-  return <Info className="h-4 w-4 text-primary-600" />;
-}
-
 export default function DashboardNotifications({ items, emptyMessage }: DashboardNotificationsProps) {
   const [now, setNow] = useState(Date.now());
 
@@ -63,17 +52,41 @@ export default function DashboardNotifications({ items, emptyMessage }: Dashboar
         </div>
       ) : (
         visibleItems.map((item) => (
-          <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-            <div className="flex items-start gap-2 pr-3">
-              <span className="mt-0.5">
-                <ToneIcon tone={item.tone} />
-              </span>
-              <span className="text-sm text-gray-700">{item.message}</span>
+          <div
+            key={item.id}
+            className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 shadow-sm"
+          >
+            <div className="flex-1 pr-3">
+              <span className="text-sm text-gray-800">{item.message}</span>
             </div>
-            <span className="text-xs text-gray-500 whitespace-nowrap">{getRelativeTime(item.createdAt, now)}</span>
+            <span className="text-xs text-gray-500 whitespace-nowrap">
+              {getRelativeTime(item.createdAt, now)}
+            </span>
           </div>
         ))
       )}
     </div>
   );
+}
+
+interface BackendDashboardNotificationsProps {
+  category?: string;
+  emptyMessage: string;
+}
+
+export function BackendDashboardNotifications({ category, emptyMessage }: BackendDashboardNotificationsProps) {
+  const { notifications } = useNotifications();
+
+  const filtered = category
+    ? notifications.filter(n => n.category === category)
+    : notifications;
+
+  const items: DashboardNotificationItem[] = filtered.map(n => ({
+    id: String(n.id),
+    message: n.message,
+    createdAt: new Date(n.created_at).getTime(),
+    tone: n.tone as DashboardNotificationItem['tone'],
+  }));
+
+  return <DashboardNotifications items={items} emptyMessage={emptyMessage} />;
 }

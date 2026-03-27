@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Eye,
   AlertCircle,
@@ -7,26 +8,27 @@ import {
   FileText,
   CheckCircle,
   XCircle,
-  BarChart3,
 } from 'lucide-react';
 import {
   GetPendingFeedback,
   GetConfirmedFeedback,
+  GetRejectedFeedback,
   ConfirmFeedback,
   ForwardFeedbackToAdmin,
   ForwardMultipleFeedbackToAdmin,
-} from '../../../wailsjs/go/main/App';
+} from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { parseReportContext } from '../../utils/feedbackComments';
 import { Feedback } from './types';
 
-type SectionTab = 'awaiting' | 'ready_to_forward';
+type SectionTab = 'issues' | 'ready_to_forward' | 'rejected';
 
 function EquipmentReports() {
   const { user } = useAuth();
   const [feedbackList, setFeedbackList] = useState<Feedback[]>([]);
   const [confirmedList, setConfirmedList] = useState<Feedback[]>([]);
-  const [sectionTab, setSectionTab] = useState<SectionTab>('awaiting');
+  const [rejectedList, setRejectedList] = useState<Feedback[]>([]);
+  const [sectionTab, setSectionTab] = useState<SectionTab>('issues');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
   const [selectedFeedback, setSelectedFeedback] = useState<Feedback | null>(null);
@@ -56,12 +58,14 @@ function EquipmentReports() {
 
   const loadAllFeedback = async () => {
     try {
-      const [pending, confirmed] = await Promise.all([
+      const [pending, confirmed, rejected] = await Promise.all([
         GetPendingFeedback(),
         GetConfirmedFeedback(),
+        GetRejectedFeedback(),
       ]);
       setFeedbackList(pending || []);
       setConfirmedList(confirmed || []);
+      setRejectedList(rejected || []);
       setError('');
     } catch (error) {
       console.error('Failed to load feedback:', error);
@@ -76,8 +80,31 @@ function EquipmentReports() {
     setTimeout(() => setNotification(null), 5000);
   };
 
-  const currentList = sectionTab === 'awaiting' ? feedbackList : confirmedList;
-  const visibleFeedbackList = currentList;
+  const isNoIssueReport = (report: Feedback) => {
+    const allGood =
+      (report.equipment_condition || '').toLowerCase() === 'good' &&
+      (report.monitor_condition || '').toLowerCase() === 'good' &&
+      (report.keyboard_condition || '').toLowerCase() === 'good' &&
+      (report.mouse_condition || '').toLowerCase() === 'good';
+    const hasComment = !!(report.comments && report.comments.trim());
+    return allGood && !hasComment;
+  };
+
+  const countIssues = (report: Feedback): number =>
+    [
+      report.equipment_condition,
+      report.monitor_condition,
+      report.keyboard_condition,
+      report.mouse_condition,
+    ].filter(c => c && c.toLowerCase() !== 'good').length;
+
+  const issueFeedbackList = feedbackList.filter((report) => !isNoIssueReport(report));
+  const visibleFeedbackList = sectionTab === 'issues'
+    ? issueFeedbackList
+    : sectionTab === 'ready_to_forward'
+      ? confirmedList
+      : rejectedList;
+  const isRejectedTab = sectionTab === 'rejected';
 
   const handleConfirmClick = (feedback: Feedback, decision: 'confirm' | 'reject') => {
     setConfirmFeedback(feedback);
@@ -187,26 +214,17 @@ function EquipmentReports() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-500 border-t-transparent"></div>
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
       </div>
     );
   }
 
   return (
     <div>
-      {/* Header Section */}
       <div className="mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2 bg-blue-100 rounded-lg">
-            <BarChart3 className="h-6 w-6 text-blue-600" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
-          </div>
-        </div>
+        <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
       </div>
 
-      {/* Notification */}
       {notification && (
         <div className={`fixed top-4 right-4 z-50 max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out ${
           notification.type === 'success' ? 'border-l-4 border-green-400' : 'border-l-4 border-red-400'
@@ -258,31 +276,65 @@ function EquipmentReports() {
         </div>
       )}
 
-      {/* Section: Awaiting verification vs Ready to forward */}
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-100">
-          <button
-            type="button"
-            onClick={() => { setSectionTab('awaiting'); setSelectedFeedbackIds(new Set()); }}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              sectionTab === 'awaiting'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Awaiting your verification ({feedbackList.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => { setSectionTab('ready_to_forward'); setSelectedFeedbackIds(new Set()); }}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              sectionTab === 'ready_to_forward'
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            Verified – ready to forward ({confirmedList.length})
-          </button>
+      <div className="mb-4 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+        <div className="px-4 py-3 flex flex-wrap items-center gap-3 justify-between border-b border-gray-100">
+          <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-100">
+            <button
+              type="button"
+              onClick={() => { setSectionTab('issues'); setSelectedFeedbackIds(new Set()); }}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                sectionTab === 'issues'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Issue Reports
+              <span className={`ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                sectionTab === 'issues' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'
+              }`}>{issueFeedbackList.length}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSectionTab('ready_to_forward'); setSelectedFeedbackIds(new Set()); }}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                sectionTab === 'ready_to_forward'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Verified – Ready to Forward
+              <span className={`ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                sectionTab === 'ready_to_forward' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
+              }`}>{confirmedList.length}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setSectionTab('rejected'); setSelectedFeedbackIds(new Set()); }}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                sectionTab === 'rejected'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Rejected
+              <span className={`ml-1.5 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                sectionTab === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-600'
+              }`}>{rejectedList.length}</span>
+            </button>
+          </div>
+
+        </div>
+
+        <div className="px-4 py-2 bg-gray-50 flex items-center gap-4 text-sm text-gray-500">
+          <span>
+            <span className="font-semibold text-gray-700">{visibleFeedbackList.length}</span>
+            {' '}report{visibleFeedbackList.length !== 1 ? 's' : ''} shown
+          </span>
+          {!isRejectedTab && selectedFeedbackIds.size > 0 && (
+            <span className="text-blue-600 font-medium">
+              · {selectedFeedbackIds.size} selected
+            </span>
+          )}
         </div>
       </div>
 
@@ -292,8 +344,7 @@ function EquipmentReports() {
         </div>
       ) : (
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          {/* Batch Actions Bar - only for "Verified - ready to forward" */}
-          {sectionTab === 'ready_to_forward' && selectedFeedbackIds.size > 0 && (
+          {!isRejectedTab && selectedFeedbackIds.size > 0 && (
             <div className="px-6 py-3 bg-blue-50 border-b border-blue-200 flex items-center justify-between">
               <div className="text-sm text-gray-700">
                 <span className="font-semibold text-blue-900">{selectedFeedbackIds.size}</span> report{selectedFeedbackIds.size !== 1 ? 's' : ''} selected
@@ -306,163 +357,190 @@ function EquipmentReports() {
                 >
                   Clear Selection
                 </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleBatchForwardClick}
-                  icon={<Send className="h-4 w-4" />}
-                >
-                  Forward ({selectedFeedbackIds.size})
-                </Button>
+                {sectionTab === 'ready_to_forward' && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleBatchForwardClick}
+                    icon={<Send className="h-4 w-4" />}
+                  >
+                    Forward ({selectedFeedbackIds.size})
+                  </Button>
+                )}
               </div>
             </div>
           )}
-          <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <div className="overflow-x-auto">
             <div className="max-h-[70vh] overflow-y-auto">
-              <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+              <table className="w-full divide-y divide-gray-200 table-fixed">
+                <colgroup>
+                  <col style={{ width: '40px' }} />
+                  <col style={{ width: '30%' }} />
+                  <col style={{ width: '18%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '15%' }} />
+                </colgroup>
                 <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                    {sectionTab === 'ready_to_forward' ? (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider" style={{ minWidth: '50px' }}>
+                    <th className="px-3 py-3 text-left">
+                      {!isRejectedTab && (
                         <input
                           type="checkbox"
                           checked={visibleFeedbackList.length > 0 && visibleFeedbackList.every((feedback) => selectedFeedbackIds.has(feedback.id))}
                           onChange={(e) => handleSelectAll(e.target.checked)}
                           className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                         />
-                      </th>
-                    ) : (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider" style={{ minWidth: '50px' }} />
-                    )}
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
-                      Student ID
+                      )}
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '180px' }}>
-                      Full Name
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Student
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
-                      Reported for / Submitted from
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      PC / Origin
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Date
                     </th>
-                    {sectionTab === 'ready_to_forward' && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
-                        Verified at
-                      </th>
-                    )}
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {visibleFeedbackList.map((feedback) => (
-                    <tr key={feedback.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        {sectionTab === 'ready_to_forward' ? (
+                    <tr key={feedback.id} className={`transition-colors ${
+                      isNoIssueReport(feedback)
+                        ? 'bg-white hover:bg-gray-50'
+                        : 'bg-red-50 hover:bg-red-100'
+                    }`}>
+                      <td className="px-3 py-3">
+                        {!isRejectedTab && (
                           <input
                             type="checkbox"
                             checked={selectedFeedbackIds.has(feedback.id)}
                             onChange={(e) => handleSelectFeedback(feedback.id, e.target.checked)}
                             className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                           />
-                        ) : (
-                          <span className="sr-only">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-700">
-                          {feedback.student_id_str}
-                        </div>
+                      <td className="px-3 py-3">
+                        <div className="text-sm font-medium text-gray-900 truncate">{feedback.student_name}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{feedback.student_id_str}</div>
                       </td>
-                      <td className="px-4 py-4 text-sm font-medium text-gray-900" style={{ wordBreak: 'break-word' }}>
-                        {feedback.student_name}
-                      </td>
-                      <td className="px-4 py-4">
+                      <td className="px-3 py-3">
                         <div className="flex flex-col gap-0.5">
-                          <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold w-fit">
-                            Reported for: {feedback.pc_number}
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold w-fit truncate max-w-full">
+                            {feedback.pc_number}
                           </span>
                           {(() => {
                             const { reportedForAnotherPC, submittedFrom } = parseReportContext(feedback.comments);
                             if (!reportedForAnotherPC && !submittedFrom) return null;
                             return (
-                              <span className="text-xs text-gray-500">
-                                {reportedForAnotherPC && 'Reported for another PC'}
-                                {reportedForAnotherPC && submittedFrom && ' · '}
-                                {submittedFrom && `Submitted from: ${submittedFrom}`}
+                              <span className="text-xs text-gray-500 truncate">
+                                {submittedFrom ? `from ${submittedFrom}` : 'Other PC'}
                               </span>
                             );
                           })()}
                         </div>
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-700">
+                      <td className="px-3 py-3">
+                        <div className="text-xs text-gray-700">
                           {feedback.date_submitted ? new Date(feedback.date_submitted).toLocaleDateString('en-US', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric'
+                            month: '2-digit',
+                            day: '2-digit',
+                            year: 'numeric'
                           }) : '-'}
                         </div>
                       </td>
-                      {sectionTab === 'ready_to_forward' && (
-                        <td className="px-4 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-600">
-                            {feedback.verified_at
-                              ? new Date(feedback.verified_at).toLocaleString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })
-                              : '—'}
-                          </span>
-                        </td>
-                      )}
-                      <td className="px-4 py-4 whitespace-nowrap">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
+                      <td className="px-3 py-3">
+                        {(() => {
+                          if (isRejectedTab) {
+                            return (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap bg-red-100 text-red-800">
+                                  Rejected
+                                </span>
+                                {feedback.verified_at && (
+                                  <span className="text-[11px] text-red-700 whitespace-nowrap">
+                                    {new Date(feedback.verified_at).toLocaleString('en-US', {
+                                      month: '2-digit',
+                                      day: '2-digit',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          }
+
+                          const n = countIssues(feedback);
+                          const hasIssues = n > 0;
+                          const baseLabel = hasIssues ? `${n} ${n === 1 ? 'Issue' : 'Issues'}` : 'No Issues';
+
+                          return (
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${
+                                hasIssues
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-green-100 text-green-800'
+                              }`}
+                            >
+                              {baseLabel}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex flex-col gap-1">
+                          <button
+                            type="button"
+                            title="View Details"
                             onClick={() => {
                               setSelectedReportForDetails(feedback);
                               setShowDetailsModal(true);
                             }}
-                            icon={<Eye className="h-4 w-4" />}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors w-full justify-center"
                           >
-                            View Details
-                          </Button>
-                          {sectionTab === 'awaiting' ? (
-                            <>
-                              <Button
-                                variant="primary"
-                                size="sm"
+                            <Eye className="h-3.5 w-3.5 flex-shrink-0" />
+                            <span>Details</span>
+                          </button>
+                          {sectionTab === 'issues' ? (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                title="Confirm issue"
                                 onClick={() => handleConfirmClick(feedback, 'confirm')}
-                                icon={<CheckCircle className="h-4 w-4" />}
+                                className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors flex-1 justify-center"
                               >
-                                Confirm issue
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
+                                <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                                <span>Confirm</span>
+                              </button>
+                              <button
+                                type="button"
+                                title="Reject report"
                                 onClick={() => handleConfirmClick(feedback, 'reject')}
-                                className="border-red-200 text-red-700 hover:bg-red-50"
-                                icon={<XCircle className="h-4 w-4" />}
+                                className="inline-flex items-center justify-center p-1.5 text-red-600 bg-white border border-red-200 rounded-md hover:bg-red-50 transition-colors"
                               >
-                                Reject
-                              </Button>
-                            </>
-                          ) : (
-                            <Button
-                              variant="primary"
-                              size="sm"
+                                <XCircle className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ) : sectionTab === 'ready_to_forward' ? (
+                            <button
+                              type="button"
+                              title="Forward to admin"
                               onClick={() => handleForwardClick(feedback)}
-                              icon={<Send className="h-4 w-4" />}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors w-full justify-center"
                             >
-                              Forward
-                            </Button>
-                          )}
+                              <Send className="h-3.5 w-3.5 flex-shrink-0" />
+                              <span>Forward</span>
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
@@ -471,17 +549,17 @@ function EquipmentReports() {
               </table>
             </div>
           </div>
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-            <div className="text-sm text-gray-600">
-              {sectionTab === 'awaiting'
-                ? `Showing ${visibleFeedbackList.length} report${visibleFeedbackList.length !== 1 ? 's' : ''} awaiting your verification`
-                : `Showing ${visibleFeedbackList.length} verified report${visibleFeedbackList.length !== 1 ? 's' : ''} ready to forward`}
+          <div className="px-4 py-3 bg-gray-50 border-t border-gray-200">
+            <div className="text-xs text-gray-500">
+              {visibleFeedbackList.length} report{visibleFeedbackList.length !== 1 ? 's' : ''} shown
+              {!isRejectedTab && selectedFeedbackIds.size > 0 && (
+                <span className="ml-2 text-blue-600 font-medium">· {selectedFeedbackIds.size} selected</span>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Forward Modal */}
       {showForwardModal && selectedFeedback && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
@@ -512,7 +590,6 @@ function EquipmentReports() {
             </div>
 
             <div className="px-8 pb-8">
-              {/* Feedback Summary */}
               <div className="bg-gray-50 rounded-lg p-4 mb-6">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Report Summary</h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
@@ -608,7 +685,6 @@ function EquipmentReports() {
                 />
               </div>
 
-              {/* Actions */}
               <div className="flex justify-end gap-3">
                 <Button
                   variant="outline"
@@ -630,7 +706,6 @@ function EquipmentReports() {
         </div>
       )}
 
-      {/* Confirm / Reject Modal */}
       {showConfirmModal && confirmFeedback && confirmDecision && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
@@ -722,7 +797,6 @@ function EquipmentReports() {
         </div>
       )}
 
-      {/* Batch Forward Modal */}
       {showBatchForwardModal && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
@@ -753,7 +827,6 @@ function EquipmentReports() {
             </div>
 
             <div className="px-8 pb-8">
-              {/* Selected Reports Summary */}
               <div className="bg-gray-50 rounded-lg p-4 mb-6 max-h-48 overflow-y-auto">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Selected Reports</h4>
                 <div className="space-y-2">
@@ -788,7 +861,6 @@ function EquipmentReports() {
                 />
               </div>
 
-              {/* Actions */}
               <div className="flex justify-end gap-3">
                 <Button
                   variant="outline"
@@ -810,7 +882,6 @@ function EquipmentReports() {
         </div>
       )}
 
-      {/* Report Details Modal */}
       {showDetailsModal && selectedReportForDetails && (
         <div 
           className="fixed inset-0 bg-black bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center"
@@ -841,9 +912,7 @@ function EquipmentReports() {
                 </div>
               </div>
 
-              {/* Report Information */}
               <div className="space-y-6">
-                {/* Student Information */}
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h4 className="text-sm font-semibold text-gray-700 mb-3">Student Information</h4>
                   <div className="grid grid-cols-2 gap-4 text-sm">
@@ -875,8 +944,8 @@ function EquipmentReports() {
                       <p className="font-medium text-gray-900">
                         {selectedReportForDetails.date_submitted ? new Date(selectedReportForDetails.date_submitted).toLocaleString('en-US', {
                           year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
                           hour: '2-digit',
                           minute: '2-digit'
                         }) : '-'}
@@ -947,7 +1016,6 @@ function EquipmentReports() {
                 )}
               </div>
 
-              {/* Close Button */}
               <div className="mt-6 flex justify-end">
                 <Button
                   variant="outline"

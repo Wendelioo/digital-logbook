@@ -5,13 +5,13 @@
 !include "FileFunc.nsh"
 
 !ifndef INFO_PROJECTNAME
-    !define INFO_PROJECTNAME "digital-logbook-wails-app"
+    !define INFO_PROJECTNAME "Digital Logbook"
 !endif
 !ifndef INFO_COMPANYNAME
-    !define INFO_COMPANYNAME "digital-logbook-wails-app"
+    !define INFO_COMPANYNAME "Digital Logbook"
 !endif
 !ifndef INFO_PRODUCTNAME
-    !define INFO_PRODUCTNAME "digital-logbook-wails-app"
+    !define INFO_PRODUCTNAME "Digital Logbook"
 !endif
 !ifndef INFO_PRODUCTVERSION
     !define INFO_PRODUCTVERSION "1.0.0"
