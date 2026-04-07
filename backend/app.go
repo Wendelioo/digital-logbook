@@ -122,6 +122,9 @@ func (a *App) startup(ctx context.Context) {
 		if err := a.ensureFeedbackAdminResolvedAtColumn(); err != nil {
 			log.Printf("Failed to ensure feedback admin resolved timestamp column: %v", err)
 		}
+		if err := a.ensureDepartmentArchiveColumn(); err != nil {
+			log.Printf("Failed to ensure department archive column: %v", err)
+		}
 		if err := a.CleanOldNotifications(); err != nil {
 			log.Printf("Failed to clean old notifications: %v", err)
 		}

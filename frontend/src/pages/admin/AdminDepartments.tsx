@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import LoadingDots from '../../components/LoadingDots';
+import Modal, { MODAL_BODY_MIN_HEIGHT_CLASS } from '../../components/Modal';
 import { ArchiveIcon, ArchiveRestoreIcon } from '../../components/icons/ArchiveIcons';
 import {
   Plus,
@@ -12,7 +13,9 @@ import {
 import {
   GetDepartments,
   CreateDepartment,
-  UpdateDepartment
+  UpdateDepartment,
+  ArchiveDepartment,
+  UnarchiveDepartment
 } from '../../../wailsjs/go/backend/App';
 import { Department } from './types';
 
@@ -68,7 +71,14 @@ function DepartmentManagement() {
       }
 
       if (editingDepartment) {
-        await UpdateDepartment(editingDepartment.department_code, formData.departmentCode, formData.departmentName, '', formData.isActive);
+        await UpdateDepartment(
+          editingDepartment.department_code,
+          formData.departmentCode,
+          formData.departmentName,
+          '',
+          formData.isActive,
+          editingDepartment.is_archived
+        );
         showNotification('success', 'Department updated successfully!');
       } else {
         await CreateDepartment(formData.departmentCode, formData.departmentName, '');
@@ -100,22 +110,34 @@ function DepartmentManagement() {
     deptCode: string,
     deptName: string,
     currentStatus: boolean,
-    newStatus: boolean,
-    actionContext: 'status' | 'unarchive' = 'status'
+    newStatus: boolean
   ) => {
     if (currentStatus === newStatus) return;
     
-    setSelectedDeptForStatus({ code: deptCode, name: deptName, currentStatus, newStatus, actionContext });
+    setSelectedDeptForStatus({ code: deptCode, name: deptName, currentStatus, newStatus, actionContext: 'status' });
     setShowStatusModal(true);
   };
 
-  const handleArchiveDepartment = (dept: Department) => {
+  const handleArchiveDepartment = async (dept: Department) => {
     if (dept.is_active) {
       showNotification('error', 'Only inactive departments can be archived. Set the status to inactive first.');
       return;
     }
+    if (dept.is_archived) {
+      showNotification('error', 'Department is already archived.');
+      return;
+    }
 
-    showNotification('success', 'Department archived successfully.');
+    try {
+      await ArchiveDepartment(dept.department_code);
+      await loadDepartments();
+      setShowArchivedModal(true);
+      showNotification('success', 'Department archived successfully.');
+    } catch (error) {
+      console.error('Failed to archive department:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to archive department. Please try again.';
+      showNotification('error', errorMessage);
+    }
   };
 
   const confirmStatusChange = async () => {
@@ -128,17 +150,20 @@ function DepartmentManagement() {
       if (!dept) {
         throw new Error('Department not found');
       }
+      if (dept.is_archived && selectedDeptForStatus.newStatus) {
+        throw new Error('Archived departments cannot be activated. Unarchive first.');
+      }
       
       await UpdateDepartment(
         dept.department_code,
         dept.department_code,
         dept.department_name,
         dept.description || '',
-        selectedDeptForStatus.newStatus
+        selectedDeptForStatus.newStatus,
+        dept.is_archived
       );
       
-      const isUnarchiveAction = selectedDeptForStatus.actionContext === 'unarchive' && selectedDeptForStatus.newStatus;
-      showNotification('success', `Department ${isUnarchiveAction ? 'unarchived' : selectedDeptForStatus.newStatus ? 'activated' : 'deactivated'} successfully!`);
+      showNotification('success', `Department ${selectedDeptForStatus.newStatus ? 'activated' : 'deactivated'} successfully!`);
       await loadDepartments();
       setShowStatusModal(false);
       setSelectedDeptForStatus(null);
@@ -160,6 +185,10 @@ function DepartmentManagement() {
   }
 
   const searchedDepartments = departments.filter((dept) => {
+    if (dept.is_archived) {
+      return false;
+    }
+
     const searchLower = searchTerm.toLowerCase();
     return (
       dept.department_code.toLowerCase().includes(searchLower) ||
@@ -168,7 +197,7 @@ function DepartmentManagement() {
     );
   });
 
-  const archivedDepartments = departments.filter((dept) => !dept.is_active);
+  const archivedDepartments = departments.filter((dept) => dept.is_archived);
   const filteredArchivedDepartments = archivedDepartments.filter((dept) => {
     const q = archivedSearchTerm.toLowerCase();
     return (
@@ -185,6 +214,18 @@ function DepartmentManagement() {
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, total);
   const pagedDepartments = searchedDepartments.slice(startIndex, endIndex);
+
+  const handleUnarchiveDepartment = async (deptCode: string) => {
+    try {
+      await UnarchiveDepartment(deptCode);
+      await loadDepartments();
+      showNotification('success', 'Department unarchived successfully!');
+    } catch (error) {
+      console.error('Failed to unarchive department:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to unarchive department. Please try again.';
+      showNotification('error', errorMessage);
+    }
+  };
 
   return (
     <div>
@@ -453,7 +494,7 @@ function DepartmentManagement() {
                         variant="outline"
                         size="sm"
                         className="h-9 w-9 px-0 py-0"
-                        disabled={dept.is_active}
+                        disabled={dept.is_active || dept.is_archived}
                         icon={<ArchiveIcon size="xs" />}
                         title="Archive"
                       />
@@ -507,106 +548,89 @@ function DepartmentManagement() {
       </div>
 
       {/* Archived Departments Modal */}
-      {showArchivedModal && (
-        <div
-          className="modal-backdrop"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              setShowArchivedModal(false);
-            }
-          }}
-        >
-          <div className="modal-surface w-full max-w-5xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
-            <div className="px-4 sm:px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ArchiveIcon size="md" className="text-gray-700" />
-                <h3 className="text-base font-semibold text-gray-900 tracking-tight">Archived Departments</h3>
-                <span className="text-sm text-gray-500">({archivedDepartments.length})</span>
-              </div>
+      <Modal
+        isOpen={showArchivedModal}
+        onClose={() => setShowArchivedModal(false)}
+        title="Archived Departments"
+        size="2xl"
+        showVariantIcon={false}
+        contentMinHeightClassName={MODAL_BODY_MIN_HEIGHT_CLASS}
+      >
+        <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
+          <ArchiveIcon size="sm" className="text-gray-600" />
+          <span>{archivedDepartments.length} archived department{archivedDepartments.length === 1 ? '' : 's'}</span>
+        </div>
+        <div className="mb-4">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <input
+              type="text"
+              value={archivedSearchTerm}
+              onChange={(e) => setArchivedSearchTerm(e.target.value)}
+              placeholder="Search archived departments"
+              className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            />
+            {archivedSearchTerm && (
               <button
-                onClick={() => setShowArchivedModal(false)}
-                className="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100"
-                type="button"
-                aria-label="Close"
+                onClick={() => setArchivedSearchTerm('')}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
-                <X className="h-4 w-4" strokeWidth={1.75} />
+                <X className="h-5 w-5" />
               </button>
-            </div>
-            <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0">
-              <div className="relative max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type="text"
-                  value={archivedSearchTerm}
-                  onChange={(e) => setArchivedSearchTerm(e.target.value)}
-                  placeholder="Search archived departments"
-                  className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                />
-                {archivedSearchTerm && (
-                  <button
-                    onClick={() => setArchivedSearchTerm('')}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="flex-1 overflow-hidden min-h-[min(480px,72vh)] min-w-0">
-              <div className="h-full min-h-[inherit] overflow-x-auto overflow-y-auto">
-                <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-                  <thead className="bg-gradient-to-r from-gray-50 via-primary-50/30 to-gray-50 sticky top-0 z-10">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '220px' }}>
-                        Name
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '300px' }}>
-                        Description
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '120px' }}>
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredArchivedDepartments.map((dept, idx) => (
-                      <tr
-                        key={dept.department_code}
-                        className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-primary-50/40 transition-colors`}
-                      >
-                        <td className="px-6 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
-                          <div className="font-medium text-gray-900">{dept.department_name}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">{dept.department_code}</div>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
-                          {dept.description || 'No description'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <Button
-                            onClick={() => handleStatusChange(dept.department_code, dept.department_name, dept.is_active, true, 'unarchive')}
-                            variant="success"
-                            size="sm"
-                            className="h-9 w-9 px-0 py-0"
-                            icon={<ArchiveRestoreIcon size="xs" />}
-                            title="Unarchive"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                    {filteredArchivedDepartments.length === 0 && (
-                      <tr>
-                        <td colSpan={3} className="px-6 py-12 text-center">
-                          <p className="text-gray-500 font-medium">No archived departments found</p>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            )}
           </div>
         </div>
-      )}
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+            <thead className="bg-gradient-to-r from-gray-50 via-primary-50/30 to-gray-50 sticky top-0 z-10">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '220px' }}>
+                  Name
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '300px' }}>
+                  Description
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '120px' }}>
+                  Action
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredArchivedDepartments.map((dept, idx) => (
+                <tr
+                  key={dept.department_code}
+                  className={`${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-primary-50/40 transition-colors`}
+                >
+                  <td className="px-6 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
+                    <div className="font-medium text-gray-900">{dept.department_name}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">{dept.department_code}</div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
+                    {dept.description || 'No description'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                    <Button
+                      onClick={() => handleUnarchiveDepartment(dept.department_code)}
+                      variant="success"
+                      size="sm"
+                      className="h-9 w-9 px-0 py-0"
+                      icon={<ArchiveRestoreIcon size="xs" />}
+                      title="Unarchive"
+                    />
+                  </td>
+                </tr>
+              ))}
+              {filteredArchivedDepartments.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-6 py-12 text-center">
+                    <p className="text-gray-500 font-medium">No archived departments found</p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Modal>
 
       {/* Status Change Confirmation Modal */}
       {showStatusModal && selectedDeptForStatus && (

@@ -395,6 +395,7 @@ export namespace backend {
 	    department_name: string;
 	    description?: string;
 	    is_active: boolean;
+	    is_archived: boolean;
 	    created_at: string;
 	    updated_at: string;
 	
@@ -408,6 +409,7 @@ export namespace backend {
 	        this.department_name = source["department_name"];
 	        this.description = source["description"];
 	        this.is_active = source["is_active"];
+	        this.is_archived = source["is_archived"];
 	        this.created_at = source["created_at"];
 	        this.updated_at = source["updated_at"];
 	    }

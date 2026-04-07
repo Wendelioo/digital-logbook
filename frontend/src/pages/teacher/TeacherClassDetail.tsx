@@ -180,7 +180,12 @@ function ClassManagementDetail() {
       toast(`Successfully enrolled ${selectedStudents.size} student(s)!`, 'success');
     } catch (error) {
       console.error('Failed to enroll students:', error);
-      toast('Failed to enroll some students. Please try again.', 'error');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to enroll some students. Please try again.';
+      if (errorMessage.toLowerCase().includes('department')) {
+        toast('Enrollment blocked: selected student department does not match this class department.', 'error');
+      } else {
+        toast(errorMessage, 'error');
+      }
     } finally {
       setEnrolling(false);
     }

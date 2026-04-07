@@ -64,10 +64,6 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 		return err
 	}
 
-	if err := a.ensureStudentCanJoinClassDepartment(studentID, classID); err != nil {
-		return err
-	}
-
 	// Check class is active (not closed or archived)
 	var isActive bool
 	var isArchived bool
@@ -130,12 +126,6 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 func (a *App) EnrollMultipleStudents(studentIDs []int, classID int, enrolledBy int) error {
 	if err := a.checkDB(); err != nil {
 		return err
-	}
-
-	for _, studentID := range studentIDs {
-		if err := a.ensureStudentCanJoinClassDepartment(studentID, classID); err != nil {
-			return err
-		}
 	}
 
 	// Check class is active (not closed or archived)
@@ -384,11 +374,58 @@ func (a *App) ensureStudentCanJoinClassDepartment(studentUserID int, classID int
 	studentDept := strings.TrimSpace(studentDepartment.String)
 	classDept := strings.TrimSpace(classDepartment.String)
 
+	// Normalize legacy values (e.g. department name stored instead of code)
+	// so strict comparisons do not incorrectly block valid enrollments.
+	studentDeptNormalized, err := a.resolveDepartmentCode(studentDept)
+	if err != nil {
+		return fmt.Errorf("failed to normalize student department: %w", err)
+	}
+	classDeptNormalized, err := a.resolveDepartmentCode(classDept)
+	if err != nil {
+		return fmt.Errorf("failed to normalize class department: %w", err)
+	}
+
+	if studentDeptNormalized != "" {
+		studentDept = studentDeptNormalized
+	}
+	if classDeptNormalized != "" {
+		classDept = classDeptNormalized
+	}
+
 	if studentDept != "" && classDept != "" && !strings.EqualFold(studentDept, classDept) {
 		return fmt.Errorf("cannot join classlist: student department (%s) does not match class department (%s)", studentDept, classDept)
 	}
 
 	return nil
+}
+
+// resolveDepartmentCode returns a canonical department_code when a provided value
+// matches either departments.department_code or departments.department_name.
+func (a *App) resolveDepartmentCode(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", nil
+	}
+
+	var code sql.NullString
+	err := a.db.QueryRow(`
+		SELECT TOP 1 department_code
+		FROM departments
+		WHERE UPPER(LTRIM(RTRIM(department_code))) = UPPER(?)
+		   OR UPPER(LTRIM(RTRIM(department_name))) = UPPER(?)
+	`, trimmed, trimmed).Scan(&code)
+	if err == sql.ErrNoRows {
+		// Keep original value when no mapping exists; caller can still compare safely.
+		return trimmed, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if !code.Valid {
+		return trimmed, nil
+	}
+
+	return strings.TrimSpace(code.String), nil
 }
 
 // ==============================================================================

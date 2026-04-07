@@ -128,6 +128,26 @@ function MyClasses() {
     }
   };
 
+  const normalizeJoinClassError = (error: unknown): string => {
+    const raw = error instanceof Error ? error.message : String(error || '');
+    return raw
+      .replace(/^failed to enroll student:\s*/i, '')
+      .replace(/^cannot join classlist:\s*/i, '')
+      .trim();
+  };
+
+  const isExpectedJoinClassError = (message: string): boolean => {
+    const normalized = message.toLowerCase();
+    return (
+      normalized.includes('already enrolled') ||
+      normalized.includes('department') ||
+      normalized.includes('no classes found') ||
+      normalized.includes('invalid edp code format') ||
+      normalized.includes('too long') ||
+      normalized.includes('cannot be empty')
+    );
+  };
+
   const handleJoinClass = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !edpCode.trim()) {
@@ -174,12 +194,16 @@ function MyClasses() {
       setEdpCode('');
       setJoinError('');
       setJoinSuccess('');
-    } catch (error: any) {
-      console.error('Failed to join class:', error);
-      const errorMessage = error.message || 'Failed to join class. Please try again.';
+    } catch (error: unknown) {
+      const errorMessage = normalizeJoinClassError(error) || 'Failed to join class. Please try again.';
+      if (!isExpectedJoinClassError(errorMessage)) {
+        console.error('Failed to join class:', error);
+      }
       
       if (errorMessage.includes('already enrolled')) {
         setJoinError('You are already enrolled in this class.');
+      } else if (errorMessage.toLowerCase().includes('department')) {
+        setJoinError('Cannot join class. Your department does not match the class department.');
       } else if (errorMessage.includes('no classes found')) {
         setJoinError('Cannot join class. The class may be inactive or the EDP code is incorrect. Please verify with your teacher.');
       } else if (errorMessage.includes('invalid EDP code format')) {
