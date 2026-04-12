@@ -13,7 +13,7 @@ Multi-role authentication (Admin, Teacher, Student, Working Student)
 User management system
 Dashboard analytics for all user roles
 Attendance and time-in/time-out tracking
-PC-based login monitoring with hostname detection
+PC-based login monitoring with configurable computer lab and PC number
 Equipment condition and issue reporting
 Export logs and reports to CSV and PDF
 MySQL database integration
@@ -78,6 +78,34 @@ Inside the project directory, install the frontend dependencies:
 -To start the application in development mode, run:
 >wails dev
 
+**Database Configuration (config.ini):**
+-Create a `config.ini` file in the project root (for development) or beside the built executable (for deployment).
+-Use this format:
+
+>[database]
+>host=127.0.0.1
+>port=3306
+>dbname=your_database_name
+>username=your_username
+>password=your_password
+>
+>[policy]
+>; Optional: days before auto-deactivation for inactive non-admin accounts
+>; Default is 183 when not set
+>inactivity_deactivation_days=183
+>; Optional: days after deactivation before account is flagged as deleted
+>; Default is 1460 when not set
+>deactivated_deletion_days=1460
+
+-The app will look for `config.ini` in:
+>1. Executable directory (installed/built app)
+>2. Current working directory (development)
+
+-If `config.ini` is missing or malformed, database connection will fail with a clear error in logs.
+-You can also override policy thresholds via environment variables:
+ INACTIVITY_DEACTIVATION_DAYS and DEACTIVATED_DELETION_DAYS.
+ Environment variables take precedence over `config.ini`.
+
 **This will:**
  1. Start the Go backend
  2. Launch the frontend (React)
@@ -90,7 +118,7 @@ When the application is ready for deployment, build the production executable:
 
 **Notes:**
 -Make sure MySQL is properly configured and running before using the system.
--Environment variables (database credentials, ports, etc.) should be set according to your setup.
+-Set valid database credentials in `config.ini` for your environment.
 -This project is intended for academic and institutional use.
 
 **License:**

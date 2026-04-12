@@ -1,30 +1,30 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Button from '../../components/Button';
+import Modal from '../../components/Modal';
 import LoadingDots from '../../components/LoadingDots';
 import { ArchiveRestoreIcon } from '../../components/icons/ArchiveIcons';
 import {
   Eye,
-  Download,
-  FileText,
-  FileSpreadsheet,
-  FileType,
+  Printer,
   Filter,
   Search,
 } from 'lucide-react';
 import {
-  ExportClasslistCSV,
-  ExportClasslistPDF,
-  ExportClasslistDOCX,
-  ExportArchivedAttendanceCSVByDate,
-  ExportArchivedAttendancePDFByDate,
-  ExportArchivedAttendanceDOCXByDate,
   GetArchivedAttendanceSheets,
+  GetTeacherClassesByUserID,
   UnarchiveAttendanceSession,
   GetArchivedClasses,
   UnarchiveClass,
+  ExportArchivedAttendanceCSVByDate,
+  ExportArchivedAttendancePDFByDate,
+  ExportArchivedAttendanceDOCXByDate,
+  ExportClasslistCSV,
+  ExportClasslistPDF,
+  ExportClasslistDOCX,
 } from '../../../wailsjs/go/backend/App';
 import { openExportSaveDialog, defaultClasslistFilename, defaultAttendanceFilename, type ExportFormat } from '../../utils/exportSaveDialog';
+import { getArchiveErrorMessage, getArchiveSuccessMessage } from '../../utils/archiveNotifications';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppUi } from '../../contexts/AppUiContext';
 import { Class } from './types';
@@ -40,7 +40,7 @@ interface AttendanceArchiveProps {
 
 function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarchived, onAttendanceUnarchived }: AttendanceArchiveProps) {
   const { user } = useAuth();
-  const { toast } = useAppUi();
+  const { toast, confirm } = useAppUi();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const resolvedInitialTab: AttendanceArchiveTab = initialTab || (searchParams.get('tab') === 'classes' ? 'classes' : 'attendance');
@@ -50,25 +50,82 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
   const [archivedSheets, setArchivedSheets] = useState<any[]>([]);
   const [loadingAttendance, setLoadingAttendance] = useState(true);
   const [attendanceSearchTerm, setAttendanceSearchTerm] = useState('');
-  const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'today' | 'last7' | 'last30'>('all');
+  const [showAttendanceFilters, setShowAttendanceFilters] = useState(false);
+  const [attendanceDateRangeStart, setAttendanceDateRangeStart] = useState('');
+  const [attendanceDateRangeEnd, setAttendanceDateRangeEnd] = useState('');
+  const [pendingAttendanceDateRangeStart, setPendingAttendanceDateRangeStart] = useState('');
+  const [pendingAttendanceDateRangeEnd, setPendingAttendanceDateRangeEnd] = useState('');
+  const [attendanceClassFilter, setAttendanceClassFilter] = useState<string>('all');
+  const [pendingAttendanceClassFilter, setPendingAttendanceClassFilter] = useState<string>('all');
+  const [attendanceSemesterFilter, setAttendanceSemesterFilter] = useState<string>('all');
+  const [pendingAttendanceSemesterFilter, setPendingAttendanceSemesterFilter] = useState<string>('all');
+  const [attendanceSchoolYearFilter, setAttendanceSchoolYearFilter] = useState<string>('all');
+  const [pendingAttendanceSchoolYearFilter, setPendingAttendanceSchoolYearFilter] = useState<string>('all');
   const [attendanceEntriesPerPage, setAttendanceEntriesPerPage] = useState(10);
   const [attendanceCurrentPage, setAttendanceCurrentPage] = useState(1);
   const [filteredAttendance, setFilteredAttendance] = useState<any[]>([]);
   const [unarchivingAttendance, setUnarchivingAttendance] = useState<string | null>(null);
   const [downloadingAttendance, setDownloadingAttendance] = useState<string | null>(null);
-  const [attendanceExportDropdown, setAttendanceExportDropdown] = useState<{ key: string; top: number; left: number } | null>(null);
+  const [attendanceExportModalSheet, setAttendanceExportModalSheet] = useState<any | null>(null);
 
   // Classes state
+  const [activeTeacherClasses, setActiveTeacherClasses] = useState<Class[]>([]);
   const [archivedClasses, setArchivedClasses] = useState<Class[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [classSearchTerm, setClassSearchTerm] = useState('');
-  const [classSemesterFilter, setClassSemesterFilter] = useState<'all' | '1st Semester' | '2nd Semester' | 'Summer'>('all');
+  const [showClassFilters, setShowClassFilters] = useState(false);
+  const [classSemesterFilter, setClassSemesterFilter] = useState<string>('all');
+  const [pendingClassSemesterFilter, setPendingClassSemesterFilter] = useState<string>('all');
+  const [classSchoolYearFilter, setClassSchoolYearFilter] = useState<string>('all');
+  const [pendingClassSchoolYearFilter, setPendingClassSchoolYearFilter] = useState<string>('all');
   const [classEntriesPerPage, setClassEntriesPerPage] = useState(10);
   const [classCurrentPage, setClassCurrentPage] = useState(1);
   const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
   const [unarchivingClass, setUnarchivingClass] = useState<number | null>(null);
   const [downloadingClasslist, setDownloadingClasslist] = useState<number | null>(null);
-  const [classExportDropdown, setClassExportDropdown] = useState<{ classId: number; top: number; left: number } | null>(null);
+  const [classExportModalClass, setClassExportModalClass] = useState<Class | null>(null);
+
+  const normalizeSemester = (value?: string | null): string => {
+    if (!value) return '';
+    const normalized = value.toLowerCase().replace(/\s+/g, '');
+    if (normalized.includes('1st') || normalized.includes('first') || normalized === '1') return '1';
+    if (normalized.includes('2nd') || normalized.includes('second') || normalized === '2') return '2';
+    return normalized;
+  };
+
+  const classMetadataById = useMemo(() => {
+    const lookup = new Map<number, Class>();
+    [...activeTeacherClasses, ...archivedClasses].forEach((cls) => {
+      if (!lookup.has(cls.class_id)) {
+        lookup.set(cls.class_id, cls);
+      }
+    });
+    return lookup;
+  }, [activeTeacherClasses, archivedClasses]);
+
+  const attendanceClassOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          archivedSheets.map((sheet) => [
+            String(sheet.class_id),
+            {
+              classId: String(sheet.class_id),
+              label: `${sheet.subject_code || ''} - ${sheet.subject_name || ''}`.trim().replace(/^\s*-\s*/, ''),
+            },
+          ])
+        ).values()
+      ).sort((a, b) => a.label.localeCompare(b.label)),
+    [archivedSheets]
+  );
+
+  const schoolYearOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(Array.from(classMetadataById.values()).map((cls) => (cls.school_year || '').trim()).filter(Boolean))
+      ).sort((a, b) => a.localeCompare(b)),
+    [classMetadataById]
+  );
 
   useEffect(() => {
     if (initialTab) {
@@ -82,53 +139,93 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
   useEffect(() => {
     loadArchivedSheets();
     loadArchivedClassesList();
+    loadActiveTeacherClasses();
   }, [user?.id]);
 
   useEffect(() => {
-    // Filter attendance records based on search term
-    const now = new Date();
-    const todayYMD = now.toISOString().slice(0, 10);
-
     const filtered = archivedSheets.filter((sheet) => {
       const searchLower = attendanceSearchTerm.toLowerCase();
+      const sheetDate = String(sheet.date || '').slice(0, 10);
       const subjectName = (sheet.subject_name || '').toLowerCase();
       const subjectCode = (sheet.subject_code || '').toLowerCase();
-      const dateStr = new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).toLowerCase();
-      const matchesSearch = !searchLower || subjectName.includes(searchLower) || subjectCode.includes(searchLower) || dateStr.includes(searchLower);
+      const parsedDate = new Date(sheet.date);
+      const displayDate = Number.isNaN(parsedDate.getTime())
+        ? sheetDate
+        : parsedDate.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' }).toLowerCase();
+      const matchesSearch =
+        !searchLower ||
+        subjectName.includes(searchLower) ||
+        subjectCode.includes(searchLower) ||
+        sheetDate.includes(searchLower) ||
+        displayDate.includes(searchLower);
 
-      const sheetDate = new Date(sheet.date);
-      const diffDays = Number.isNaN(sheetDate.getTime()) ? Number.MAX_SAFE_INTEGER : Math.floor((now.getTime() - sheetDate.getTime()) / (1000 * 60 * 60 * 24));
-      const sheetYMD = Number.isNaN(sheetDate.getTime()) ? '' : sheetDate.toISOString().slice(0, 10);
+      if (!matchesSearch) {
+        return false;
+      }
 
-      const matchesFilter =
-        attendanceFilter === 'all' ||
-        (attendanceFilter === 'today' && sheetYMD === todayYMD) ||
-        (attendanceFilter === 'last7' && diffDays >= 0 && diffDays <= 7) ||
-        (attendanceFilter === 'last30' && diffDays >= 0 && diffDays <= 30);
+      if (attendanceDateRangeStart && sheetDate < attendanceDateRangeStart) {
+        return false;
+      }
 
-      return matchesSearch && matchesFilter;
+      if (attendanceDateRangeEnd && sheetDate > attendanceDateRangeEnd) {
+        return false;
+      }
+
+      if (attendanceClassFilter !== 'all' && String(sheet.class_id) !== attendanceClassFilter) {
+        return false;
+      }
+
+      const classMeta = classMetadataById.get(Number(sheet.class_id));
+
+      if (attendanceSemesterFilter !== 'all' && normalizeSemester(classMeta?.semester) !== attendanceSemesterFilter) {
+        return false;
+      }
+
+      if (attendanceSchoolYearFilter !== 'all' && (classMeta?.school_year || '') !== attendanceSchoolYearFilter) {
+        return false;
+      }
+
+      return true;
     });
 
     setFilteredAttendance(filtered);
     setAttendanceCurrentPage(1);
-  }, [attendanceSearchTerm, attendanceFilter, archivedSheets]);
+  }, [
+    attendanceSearchTerm,
+    attendanceDateRangeStart,
+    attendanceDateRangeEnd,
+    attendanceClassFilter,
+    attendanceSemesterFilter,
+    attendanceSchoolYearFilter,
+    archivedSheets,
+    classMetadataById,
+  ]);
 
   useEffect(() => {
-    // Filter classes based on search term
     const searchLower = classSearchTerm.toLowerCase();
     const filtered = archivedClasses.filter((cls) => {
       const subjectName = (cls.subject_name || '').toLowerCase();
       const subjectCode = (cls.subject_code || '').toLowerCase();
       const schoolYear = (cls.school_year || '').toLowerCase();
-      const semester = (cls.semester || '').toLowerCase();
       const matchesSearch = !searchLower || subjectName.includes(searchLower) || subjectCode.includes(searchLower) || schoolYear.includes(searchLower);
-      const matchesFilter = classSemesterFilter === 'all' || semester === classSemesterFilter.toLowerCase();
-      return matchesSearch && matchesFilter;
+      if (!matchesSearch) {
+        return false;
+      }
+
+      if (classSemesterFilter !== 'all' && normalizeSemester(cls.semester) !== classSemesterFilter) {
+        return false;
+      }
+
+      if (classSchoolYearFilter !== 'all' && (cls.school_year || '') !== classSchoolYearFilter) {
+        return false;
+      }
+
+      return true;
     });
 
     setFilteredClasses(filtered);
     setClassCurrentPage(1);
-  }, [classSearchTerm, classSemesterFilter, archivedClasses]);
+  }, [classSearchTerm, classSemesterFilter, classSchoolYearFilter, archivedClasses]);
 
   const loadArchivedSheets = async () => {
     if (!user?.id) return;
@@ -158,7 +255,33 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
     }
   };
 
-  const handleUnarchiveAttendance = async (classId: number, date: string, sessionId?: number) => {
+  const loadActiveTeacherClasses = async () => {
+    if (!user?.id) return;
+    try {
+      const classes = await GetTeacherClassesByUserID(user.id);
+      setActiveTeacherClasses(classes || []);
+    } catch (error) {
+      console.error('Failed to load active classes for archive filters:', error);
+      setActiveTeacherClasses([]);
+    }
+  };
+
+  const handleUnarchiveAttendance = async (classId: number, date: string, sessionId?: number, subjectCode?: string) => {
+    const formattedDate = new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+
+    const ok = await confirm({
+      title: 'Unarchive attendance',
+      message: `Are you sure you want to unarchive this attendance sheet (${subjectCode || 'Class'} - ${formattedDate})?`,
+      confirmLabel: 'Unarchive',
+      variant: 'default',
+    });
+
+    if (!ok) return;
+
     const key = sessionId ? `${classId}-${date}-${sessionId}` : `${classId}-${date}`;
     setUnarchivingAttendance(key);
     try {
@@ -171,50 +294,53 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
         return;
       }
       await loadArchivedSheets();
+      toast(getArchiveSuccessMessage('attendance', 'restore'), 'success');
       onAttendanceUnarchived?.();
     } catch (error) {
       console.error('Failed to restore:', error);
-      const msg = error instanceof Error ? error.message : 'Failed to unarchive attendance. Please try again.';
-      toast(msg, 'error');
+      toast(getArchiveErrorMessage('attendance', 'restore', error), 'error');
     } finally {
       setUnarchivingAttendance(null);
     }
   };
 
   const handleUnarchiveClass = async (classId: number) => {
+    const targetClass = archivedClasses.find((cls) => cls.class_id === classId);
+    const label = targetClass?.subject_code || 'this class';
+    const ok = await confirm({
+      title: 'Unarchive class',
+      message: `Are you sure you want to unarchive this classlist (${label})?`,
+      confirmLabel: 'Unarchive',
+      variant: 'default',
+    });
+
+    if (!ok) return;
+
     setUnarchivingClass(classId);
     try {
       await UnarchiveClass(classId);
       await loadArchivedClassesList();
+      toast(getArchiveSuccessMessage('class', 'restore'), 'success');
       onClassUnarchived?.();
     } catch (error) {
       console.error('Failed to restore class:', error);
+      toast(getArchiveErrorMessage('class', 'restore', error), 'error');
     } finally {
       setUnarchivingClass(null);
     }
   };
 
-  const handleDownloadArchivedClasslist = async (cls: Class, format: ExportFormat) => {
+  const handleDownloadArchivedClasslist = async (cls: Class) => {
     setDownloadingClasslist(cls.class_id);
-    setClassExportDropdown(null);
-    const savePath = await openExportSaveDialog('Save classlist', defaultClasslistFilename(format), format);
-    if (!savePath) {
-      setDownloadingClasslist(null);
-      return;
-    }
     try {
-      let filePath: string;
-      if (format === 'csv') {
-        filePath = await ExportClasslistCSV(cls.class_id, savePath);
-      } else if (format === 'pdf') {
-        filePath = await ExportClasslistPDF(cls.class_id, savePath);
-      } else {
-        filePath = await ExportClasslistDOCX(cls.class_id, savePath);
-      }
-      toast(`Archived classlist exported successfully. File saved to: ${filePath}`, 'success');
+      const format: ExportFormat = 'csv';
+      const savePath = await openExportSaveDialog('Save classlist', defaultClasslistFilename(format), format);
+      if (!savePath) return;
+      const filePath = await ExportClasslistCSV(cls.class_id, savePath);
+      toast(`Saved: ${filePath.split(/[\\/]/).pop()}`, 'success');
     } catch (error) {
-      console.error('Failed to download archived classlist:', error);
-      toast('Failed to download archived classlist. Please try again.', 'error');
+      console.error('Failed to export archived classlist:', error);
+      toast('Failed to export classlist. Please try again.', 'error');
     } finally {
       setDownloadingClasslist(null);
     }
@@ -225,28 +351,43 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
   const handleDownloadArchivedAttendance = async (sheet: any, format: ExportFormat) => {
     const key = sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`;
 
-    const defaultName = defaultAttendanceFilename(sheet.date, format, true);
-    const savePath = await openExportSaveDialog('Save archived attendance', defaultName, format);
-    if (!savePath) return;
-
     setDownloadingAttendance(key);
-    setAttendanceExportDropdown(null);
     try {
+      const savePath = await openExportSaveDialog('Save attendance report', defaultAttendanceFilename(sheet.date, format, true), format);
+      if (!savePath) return;
+
       const sessionId = Number(sheet.session_id) || 0;
-      let filePath: string;
-      if (format === 'csv') {
-        filePath = await ExportArchivedAttendanceCSVByDate(sheet.class_id, sheet.date, sessionId, savePath);
-      } else if (format === 'pdf') {
-        filePath = await ExportArchivedAttendancePDFByDate(sheet.class_id, sheet.date, sessionId, savePath);
-      } else {
-        filePath = await ExportArchivedAttendanceDOCXByDate(sheet.class_id, sheet.date, sessionId, savePath);
-      }
-      toast(`Archived attendance sheet exported successfully. File saved to: ${filePath}`, 'success');
+      let filePath = '';
+      if (format === 'csv') filePath = await ExportArchivedAttendanceCSVByDate(sheet.class_id, sheet.date, sessionId, savePath);
+      else if (format === 'pdf') filePath = await ExportArchivedAttendancePDFByDate(sheet.class_id, sheet.date, sessionId, savePath);
+      else filePath = await ExportArchivedAttendanceDOCXByDate(sheet.class_id, sheet.date, sessionId, savePath);
+
+      toast(`Saved: ${filePath.split(/[\\/]/).pop()}`, 'success');
     } catch (error) {
-      console.error('Failed to download archived attendance:', error);
-      toast('Failed to download archived attendance. Please try again.', 'error');
+      console.error('Failed to export archived attendance:', error);
+      toast('Failed to export attendance. Please try again.', 'error');
     } finally {
       setDownloadingAttendance(null);
+    }
+  };
+
+  const handleDownloadArchivedClasslistByFormat = async (cls: Class, format: ExportFormat) => {
+    setDownloadingClasslist(cls.class_id);
+    try {
+      const savePath = await openExportSaveDialog('Save classlist', defaultClasslistFilename(format), format);
+      if (!savePath) return;
+
+      let filePath = '';
+      if (format === 'csv') filePath = await ExportClasslistCSV(cls.class_id, savePath);
+      else if (format === 'pdf') filePath = await ExportClasslistPDF(cls.class_id, savePath);
+      else filePath = await ExportClasslistDOCX(cls.class_id, savePath);
+
+      toast(`Saved: ${filePath.split(/[\\/]/).pop()}`, 'success');
+    } catch (error) {
+      console.error('Failed to export archived classlist:', error);
+      toast('Failed to export classlist. Please try again.', 'error');
+    } finally {
+      setDownloadingClasslist(null);
     }
   };
 
@@ -278,77 +419,17 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
   const currentClassRecords = filteredClasses.slice(classStartIndex, classEndIndex);
   const classStartEntry = filteredClasses.length > 0 ? classStartIndex + 1 : 0;
   const classEndEntry = Math.min(classEndIndex, filteredClasses.length);
+  const attendanceActiveFilterCount =
+    (attendanceDateRangeStart || attendanceDateRangeEnd ? 1 : 0) +
+    (attendanceClassFilter !== 'all' ? 1 : 0) +
+    (attendanceSemesterFilter !== 'all' ? 1 : 0) +
+    (attendanceSchoolYearFilter !== 'all' ? 1 : 0);
+  const classActiveFilterCount =
+    (classSemesterFilter !== 'all' ? 1 : 0) +
+    (classSchoolYearFilter !== 'all' ? 1 : 0);
 
   return (
-    <div className="flex flex-col h-full p-6">
-      {/* Fixed export dropdowns (so CSV/PDF/DOCX are not clipped by overflow) */}
-      {attendanceExportDropdown && (() => {
-        const sheet = filteredAttendance.find((s) => getSheetKey(s) === attendanceExportDropdown.key);
-        if (!sheet) return null;
-        return (
-          <div
-            style={{ position: 'fixed', top: attendanceExportDropdown.top, left: attendanceExportDropdown.left, zIndex: 9999 }}
-            className="w-44 bg-white border border-gray-200 rounded-lg shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => { setAttendanceExportDropdown(null); handleDownloadArchivedAttendance(sheet, 'csv'); }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-t-lg"
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
-              Export CSV
-            </button>
-            <button
-              onClick={() => { setAttendanceExportDropdown(null); handleDownloadArchivedAttendance(sheet, 'pdf'); }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
-            >
-              <FileText className="h-3.5 w-3.5 text-rose-600" />
-              Export PDF
-            </button>
-            <button
-              onClick={() => { setAttendanceExportDropdown(null); handleDownloadArchivedAttendance(sheet, 'docx'); }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-b-lg"
-            >
-              <FileType className="h-3.5 w-3.5 text-blue-600" />
-              Export DOCX
-            </button>
-          </div>
-        );
-      })()}
-      {classExportDropdown && (() => {
-        const cls = filteredClasses.find((c) => c.class_id === classExportDropdown.classId);
-        if (!cls) return null;
-        return (
-          <div
-            style={{ position: 'fixed', top: classExportDropdown.top, left: classExportDropdown.left, zIndex: 9999 }}
-            className="w-44 bg-white border border-gray-200 rounded-lg shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => { setClassExportDropdown(null); handleDownloadArchivedClasslist(cls, 'csv'); }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-t-lg"
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
-              Export CSV
-            </button>
-            <button
-              onClick={() => { setClassExportDropdown(null); handleDownloadArchivedClasslist(cls, 'pdf'); }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
-            >
-              <FileText className="h-3.5 w-3.5 text-rose-600" />
-              Export PDF
-            </button>
-            <button
-              onClick={() => { setClassExportDropdown(null); handleDownloadArchivedClasslist(cls, 'docx'); }}
-              className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-b-lg"
-            >
-              <FileType className="h-3.5 w-3.5 text-blue-600" />
-              Export DOCX
-            </button>
-          </div>
-        );
-      })()}
-
+    <div className={hideHeader ? 'flex flex-col h-full' : 'flex flex-col h-full p-6'}>
       {/* Header Section */}
       {!hideHeader && (
         <div className="flex-shrink-0 mb-4">
@@ -363,8 +444,26 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
         <>
           {/* Controls Section */}
           <div className="flex-shrink-0 mb-4">
-            <div className="flex justify-end">
-              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-700">Show</span>
+                <select
+                  value={attendanceEntriesPerPage}
+                  onChange={(e) => {
+                    setAttendanceEntriesPerPage(Number(e.target.value));
+                    setAttendanceCurrentPage(1);
+                  }}
+                  className="px-2 py-1 border border-gray-300 rounded-md text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value={10}>10 entries</option>
+                  <option value={25}>25 entries</option>
+                  <option value={50}>50 entries</option>
+                  <option value={100}>100 entries</option>
+                  <option value={-1}>All entries</option>
+                </select>
+              </div>
+
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
                 <div className="relative w-72 max-w-full">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   <input
@@ -375,25 +474,153 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                     placeholder="Search attendance..."
                   />
                 </div>
-                <div className={`flex h-10 w-full items-center gap-2 rounded-lg px-3 sm:w-56 ${
-                  attendanceFilter !== 'all'
-                    ? 'bg-primary-50 border border-primary-500 text-primary-700'
-                    : 'bg-white border border-gray-300 text-gray-700'
-                }`}>
-                  <Filter className="h-4 w-4" />
-                  <span className="text-sm font-medium">Filter</span>
-                  <select
-                    value={attendanceFilter}
-                    onChange={(e) => {
-                      setAttendanceFilter(e.target.value as 'all' | 'today' | 'last7' | 'last30');
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      const nextOpen = !showAttendanceFilters;
+                      if (nextOpen) {
+                        setPendingAttendanceDateRangeStart(attendanceDateRangeStart);
+                        setPendingAttendanceDateRangeEnd(attendanceDateRangeEnd);
+                        setPendingAttendanceClassFilter(attendanceClassFilter);
+                        setPendingAttendanceSemesterFilter(attendanceSemesterFilter);
+                        setPendingAttendanceSchoolYearFilter(attendanceSchoolYearFilter);
+                      }
+                      setShowAttendanceFilters(nextOpen);
                     }}
-                    className="h-full min-w-0 flex-1 bg-transparent text-sm font-medium focus:outline-none"
+                    className={`flex h-10 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${
+                      showAttendanceFilters || attendanceActiveFilterCount > 0
+                        ? 'bg-primary-50 border-primary-500 text-primary-700'
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
                   >
-                    <option value="all">Filter: All dates</option>
-                    <option value="today">Filter: Today</option>
-                    <option value="last7">Filter: Last 7 days</option>
-                    <option value="last30">Filter: Last 30 days</option>
-                  </select>
+                    <Filter className="h-4 w-4" />
+                    <span>Filter</span>
+                    {attendanceActiveFilterCount > 0 && (
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary-500 text-xs font-bold text-white">
+                        {attendanceActiveFilterCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {showAttendanceFilters && (
+                    <div className="absolute right-0 z-50 mt-2 w-72 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                      <div className="space-y-3 p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-gray-800">Filters</span>
+                          {attendanceActiveFilterCount > 0 && (
+                            <button
+                              onClick={() => {
+                                setAttendanceDateRangeStart('');
+                                setAttendanceDateRangeEnd('');
+                                setAttendanceClassFilter('all');
+                                setAttendanceSemesterFilter('all');
+                                setAttendanceSchoolYearFilter('all');
+                                setPendingAttendanceDateRangeStart('');
+                                setPendingAttendanceDateRangeEnd('');
+                                setPendingAttendanceClassFilter('all');
+                                setPendingAttendanceSemesterFilter('all');
+                                setPendingAttendanceSchoolYearFilter('all');
+                              }}
+                              className="text-xs text-primary-600 hover:underline"
+                            >
+                              Clear all
+                            </button>
+                          )}
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-600">Date Range</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="date"
+                              value={pendingAttendanceDateRangeStart}
+                              onChange={(e) => setPendingAttendanceDateRangeStart(e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                            <span className="text-xs font-medium text-gray-500">to</span>
+                            <input
+                              type="date"
+                              value={pendingAttendanceDateRangeEnd}
+                              onChange={(e) => setPendingAttendanceDateRangeEnd(e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-600">Class</label>
+                          <select
+                            value={pendingAttendanceClassFilter}
+                            onChange={(e) => setPendingAttendanceClassFilter(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="all">All classes</option>
+                            {attendanceClassOptions.map((option) => (
+                              <option key={option.classId} value={option.classId}>{option.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-600">Semester</label>
+                          <select
+                            value={pendingAttendanceSemesterFilter}
+                            onChange={(e) => setPendingAttendanceSemesterFilter(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="all">All semesters</option>
+                            <option value="1">1st Semester</option>
+                            <option value="2">2nd Semester</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-600">School Year</label>
+                          <select
+                            value={pendingAttendanceSchoolYearFilter}
+                            onChange={(e) => setPendingAttendanceSchoolYearFilter(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="all">All school years</option>
+                            {schoolYearOptions.map((schoolYear) => (
+                              <option key={schoolYear} value={schoolYear}>{schoolYear}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingAttendanceDateRangeStart('');
+                              setPendingAttendanceDateRangeEnd('');
+                              setPendingAttendanceClassFilter('all');
+                              setPendingAttendanceSemesterFilter('all');
+                              setPendingAttendanceSchoolYearFilter('all');
+                              setAttendanceDateRangeStart('');
+                              setAttendanceDateRangeEnd('');
+                              setAttendanceClassFilter('all');
+                              setAttendanceSemesterFilter('all');
+                              setAttendanceSchoolYearFilter('all');
+                              setShowAttendanceFilters(false);
+                            }}
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                          >
+                            Clear
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAttendanceDateRangeStart(pendingAttendanceDateRangeStart);
+                              setAttendanceDateRangeEnd(pendingAttendanceDateRangeEnd);
+                              setAttendanceClassFilter(pendingAttendanceClassFilter);
+                              setAttendanceSemesterFilter(pendingAttendanceSemesterFilter);
+                              setAttendanceSchoolYearFilter(pendingAttendanceSchoolYearFilter);
+                              setShowAttendanceFilters(false);
+                            }}
+                            className="rounded-lg border border-primary-600 bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -406,16 +633,16 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                 <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
                   <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                        Class
+                      </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                         Date
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
-                        Subject
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
                         Summary
                       </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '160px' }}>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
                         Action
                       </th>
                     </tr>
@@ -423,30 +650,22 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                   <tbody className="bg-white divide-y divide-gray-200">
                     {currentAttendanceRecords.map((sheet) => (
                       <tr key={sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {new Date(sheet.date).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}
+                        <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
+                          <div className="font-medium">{sheet.subject_code} - {sheet.subject_name}</div>
+                          <div className="text-xs text-gray-500">EDP: {sheet.edp_code || '-'}</div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <div className="font-medium">{sheet.subject_name}</div>
-                          <div className="text-xs text-gray-500">{sheet.subject_code}</div>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div>{new Date(`${sheet.date}T00:00:00`).toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                              {sheet.present_count} Present
-                            </span>
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-                              {sheet.absent_count} Absent
-                            </span>
-                            {sheet.late_count > 0 && (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-                                {sheet.late_count} Late
-                              </span>
-                            )}
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                          <div className="flex items-center justify-center gap-2 text-xs">
+                            <span className="text-green-700 font-medium">P:{sheet.present_count}</span>
+                            <span className="text-red-700 font-medium">A:{sheet.absent_count}</span>
+                            <span className="text-yellow-700 font-medium">L:{sheet.late_count}</span>
                           </div>
-                          <div className="text-xs text-gray-400 mt-1">{sheet.student_count} total students</div>
+                          <div className="text-[11px] text-gray-500">Total: {sheet.student_count}</div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex items-center justify-center gap-2">
                             <Button
                               onClick={() => {
@@ -465,7 +684,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                               title="View Attendance"
                             />
                             <Button
-                              onClick={() => handleUnarchiveAttendance(sheet.class_id, sheet.date, sheet.session_id)}
+                              onClick={() => handleUnarchiveAttendance(sheet.class_id, sheet.date, sheet.session_id, sheet.subject_code)}
                               variant="outline"
                               size="sm"
                               className="text-green-600 hover:bg-green-50"
@@ -474,20 +693,11 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                               disabled={unarchivingAttendance === (sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`)}
                             />
                             <Button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                const key = getSheetKey(sheet);
-                                setAttendanceExportDropdown(
-                                  attendanceExportDropdown?.key === key
-                                    ? null
-                                    : { key, top: rect.bottom + 4, left: rect.right - 176 }
-                                );
-                              }}
+                              onClick={() => setAttendanceExportModalSheet(sheet)}
                               variant="outline"
                               size="sm"
                               className="text-gray-600 hover:bg-gray-100"
-                              icon={<Download className="h-3 w-3" />}
+                              icon={<Printer className="h-3 w-3" />}
                               title="Export"
                               disabled={downloadingAttendance === getSheetKey(sheet)}
                             />
@@ -499,25 +709,52 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                 </table>
               </div>
             ) : (
-              <div className="text-center py-12">
-                {attendanceSearchTerm ? (
-                  <>
-                    <h3 className="text-sm font-medium text-gray-900">No matching archived records found</h3>
-                    <div className="mt-4">
-                      <Button
-                        onClick={() => setAttendanceSearchTerm('')}
-                        variant="outline"
-                        size="sm"
-                      >
-                        Clear Search
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <h3 className="text-sm font-medium text-gray-900">No archived attendance sheets</h3>
-                  </>
-                )}
+              <div className="bg-white shadow rounded-lg overflow-hidden">
+                <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+                  <thead className="bg-gray-50 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                        Class
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                        Date
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                        Summary
+                      </th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    <tr>
+                      <td colSpan={4} className="px-6 py-12 text-center">
+                        {attendanceSearchTerm ? (
+                          <>
+                            <svg className="mx-auto h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            <h3 className="mt-2 text-sm font-medium text-gray-900">No matching archived records found</h3>
+                            <div className="mt-4">
+                              <Button
+                                onClick={() => setAttendanceSearchTerm('')}
+                                variant="outline"
+                                size="sm"
+                              >
+                                Clear Search
+                              </Button>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <h3 className="text-sm font-medium text-gray-900">No archived attendance sheets</h3>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -576,25 +813,104 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                     placeholder="Search classes..."
                   />
                 </div>
-                <div className={`flex h-10 w-full items-center gap-2 rounded-lg px-3 sm:w-56 ${
-                  classSemesterFilter !== 'all'
-                    ? 'bg-primary-50 border border-primary-500 text-primary-700'
-                    : 'bg-white border border-gray-300 text-gray-700'
-                }`}>
-                  <Filter className="h-4 w-4" />
-                  <span className="text-sm font-medium">Filter</span>
-                  <select
-                    value={classSemesterFilter}
-                    onChange={(e) => {
-                      setClassSemesterFilter(e.target.value as 'all' | '1st Semester' | '2nd Semester' | 'Summer');
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      const nextOpen = !showClassFilters;
+                      if (nextOpen) {
+                        setPendingClassSemesterFilter(classSemesterFilter);
+                        setPendingClassSchoolYearFilter(classSchoolYearFilter);
+                      }
+                      setShowClassFilters(nextOpen);
                     }}
-                    className="h-full min-w-0 flex-1 bg-transparent text-sm font-medium focus:outline-none"
+                    className={`flex h-10 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${
+                      showClassFilters || classActiveFilterCount > 0
+                        ? 'bg-primary-50 border-primary-500 text-primary-700'
+                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                    }`}
                   >
-                    <option value="all">Filter: All semesters</option>
-                    <option value="1st Semester">Filter: 1st Semester</option>
-                    <option value="2nd Semester">Filter: 2nd Semester</option>
-                    <option value="Summer">Filter: Summer</option>
-                  </select>
+                    <Filter className="h-4 w-4" />
+                    <span>Filter</span>
+                    {classActiveFilterCount > 0 && (
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary-500 text-xs font-bold text-white">
+                        {classActiveFilterCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {showClassFilters && (
+                    <div className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                      <div className="space-y-3 p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-gray-800">Filters</span>
+                          {classActiveFilterCount > 0 && (
+                            <button
+                              onClick={() => {
+                                setClassSemesterFilter('all');
+                                setClassSchoolYearFilter('all');
+                                setPendingClassSemesterFilter('all');
+                                setPendingClassSchoolYearFilter('all');
+                              }}
+                              className="text-xs text-primary-600 hover:underline"
+                            >
+                              Clear all
+                            </button>
+                          )}
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-600">Semester</label>
+                          <select
+                            value={pendingClassSemesterFilter}
+                            onChange={(e) => setPendingClassSemesterFilter(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="all">All semesters</option>
+                            <option value="1">1st Semester</option>
+                            <option value="2">2nd Semester</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-gray-600">School Year</label>
+                          <select
+                            value={pendingClassSchoolYearFilter}
+                            onChange={(e) => setPendingClassSchoolYearFilter(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="all">All school years</option>
+                            {schoolYearOptions.map((schoolYear) => (
+                              <option key={schoolYear} value={schoolYear}>{schoolYear}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPendingClassSemesterFilter('all');
+                              setPendingClassSchoolYearFilter('all');
+                              setClassSemesterFilter('all');
+                              setClassSchoolYearFilter('all');
+                              setShowClassFilters(false);
+                            }}
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                          >
+                            Clear
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setClassSemesterFilter(pendingClassSemesterFilter);
+                              setClassSchoolYearFilter(pendingClassSchoolYearFilter);
+                              setShowClassFilters(false);
+                            }}
+                            className="rounded-lg border border-primary-600 bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -602,27 +918,27 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
 
           {/* Table Section */}
           <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
-            {filteredClasses.length > 0 ? (
-              <div className="bg-white shadow rounded-lg overflow-hidden">
-                <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-                  <thead className="bg-gray-50 sticky top-0 z-10">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
-                        Subject
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '150px' }}>
-                        Schedule
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
-                        School Year
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {currentClassRecords.map((cls) => (
+            <div className="bg-white shadow rounded-lg overflow-hidden">
+              <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+                <thead className="bg-gray-50 sticky top-0 z-10">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                      Subject
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '150px' }}>
+                      Schedule
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                      School Year
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {currentClassRecords.length > 0 ? (
+                    currentClassRecords.map((cls) => (
                       <tr key={cls.class_id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           <div className="font-medium">{cls.subject_name}</div>
@@ -660,51 +976,49 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                               disabled={unarchivingClass === cls.class_id}
                             />
                             <Button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                setClassExportDropdown(
-                                  classExportDropdown?.classId === cls.class_id
-                                    ? null
-                                    : { classId: cls.class_id, top: rect.bottom + 4, left: rect.right - 176 }
-                                );
-                              }}
+                              onClick={() => setClassExportModalClass(cls)}
                               variant="outline"
                               size="sm"
                               className="text-gray-600 hover:bg-gray-100"
-                              icon={<Download className="h-3 w-3" />}
+                              icon={<Printer className="h-3 w-3" />}
                               title="Export"
                               disabled={downloadingClasslist === cls.class_id}
                             />
                           </div>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                {classSearchTerm ? (
-                  <>
-                    <h3 className="text-sm font-medium text-gray-900">No matching archived classes found</h3>
-                    <div className="mt-4">
-                      <Button
-                        onClick={() => setClassSearchTerm('')}
-                        variant="outline"
-                        size="sm"
-                      >
-                        Clear Search
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <h3 className="text-sm font-medium text-gray-900">No archived classes</h3>
-                  </>
-                )}
-              </div>
-            )}
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-12 text-center">
+                        {classSearchTerm || classActiveFilterCount > 0 ? (
+                          <>
+                            <h3 className="text-sm font-medium text-gray-900">No matching archived classes found</h3>
+                            <div className="mt-4">
+                              <Button
+                                onClick={() => {
+                                  setClassSearchTerm('');
+                                  setClassSemesterFilter('all');
+                                  setClassSchoolYearFilter('all');
+                                  setPendingClassSemesterFilter('all');
+                                  setPendingClassSchoolYearFilter('all');
+                                }}
+                                variant="outline"
+                                size="sm"
+                              >
+                                Clear Filters
+                              </Button>
+                            </div>
+                          </>
+                        ) : (
+                          <h3 className="text-sm font-medium text-gray-900">No archived classes</h3>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Pagination Section */}
@@ -741,6 +1055,98 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
           )}
         </>
       )}
+
+      <Modal
+        isOpen={!!attendanceExportModalSheet}
+        onClose={() => setAttendanceExportModalSheet(null)}
+        title="Export Attendance"
+        size="sm"
+      >
+        <div className="space-y-3">
+          <Button
+            variant="outline"
+            className="w-full justify-center"
+            onClick={() => {
+              if (!attendanceExportModalSheet) return;
+              const sheet = attendanceExportModalSheet;
+              setAttendanceExportModalSheet(null);
+              handleDownloadArchivedAttendance(sheet, 'csv');
+            }}
+          >
+            CSV
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full justify-center"
+            onClick={() => {
+              if (!attendanceExportModalSheet) return;
+              const sheet = attendanceExportModalSheet;
+              setAttendanceExportModalSheet(null);
+              handleDownloadArchivedAttendance(sheet, 'pdf');
+            }}
+          >
+            PDF
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full justify-center"
+            onClick={() => {
+              if (!attendanceExportModalSheet) return;
+              const sheet = attendanceExportModalSheet;
+              setAttendanceExportModalSheet(null);
+              handleDownloadArchivedAttendance(sheet, 'docx');
+            }}
+          >
+            DOCX
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={!!classExportModalClass}
+        onClose={() => setClassExportModalClass(null)}
+        title="Export Classlist"
+        size="sm"
+      >
+        <div className="space-y-3">
+          <Button
+            variant="outline"
+            className="w-full justify-center"
+            onClick={() => {
+              if (!classExportModalClass) return;
+              const cls = classExportModalClass;
+              setClassExportModalClass(null);
+              handleDownloadArchivedClasslistByFormat(cls, 'csv');
+            }}
+          >
+            CSV
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full justify-center"
+            onClick={() => {
+              if (!classExportModalClass) return;
+              const cls = classExportModalClass;
+              setClassExportModalClass(null);
+              handleDownloadArchivedClasslistByFormat(cls, 'pdf');
+            }}
+          >
+            PDF
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full justify-center"
+            onClick={() => {
+              if (!classExportModalClass) return;
+              const cls = classExportModalClass;
+              setClassExportModalClass(null);
+              handleDownloadArchivedClasslistByFormat(cls, 'docx');
+            }}
+          >
+            DOCX
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

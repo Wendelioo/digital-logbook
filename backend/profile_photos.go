@@ -46,13 +46,11 @@ func (a *App) SaveProfilePhoto(userID int, photoDataURL string) error {
 
 	// Upsert: insert or update the photo_data for this user
 	query := `
-		MERGE profile_photos AS target
-		USING (SELECT ? AS user_id, ? AS photo_data) AS source
-		ON target.user_id = source.user_id
-		WHEN MATCHED THEN
-			UPDATE SET photo_data = source.photo_data, uploaded_at = CURRENT_TIMESTAMP
-		WHEN NOT MATCHED THEN
-			INSERT (user_id, photo_data) VALUES (source.user_id, source.photo_data);
+		INSERT INTO profile_photos (user_id, photo_data, uploaded_at)
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON DUPLICATE KEY UPDATE
+			photo_data = VALUES(photo_data),
+			uploaded_at = CURRENT_TIMESTAMP
 	`
 
 	_, err = a.db.Exec(query, userID, photoDataURL)

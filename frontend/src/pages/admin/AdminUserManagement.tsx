@@ -6,23 +6,22 @@ import Modal, { MODAL_BODY_MIN_HEIGHT_CLASS } from '../../components/Modal';
 import { ArchiveIcon, ArchiveRestoreIcon } from '../../components/icons/ArchiveIcons';
 import LoadingDots from '../../components/LoadingDots';
 import {
-  UserPlus,
   Edit,
   Trash2,
   Search,
   X,
   Eye,
   EyeOff,
+  KeyRound,
   Plus,
   Upload,
   User,
   Users,
-  Settings,
   UserCheck,
   UserX,
   Clock,
-  GraduationCap,
-  Wrench,
+  SlidersHorizontal,
+  RefreshCw,
 } from 'lucide-react';
 import {
   GetUsers,
@@ -55,6 +54,15 @@ const INITIAL_USER_FORM = {
   email: '',
   contactNumber: '',
   departmentCode: '',
+};
+
+type InactivityPolicySettings = {
+  configured_inactivity_deactivation_days: number;
+  configured_deactivated_deletion_days: number;
+  effective_inactivity_deactivation_days: number;
+  effective_deactivated_deletion_days: number;
+  env_override_inactivity: boolean;
+  env_override_deletion: boolean;
 };
 
 function validateStrongPasswordClient(pw: string): string | null {
@@ -107,8 +115,8 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
     return role.charAt(0).toUpperCase() + role.slice(1) + ' Details';
   };
 
-  const getUsername = () => {
-    return user.employee_id || user.student_id || user.name;
+  const getUserID = () => {
+    return user.employee_id || user.student_id || 'N/A';
   };
 
   const getDepartment = () => {
@@ -129,8 +137,7 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
     >
       <div className="modal-surface w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
         {/* Header */}
-        <div className="px-4 sm:px-6 py-3.5 border-b border-primary-200/80 flex items-center gap-2 bg-gradient-to-r from-primary-50/95 to-gray-50/90">
-          <Eye className="h-5 w-5 text-primary-600" strokeWidth={1.75} />
+        <div className="px-4 sm:px-6 py-3.5 border-b border-primary-200/80 flex items-center bg-gradient-to-r from-primary-50/95 to-gray-50/90">
           <h3 className="text-lg font-semibold text-gray-900">{getTitle()}</h3>
         </div>
 
@@ -175,8 +182,8 @@ function ViewUserDetailsModal({ user, isOpen, onClose, departmentName }: ViewUse
                 </div>
               )}
               <div>
-                <span className="text-sm font-semibold text-gray-700">Username:</span>
-                <span className="text-sm text-gray-900 ml-2">{getUsername()}</span>
+                <span className="text-sm font-semibold text-gray-700">ID:</span>
+                <span className="text-sm text-gray-900 ml-2">{getUserID()}</span>
               </div>
             </div>
           </div>
@@ -212,8 +219,6 @@ function UserManagement() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [formData, setFormData] = useState(() => ({ ...INITIAL_USER_FORM }));
   const [formSubmitting, setFormSubmitting] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [showArchivedModal, setShowArchivedModal] = useState(false);
@@ -244,6 +249,30 @@ function UserManagement() {
   const [showAdminResetPassword, setShowAdminResetPassword] = useState(false);
   const [showAdminResetPasswordConfirm, setShowAdminResetPasswordConfirm] = useState(false);
   const [resetPasswordSubmitting, setResetPasswordSubmitting] = useState(false);
+  const [policySettings, setPolicySettings] = useState<InactivityPolicySettings | null>(null);
+  const [policyInactivityDays, setPolicyInactivityDays] = useState('183');
+  const [policyDeletionDays, setPolicyDeletionDays] = useState('1460');
+  const [policyLoading, setPolicyLoading] = useState(false);
+  const [policySaving, setPolicySaving] = useState(false);
+
+  const getInactivityPolicySettingsBridge = async (): Promise<InactivityPolicySettings> => {
+    const appBridge = (window as any)?.go?.backend?.App;
+    if (!appBridge || typeof appBridge.GetInactivityPolicySettings !== 'function') {
+      throw new Error('This app build does not support policy settings yet. Please restart after updating.');
+    }
+    return appBridge.GetInactivityPolicySettings();
+  };
+
+  const saveInactivityPolicySettingsBridge = async (
+    inactivityDays: number,
+    deletionDays: number
+  ): Promise<InactivityPolicySettings> => {
+    const appBridge = (window as any)?.go?.backend?.App;
+    if (!appBridge || typeof appBridge.SaveInactivityPolicySettings !== 'function') {
+      throw new Error('This app build does not support saving policy settings yet. Please restart after updating.');
+    }
+    return appBridge.SaveInactivityPolicySettings(inactivityDays, deletionDays);
+  };
 
   const toggleSort = (key: SortKey) => {
     setSortKey((prevKey) => {
@@ -277,6 +306,10 @@ function UserManagement() {
     loadUsers();
     loadDepartments();
   }, [userTypeFilter]); // Reload when user type changes
+
+  useEffect(() => {
+    loadPolicySettings();
+  }, []);
 
   // Reload activity tab users whenever the selected tab changes
   useEffect(() => {
@@ -316,6 +349,55 @@ function UserManagement() {
       setUsers([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPolicySettings = async () => {
+    setPolicyLoading(true);
+    try {
+      const settings = await getInactivityPolicySettingsBridge();
+      setPolicySettings(settings);
+      setPolicyInactivityDays(String(settings.configured_inactivity_deactivation_days));
+      setPolicyDeletionDays(String(settings.configured_deactivated_deletion_days));
+    } catch (error) {
+      console.error('Failed to load policy settings:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load policy settings.';
+      showNotification('error', errorMessage);
+    } finally {
+      setPolicyLoading(false);
+    }
+  };
+
+  const handleSavePolicySettings = async () => {
+    const inactivityDays = Number(policyInactivityDays);
+    const deletionDays = Number(policyDeletionDays);
+
+    if (!Number.isInteger(inactivityDays) || inactivityDays < 1) {
+      showNotification('error', 'Inactivity deactivation days must be a whole number greater than 0.');
+      return;
+    }
+    if (!Number.isInteger(deletionDays) || deletionDays < 1) {
+      showNotification('error', 'Deactivated deletion days must be a whole number greater than 0.');
+      return;
+    }
+
+    setPolicySaving(true);
+    try {
+      const updated = await saveInactivityPolicySettingsBridge(inactivityDays, deletionDays);
+      setPolicySettings(updated);
+      setPolicyInactivityDays(String(updated.configured_inactivity_deactivation_days));
+      setPolicyDeletionDays(String(updated.configured_deactivated_deletion_days));
+
+      const overrideNote = updated.env_override_inactivity || updated.env_override_deletion
+        ? ' Saved in config.ini, but active environment overrides are currently in effect.'
+        : '';
+      showNotification('success', `Policy settings saved.${overrideNote}`);
+    } catch (error) {
+      console.error('Failed to save policy settings:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save policy settings.';
+      showNotification('error', errorMessage);
+    } finally {
+      setPolicySaving(false);
     }
   };
 
@@ -385,24 +467,19 @@ function UserManagement() {
         return;
       }
 
-      const ID_REGEX = /^\d{7}$/;
+      if (!formData.email.trim()) {
+        showNotification('error', 'Email is required');
+        return;
+      }
 
       if (formData.role === 'working_student' || formData.role === 'student') {
         if (!formData.studentId) {
           showNotification('error', `Student ID is required for ${formData.role === 'student' ? 'Students' : 'Working Students'}`);
           return;
         }
-        if (!ID_REGEX.test(formData.studentId.trim())) {
-          showNotification('error', 'Invalid student ID — must be exactly 7 digits (e.g. 2211172)');
-          return;
-        }
       } else if (formData.role === 'teacher' || formData.role === 'admin') {
         if (!formData.employeeId) {
           showNotification('error', `Employee ID is required for ${formData.role === 'admin' ? 'Admins' : 'Teachers'}`);
-          return;
-        }
-        if (!ID_REGEX.test(formData.employeeId.trim())) {
-          showNotification('error', 'Invalid employee ID — must be exactly 7 digits (e.g. 2211172)');
           return;
         }
       }
@@ -414,27 +491,6 @@ function UserManagement() {
         return;
       }
 
-      // Password is only collected in the add-user flow; use Change password in the row actions to reset.
-      let password_to_pass = formData.password;
-
-      if (!editingUser && !password_to_pass) {
-        showNotification('error', 'Password is required for new users');
-        return;
-      }
-
-      if (!editingUser && formData.password !== formData.confirmPassword) {
-        showNotification('error', 'Passwords do not match');
-        return;
-      }
-
-      if (!editingUser && password_to_pass) {
-        const pwErr = validateStrongPasswordClient(password_to_pass);
-        if (pwErr) {
-          showNotification('error', pwErr);
-          return;
-        }
-      }
-
       const departmentCode = (formData.role === 'teacher' || formData.role === 'student' || formData.role === 'working_student')
         ? formData.departmentCode
         : '';
@@ -443,7 +499,12 @@ function UserManagement() {
         await UpdateUser(editingUser.id, fullName, formData.firstName, formData.middleName, formData.lastName, formData.role, formData.employeeId, formData.studentId, formData.email, formData.contactNumber, departmentCode);
         showNotification('success', 'User updated successfully!');
       } else {
-        await CreateUser(password_to_pass, fullName, formData.firstName, formData.middleName, formData.lastName, formData.role, formData.employeeId, formData.studentId, formData.email, formData.contactNumber, departmentCode);
+        const temporaryPassword =
+          formData.role === 'teacher' || formData.role === 'admin'
+            ? formData.employeeId.trim()
+            : formData.studentId.trim();
+
+        await CreateUser(temporaryPassword, fullName, formData.firstName, formData.middleName, formData.lastName, formData.role, formData.employeeId, formData.studentId, formData.email, formData.contactNumber, departmentCode);
 
         const roleMessages = {
           'student': 'Student added successfully!',
@@ -451,7 +512,8 @@ function UserManagement() {
           'teacher': 'Teacher added successfully!',
           'admin': 'Admin added successfully!'
         };
-        const message = roleMessages[formData.role as keyof typeof roleMessages] || 'User added successfully!';
+        const baseMessage = roleMessages[formData.role as keyof typeof roleMessages] || 'User added successfully!';
+        const message = `${baseMessage} Temporary password is set to the user's ID.`;
         showNotification('success', message);
       }
 
@@ -511,7 +573,7 @@ function UserManagement() {
 
     try {
       await ArchiveUser(user.id);
-      showNotification('success', 'User archived successfully!');
+      showNotification('success', 'User archived successfully.');
       loadUsers();
       if (showArchivedModal) {
         loadArchivedUsers({ silent: true });
@@ -526,13 +588,52 @@ function UserManagement() {
   const handleUnarchiveUser = async (id: number) => {
     try {
       await UnarchiveUser(id);
-      showNotification('success', 'Account unarchived successfully!');
+      showNotification('success', 'User restored successfully.');
       loadArchivedUsers({ silent: true });
       loadUsers();
       loadActivityUsers(activityTab, { silent: true });
     } catch (error) {
       console.error('Failed to unarchive user:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to unarchive account. Please try again.';
+      const errorMessage = error instanceof Error ? error.message : 'Failed to restore account. Please try again.';
+      showNotification('error', errorMessage);
+    }
+  };
+
+  const handleResetPasswordToAccountID = async (targetUser: UserType) => {
+    if (!currentUser) {
+      showNotification('error', 'Current session not found. Please login again.');
+      return;
+    }
+
+    const accountID = (targetUser.employee_id || targetUser.student_id || targetUser.name || '').trim();
+    if (!accountID) {
+      showNotification('error', 'Account ID is unavailable for this user.');
+      return;
+    }
+
+    if (currentUser.id === targetUser.id) {
+      showNotification('error', 'Use Account Settings to change your own password.');
+      return;
+    }
+
+    const displayName = targetUser.first_name && targetUser.last_name
+      ? `${targetUser.first_name} ${targetUser.last_name}`
+      : targetUser.name;
+
+    const ok = await confirm({
+      title: 'Reset password to account ID',
+      message: `Reset ${displayName}'s temporary password to account ID ${accountID}?`,
+      variant: 'danger',
+      confirmLabel: 'Reset Password',
+    });
+    if (!ok) return;
+
+    try {
+      await ResetPasswordByRole(currentUser.id, targetUser.id, accountID);
+      showNotification('success', `Temporary password reset to account ID (${accountID}).`);
+    } catch (error) {
+      console.error('Failed to reset password to account ID:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to reset password to account ID.';
       showNotification('error', errorMessage);
     }
   };
@@ -661,8 +762,8 @@ function UserManagement() {
   const endEntry = Math.min(endIndex, sortedUsers.length);
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex items-center justify-between">
+    <div className="p-4 sm:p-6">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
         <div className="flex items-center gap-2">
           <Button
@@ -670,9 +771,93 @@ function UserManagement() {
             variant="primary"
             icon={<Plus className="h-4 w-4" />}
           >
-            ADD NEW
+            ADD USER
           </Button>
         </div>
+      </div>
+
+      <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 sm:p-5 shadow-soft">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-gray-700">
+              <SlidersHorizontal className="h-4 w-4 text-primary-600" />
+              Inactivity Policy Settings
+            </h3>
+            <p className="mt-1 text-xs text-gray-500">
+              Configure fixed-day thresholds used for automatic deactivation and deletion flagging.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadPolicySettings}
+            disabled={policyLoading || policySaving}
+            icon={<RefreshCw className="h-4 w-4" />}
+          >
+            Reload
+          </Button>
+        </div>
+
+        {policyLoading ? (
+          <div className="mt-4 flex items-center justify-center py-6">
+            <LoadingDots className="justify-center gap-2" dotClassName="h-2.5 w-2.5" />
+          </div>
+        ) : (
+          <>
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor="policy-inactivity-days">Auto-deactivate after (days)</label>
+                <input
+                  id="policy-inactivity-days"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={policyInactivityDays}
+                  onChange={(e) => setPolicyInactivityDays(e.target.value)}
+                  className="input"
+                />
+              </div>
+              <div>
+                <label className="label" htmlFor="policy-deletion-days">Flag as deleted after deactivation (days)</label>
+                <input
+                  id="policy-deletion-days"
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={policyDeletionDays}
+                  onChange={(e) => setPolicyDeletionDays(e.target.value)}
+                  className="input"
+                />
+              </div>
+            </div>
+
+            {policySettings && (
+              <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 space-y-1">
+                <p>
+                  Effective now: deactivate after <span className="font-semibold text-gray-800">{policySettings.effective_inactivity_deactivation_days}</span> day(s),
+                  delete-flag after <span className="font-semibold text-gray-800">{policySettings.effective_deactivated_deletion_days}</span> day(s).
+                </p>
+                {(policySettings.env_override_inactivity || policySettings.env_override_deletion) && (
+                  <p className="text-warning-700">
+                    Environment override detected. Config values are saved, but env variables currently take precedence.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="mt-4 flex justify-end">
+              <Button
+                onClick={handleSavePolicySettings}
+                variant="primary"
+                size="sm"
+                loading={policySaving}
+                disabled={policyLoading}
+              >
+                Save Policy
+              </Button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Notification */}
@@ -727,13 +912,11 @@ function UserManagement() {
           setFormData({ ...INITIAL_USER_FORM });
           setAvatarFile(null);
           setAvatarPreview(null);
-          setShowPassword(false);
-          setShowConfirmPassword(false);
         }}
-        title={editingUser ? 'Edit user' : 'Add user'}
+        title={editingUser ? 'Edit user' : ''}
         size="xl"
         showVariantIcon={false}
-        contentMinHeightClassName="min-h-[min(380px,65vh)]"
+        showCloseButton={false}
         footer={
           <>
             <Button
@@ -747,8 +930,6 @@ function UserManagement() {
                 setFormData({ ...INITIAL_USER_FORM });
                 setAvatarFile(null);
                 setAvatarPreview(null);
-                setShowPassword(false);
-                setShowConfirmPassword(false);
               }}
             >
               Cancel
@@ -759,60 +940,96 @@ function UserManagement() {
               variant="primary"
               size="md"
               loading={formSubmitting}
-              icon={editingUser ? <Edit className="h-4 w-4" strokeWidth={1.75} /> : <UserPlus className="h-4 w-4" strokeWidth={1.75} />}
             >
-              {editingUser ? 'Save changes' : 'Create user'}
+              {editingUser ? 'Save changes' : 'Create'}
             </Button>
           </>
         }
       >
         <form id="admin-user-form" onSubmit={handleSubmit} className="space-y-5" noValidate>
-          {!editingUser && (
-            <p className="text-sm text-gray-600 -mt-1">
-              New account type:{' '}
-              <span className="font-semibold text-gray-900">
-                {formData.role === 'teacher' ? 'Teacher' : formData.role === 'student' ? 'Student' : 'Working student'}
-              </span>
-            </p>
-          )}
 
-          {!editingUser && (
-            <div className="rounded-xl border border-gray-200/90 bg-gray-50/50 p-4 sm:p-5">
-              <p className="label mb-3">Account type</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                {(
-                  [
-                    { value: 'teacher', label: 'Teacher', hint: 'Faculty', Icon: Users },
-                    { value: 'student', label: 'Student', hint: 'Learner', Icon: GraduationCap },
-                    { value: 'working_student', label: 'Working student', hint: 'Lab assistant', Icon: Wrench },
-                  ] as const
-                ).map(({ value, label, hint, Icon }) => {
-                  const selected = formData.role === value;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, role: value })}
-                      className={`flex flex-col items-start gap-1 rounded-xl border-2 px-3.5 py-3 text-left transition-all ${
-                        selected
-                          ? 'border-primary-500 bg-primary-50/80 shadow-sm ring-1 ring-primary-200'
-                          : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/80'
-                      }`}
-                    >
-                      <Icon
-                        className={`h-5 w-5 shrink-0 ${selected ? 'text-primary-600' : 'text-gray-400'}`}
-                        strokeWidth={1.75}
-                      />
-                      <span className={`text-sm font-semibold ${selected ? 'text-primary-900' : 'text-gray-800'}`}>
-                        {label}
+          {!editingUser ? (
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-start">
+              <div className="lg:col-span-3 rounded-xl border border-gray-200/90 bg-gray-50/50 p-4 sm:p-5">
+                <p className="label mb-3">Account type</p>
+                <div className="max-w-md">
+                  <label className="label" htmlFor="user-account-type">Select account type</label>
+                  <select
+                    id="user-account-type"
+                    value={formData.role}
+                    onChange={(e) => setFormData({ ...formData, role: e.target.value as typeof formData.role })}
+                    className="select"
+                  >
+                    <option value="teacher">Teacher</option>
+                    <option value="student">Student</option>
+                    <option value="working_student">Working student</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="lg:col-span-2 rounded-xl border border-gray-200/90 bg-white p-4 sm:p-5 shadow-soft">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Profile photo</h3>
+                <div className="flex flex-col sm:flex-row sm:items-start gap-5">
+                  <div className="flex-shrink-0 mx-auto sm:mx-0">
+                    <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-xl bg-gray-50 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden ring-1 ring-gray-100">
+                      {avatarPreview ? (
+                        <img src={avatarPreview} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <User className="h-14 w-14 text-gray-300" strokeWidth={1.25} />
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0 text-center sm:text-left">
+                    <input
+                      type="file"
+                      id="avatar-upload"
+                      accept="image/*"
+                      onChange={handleAvatarChange}
+                      className="hidden"
+                    />
+                    <label htmlFor="avatar-upload">
+                      <span className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-300 bg-white text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-50 transition-colors shadow-sm">
+                        <Upload className="h-4 w-4 text-gray-500" strokeWidth={1.75} />
+                        Choose image
                       </span>
-                      <span className="text-xs text-gray-500 leading-tight">{hint}</span>
-                    </button>
-                  );
-                })}
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-gray-200/90 bg-white p-4 sm:p-5 shadow-soft">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Profile photo</h3>
+              <div className="flex flex-col sm:flex-row sm:items-start gap-5">
+                <div className="flex-shrink-0 mx-auto sm:mx-0">
+                  <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-xl bg-gray-50 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden ring-1 ring-gray-100">
+                    {avatarPreview ? (
+                      <img src={avatarPreview} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="h-14 w-14 text-gray-300" strokeWidth={1.25} />
+                    )}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0 text-center sm:text-left">
+                  <input
+                    type="file"
+                    id="avatar-upload"
+                    accept="image/*"
+                    onChange={handleAvatarChange}
+                    className="hidden"
+                  />
+                  <label htmlFor="avatar-upload">
+                    <span className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-300 bg-white text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-50 transition-colors shadow-sm">
+                      <Upload className="h-4 w-4 text-gray-500" strokeWidth={1.75} />
+                      Choose image
+                    </span>
+                  </label>
+                </div>
               </div>
             </div>
           )}
+
+          <div className="space-y-5">
 
           <div className="rounded-xl border border-gray-200/90 bg-white p-4 sm:p-5 shadow-soft space-y-4">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Personal</h3>
@@ -899,14 +1116,11 @@ function UserManagement() {
                       </option>
                     ))}
                   </select>
-                  {formData.role === 'teacher' && (
-                    <p className="mt-1.5 text-xs text-gray-500">Optional for teachers; required for students and working students.</p>
-                  )}
                 </div>
               )}
               <div className="sm:col-span-2">
                 <label className="label" htmlFor="user-email">
-                  Email <span className="text-gray-400 font-normal">(optional)</span>
+                  Email <span className="text-danger-500">*</span>
                 </label>
                 <input
                   id="user-email"
@@ -915,142 +1129,35 @@ function UserManagement() {
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="input"
+                  required
                 />
               </div>
               <div className="sm:col-span-2 sm:max-w-md">
                 <label className="label" htmlFor="user-login-id">
-                  {formData.role === 'teacher' ? 'Employee ID' : 'Student ID'}{' '}
+                  {(formData.role === 'teacher' || formData.role === 'admin') ? 'Employee ID' : 'Student ID'}{' '}
                   <span className="text-danger-500">*</span>
                 </label>
                 <input
                   id="user-login-id"
                   type="text"
-                  inputMode="numeric"
                   autoComplete="username"
-                  maxLength={7}
-                  placeholder="7 digits"
-                  value={formData.role === 'teacher' ? formData.employeeId : formData.studentId}
+                  maxLength={50}
+                  value={(formData.role === 'teacher' || formData.role === 'admin') ? formData.employeeId : formData.studentId}
                   onChange={(e) => {
-                    const v = e.target.value.replace(/\D/g, '').slice(0, 7);
-                    if (formData.role === 'teacher') {
-                      setFormData((prev) =>
-                        editingUser
-                          ? { ...prev, employeeId: v }
-                          : { ...prev, employeeId: v, password: v }
-                      );
+                    const v = e.target.value.slice(0, 50);
+                    if (formData.role === 'teacher' || formData.role === 'admin') {
+                      setFormData((prev) => ({ ...prev, employeeId: v }));
                     } else {
-                      setFormData((prev) =>
-                        editingUser
-                          ? { ...prev, studentId: v }
-                          : { ...prev, studentId: v, password: v }
-                      );
+                      setFormData((prev) => ({ ...prev, studentId: v }));
                     }
                   }}
                   className="input font-mono tabular-nums"
                   required
                 />
-                <p className="mt-1.5 text-xs text-gray-500">
-                  Exactly 7 digits.
-                  {!editingUser && (
-                    <> For new users, the initial password is set to this value until you enter a different password below.</>
-                  )}
-                </p>
               </div>
-
-              {!editingUser && (
-                <>
-                  <div className="sm:col-span-2 rounded-lg border border-primary-100 bg-primary-50/50 px-3 py-2.5">
-                    <p className="text-xs font-medium text-gray-800">Password requirements</p>
-                    <ul className="mt-1.5 text-xs text-gray-600 list-disc list-inside space-y-0.5">
-                      <li>At least 8 characters</li>
-                      <li>Uppercase, lowercase, number, and special character</li>
-                    </ul>
-                  </div>
-
-                  <div>
-                    <label className="label" htmlFor="user-password">
-                      Password <span className="text-danger-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="user-password"
-                        type={showPassword ? 'text' : 'password'}
-                        autoComplete="new-password"
-                        value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        className="input pr-10"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-                        aria-label={showPassword ? 'Hide password' : 'Show password'}
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" strokeWidth={1.75} /> : <Eye className="h-4 w-4" strokeWidth={1.75} />}
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="label" htmlFor="user-password-confirm">
-                      Confirm password <span className="text-danger-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="user-password-confirm"
-                        type={showConfirmPassword ? 'text' : 'password'}
-                        autoComplete="new-password"
-                        value={formData.confirmPassword}
-                        onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                        className="input pr-10"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
-                        aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                      >
-                        {showConfirmPassword ? <EyeOff className="h-4 w-4" strokeWidth={1.75} /> : <Eye className="h-4 w-4" strokeWidth={1.75} />}
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200/90 bg-white p-4 sm:p-5 shadow-soft">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-3">Profile photo</h3>
-            <div className="flex flex-col sm:flex-row sm:items-start gap-5">
-              <div className="flex-shrink-0 mx-auto sm:mx-0">
-                <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-xl bg-gray-50 border-2 border-dashed border-gray-300 flex items-center justify-center overflow-hidden ring-1 ring-gray-100">
-                  {avatarPreview ? (
-                    <img src={avatarPreview} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <User className="h-14 w-14 text-gray-300" strokeWidth={1.25} />
-                  )}
-                </div>
-              </div>
-              <div className="flex-1 min-w-0 text-center sm:text-left">
-                <input
-                  type="file"
-                  id="avatar-upload"
-                  accept="image/*"
-                  onChange={handleAvatarChange}
-                  className="hidden"
-                />
-                <label htmlFor="avatar-upload">
-                  <span className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-300 bg-white text-sm font-medium text-gray-700 cursor-pointer hover:bg-gray-50 transition-colors shadow-sm">
-                    <Upload className="h-4 w-4 text-gray-500" strokeWidth={1.75} />
-                    Choose image
-                  </span>
-                </label>
-                <p className="mt-2 text-xs text-gray-500 truncate">
-                  {avatarFile ? avatarFile.name : 'PNG or JPG recommended.'}
-                </p>
-              </div>
-            </div>
           </div>
         </form>
       </Modal>
@@ -1154,10 +1261,6 @@ function UserManagement() {
           <div className="flex items-center justify-center h-40">
             <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
           </div>
-        ) : archivedUsers.length === 0 ? (
-          <div className="px-6 py-12 text-center">
-            <p className="text-gray-500">No archived accounts found.</p>
-          </div>
         ) : (
           <div className="space-y-4">
           <div className="bg-white shadow rounded-lg overflow-hidden">
@@ -1173,30 +1276,38 @@ function UserManagement() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {archivedUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.employee_id || user.student_id || user.name || '-'}</td>
-                    <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
-                      {user.first_name && user.last_name
-                        ? `${user.last_name}, ${user.first_name}${user.middle_name ? ' ' + user.middle_name : ''}`
-                        : user.name}
-                    </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{user.role.replace('_', ' ')}</td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{user.created || '-'}</td>
-                    <td className="px-4 py-4 whitespace-nowrap text-right">
-                      <div className="table-action-group">
-                        <Button
-                          onClick={() => handleUnarchiveUser(user.id)}
-                          variant="success"
-                          size="sm"
-                          className="h-9 w-9 px-0 py-0 min-w-[2.25rem]"
-                          icon={<ArchiveRestoreIcon />}
-                          title="Unarchive"
-                        />
-                      </div>
+                {archivedUsers.length > 0 ? (
+                  archivedUsers.map((user) => (
+                    <tr key={user.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.employee_id || user.student_id || user.name || '-'}</td>
+                      <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
+                        {user.first_name && user.last_name
+                          ? `${user.last_name}, ${user.first_name}${user.middle_name ? ' ' + user.middle_name : ''}`
+                          : user.name}
+                      </td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{user.role.replace('_', ' ')}</td>
+                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{user.created || '-'}</td>
+                      <td className="px-4 py-4 whitespace-nowrap text-right">
+                        <div className="table-action-group">
+                          <Button
+                            onClick={() => handleUnarchiveUser(user.id)}
+                            variant="success"
+                            size="sm"
+                            className="h-9 w-9 px-0 py-0 min-w-[2.25rem]"
+                            icon={<ArchiveRestoreIcon />}
+                            title="Restore"
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                      No archived accounts found.
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
             </div>
@@ -1208,13 +1319,13 @@ function UserManagement() {
       {/* ── Activity Status Tabs ─────────────────────────────────────────────── */}
       <div className="mt-6 mb-4">
         <div className="border-b border-gray-200">
-          <nav className="-mb-px flex gap-1" aria-label="Account status tabs">
+          <nav className="-mb-px flex flex-wrap gap-1" aria-label="Account status tabs">
             {(
               [
                 { key: 'active',      label: 'Active',      icon: <UserCheck className="h-4 w-4" />,  color: 'text-green-600',  border: 'border-green-500'  },
                 { key: 'archived',    label: 'Archived',    icon: <ArchiveIcon />,    color: 'text-warning-700', border: 'border-warning-500' },
                 { key: 'deactivated', label: 'Deactivated', icon: <UserX className="h-4 w-4" />,      color: 'text-orange-600', border: 'border-orange-500' },
-                { key: 'deleted',     label: 'Pending Deletion', icon: <Trash2 className="h-4 w-4" />, color: 'text-red-600',  border: 'border-red-500'    },
+                { key: 'deleted',     label: 'Deleted', icon: <Trash2 className="h-4 w-4" />, color: 'text-red-600',  border: 'border-red-500'    },
               ] as const
             ).map((tab) => (
               <button
@@ -1237,16 +1348,16 @@ function UserManagement() {
         {/* Tab description */}
         <div className="mt-2 mb-4 text-xs text-gray-500">
           {activityTab === 'active' && (
-            <span className="flex items-center gap-1"><UserCheck className="h-3.5 w-3.5 text-green-500" /> Currently active accounts — last login within the past 6 months.</span>
+            <span className="flex items-center gap-1"><UserCheck className="h-3.5 w-3.5 text-green-500" /> Currently active accounts — last login within the configured inactivity window (default: 183 days).</span>
           )}
           {activityTab === 'archived' && (
-            <span className="flex items-center gap-1.5"><ArchiveIcon size="xs" className="text-warning-600" /> Manually archived accounts. Unarchive to allow login again.</span>
+            <span className="flex items-center gap-1.5"><ArchiveIcon size="xs" className="text-warning-600" /> Manually archived accounts. Restore to allow login again.</span>
           )}
           {activityTab === 'deactivated' && (
-            <span className="flex items-center gap-1"><UserX className="h-3.5 w-3.5 text-orange-500" /> Auto-deactivated after 6+ months of inactivity — only admin can reactivate. Accounts deactivated for 4+ years are flagged for deletion.</span>
+            <span className="flex items-center gap-1"><UserX className="h-3.5 w-3.5 text-orange-500" /> Auto-deactivated after exceeding the configured inactivity threshold (default: 183 days) — only admin can reactivate. Accounts are flagged for deletion after the configured deletion threshold (default: 1460 days).</span>
           )}
           {activityTab === 'deleted' && (
-            <span className="flex items-center gap-1"><Trash2 className="h-3.5 w-3.5 text-red-500" /> Accounts inactive for 4+ years — flagged for removal by system policy. Admins can restore accounts from this list; permanent deletion is not done from the app.</span>
+            <span className="flex items-center gap-1"><Trash2 className="h-3.5 w-3.5 text-red-500" /> Accounts that exceeded the configured deletion threshold (default: 1460 days) — flagged for removal by system policy. Admins can restore accounts from this list; permanent deletion is not done from the app.</span>
           )}
         </div>
 
@@ -1335,7 +1446,7 @@ function UserManagement() {
                           <div className="flex items-center justify-end gap-1.5">
                             {/* Archived tab actions */}
                             {activityTab === 'archived' && (
-                              <Button onClick={() => handleUnarchiveUser(user.id)} variant="success" size="sm" icon={<ArchiveRestoreIcon size="xs" />} title="Unarchive" />
+                              <Button onClick={() => handleUnarchiveUser(user.id)} variant="success" size="sm" icon={<ArchiveRestoreIcon size="xs" />} title="Restore" />
                             )}
                             {/* Deactivated tab actions */}
                             {activityTab === 'deactivated' && (
@@ -1343,7 +1454,7 @@ function UserManagement() {
                                 Reactivate
                               </Button>
                             )}
-                            {/* Deleted (pending deletion) tab actions */}
+                            {/* Deleted tab actions */}
                             {activityTab === 'deleted' && (
                               <Button onClick={() => handleReactivate(user)} variant="success" size="sm" icon={<UserCheck className="h-3 w-3" />} title="Restore account" >
                                 Restore
@@ -1364,7 +1475,7 @@ function UserManagement() {
       {/* ── Active Users Table (full table with search/filter/pagination) ─── */}
       {activityTab === 'active' && (
         <>
-          <div className="mb-6 flex justify-between items-center">
+          <div className="mb-6 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex items-center gap-4">
               <div className="text-sm text-gray-600">
                 Show <select
@@ -1379,18 +1490,18 @@ function UserManagement() {
                 </select> entries
               </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center xl:w-auto">
               <select
                 value={userTypeFilter}
                 onChange={(e) => setUserTypeFilter(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:w-auto"
               >
                 <option value="">All Users</option>
                 <option value="teacher">Teacher</option>
                 <option value="student">Student</option>
                 <option value="working_student">Working Student</option>
               </select>
-              <div className="relative w-64 max-w-full">
+              <div className="relative w-full sm:w-64">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   type="text"
@@ -1438,6 +1549,17 @@ function UserManagement() {
                       const info = activityByID.get(user.id);
                       const ago = info?.last_login_ago;
                       const at = info?.last_login_at;
+                      const isOnline = info?.currently_logged_in;
+                      if (isOnline) {
+                        return (
+                          <span>
+                            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                              Online
+                            </span>
+                            {at && <div className="text-xs text-gray-400 mt-0.5">{at}</div>}
+                          </span>
+                        );
+                      }
                       if (!ago || ago === 'Never logged in') {
                         return <span className="text-gray-400 italic text-xs">Never logged in</span>;
                       }
@@ -1453,7 +1575,7 @@ function UserManagement() {
                     key: 'action',
                     label: 'Action',
                     render: (user: UserType) => (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Button
                           onClick={() => setViewingUser(user)}
                           variant="outline"
@@ -1468,13 +1590,13 @@ function UserManagement() {
                           icon={<Edit className="h-3 w-3" />}
                           title="Edit"
                         />
-                        {user.role !== 'admin' && (
+                        {currentUser?.id !== user.id && (
                           <Button
-                            onClick={() => openResetPasswordModal(user)}
+                            onClick={() => handleResetPasswordToAccountID(user)}
                             variant="outline"
                             size="sm"
-                            icon={<Settings className="h-3 w-3" />}
-                            title="Reset Password"
+                            icon={<KeyRound className="h-3 w-3" />}
+                            title="Reset temporary password to account ID"
                           />
                         )}
                         {user.role === 'teacher' ? (

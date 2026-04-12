@@ -18,17 +18,11 @@ func (a *App) CreateSubject(code, name string, teacherUserID int, description st
 		return err
 	}
 
-	// Use MERGE to handle existing subjects gracefully
-	// Note: teacher_id removed from subjects table - teacher assignment is at class level
+	// Upsert subject for MySQL.
 	query := `
-		MERGE subjects AS target
-		USING (SELECT ? AS subject_code, ? AS description) AS source
-		ON target.subject_code = source.subject_code
-		WHEN MATCHED THEN
-			UPDATE SET description = source.description
-		WHEN NOT MATCHED THEN
-			INSERT (subject_code, description)
-			VALUES (source.subject_code, source.description);
+		INSERT INTO subjects (subject_code, description)
+		VALUES (?, ?)
+		ON DUPLICATE KEY UPDATE description = VALUES(description)
 	`
 	_, err := a.db.Exec(query, code, nullString(name))
 	if err != nil {
@@ -68,7 +62,7 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, t.last_name + ', ' + t.first_name as teacher_name,
+			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.created_by_user_id
@@ -150,7 +144,7 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, (t.last_name + ', ' + t.first_name) as teacher_name,
+			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.created_by_user_id, c.created_at
@@ -299,7 +293,6 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 	// No existing class found, create a new one
 	query := `
 		INSERT INTO classes (subject_code, teacher_id, edp_code, schedule, room, semester, school_year, descriptive_title, created_by_user_id, is_active)
-		OUTPUT INSERTED.class_id
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
 	`
 	// Handle created_by_user_id
@@ -310,8 +303,7 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 		createdByValue = createdBy
 	}
 
-	var classID int64
-	err := a.db.QueryRow(
+	result, err := a.db.Exec(
 		query,
 		subjectCode, teacherUserID,
 		nullString(edpCode),
@@ -319,9 +311,14 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 		nullString(semester), nullString(schoolYear),
 		nullString(descriptiveTitle),
 		createdByValue,
-	).Scan(&classID)
+	)
 	if err != nil {
 		log.Printf("Failed to create class: %v", err)
+		return 0, err
+	}
+
+	classID, err := result.LastInsertId()
+	if err != nil {
 		return 0, err
 	}
 
@@ -506,9 +503,8 @@ func (a *App) GetClassByID(classID int) (*CourseClass, error) {
 	}
 
 	query := `
-		SELECT TOP 1
-			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, (t.last_name + ', ' + t.first_name) as teacher_name,
+		SELECT c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
+			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.is_archived, c.created_by_user_id
@@ -648,3 +644,4 @@ func (a *App) GetAllRegisteredStudents() ([]ClassStudent, error) {
 
 	return students, nil
 }
+

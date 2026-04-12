@@ -7,17 +7,17 @@ import { UpdateUserPhoto, ChangePassword, SaveEquipmentFeedback, UpdateUser, Get
 import { compressImage, isImageFile, isValidFileSize } from '../utils/imageUtils';
 import {
   User,
-  Settings,
   LogOut,
   ChevronDown,
   Lock,
   UserCircle,
-  Menu,
   X as XIcon,
   Eye,
   EyeOff,
   Bell,
   Search,
+  Copy,
+  Check,
 } from 'lucide-react';
 import LogoutFeedbackModal from './LogoutFeedbackModal';
 
@@ -48,11 +48,14 @@ function getNotifRelativeTime(dateStr: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+const NOTIFICATIONS_VISIBLE_LIMIT = 5;
+
 function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const { user, logout, updateUser } = useAuth();
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
   const { toast } = useAppUi();
   const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
   const notifDropdownRef = useRef<HTMLDivElement>(null);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [showAccountModal, setShowAccountModal] = useState(false);
@@ -66,7 +69,6 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const [activeTab, setActiveTab] = useState<'profile' | 'password'>('profile');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>(user?.photo_url || '');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [openDropdowns, setOpenDropdowns] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const searchBoxRef = useRef<HTMLDivElement>(null);
@@ -93,6 +95,10 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   const [profileSuccess, setProfileSuccess] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
   const canEditProfile = !!user;
+  const [recoveryCode, setRecoveryCode] = useState('');
+  const [loadingRecoveryCode, setLoadingRecoveryCode] = useState(false);
+  const [recoveryCodeError, setRecoveryCodeError] = useState('');
+  const [recoveryCodeCopied, setRecoveryCodeCopied] = useState(false);
 
   const navigate = useNavigate();
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -523,6 +529,10 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
     setOldPassword('');
     setNewPassword('');
     setConfirmPassword('');
+    setRecoveryCode('');
+    setRecoveryCodeError('');
+    setRecoveryCodeCopied(false);
+    setLoadingRecoveryCode(false);
     if (user) {
       setProfileFormData({
         firstName: user.first_name || '',
@@ -533,6 +543,79 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       });
     }
   };
+
+  const loadRecoveryCode = async () => {
+    if (!user?.id) return;
+
+    setLoadingRecoveryCode(true);
+    setRecoveryCodeError('');
+    setRecoveryCodeCopied(false);
+    try {
+      const appBridge = (window as any)?.go?.backend?.App;
+      if (!appBridge || typeof appBridge.GetUserRecoveryCode !== 'function') {
+        throw new Error('Recovery code is not available in this app build yet.');
+      }
+
+      const code = await appBridge.GetUserRecoveryCode(user.id);
+      setRecoveryCode(code || '');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load recovery code.';
+      if (/no recovery code is available|cannot be displayed/i.test(message)) {
+        setRecoveryCode('');
+        setRecoveryCodeError('');
+      } else {
+        setRecoveryCode('');
+        setRecoveryCodeError(message);
+      }
+    } finally {
+      setLoadingRecoveryCode(false);
+    }
+  };
+
+  const generateRecoveryCode = async () => {
+    if (!user?.id) return;
+
+    setLoadingRecoveryCode(true);
+    setRecoveryCodeError('');
+    setRecoveryCodeCopied(false);
+    try {
+      const appBridge = (window as any)?.go?.backend?.App;
+      if (!appBridge || typeof appBridge.GenerateUserRecoveryCode !== 'function') {
+        throw new Error('Recovery code is not available in this app build yet.');
+      }
+
+      const code = await appBridge.GenerateUserRecoveryCode(user.id);
+      setRecoveryCode(code || '');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to generate recovery code.';
+      setRecoveryCode('');
+      setRecoveryCodeError(message);
+    } finally {
+      setLoadingRecoveryCode(false);
+    }
+  };
+
+  const handleCopyRecoveryCode = async () => {
+    if (!recoveryCode) {
+      toast('No recovery code available to copy.', 'error');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(recoveryCode);
+      setRecoveryCodeCopied(true);
+      toast('Recovery code copied.', 'success');
+      window.setTimeout(() => setRecoveryCodeCopied(false), 1500);
+    } catch {
+      toast('Failed to copy recovery code.', 'error');
+    }
+  };
+
+  useEffect(() => {
+    if (showAccountModal && activeTab === 'profile' && user?.id) {
+      loadRecoveryCode();
+    }
+  }, [showAccountModal, activeTab, user?.id]);
 
   const handleModalBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) {
@@ -576,6 +659,18 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   }, [notifDropdownOpen]);
 
   useEffect(() => {
+    if (!notifDropdownOpen) {
+      setShowAllNotifications(false);
+    }
+  }, [notifDropdownOpen]);
+
+  useEffect(() => {
+    if (notifications.length <= NOTIFICATIONS_VISIBLE_LIMIT && showAllNotifications) {
+      setShowAllNotifications(false);
+    }
+  }, [notifications.length, showAllNotifications]);
+
+  useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         setProfileDropdownOpen(false);
@@ -600,6 +695,14 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
     };
   }, []);
 
+  const accountIDLabel = user?.role === 'teacher' || user?.role === 'admin' ? 'Employee ID' : 'Student ID';
+  const accountIDValue = user?.employee_id || user?.student_id || user?.name || 'Not available';
+  const hasOverflowNotifications = notifications.length > NOTIFICATIONS_VISIBLE_LIMIT;
+  const hiddenNotificationsCount = Math.max(0, notifications.length - NOTIFICATIONS_VISIBLE_LIMIT);
+  const visibleNotifications = showAllNotifications
+    ? notifications
+    : notifications.slice(0, NOTIFICATIONS_VISIBLE_LIMIT);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchBoxRef.current && !searchBoxRef.current.contains(event.target as Node)) {
@@ -611,45 +714,21 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
   }, []);
 
   return (
-    <div className="flex h-screen bg-slate-50">
-      {!sidebarCollapsed && (
-        <div
-          className="fixed inset-0 bg-black/30 z-30 transition-opacity duration-300"
-          onClick={() => setSidebarCollapsed(true)}
-        />
-      )}
-
+    <div className="flex h-[100dvh] min-h-screen bg-slate-50 overflow-hidden">
       <aside
-        className={`fixed left-0 top-0 bottom-0 bg-white/95 backdrop-blur-sm border-r border-gray-200 flex flex-col transition-transform duration-300 ease-in-out z-40 w-[240px] shadow-xl ${
-          sidebarCollapsed ? '-translate-x-full' : 'translate-x-0'
-        }`}
+        className="w-20 bg-white/95 backdrop-blur-sm border-r border-gray-200 flex flex-col shadow-sm"
       >
-        <div className="flex items-center h-14 flex-shrink-0 px-4">
-          <button
-            onClick={() => setSidebarCollapsed(true)}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-gray-700 hover:bg-gray-100 active:bg-gray-200 transition-colors"
-            aria-label="Close sidebar"
-          >
-            <Menu className="w-6 h-6" />
-          </button>
-        </div>
+        <div className="h-4 flex-shrink-0" />
 
-        <nav className="flex-1 overflow-y-auto scrollbar-thin pb-4 px-3">
+        <nav className="flex-1 overflow-y-auto scrollbar-thin pb-4 px-1.5 sm:px-2">
           <ul className="space-y-0.5">
             {navigationItems.map((item) => {
               if (item.isDivider) {
                 return (
                   <li key={item.name} className="py-3">
-                    <div className={sidebarCollapsed ? 'mx-3' : 'mx-3'}>
+                    <div className="mx-2">
                       <div className="border-t border-gray-200"></div>
                     </div>
-                    {!sidebarCollapsed && item.label && (
-                      <div className="px-4 pt-3">
-                        <span className="text-xs font-medium text-gray-500">
-                          {item.label}
-                        </span>
-                      </div>
-                    )}
                   </li>
                 );
               }
@@ -670,28 +749,19 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                             setOpenDropdowns([...openDropdowns, item.name]);
                           }
                         }}
-                            className={`group w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm transition-colors ${
+                        className={`group w-full flex items-center justify-center px-2 py-2 rounded-xl text-sm transition-colors ${
                           isChildActive
-                              ? 'bg-primary-50 text-primary-700 font-semibold border border-primary-100'
+                            ? 'bg-primary-50 text-primary-700 font-semibold border border-primary-100'
                             : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
                         }`}
                         title={item.name}
                       >
-                        <div className="flex items-center">
-                            <div className={`flex-shrink-0 ${
+                        <div className={`flex-shrink-0 ${
                             isChildActive ? 'text-gray-900' : 'text-gray-600 group-hover:text-gray-700'
                           } [&>svg]:w-5 [&>svg]:h-5`}>
-                            {item.icon}
-                          </div>
-
-                            <span className="ml-6 whitespace-nowrap">
-                              {item.name}
-                            </span>
+                          {item.icon}
                         </div>
-
-                          <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
-                            isOpen ? 'rotate-180' : ''
-                          }`} />
+                        <span className="sr-only">{item.name}</span>
                       </button>
 
                       {isOpen && item.children && (
@@ -700,21 +770,19 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                             <li key={child.name}>
                               <Link
                                 to={child.href}
-                                className={`flex items-center px-3 py-2 rounded-xl text-sm transition-colors ${
+                                className={`flex items-center justify-center px-2 py-2 rounded-xl text-sm transition-colors ${
                                   child.current
                                     ? 'bg-primary-50 text-primary-700 font-semibold border border-primary-100'
                                     : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                                 }`}
                                 title={child.name}
                               >
-                                <div className={`flex-shrink-0 ml-2 ${
+                                <div className={`flex-shrink-0 ${
                                   child.current ? 'text-gray-900' : 'text-gray-500'
                                 } [&>svg]:w-5 [&>svg]:h-5`}>
                                   {child.icon}
                                 </div>
-                                <span className="ml-6 whitespace-nowrap">
-                                  {child.name}
-                                </span>
+                                <span className="sr-only">{child.name}</span>
                               </Link>
                             </li>
                           ))}
@@ -724,7 +792,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                   ) : (
                     <Link
                       to={item.href}
-                      className={`flex items-center px-3 py-2 rounded-xl text-sm transition-colors ${
+                      className={`flex items-center justify-center px-2 py-2 rounded-xl text-sm transition-colors ${
                         item.current
                           ? 'bg-primary-50 text-primary-700 font-semibold border border-primary-100'
                           : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
@@ -736,9 +804,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                       } [&>svg]:w-5 [&>svg]:h-5`}>
                         {item.icon}
                       </div>
-                      <span className="ml-6 whitespace-nowrap">
-                        {item.name}
-                      </span>
+                      <span className="sr-only">{item.name}</span>
                     </Link>
                   )}
                 </li>
@@ -798,7 +864,6 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                     }}
                     className="w-full flex items-center gap-4 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
                   >
-                    <Settings className="w-4 h-4 text-gray-500" />
                     <span className="font-medium">Account Settings</span>
                   </button>
 
@@ -822,16 +887,9 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col h-screen">
-        <header className="flex-shrink-0 h-16 bg-white/90 backdrop-blur-sm border-b border-gray-200 flex items-center px-4 md:px-6 gap-4 shadow-sm relative z-20">
-          <button
-            onClick={() => setSidebarCollapsed(false)}
-            className="w-10 h-10 rounded-full flex items-center justify-center text-gray-700 hover:bg-gray-100 active:bg-gray-200 transition-colors flex-shrink-0"
-            aria-label="Open sidebar"
-          >
-            <Menu className="w-6 h-6" />
-          </button>
-          <div className="flex-1 flex items-center gap-4">
+      <div className="flex-1 flex flex-col h-[100dvh] min-w-0">
+        <header className="flex-shrink-0 min-h-16 bg-white/90 backdrop-blur-sm border-b border-gray-200 flex items-center px-4 md:px-6 py-2 gap-3 shadow-sm relative z-20">
+          <div className="flex-1 flex items-center gap-4 min-w-0">
             <div className="flex-none">
               {title && (
                 <div className="section-highlight py-2 bg-gradient-to-r from-primary-50 to-white border-primary-100">
@@ -843,8 +901,8 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
               )}
             </div>
 
-            <div className="flex-1 flex justify-end">
-              <div className="relative w-72 max-w-full" ref={searchBoxRef}>
+            <div className="flex-1 flex justify-end min-w-0">
+              <div className="relative w-full max-w-xs lg:w-72" ref={searchBoxRef}>
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   value={searchTerm}
@@ -899,7 +957,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
             </button>
 
             {notifDropdownOpen && (
-              <div className="absolute right-0 top-12 w-80 max-h-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden animate-slideIn">
+              <div className="absolute right-0 top-12 w-[calc(100vw-1rem)] max-w-sm sm:w-80 sm:max-w-none max-h-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden animate-slideIn">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
                   <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
                   {unreadCount > 0 && (
@@ -918,7 +976,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                       <p className="text-sm">No notifications</p>
                     </div>
                   ) : (
-                    notifications.map(n => (
+                    visibleNotifications.map(n => (
                       <div
                         key={n.id}
                         onClick={() => { if (!n.is_read) markRead(n.id); }}
@@ -944,6 +1002,19 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                     ))
                   )}
                 </div>
+                {hasOverflowNotifications && (
+                  <div className="border-t border-gray-200 px-4 py-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAllNotifications((prev) => !prev)}
+                      className="text-xs font-medium text-primary-600 hover:text-primary-800"
+                    >
+                      {showAllNotifications
+                        ? 'Show less'
+                        : `Show more (${hiddenNotificationsCount})`}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -953,21 +1024,21 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
             <button
               onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
               data-profile-icon
-              className="w-10 h-10 rounded-full flex items-center justify-center text-gray-700 hover:bg-gray-100 active:bg-gray-200 transition-colors flex-shrink-0"
+              className="h-11 pl-1.5 pr-2 rounded-full flex items-center gap-1.5 text-gray-700 hover:bg-gray-100 active:bg-gray-200 transition-colors flex-shrink-0"
               aria-label="Account menu"
             >
-              {user?.photo_url || photoPreview ? (
-                <img
-                  src={photoPreview || user?.photo_url}
-                  alt="Profile"
-                  className="w-9 h-9 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center">
-                  <User className="w-4 h-4 text-gray-600" />
-                </div>
-              )}
-              <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ml-[-0.25rem] ${profileDropdownOpen ? 'rotate-180' : ''}`} />
+              <div className="w-9 h-9 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
+                {user?.photo_url || photoPreview ? (
+                  <img
+                    src={photoPreview || user?.photo_url}
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User className="w-4.5 h-4.5 text-gray-600" />
+                )}
+              </div>
+              <ChevronDown className={`w-4 h-4 text-gray-600 transition-transform duration-200 ${profileDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {profileDropdownOpen && (
@@ -983,7 +1054,6 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                     }}
                     className="w-full flex items-center gap-4 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
                   >
-                    <Settings className="w-4 h-4 text-gray-500" />
                     <span className="font-medium">Account Settings</span>
                   </button>
 
@@ -1007,8 +1077,8 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
         </header>
 
-        <main className="flex-1 overflow-y-auto bg-sky-50 text-left">
-          <div className="p-4 md:p-6">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-sky-50 text-left min-w-0">
+          <div className="p-3 sm:p-4 md:p-6">
             {children}
           </div>
         </main>
@@ -1021,10 +1091,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
         >
           <div className="relative modal-surface-2xl w-full max-w-2xl max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-gray-200 bg-white">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-                  <Settings className="w-5 h-5 text-blue-600" />
-                </div>
+              <div className="flex items-center">
                 <h2 className="text-xl font-semibold text-gray-900">Account Settings</h2>
               </div>
               <button
@@ -1068,7 +1135,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
               {activeTab === 'profile' ? (
                 <div className="space-y-6">
                   <div className="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
-                    <div className="flex items-center gap-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
                       <div className="relative">
                         {photoPreview ? (
                           <img
@@ -1082,9 +1149,9 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                           </div>
                         )}
                       </div>
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <h4 className="text-sm font-semibold text-gray-900 mb-2">Profile Photo</h4>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                           <input
                             ref={fileInputRef}
                             type="file"
@@ -1207,6 +1274,10 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                       <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Account Information</h5>
                       <dl className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
+                          <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">{accountIDLabel}</dt>
+                          <dd className="mt-1 text-sm text-gray-900">{accountIDValue}</dd>
+                        </div>
+                        <div>
                           <dt className="text-xs font-medium text-gray-500 uppercase tracking-wide">Account Created</dt>
                           <dd className="mt-1 text-sm text-gray-900">
                             {user?.created
@@ -1220,6 +1291,43 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                           </dd>
                         </div>
                       </dl>
+                    </div>
+
+                    <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <h5 className="text-xs font-semibold text-amber-800 uppercase tracking-wide">Recovery Code</h5>
+                        <div className="flex flex-wrap items-center gap-2 justify-end">
+                          <button
+                            type="button"
+                            onClick={generateRecoveryCode}
+                            disabled={loadingRecoveryCode}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-amber-900 bg-white border border-amber-300 rounded-lg hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Generate new recovery code"
+                          >
+                            {loadingRecoveryCode ? 'Generating...' : 'Generate Code'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCopyRecoveryCode}
+                            disabled={!recoveryCode || loadingRecoveryCode}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-amber-900 bg-white border border-amber-300 rounded-lg hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Copy recovery code"
+                          >
+                            {recoveryCodeCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                            {recoveryCodeCopied ? 'Copied' : 'Copy'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {loadingRecoveryCode ? (
+                        <p className="text-sm text-amber-700">Generating recovery code...</p>
+                      ) : recoveryCode ? (
+                        <p className="text-lg font-bold tracking-[0.18em] text-amber-900">{recoveryCode}</p>
+                      ) : null}
+
+                      {recoveryCodeError && (
+                        <p className="text-xs text-danger-700 mt-2">{recoveryCodeError}</p>
+                      )}
                     </div>
 
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 pt-4">

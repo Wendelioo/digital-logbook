@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -14,82 +13,38 @@ import (
 // FEEDBACK MANAGEMENT
 // ==============================================================================
 
-const maxActiveFeedbackEntries = 500
-
 func (a *App) ensureFeedbackAdminResolvedAtColumn() error {
 	if a.db == nil {
 		return fmt.Errorf("database not initialized")
 	}
 
-	query := `
-		IF COL_LENGTH('feedback', 'admin_resolved_at') IS NULL
-		BEGIN
-			ALTER TABLE feedback
-			ADD admin_resolved_at DATETIME NULL;
-		END
-	`
-
-	if _, err := a.db.Exec(query); err != nil {
-		return fmt.Errorf("failed to ensure feedback.admin_resolved_at column: %w", err)
-	}
-
-	return nil
-}
-
-// autoArchiveFeedbackIfNeeded checks the number of non-archived forwarded feedback rows
-// and, if a configured limit is exceeded, automatically archives the oldest day's feedback.
-func (a *App) autoArchiveFeedbackIfNeeded() error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	var activeCount int
-	if err := a.db.QueryRow(`
-		SELECT COUNT(*) 
-		FROM feedback 
-		WHERE status = 'forwarded' AND (is_archived = 0 OR is_archived IS NULL)
-	`).Scan(&activeCount); err != nil {
-		return fmt.Errorf("failed to count active feedback entries: %w", err)
-	}
-
-	if activeCount <= maxActiveFeedbackEntries {
-		return nil
-	}
-
-	// Find the oldest submitted date among unarchived forwarded feedback
-	var oldestDate time.Time
+	var exists int
 	err := a.db.QueryRow(`
-		SELECT MIN(CAST(date_submitted AS DATE)) 
-		FROM feedback 
-		WHERE status = 'forwarded' AND (is_archived = 0 OR is_archived IS NULL)
-	`).Scan(&oldestDate)
+		SELECT COUNT(*)
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND TABLE_NAME = 'feedback'
+		  AND COLUMN_NAME = 'admin_resolved_at'
+	`).Scan(&exists)
 	if err != nil {
-		return fmt.Errorf("failed to find oldest feedback date: %w", err)
+		return fmt.Errorf("failed to check feedback.admin_resolved_at column: %w", err)
 	}
 
-	dateStr := oldestDate.Format("2006-01-02")
-	_, err = a.ArchiveFeedbackByDate(dateStr, 0)
-	if err != nil {
-		return fmt.Errorf("failed to auto-archive feedback for date %s: %w", dateStr, err)
+	if exists == 0 {
+		if _, err := a.db.Exec(`ALTER TABLE feedback ADD COLUMN admin_resolved_at DATETIME NULL`); err != nil {
+			return fmt.Errorf("failed to ensure feedback.admin_resolved_at column: %w", err)
+		}
 	}
 
-	log.Printf("autoArchiveFeedbackIfNeeded archived feedback for date %s to keep active feedback under limit", dateStr)
 	return nil
 }
 
-// GetFeedback returns all non-archived feedback that has been forwarded to admin
+// GetFeedback returns all forwarded feedback for admin.
 func (a *App) GetFeedback() ([]Feedback, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
 
-	// Automatic archiving: when the number of non-archived forwarded feedback entries
-	// exceeds the configured limit, archive the oldest day's feedback.
-	if err := a.autoArchiveFeedbackIfNeeded(); err != nil {
-		log.Printf("autoArchiveFeedbackIfNeeded failed: %v", err)
-	}
-
-	// Only returns non-archived feedback (is_archived = 0 or NULL for backwards compatibility)
 	query := `
 		SELECT 
 			f.id, 
@@ -113,12 +68,14 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 			f.forwarded_by_user_id,
 			f.forwarded_at,
 			f.working_student_notes,
-			COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, '') + 
-				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END +
-				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, '') +
-				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL 
-					THEN ' ' + COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) 
+			CONCAT(
+				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''),
+				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
+				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, ''),
+				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL
+					THEN CONCAT(' ', COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name))
 					ELSE '' END
+			)
 			as forwarded_by_name
 		FROM feedback f
 		LEFT JOIN students s ON f.student_id = s.id
@@ -126,7 +83,7 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
 		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.id AND u_fwd.user_type = 'admin'
-		WHERE f.status = 'forwarded' AND (f.is_archived = 0 OR f.is_archived IS NULL)
+		WHERE f.status = 'forwarded'
 		ORDER BY f.date_submitted DESC`
 	rows, err := a.db.Query(query)
 	if err != nil {
@@ -273,7 +230,7 @@ func (a *App) GetStudentFeedback(studentID int) ([]Feedback, error) {
 }
 
 // SaveEquipmentFeedback saves equipment feedback from a student.
-// optionalPCNumber: if non-empty, the report is for that PC (e.g. "PC-12"); otherwise the current machine's hostname is used.
+// optionalPCNumber: if non-empty, the report is for that PC (e.g. "PC-12"); otherwise the configured app station is used.
 func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, computerIssue, mouseStatus, mouseIssue, keyboardStatus, keyboardIssue, monitorStatus, monitorIssue, additionalComments, optionalPCNumber string) error {
 	if err := a.checkDB(); err != nil {
 		return err
@@ -294,12 +251,7 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 	reportedForAnotherPC := strings.TrimSpace(optionalPCNumber) != ""
 	pcNumber := strings.TrimSpace(optionalPCNumber)
 	if pcNumber == "" {
-		hostname, err := os.Hostname()
-		if err != nil {
-			log.Printf("Failed to get hostname: %v", err)
-			hostname = "Unknown"
-		}
-		pcNumber = hostname
+		pcNumber = a.currentStationLabel()
 	}
 
 	// Determine equipment conditions based on status
@@ -351,11 +303,7 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 	}
 	// When report is for another PC, record which machine submitted so it's visible in the UI
 	if reportedForAnotherPC {
-		submittedFrom, err := os.Hostname()
-		if err != nil {
-			log.Printf("Failed to get hostname for submitted-from: %v", err)
-			submittedFrom = "Unknown"
-		}
+		submittedFrom := a.currentStationLabel()
 		commentsParts = append(commentsParts, fmt.Sprintf("Submitted from: %s", submittedFrom))
 	}
 
@@ -401,7 +349,7 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 	query := `INSERT INTO feedback (student_id, pc_number, 
 			  equipment_condition, monitor_condition, keyboard_condition, mouse_condition, 
 			  comments, priority, status, admin_status, date_submitted) 
-			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE())`
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`
 
 	_, err := a.db.Exec(query, userID, pcNumber,
 		equipmentCondition, monitorCondition, keyboardCondition, mouseCondition, nullString(combinedComments), priority, status, adminStatus)
@@ -448,11 +396,11 @@ func (a *App) GetPendingFeedback() ([]Feedback, error) {
 		LEFT JOIN students s ON f.student_id = s.id
 		WHERE f.status = 'pending'
 		  AND (
-			LOWER(ISNULL(f.equipment_condition, '')) <> 'good'
-			OR LOWER(ISNULL(f.monitor_condition, '')) <> 'good'
-			OR LOWER(ISNULL(f.keyboard_condition, '')) <> 'good'
-			OR LOWER(ISNULL(f.mouse_condition, '')) <> 'good'
-			OR LTRIM(RTRIM(ISNULL(f.comments, ''))) <> ''
+			LOWER(IFNULL(f.equipment_condition, '')) <> 'good'
+			OR LOWER(IFNULL(f.monitor_condition, '')) <> 'good'
+			OR LOWER(IFNULL(f.keyboard_condition, '')) <> 'good'
+			OR LOWER(IFNULL(f.mouse_condition, '')) <> 'good'
+			OR LTRIM(RTRIM(IFNULL(f.comments, ''))) <> ''
 		  )
 		ORDER BY f.date_submitted DESC`
 	rows, err := a.db.Query(query)
@@ -684,7 +632,7 @@ func (a *App) ConfirmFeedback(feedbackID int, workingStudentID int, confirmed bo
 	query := `UPDATE feedback 
 			  SET status = ?, 
 			      verified_by_user_id = ?, 
-			      verified_at = GETDATE(), 
+			      verified_at = NOW(), 
 			      working_student_notes = ?
 			  WHERE id = ? AND status = 'pending'`
 
@@ -716,7 +664,7 @@ func (a *App) ForwardFeedbackToAdmin(feedbackID int, workingStudentID int, notes
 	query := `UPDATE feedback 
 			  SET status = 'forwarded', 
 			      forwarded_by_user_id = ?, 
-			      forwarded_at = GETDATE(), 
+			      forwarded_at = NOW(), 
 			      working_student_notes = ?
 			  WHERE id = ? AND status = 'confirmed'`
 
@@ -774,7 +722,7 @@ func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID
 	query := fmt.Sprintf(`UPDATE feedback 
 			  SET status = 'forwarded', 
 			      forwarded_by_user_id = ?, 
-			      forwarded_at = GETDATE(), 
+			      forwarded_at = NOW(), 
 			      working_student_notes = ?
 			  WHERE id IN (%s) AND status = 'confirmed'`, strings.Join(placeholders, ","))
 
@@ -828,9 +776,9 @@ func (a *App) ConfirmAndForwardMultiple(feedbackIDs []int, workingStudentID int,
 	query := fmt.Sprintf(`UPDATE feedback 
 			  SET status = 'forwarded', 
 			      verified_by_user_id = ?, 
-			      verified_at = GETDATE(), 
+			      verified_at = NOW(), 
 			      forwarded_by_user_id = ?, 
-			      forwarded_at = GETDATE(), 
+			      forwarded_at = NOW(), 
 			      working_student_notes = ?
 			  WHERE id IN (%s) AND status = 'pending'`, strings.Join(placeholders, ","))
 
@@ -864,7 +812,7 @@ func (a *App) ConfirmAndForwardMultiple(feedbackIDs []int, workingStudentID int,
 // FEEDBACK RANGE EXPORT FUNCTIONS
 // ==============================================================================
 
-// GetFeedbackRangeCount returns the count of non-archived forwarded feedback within a date range.
+// GetFeedbackRangeCount returns the count of forwarded feedback within a date range.
 func (a *App) GetFeedbackRangeCount(startDate, endDate string) (int, error) {
 	if err := a.checkDB(); err != nil {
 		return 0, err
@@ -872,7 +820,7 @@ func (a *App) GetFeedbackRangeCount(startDate, endDate string) (int, error) {
 	var count int
 	err := a.db.QueryRow(`
 		SELECT COUNT(*) FROM feedback
-		WHERE status = 'forwarded' AND (is_archived = 0 OR is_archived IS NULL)
+		WHERE status = 'forwarded'
 		AND CAST(date_submitted AS DATE) BETWEEN ? AND ?`,
 		startDate, endDate,
 	).Scan(&count)
@@ -882,7 +830,7 @@ func (a *App) GetFeedbackRangeCount(startDate, endDate string) (int, error) {
 	return count, nil
 }
 
-// getFeedbackByDateRange fetches non-archived forwarded feedback within a date range.
+// getFeedbackByDateRange fetches forwarded feedback within a date range.
 func (a *App) getFeedbackByDateRange(startDate, endDate string) ([]Feedback, error) {
 	query := `
 		SELECT
@@ -895,12 +843,14 @@ func (a *App) getFeedbackByDateRange(startDate, endDate string) ([]Feedback, err
 			COALESCE(f.admin_status, 'pending') as admin_status,
 			f.verified_by_user_id, f.verified_at,
 			f.forwarded_by_user_id, f.forwarded_at, f.working_student_notes,
-			COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, '') +
-				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END +
-				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, '') +
+			CONCAT(
+				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''),
+				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
+				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, ''),
 				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL
-					THEN ' ' + COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name)
+					THEN CONCAT(' ', COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name))
 					ELSE '' END
+			)
 			as forwarded_by_name
 		FROM feedback f
 		LEFT JOIN students s ON f.student_id = s.id
@@ -908,7 +858,7 @@ func (a *App) getFeedbackByDateRange(startDate, endDate string) ([]Feedback, err
 		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
 		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.id AND u_fwd.user_type = 'admin'
-		WHERE f.status = 'forwarded' AND (f.is_archived = 0 OR f.is_archived IS NULL)
+		WHERE f.status = 'forwarded'
 		AND CAST(f.date_submitted AS DATE) BETWEEN ? AND ?
 		ORDER BY f.date_submitted DESC`
 
@@ -1131,7 +1081,6 @@ func buildActiveFeedbackExportRows(feedbacks []Feedback) [][]string {
 			feedbackPCOriginDisplay(fb),
 			formatFeedbackExportDate(fb.DateSubmitted),
 			feedbackStatusLabel(fb),
-			formatFeedbackExportDateTime(fb.VerifiedAt),
 			feedbackForwardedByDisplay(fb),
 		})
 	}
@@ -1162,11 +1111,11 @@ func buildActiveFeedbackExportDocument(startDate, endDate string, feedbacks []Fe
 		Subtitle:         fmt.Sprintf("Date Range: %s to %s", startDate, endDate),
 		Details:          nil,
 		TableNote:        "",
-		Headers:          []string{"Student", "PC / Origin", "Date", "Status", "Verified At", "Forwarded By"},
+		Headers:          []string{"Student", "PC / Origin", "Date", "Status", "Forwarded By"},
 		Rows:             rows,
-		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
-		ColumnWidths:     []float64{58, 40, 24, 24, 28, 38},
-		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L"},
+		Footer:           nil,
+		ColumnWidths:     []float64{58, 40, 24, 24, 38},
+		ColumnAlignments: []string{"L", "L", "L", "L", "L"},
 		Orientation:      "P",
 		GeneratedAt:      time.Now(),
 	}
@@ -1187,11 +1136,11 @@ func buildActiveFeedbackExportDocumentByCount(requestedCount int, feedbacks []Fe
 		Subtitle:         subtitle,
 		Details:          nil,
 		TableNote:        "",
-		Headers:          []string{"Student", "PC / Origin", "Date", "Status", "Verified At", "Forwarded By"},
+		Headers:          []string{"Student", "PC / Origin", "Date", "Status", "Forwarded By"},
 		Rows:             rows,
-		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
-		ColumnWidths:     []float64{58, 40, 24, 24, 28, 38},
-		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L"},
+		Footer:           nil,
+		ColumnWidths:     []float64{58, 40, 24, 24, 38},
+		ColumnAlignments: []string{"L", "L", "L", "L", "L"},
 		Orientation:      "P",
 		GeneratedAt:      time.Now(),
 	}
@@ -1209,23 +1158,20 @@ func buildActiveFeedbackExportDocumentByRowRange(fromRow, toRow int, feedbacks [
 		Subtitle:         subtitle,
 		Details:          nil,
 		TableNote:        "",
-		Headers:          []string{"Student", "PC / Origin", "Date", "Status", "Verified At", "Forwarded By"},
+		Headers:          []string{"Student", "PC / Origin", "Date", "Status", "Forwarded By"},
 		Rows:             rows,
-		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
-		ColumnWidths:     []float64{58, 40, 24, 24, 28, 38},
-		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L"},
+		Footer:           nil,
+		ColumnWidths:     []float64{58, 40, 24, 24, 38},
+		ColumnAlignments: []string{"L", "L", "L", "L", "L"},
 		Orientation:      "P",
 		GeneratedAt:      time.Now(),
 	}
 }
 
-// getFeedbackByCount fetches the latest non-archived forwarded feedback, limited by count.
+// getFeedbackByCount fetches the latest forwarded feedback, limited by count.
 func (a *App) getFeedbackByCount(count int) ([]Feedback, error) {
 	if count <= 0 {
 		return nil, fmt.Errorf("count must be greater than zero")
-	}
-	if count > maxActiveFeedbackEntries {
-		return nil, fmt.Errorf("count cannot exceed %d", maxActiveFeedbackEntries)
 	}
 
 	query := `
@@ -1239,12 +1185,14 @@ func (a *App) getFeedbackByCount(count int) ([]Feedback, error) {
 			COALESCE(f.admin_status, 'pending') as admin_status,
 			f.verified_by_user_id, f.verified_at,
 			f.forwarded_by_user_id, f.forwarded_at, f.working_student_notes,
-			COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, '') +
-				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END +
-				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, '') +
+			CONCAT(
+				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''),
+				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
+				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, ''),
 				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL
-					THEN ' ' + COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name)
+					THEN CONCAT(' ', COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name))
 					ELSE '' END
+			)
 			as forwarded_by_name
 		FROM feedback f
 		LEFT JOIN students s ON f.student_id = s.id
@@ -1252,9 +1200,9 @@ func (a *App) getFeedbackByCount(count int) ([]Feedback, error) {
 		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
 		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.id AND u_fwd.user_type = 'admin'
-		WHERE f.status = 'forwarded' AND (f.is_archived = 0 OR f.is_archived IS NULL)
+		WHERE f.status = 'forwarded'
 		ORDER BY f.date_submitted DESC
-		OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY`
+		LIMIT ?`
 
 	rows, err := a.db.Query(query, count)
 	if err != nil {
@@ -1321,16 +1269,13 @@ func (a *App) getFeedbackByCount(count int) ([]Feedback, error) {
 	return feedbacks, nil
 }
 
-// getFeedbackByRowRange fetches latest non-archived forwarded feedback from a 1-based row range.
+// getFeedbackByRowRange fetches latest forwarded feedback from a 1-based row range.
 func (a *App) getFeedbackByRowRange(fromRow, toRow int) ([]Feedback, error) {
 	if fromRow <= 0 || toRow <= 0 {
 		return nil, fmt.Errorf("row range must be greater than zero")
 	}
 	if fromRow > toRow {
 		return nil, fmt.Errorf("from row cannot be greater than to row")
-	}
-	if toRow > maxActiveFeedbackEntries {
-		return nil, fmt.Errorf("to row cannot exceed %d", maxActiveFeedbackEntries)
 	}
 
 	offset := fromRow - 1
@@ -1347,12 +1292,14 @@ func (a *App) getFeedbackByRowRange(fromRow, toRow int) ([]Feedback, error) {
 			COALESCE(f.admin_status, 'pending') as admin_status,
 			f.verified_by_user_id, f.verified_at,
 			f.forwarded_by_user_id, f.forwarded_at, f.working_student_notes,
-			COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, '') +
-				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END +
-				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, '') +
+			CONCAT(
+				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''),
+				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
+				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, ''),
 				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL
-					THEN ' ' + COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name)
+					THEN CONCAT(' ', COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name))
 					ELSE '' END
+			)
 			as forwarded_by_name
 		FROM feedback f
 		LEFT JOIN students s ON f.student_id = s.id
@@ -1360,11 +1307,11 @@ func (a *App) getFeedbackByRowRange(fromRow, toRow int) ([]Feedback, error) {
 		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
 		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.id AND u_fwd.user_type = 'admin'
-		WHERE f.status = 'forwarded' AND (f.is_archived = 0 OR f.is_archived IS NULL)
+		WHERE f.status = 'forwarded'
 		ORDER BY f.date_submitted DESC
-		OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`
+		LIMIT ? OFFSET ?`
 
-	rows, err := a.db.Query(query, offset, count)
+	rows, err := a.db.Query(query, count, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query feedback by row range: %w", err)
 	}
@@ -1569,7 +1516,7 @@ func buildArchivedFeedbackExportDocument(date string, feedbacks []Feedback) prin
 		TableNote:        "",
 		Headers:          []string{"Date", "Student ID", "Full Name", "PC", "System", "Monitor", "Keyboard", "Mouse"},
 		Rows:             rows,
-		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
+		Footer:           nil,
 		ColumnWidths:     []float64{24, 22, 46, 18, 20, 20, 20, 20},
 		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L", "L", "L"},
 		Orientation:      "P",
@@ -1673,12 +1620,14 @@ func (a *App) GetArchivedFeedbackByDate(date string) ([]Feedback, error) {
 			f.forwarded_by_user_id,
 			f.forwarded_at,
 			f.working_student_notes,
-			COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, '') + 
-				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END +
-				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, '') +
-				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL 
-					THEN ' ' + COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) 
+			CONCAT(
+				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''),
+				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
+				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, ''),
+				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL
+					THEN CONCAT(' ', COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name))
 					ELSE '' END
+			)
 			as forwarded_by_name
 		FROM feedback f
 		LEFT JOIN students s ON f.student_id = s.id
@@ -1759,7 +1708,7 @@ func (a *App) ArchiveFeedbackByDate(date string, adminUserID int) (int, error) {
 
 	query := `UPDATE feedback 
 		SET is_archived = 1, 
-		    archived_at = GETDATE(), 
+		    archived_at = NOW(), 
 		    archived_by_user_id = ?
 		WHERE CAST(date_submitted AS DATE) = ? AND status = 'forwarded' AND (is_archived = 0 OR is_archived IS NULL)`
 
@@ -1874,12 +1823,14 @@ func (a *App) GetArchivedFeedback() ([]Feedback, error) {
 			f.forwarded_by_user_id,
 			f.forwarded_at,
 			f.working_student_notes,
-			COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, '') + 
-				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END +
-				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, '') +
-				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL 
-					THEN ' ' + COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) 
+			CONCAT(
+				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''),
+				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
+				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, ''),
+				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL
+					THEN CONCAT(' ', COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name))
 					ELSE '' END
+			)
 			as forwarded_by_name
 		FROM feedback f
 		LEFT JOIN students s ON f.student_id = s.id
@@ -1980,7 +1931,7 @@ func (a *App) ArchiveFeedback(feedbackIDs []int, adminUserID int) (int, error) {
 
 	query := fmt.Sprintf(`UPDATE feedback 
 		SET is_archived = 1, 
-		    archived_at = GETDATE(), 
+		    archived_at = NOW(), 
 		    archived_by_user_id = ?
 		WHERE id IN (%s) AND is_archived = 0`, strings.Join(placeholders, ","))
 

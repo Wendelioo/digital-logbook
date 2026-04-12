@@ -34,6 +34,8 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
   const [selectedTab, setSelectedTab] = useState<'active' | 'archived'>(archivedOnly ? 'archived' : 'active');
   const [searchTerm, setSearchTerm] = useState('');
   const [studentFilter, setStudentFilter] = useState<'all' | 'with_email' | 'without_email' | 'urgent' | 'warning' | 'safe'>('all');
+  const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null);
   const [showUnarchiveModal, setShowUnarchiveModal] = useState(false);
   const [studentToUnarchive, setStudentToUnarchive] = useState<ArchivedStudent | null>(null);
@@ -66,7 +68,12 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
 
   useEffect(() => {
     setStudentFilter('all');
+    setCurrentPage(1);
   }, [selectedTab, archivedOnly]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, studentFilter, entriesPerPage]);
 
   const showNotification = (type: 'success' | 'error', message: string) => {
     setNotification({ type, message });
@@ -78,10 +85,10 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
 
     try {
       await ArchiveStudent(student.id);
-      showNotification('success', 'Student archived. Deletion is scheduled after 360 days.');
-      loadData();
+      showNotification('success', 'Student archived successfully. Deletion is scheduled after 360 days.');
+      await loadData();
     } catch (error: any) {
-      showNotification('error', error.message || 'Failed to archive student');
+      showNotification('error', error.message || 'Failed to archive student. Please try again.');
     }
   };
 
@@ -90,12 +97,12 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
 
     try {
       await UnarchiveStudent(studentToUnarchive.user_id);
-      showNotification('success', 'Student account restored.');
+      showNotification('success', 'Student restored successfully.');
       setShowUnarchiveModal(false);
       setStudentToUnarchive(null);
-      loadData();
+      await loadData();
     } catch (error: any) {
-      showNotification('error', error.message || 'Failed to restore student');
+      showNotification('error', error.message || 'Failed to restore student. Please try again.');
     }
   };
 
@@ -150,9 +157,22 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
   });
 
   const isArchivedView = archivedOnly || selectedTab === 'archived';
+  const records = isArchivedView ? filteredArchivedStudents : filteredActiveStudents;
+  const totalPages = Math.max(1, Math.ceil(records.length / entriesPerPage));
+  const startIndex = (currentPage - 1) * entriesPerPage;
+  const endIndex = startIndex + entriesPerPage;
+  const currentRecords = records.slice(startIndex, endIndex);
+  const startEntry = records.length > 0 ? startIndex + 1 : 0;
+  const endEntry = Math.min(endIndex, records.length);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   return (
-    <div className="p-6">
+    <div className={hideHeader ? 'flex flex-col h-full' : 'p-6'}>
       {/* Notification */}
       {notification && (
         <div className={`fixed top-4 right-4 z-50 max-w-md w-full bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transform transition-all duration-300 ease-in-out ${
@@ -216,7 +236,20 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
       )}
 
       {/* Actions Bar */}
-      <div className="mb-6 flex justify-end">
+      <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-700">Show</span>
+          <select
+            value={entriesPerPage}
+            onChange={(e) => setEntriesPerPage(Number(e.target.value))}
+            className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+          >
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+          </select>
+          <span className="text-sm text-gray-700">entries</span>
+        </div>
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
           <div className="relative w-72 max-w-full">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -269,29 +302,29 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
           <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
           {!archivedOnly && selectedTab === 'active' ? (
             // Active Students Table
-            filteredActiveStudents.length > 0 ? (
-              <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-                <thead className="bg-gray-50 sticky top-0 z-10">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
-                      Student Number
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
-                      Full Name
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
-                      Email
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
-                      Contact
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredActiveStudents.map((student) => (
+            <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+              <thead className="bg-gray-50 sticky top-0 z-10">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    Student Number
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                    Full Name
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                    Email
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    Contact
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {currentRecords.length > 0 ? (
+                  (currentRecords as User[]).map((student) => (
                     <tr key={student.id} className="hover:bg-gray-50">
                       <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {student.student_id}
@@ -316,42 +349,44 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
                         </Button>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div className="px-6 py-12 text-center">
-                <p className="text-gray-500">No active students found.</p>
-              </div>
-            )
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                      No active students found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           ) : (
             // Archived Students Table
-            filteredArchivedStudents.length > 0 ? (
-              <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-                <thead className="bg-gray-50 sticky top-0 z-10">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
-                      Student Number
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
-                      Full Name
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
-                      Archived Date
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
-                      Deletion Date
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
-                      Days Left
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredArchivedStudents.map((student) => (
+            <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+              <thead className="bg-gray-50 sticky top-0 z-10">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    Student Number
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '200px' }}>
+                    Full Name
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    Archived Date
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    Deletion Date
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '100px' }}>
+                    Days Left
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '120px' }}>
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {currentRecords.length > 0 ? (
+                  (currentRecords as ArchivedStudent[]).map((student) => (
                     <tr key={student.user_id} className="hover:bg-gray-50">
                       <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {student.student_id}
@@ -367,8 +402,8 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap text-sm">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          student.days_until_deletion <= 30 
-                            ? 'bg-red-100 text-red-800' 
+                          student.days_until_deletion <= 30
+                            ? 'bg-red-100 text-red-800'
                             : student.days_until_deletion <= 90
                             ? 'bg-yellow-100 text-yellow-800'
                             : 'bg-green-100 text-green-800'
@@ -390,15 +425,44 @@ function ArchivedStudentsManagement({ hideHeader = false, archivedOnly = false }
                         />
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div className="px-6 py-12 text-center">
-                <p className="text-gray-500">No archived students found.</p>
-              </div>
-            )
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                      No archived students found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           )}
+          </div>
+        </div>
+      )}
+
+      {records.length > 0 && (
+        <div className="mt-4 flex items-center justify-between">
+          <div className="text-sm text-gray-700">
+            Showing {startEntry} to {endEntry} of {records.length} entries
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              variant="outline"
+            >
+              Previous
+            </Button>
+            <Button variant="primary">
+              {currentPage}
+            </Button>
+            <Button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              variant="outline"
+            >
+              Next
+            </Button>
           </div>
         </div>
       )}

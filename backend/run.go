@@ -15,12 +15,12 @@ func Run(assets embed.FS) {
 	// Create an instance of the app structure
 	app := NewApp()
 
-	// Load app settings (kiosk mode, etc.)
+	// Load app settings (lock mode, etc.)
 	appConfig := LoadAppSettings()
 
-	// Window start state - fullscreen in kiosk mode, normal otherwise
+	// Window start state - fullscreen in lock mode, normal otherwise
 	startState := options.Normal
-	if appConfig.KioskMode {
+	if appConfig.LockMode {
 		startState = options.Fullscreen
 	}
 
@@ -32,9 +32,9 @@ func Run(assets embed.FS) {
 		MinWidth:         800,
 		MinHeight:        600,
 		DisableResize:    false,
-		Fullscreen:       appConfig.KioskMode,
+		Fullscreen:       appConfig.LockMode,
 		Frameless:        false,
-		AlwaysOnTop:      appConfig.KioskMode,
+		AlwaysOnTop:      appConfig.LockMode,
 		StartHidden:      false,
 		WindowStartState: startState,
 		AssetServer: &assetserver.Options{
@@ -50,8 +50,8 @@ func Run(assets embed.FS) {
 				return true
 			}
 			// When user is logged in, also prevent closing (they should logout properly)
-			if app.kioskMode {
-				log.Println("Kiosk mode: Please logout through the app")
+			if app.lockMode {
+				log.Println("Lock mode: Please logout through the app")
 				return true
 			}
 

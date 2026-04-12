@@ -10,13 +10,11 @@ interface TeacherStoredArchiveModalProps {
 }
 
 function TeacherStoredArchiveModal({ isOpen, onClose, initialTab, onClassUnarchived, onAttendanceUnarchived }: TeacherStoredArchiveModalProps) {
-  const title = initialTab === 'classes' ? 'Archived Classlist' : 'Archived Attendance';
-
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={title}
+      title="Archive"
       size="2xl"
       contentMinHeightClassName={MODAL_BODY_MIN_HEIGHT_CLASS}
     >

@@ -1,25 +1,23 @@
 import { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import Modal from '../../components/Modal';
-import AdminArchiveModal from '../../components/AdminArchiveModal';
 import LoadingDots from '../../components/LoadingDots';
 import {
   Search,
   X,
-  History,
   AlertCircle,
-  Download,
+  Printer,
   Filter,
   Eye
 } from 'lucide-react';
 import {
   GetFeedback,
-  ExportFeedbackCSVByRowRange,
-  ExportFeedbackPDFByRowRange,
-  ExportFeedbackDOCXByRowRange,
+  ExportFeedbackCSVByRange,
+  ExportFeedbackPDFByRange,
+  ExportFeedbackDOCXByRange,
   SetFeedbackAdminStatus
 } from '../../../wailsjs/go/backend/App';
-import { openExportSaveDialog, defaultFeedbackRowRangeFilename, type ExportFormat } from '../../utils/exportSaveDialog';
+import { openExportSaveDialog, defaultFeedbackRangeFilename, type ExportFormat } from '../../utils/exportSaveDialog';
 import { parseReportContext } from '../../utils/feedbackComments';
 import { StatusBadge } from '../../components/Badge';
 import { Feedback } from './types';
@@ -33,59 +31,56 @@ function Reports() {
 
   // Pagination
   const [reportsPage, setReportsPage] = useState(1);
-  const reportsPerPage = 25;
+  const [reportsPerPage, setReportsPerPage] = useState(10);
 
   // General search
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filters
-  const [filterFromRow, setFilterFromRow] = useState('');
-  const [filterToRow, setFilterToRow] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  const [pendingFilterFromRow, setPendingFilterFromRow] = useState('');
-  const [pendingFilterToRow, setPendingFilterToRow] = useState('');
+  const [pendingFilterDateFrom, setPendingFilterDateFrom] = useState('');
+  const [pendingFilterDateTo, setPendingFilterDateTo] = useState('');
   const [pendingFilterStatus, setPendingFilterStatus] = useState('');
 
-  const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [selectedReport, setSelectedReport] = useState<Feedback | null>(null);
 
   // Export modal
   const [showExportModal, setShowExportModal] = useState(false);
-  const [exportFromRow, setExportFromRow] = useState('1');
-  const [exportToRow, setExportToRow] = useState('100');
+  const [exportDateFrom, setExportDateFrom] = useState('');
+  const [exportDateTo, setExportDateTo] = useState('');
   const [exporting, setExporting] = useState(false);
   const [exportToast, setExportToast] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
-  const parsedFromRow = Number.parseInt(exportFromRow, 10);
-  const parsedToRow = Number.parseInt(exportToRow, 10);
-  const isExportRangeValid =
-    Number.isInteger(parsedFromRow) &&
-    Number.isInteger(parsedToRow) &&
-    parsedFromRow >= 1 &&
-    parsedToRow >= 1 &&
-    parsedFromRow <= parsedToRow &&
-    parsedToRow <= 500;
-
-  const parseRowInput = (value: string): number | null => {
+  const normalizeDateOnly = (value?: string | null) => {
+    if (!value) return '';
     const trimmed = value.trim();
-    if (!trimmed) return null;
-    if (!/^\d+$/.test(trimmed)) return null;
-    const parsed = Number.parseInt(trimmed, 10);
-    return parsed > 0 ? parsed : null;
+    if (!trimmed) return '';
+
+    const splitDate = trimmed.split(/[T\s]/)[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(splitDate)) {
+      return splitDate;
+    }
+
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+      return '';
+    }
+    return parsed.toISOString().slice(0, 10);
   };
 
-  const filterFromRowNumber = parseRowInput(filterFromRow);
-  const filterToRowNumber = parseRowInput(filterToRow);
+  const hasAnyReports = reports.length > 0;
+  const latestReportDate = hasAnyReports ? normalizeDateOnly(reports[0]?.date_submitted) : '';
+  const oldestReportDate = hasAnyReports ? normalizeDateOnly(reports[reports.length - 1]?.date_submitted) : '';
 
-  const pendingFromRowNumber = parseRowInput(pendingFilterFromRow);
-  const pendingToRowNumber = parseRowInput(pendingFilterToRow);
+  const isDateRangeValid = (from: string, to: string) => {
+    if (!from || !to) return false;
+    return from <= to;
+  };
 
-  const isPendingRowRangeValid =
-    pendingFromRowNumber !== null &&
-    pendingToRowNumber !== null &&
-    pendingFromRowNumber <= pendingToRowNumber &&
-    pendingToRowNumber <= 500;
+  const isExportRangeValid = isDateRangeValid(exportDateFrom, exportDateTo);
 
   // Pending issues modal visibility
   const [showPendingModal, setShowPendingModal] = useState(false);
@@ -93,7 +88,7 @@ function Reports() {
   // Reset to page 1 whenever any filter/search changes
   useEffect(() => {
     setReportsPage(1);
-  }, [searchQuery, filterFromRow, filterToRow, filterStatus]);
+  }, [searchQuery, filterDateFrom, filterDateTo, filterStatus]);
 
   useEffect(() => {
     loadReports();
@@ -124,35 +119,36 @@ function Reports() {
     }
   };
 
-  const hasActiveRowRange = Boolean(filterFromRow || filterToRow);
-  const activeFilterCount = (hasActiveRowRange ? 1 : 0) + (filterStatus ? 1 : 0);
+  const hasActiveDateRange = Boolean(filterDateFrom || filterDateTo);
+  const activeFilterCount = (hasActiveDateRange ? 1 : 0) + (filterStatus ? 1 : 0);
 
   const clearFilters = () => {
     setSearchQuery('');
-    setFilterFromRow('');
-    setFilterToRow('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
     setFilterStatus('');
     setShowFilters(false);
-    setPendingFilterFromRow('');
-    setPendingFilterToRow('');
+    setPendingFilterDateFrom('');
+    setPendingFilterDateTo('');
     setPendingFilterStatus('');
   };
 
   const handleExport = async (format: ExportFormat) => {
     if (!isExportRangeValid) {
-      showExportToast('error', 'Enter a valid range from 1 to 500 (From must be less than or equal to To).');
+      showExportToast('error', 'Select a valid date range (From must be earlier than or equal to To).');
       return;
     }
 
-    const defaultName = defaultFeedbackRowRangeFilename(parsedFromRow, parsedToRow, format);
+    const defaultName = defaultFeedbackRangeFilename(exportDateFrom, exportDateTo, format);
     const savePath = await openExportSaveDialog('Save feedback report', defaultName, format);
     if (!savePath) return;
+
     setExporting(true);
     try {
       let filename = '';
-      if (format === 'pdf') filename = await ExportFeedbackPDFByRowRange(parsedFromRow, parsedToRow, savePath);
-      else if (format === 'csv') filename = await ExportFeedbackCSVByRowRange(parsedFromRow, parsedToRow, savePath);
-      else filename = await ExportFeedbackDOCXByRowRange(parsedFromRow, parsedToRow, savePath);
+      if (format === 'pdf') filename = await ExportFeedbackPDFByRange(exportDateFrom, exportDateTo, savePath);
+      else if (format === 'csv') filename = await ExportFeedbackCSVByRange(exportDateFrom, exportDateTo, savePath);
+      else filename = await ExportFeedbackDOCXByRange(exportDateFrom, exportDateTo, savePath);
       showExportToast('success', `Saved: ${filename.split(/[\\/]/).pop()}`);
     } catch {
       showExportToast('error', 'Export failed. Please try again.');
@@ -201,16 +197,14 @@ function Reports() {
           ? !isNoIssueReport(report)
           : isNoIssueReport(report));
 
-    return matchesSearch && matchesStatus;
+    const reportDate = normalizeDateOnly(report.date_submitted);
+    const matchesFrom = !filterDateFrom || (reportDate !== '' && reportDate >= filterDateFrom);
+    const matchesTo = !filterDateTo || (reportDate !== '' && reportDate <= filterDateTo);
+
+    return matchesSearch && matchesStatus && matchesFrom && matchesTo;
   });
 
-  const filteredReports = baseFilteredReports.filter((_, index) => {
-    if (!filterFromRow && !filterToRow) return true;
-    const rowNumber = index + 1;
-    const matchesFrom = filterFromRowNumber === null || rowNumber >= filterFromRowNumber;
-    const matchesTo = filterToRowNumber === null || rowNumber <= filterToRowNumber;
-    return matchesFrom && matchesTo;
-  });
+  const filteredReports = baseFilteredReports;
 
   const pendingReports = filteredReports.filter(
     (report) =>
@@ -257,6 +251,17 @@ function Reports() {
   const reportsEndIndex = reportsStartIndex + reportsPerPage;
   const paginatedReports = tableReports.slice(reportsStartIndex, reportsEndIndex);
 
+  useEffect(() => {
+    if (totalReportPages === 0) {
+      if (reportsPage !== 1) setReportsPage(1);
+      return;
+    }
+
+    if (reportsPage > totalReportPages) {
+      setReportsPage(totalReportPages);
+    }
+  }, [reportsPage, totalReportPages]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -284,13 +289,6 @@ function Reports() {
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold text-gray-900">Equipment Reports</h2>
           </div>
-          <Button
-            onClick={() => setShowArchiveModal(true)}
-            variant="outline"
-            icon={<History className="h-4 w-4" />}
-          >
-            Archived Reports
-          </Button>
         </div>
 
         {/* Search + Export Toolbar + View Toggle */}
@@ -339,8 +337,8 @@ function Reports() {
               onClick={() => {
                 const nextOpen = !showFilters;
                 if (nextOpen) {
-                  setPendingFilterFromRow(filterFromRow);
-                  setPendingFilterToRow(filterToRow);
+                  setPendingFilterDateFrom(filterDateFrom);
+                  setPendingFilterDateTo(filterDateTo);
                   setPendingFilterStatus(filterStatus);
                 }
                 setShowFilters(nextOpen);
@@ -364,35 +362,31 @@ function Reports() {
               {showFilters && (
                 <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden">
                   <div className="p-4 space-y-3">
-                    {/* Filter by row range: [from] to [to] */}
+                    {/* Filter by date range */}
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Row Range</label>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Date Range</label>
                       <div className="flex items-center gap-2">
                         <div className="relative flex-1 min-w-0">
                           <input
-                            type="number"
-                            min={1}
-                            max={500}
+                            type="date"
                             placeholder="From"
-                            value={pendingFilterFromRow}
-                            onChange={(e) => setPendingFilterFromRow(e.target.value)}
+                            value={pendingFilterDateFrom}
+                            onChange={(e) => setPendingFilterDateFrom(e.target.value)}
                             className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                           />
                         </div>
                         <span className="text-xs font-medium text-gray-500 shrink-0">to</span>
                         <div className="relative flex-1 min-w-0">
                           <input
-                            type="number"
-                            min={1}
-                            max={500}
+                            type="date"
                             placeholder="To"
-                            value={pendingFilterToRow}
-                            onChange={(e) => setPendingFilterToRow(e.target.value)}
+                            value={pendingFilterDateTo}
+                            onChange={(e) => setPendingFilterDateTo(e.target.value)}
                             className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                           />
                         </div>
                       </div>
-                      <p className="mt-1 text-[11px] text-gray-500">Latest-first rows, max 500.</p>
+                      <p className="mt-1 text-[11px] text-gray-500">Filters by submitted date in the active table.</p>
                     </div>
 
                     {/* Status dropdown */}
@@ -422,11 +416,11 @@ function Reports() {
                       <button
                         type="button"
                         onClick={() => {
-                          setPendingFilterFromRow('');
-                          setPendingFilterToRow('');
+                          setPendingFilterDateFrom('');
+                          setPendingFilterDateTo('');
                           setPendingFilterStatus('');
-                          setFilterFromRow('');
-                          setFilterToRow('');
+                          setFilterDateFrom('');
+                          setFilterDateTo('');
                           setFilterStatus('');
                           setShowFilters(false);
                         }}
@@ -437,15 +431,14 @@ function Reports() {
                       <button
                         type="button"
                         onClick={() => {
-                          const hasPartialRange = Boolean(pendingFilterFromRow || pendingFilterToRow);
-
-                          if (hasPartialRange && !isPendingRowRangeValid) {
-                            showExportToast('error', 'Enter a valid row range from 1 to 500 (From must be less than or equal to To).');
+                          const hasDateRange = Boolean(pendingFilterDateFrom || pendingFilterDateTo);
+                          if (hasDateRange && !isDateRangeValid(pendingFilterDateFrom, pendingFilterDateTo)) {
+                            showExportToast('error', 'Select a valid date range (From must be earlier than or equal to To).');
                             return;
                           }
 
-                          setFilterFromRow(pendingFilterFromRow.trim());
-                          setFilterToRow(pendingFilterToRow.trim());
+                          setFilterDateFrom(pendingFilterDateFrom);
+                          setFilterDateTo(pendingFilterDateTo);
                           setFilterStatus(pendingFilterStatus);
                           setShowFilters(false);
                         }}
@@ -462,13 +455,13 @@ function Reports() {
               <button
                 onClick={() => {
                   setShowExportModal(true);
-                  setExportFromRow('1');
-                  setExportToRow('100');
+                  setExportDateFrom(filterDateFrom || oldestReportDate);
+                  setExportDateTo(filterDateTo || latestReportDate);
                 }}
                 title="Export"
                 className="flex items-center gap-1.5 px-3 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 text-sm font-medium transition-colors"
               >
-                <Download className="h-4 w-4" />
+                <Printer className="h-4 w-4" />
                 <span>Export</span>
               </button>
 
@@ -542,10 +535,11 @@ function Reports() {
                   <div className="flex flex-col gap-1 items-end">
                     <button
                       onClick={() => setSelectedReport(report)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-full hover:bg-primary-100 transition-colors"
+                      className="inline-flex h-7 w-7 items-center justify-center text-primary-700 bg-primary-50 border border-primary-200 rounded-full hover:bg-primary-100 transition-colors"
+                      title="View details"
+                      aria-label="View details"
                     >
                       <Eye className="h-3.5 w-3.5" />
-                      View details
                     </button>
                     <button
                       onClick={() => handleAdminStatusToggle(report, 'resolved')}
@@ -595,122 +589,144 @@ function Reports() {
                     </td>
                   </tr>
                 ) : (
-                  paginatedReports.map((report) => {
-                    const { reportedForAnotherPC, submittedFrom } = parseReportContext(report.comments);
-                    const issues = countIssues(report);
-                    const hasIssues = issues > 0;
-                    const isResolved = (report.admin_status || '').toLowerCase() === 'resolved';
-                    return (
-                      <tr
-                        key={report.id}
-                        className={`transition-colors ${
-                          isNoIssueReport(report) ? 'bg-white hover:bg-gray-50' : 'bg-red-50 hover:bg-red-100'
-                        }`}
-                      >
-                        <td className="pl-4 pr-3 py-3 align-top">
-                          <div className="text-sm font-medium text-gray-900 leading-tight break-words">{report.student_name}</div>
-                          <div className="text-xs text-gray-500 mt-0.5 leading-tight break-words">{report.student_id_str}</div>
-                        </td>
-                        <td className="px-3 py-3">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium w-fit truncate max-w-full">
-                              {report.pc_number}
-                            </span>
-                            {(reportedForAnotherPC || submittedFrom) && (
-                              <span className="text-xs text-gray-500 truncate">
-                                {submittedFrom ? `from ${submittedFrom}` : 'Other PC'}
+                  <>
+                    {paginatedReports.map((report) => {
+                      const { reportedForAnotherPC, submittedFrom } = parseReportContext(report.comments);
+                      const issues = countIssues(report);
+                      const hasIssues = issues > 0;
+                      const isResolved = (report.admin_status || '').toLowerCase() === 'resolved';
+                      return (
+                        <tr
+                          key={report.id}
+                          className={`transition-colors ${
+                            isNoIssueReport(report) ? 'bg-white hover:bg-gray-50' : 'bg-red-50 hover:bg-red-100'
+                          }`}
+                        >
+                          <td className="pl-4 pr-3 py-3 align-top">
+                            <div className="text-sm font-medium text-gray-900 leading-tight break-words">{report.student_name}</div>
+                            <div className="text-xs text-gray-500 mt-0.5 leading-tight break-words">{report.student_id_str}</div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-col gap-0.5">
+                              <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium w-fit truncate max-w-full">
+                                {report.pc_number}
                               </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-3 text-center">
-                          <span className="text-xs text-gray-600">
-                            {report.date_submitted ? new Date(report.date_submitted).toLocaleDateString('en-US', {
-                              month: '2-digit', day: '2-digit', year: 'numeric'
-                            }) : '—'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 text-center">
-                          {(() => {
-                            if (isResolved) {
-                              const resolvedAt = report.admin_resolved_at
-                                ? new Date(report.admin_resolved_at)
-                                : null;
-                              return (
-                                <div className="flex flex-col items-center gap-1">
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap bg-emerald-100 text-emerald-800">
-                                    Resolved
-                                  </span>
-                                  {resolvedAt && !Number.isNaN(resolvedAt.getTime()) && (
-                                    <span className="text-[11px] text-emerald-700 whitespace-nowrap">
-                                      {resolvedAt.toLocaleString('en-US', {
-                                        month: '2-digit',
-                                        day: '2-digit',
-                                        year: 'numeric',
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      })}
-                                    </span>
-                                  )}
-                                </div>
-                              );
-                            }
-
-                            const baseLabel = hasIssues ? `${issues} ${issues === 1 ? 'Issue' : 'Issues'}` : 'No Issues';
-
-                            return (
-                              <span
-                                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${
-                                  hasIssues
-                                    ? 'bg-red-100 text-red-800'
-                                    : 'bg-green-100 text-green-800'
-                                }`}
-                              >
-                                {baseLabel}
-                              </span>
-                            );
-                          })()}
-                        </td>
-                        <td className="px-3 py-3">
-                          <div className="text-sm font-medium text-gray-900 truncate">{report.forwarded_by_name || 'Unknown'}</div>
-                          {report.forwarded_at && (
-                            <div className="text-xs text-gray-500 mt-0.5">
-                              {new Date(report.forwarded_at).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                              {(reportedForAnotherPC || submittedFrom) && (
+                                <span className="text-xs text-gray-500 truncate">
+                                  {submittedFrom ? `from ${submittedFrom}` : 'Other PC'}
+                                </span>
+                              )}
                             </div>
-                          )}
-                        </td>
-                        <td className="px-3 py-3 text-center">
-                          <div className="flex flex-col items-center gap-1.5">
-                            <button
-                              onClick={() => setSelectedReport(report)}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                              View
-                            </button>
-                            {!isResolved && hasIssues ? (
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            <span className="text-xs text-gray-600">
+                              {report.date_submitted ? new Date(report.date_submitted).toLocaleDateString('en-US', {
+                                month: '2-digit', day: '2-digit', year: 'numeric'
+                              }) : '—'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            {(() => {
+                              if (isResolved) {
+                                const resolvedAt = report.admin_resolved_at
+                                  ? new Date(report.admin_resolved_at)
+                                  : null;
+                                return (
+                                  <div className="flex flex-col items-center gap-1">
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap bg-emerald-100 text-emerald-800">
+                                      Resolved
+                                    </span>
+                                    {resolvedAt && !Number.isNaN(resolvedAt.getTime()) && (
+                                      <span className="text-[11px] text-emerald-700 whitespace-nowrap">
+                                        {resolvedAt.toLocaleString('en-US', {
+                                          month: '2-digit',
+                                          day: '2-digit',
+                                          year: 'numeric',
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        })}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              const baseLabel = hasIssues ? `${issues} ${issues === 1 ? 'Issue' : 'Issues'}` : 'No Issues';
+
+                              return (
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${
+                                    hasIssues
+                                      ? 'bg-red-100 text-red-800'
+                                      : 'bg-green-100 text-green-800'
+                                  }`}
+                                >
+                                  {baseLabel}
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="text-sm font-medium text-gray-900 truncate">{report.forwarded_by_name || 'Unknown'}</div>
+                            {report.forwarded_at && (
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                {new Date(report.forwarded_at).toLocaleString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            <div className="flex flex-col items-center gap-1.5">
                               <button
-                                onClick={() => handleAdminStatusToggle(report, 'resolved')}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                                onClick={() => setSelectedReport(report)}
+                                className="inline-flex h-8 w-8 items-center justify-center text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
+                                title="View details"
+                                aria-label="View details"
                               >
-                                Mark Resolved
+                                <Eye className="h-3.5 w-3.5" />
                               </button>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
+                              {!isResolved && hasIssues ? (
+                                <button
+                                  onClick={() => handleAdminStatusToggle(report, 'resolved')}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
+                                >
+                                  Mark Resolved
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </>
                 )}
               </tbody>
             </table>
         </div>
         {tableReports.length > 0 && (
-          <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
-            <div className="text-sm text-gray-600">
-              Showing {reportsStartIndex + 1} to {Math.min(reportsEndIndex, tableReports.length)} of {tableReports.length} entries
+          <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+              <label className="flex items-center gap-2">
+                <span>Show</span>
+                <select
+                  value={reportsPerPage}
+                  onChange={(e) => {
+                    setReportsPerPage(Number(e.target.value));
+                    setReportsPage(1);
+                  }}
+                  className="border border-gray-300 rounded px-2 py-1 bg-white"
+                >
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                </select>
+                <span>entries</span>
+              </label>
+              <span>
+                Showing {reportsStartIndex + 1} to {Math.min(reportsEndIndex, tableReports.length)} of {tableReports.length} entries
+              </span>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
               <Button
                 onClick={() => setReportsPage(prev => Math.max(1, prev - 1))}
                 disabled={reportsPage === 1}
@@ -719,16 +735,22 @@ function Reports() {
               >
                 Previous
               </Button>
-              {Array.from({ length: totalReportPages }, (_, i) => i + 1).map((pageNum) => (
-                <Button
-                  key={pageNum}
-                  onClick={() => setReportsPage(pageNum)}
-                  variant={reportsPage === pageNum ? "primary" : "outline"}
-                  size="sm"
-                >
-                  {pageNum}
-                </Button>
-              ))}
+
+              {totalReportPages > 1 ? (
+                Array.from({ length: totalReportPages }, (_, i) => i + 1).map((pageNum) => (
+                  <Button
+                    key={pageNum}
+                    onClick={() => setReportsPage(pageNum)}
+                    variant={reportsPage === pageNum ? "primary" : "outline"}
+                    size="sm"
+                  >
+                    {pageNum}
+                  </Button>
+                ))
+              ) : (
+                <span className="px-2 text-sm text-gray-500">Page 1 of 1</span>
+              )}
+
               <Button
                 onClick={() => setReportsPage(prev => Math.min(totalReportPages, prev + 1))}
                 disabled={reportsPage >= totalReportPages}
@@ -737,6 +759,7 @@ function Reports() {
               >
                 Next
               </Button>
+            </div>
             </div>
           </div>
         )}
@@ -841,12 +864,7 @@ function Reports() {
         })()}
       </Modal>
 
-      <AdminArchiveModal
-        isOpen={showArchiveModal}
-        onClose={() => setShowArchiveModal(false)}
-        initialTab="reports"
-      />
-      {/* Export Modal */}
+      {/* Print Modal */}
       {showExportModal && (
         <div className="modal-backdrop">
           <div className="modal-surface-2xl w-full max-w-md mx-2 sm:mx-4 overflow-hidden max-h-[calc(100vh-2rem)] overflow-y-auto">
@@ -859,18 +877,16 @@ function Reports() {
             </div>
 
             <div className="px-6 py-5 space-y-5">
-              {/* Row Range */}
+              {/* Date Range */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Record Range</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">From</label>
                     <input
-                      type="number"
-                      min={1}
-                      max={500}
-                      value={exportFromRow}
-                      onChange={(e) => setExportFromRow(e.target.value)}
+                      type="date"
+                      value={exportDateFrom}
+                      onChange={(e) => setExportDateFrom(e.target.value)}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
@@ -878,11 +894,9 @@ function Reports() {
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">To</label>
                     <input
-                      type="number"
-                      min={1}
-                      max={500}
-                      value={exportToRow}
-                      onChange={(e) => setExportToRow(e.target.value)}
+                      type="date"
+                      value={exportDateTo}
+                      onChange={(e) => setExportDateTo(e.target.value)}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
@@ -891,42 +905,30 @@ function Reports() {
 
               {isExportRangeValid ? (
                 <div className="rounded-lg px-4 py-3 text-sm font-medium bg-primary-50 text-primary-800 border border-primary-200">
-                  Exports rows {parsedFromRow} to {parsedToRow} (latest-first) from the active table (max 500 retained).
+                  Exports active equipment reports from {exportDateFrom} to {exportDateTo}.
                 </div>
               ) : (
                 <div className="rounded-lg px-4 py-3 text-sm font-medium bg-yellow-50 text-yellow-800 border border-yellow-200">
-                  Enter a valid range from 1 to 500, and make sure From is less than or equal to To.
+                  Select a valid date range before exporting.
                 </div>
               )}
 
-              {/* Export Format */}
+              {/* Export Actions */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Export Format</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Export As</label>
                 <div className="grid grid-cols-3 gap-2">
-                  <button
-                    onClick={() => handleExport('pdf')}
-                    disabled={exporting || !isExportRangeValid}
-                    className="flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-xl border-2 border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <span className="text-xs font-semibold">PDF</span>
+                  <button onClick={() => handleExport('csv')} disabled={exporting || !isExportRangeValid} className="px-3 py-3 rounded-xl border-2 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <span className="text-sm font-semibold">CSV</span>
                   </button>
-                  <button
-                    onClick={() => handleExport('csv')}
-                    disabled={exporting || !isExportRangeValid}
-                    className="flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-xl border-2 border-green-200 bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <span className="text-xs font-semibold">CSV</span>
+                  <button onClick={() => handleExport('pdf')} disabled={exporting || !isExportRangeValid} className="px-3 py-3 rounded-xl border-2 border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <span className="text-sm font-semibold">PDF</span>
                   </button>
-                  <button
-                    onClick={() => handleExport('docx')}
-                    disabled={exporting || !isExportRangeValid}
-                    className="flex flex-col items-center justify-center gap-1.5 px-3 py-3 rounded-xl border-2 border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <span className="text-xs font-semibold">DOCX</span>
+                  <button onClick={() => handleExport('docx')} disabled={exporting || !isExportRangeValid} className="px-3 py-3 rounded-xl border-2 border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    <span className="text-sm font-semibold">DOCX</span>
                   </button>
                 </div>
                 {exporting && (
-                  <p className="mt-2 text-xs text-center text-gray-500">Exporting, please wait...</p>
+                  <p className="mt-2 text-xs text-center text-gray-500">Exporting...</p>
                 )}
               </div>
             </div>

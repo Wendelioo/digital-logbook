@@ -10,6 +10,12 @@ export namespace backend {
 	    teachers_logged_in: number;
 	    working_students_logged_in: number;
 	    today_logins: number;
+	    today_teacher_logins: number;
+	    today_admin_logins: number;
+	    last_teacher_login_at?: string;
+	    last_teacher_pc_number?: string;
+	    last_admin_login_at?: string;
+	    last_admin_pc_number?: string;
 	    today_new_users: number;
 	    pending_feedback: number;
 	
@@ -28,6 +34,12 @@ export namespace backend {
 	        this.teachers_logged_in = source["teachers_logged_in"];
 	        this.working_students_logged_in = source["working_students_logged_in"];
 	        this.today_logins = source["today_logins"];
+	        this.today_teacher_logins = source["today_teacher_logins"];
+	        this.today_admin_logins = source["today_admin_logins"];
+	        this.last_teacher_login_at = source["last_teacher_login_at"];
+	        this.last_teacher_pc_number = source["last_teacher_pc_number"];
+	        this.last_admin_login_at = source["last_admin_login_at"];
+	        this.last_admin_pc_number = source["last_admin_pc_number"];
 	        this.today_new_users = source["today_new_users"];
 	        this.pending_feedback = source["pending_feedback"];
 	    }
@@ -472,6 +484,46 @@ export namespace backend {
 	        this.working_student_notes = source["working_student_notes"];
 	    }
 	}
+	export class InactivityPolicySettings {
+	    configured_inactivity_deactivation_days: number;
+	    configured_deactivated_deletion_days: number;
+	    effective_inactivity_deactivation_days: number;
+	    effective_deactivated_deletion_days: number;
+	    env_override_inactivity: boolean;
+	    env_override_deletion: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new InactivityPolicySettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.configured_inactivity_deactivation_days = source["configured_inactivity_deactivation_days"];
+	        this.configured_deactivated_deletion_days = source["configured_deactivated_deletion_days"];
+	        this.effective_inactivity_deactivation_days = source["effective_inactivity_deactivation_days"];
+	        this.effective_deactivated_deletion_days = source["effective_deactivated_deletion_days"];
+	        this.env_override_inactivity = source["env_override_inactivity"];
+	        this.env_override_deletion = source["env_override_deletion"];
+	    }
+	}
+	export class LockSettings {
+	    lock_mode: boolean;
+	    computer_lab: string;
+	    pc_number: string;
+	    station_label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LockSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.lock_mode = source["lock_mode"];
+	        this.computer_lab = source["computer_lab"];
+	        this.pc_number = source["pc_number"];
+	        this.station_label = source["station_label"];
+	    }
+	}
 	export class LoginLog {
 	    id: number;
 	    user_id: number;
@@ -562,34 +614,6 @@ export namespace backend {
 		    return a;
 		}
 	}
-	export class PasswordResetRequest {
-	    id: number;
-	    student_user_id: number;
-	    student_name: string;
-	    student_code: string;
-	    subject_code: string;
-	    subject_name: string;
-	    status: string;
-	    requested_at: string;
-	    resolved_at: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new PasswordResetRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.student_user_id = source["student_user_id"];
-	        this.student_name = source["student_name"];
-	        this.student_code = source["student_code"];
-	        this.subject_code = source["subject_code"];
-	        this.subject_name = source["subject_name"];
-	        this.status = source["status"];
-	        this.requested_at = source["requested_at"];
-	        this.resolved_at = source["resolved_at"];
-	    }
-	}
 	export class PendingRegistration {
 	    user_id: number;
 	    student_id: string;
@@ -666,6 +690,18 @@ export namespace backend {
 	        this.confirm_password = source["confirm_password"];
 	    }
 	}
+	export class RegistrationSubmissionResult {
+	    recovery_code: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RegistrationSubmissionResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.recovery_code = source["recovery_code"];
+	    }
+	}
 	export class StudentDashboard {
 	    attendance: Attendance[];
 	    today_log?: Attendance;
@@ -708,24 +744,6 @@ export namespace backend {
 		    return a;
 		}
 	}
-	export class TeacherOption {
-	    teacher_user_id: number;
-	    full_name: string;
-	    subject_code: string;
-	    subject_name: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new TeacherOption(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.teacher_user_id = source["teacher_user_id"];
-	        this.full_name = source["full_name"];
-	        this.subject_code = source["subject_code"];
-	        this.subject_name = source["subject_name"];
-	    }
-	}
 	export class User {
 	    id: number;
 	    password: string;
@@ -744,6 +762,7 @@ export namespace backend {
 	    login_log_id: number;
 	    last_login_at?: string;
 	    last_login_ago?: string;
+	    currently_logged_in: boolean;
 	    deactivated_at?: string;
 	    deleted_at?: string;
 	    activity_status?: string;
@@ -771,6 +790,7 @@ export namespace backend {
 	        this.login_log_id = source["login_log_id"];
 	        this.last_login_at = source["last_login_at"];
 	        this.last_login_ago = source["last_login_ago"];
+	        this.currently_logged_in = source["currently_logged_in"];
 	        this.deactivated_at = source["deactivated_at"];
 	        this.deleted_at = source["deleted_at"];
 	        this.activity_status = source["activity_status"];

@@ -36,7 +36,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const fetchNotifications = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const summary = await GetNotifications(user.id, 20);
+      const summary = await GetNotifications(user.id, 0);
       setNotifications((summary.notifications || []) as BackendNotification[]);
       setUnreadCount(summary.unread_count || 0);
     } catch (err) {

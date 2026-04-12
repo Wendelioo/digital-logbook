@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Card, CardHeader, CardBody, StatCard } from '../../components/Card';
+import { Link } from 'react-router-dom';
+import { Card, CardHeader, CardBody, InfoCard, StatCard } from '../../components/Card';
+import LoadingDots from '../../components/LoadingDots';
 import {
   Users,
   BookOpen,
   Clock,
-  Calendar,
+  MapPin,
   Library,
   ClipboardCheck,
   PauseCircle,
@@ -13,46 +14,57 @@ import {
 import { ArchiveIcon } from '../../components/icons/ArchiveIcons';
 import {
   GetTeacherClassesByUserID,
-  GetPendingPasswordResets,
+  GetArchivedClasses,
+  GetStudentLoginLogs,
 } from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
-import { BackendDashboardNotifications } from '../../components/DashboardNotifications';
 import { Class } from './types';
 
 const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
+const DASHBOARD_POLL_INTERVAL_MS = 10000;
+
+interface LoginLog {
+  id: number;
+  user_id: number;
+  user_name: string;
+  user_type: string;
+  pc_number?: string;
+  login_time: string;
+  logout_time?: string;
+}
 
 function DashboardOverview() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [classes, setClasses] = useState<Class[]>([]);
+  const [archivedClasses, setArchivedClasses] = useState<Class[]>([]);
   const [openSessionsToday, setOpenSessionsToday] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [lastLogin, setLastLogin] = useState<LoginLog | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string>('');
-
-  // Pending password reset count (for the quick-link card)
-  const [pendingResetCount, setPendingResetCount] = useState(0);
-
-  const loadResetCount = async () => {
-    if (!user?.id) return;
-    try {
-      const data = await GetPendingPasswordResets(user.id);
-      setPendingResetCount((data || []).length);
-    } catch { /* non-critical */ }
-  };
 
   useEffect(() => {
     const loadDashboard = async () => {
       if (!user?.id) {
         console.log('No teacher ID available');
+        setInitialLoading(false);
         return;
       }
 
-      setLoading(true);
       try {
         const classesData = await GetTeacherClassesByUserID(user.id);
         // Only update classes when we got a valid array (avoid clearing list on null/failed response)
         if (Array.isArray(classesData)) {
           setClasses(classesData);
+        }
+
+        try {
+          const archivedData = await GetArchivedClasses(user.id);
+          if (Array.isArray(archivedData)) {
+            setArchivedClasses(archivedData);
+          }
+        } catch (archivedErr) {
+          console.error('Failed to load archived classes:', archivedErr);
+          setArchivedClasses([]);
         }
 
         let nextOpenSessionsToday = 0;
@@ -71,16 +83,31 @@ function DashboardOverview() {
         }
 
         setError('');
+
+        try {
+          const loginLogs = await GetStudentLoginLogs(user.id);
+          if (loginLogs && loginLogs.length > 0) {
+            // Prefer latest completed session for "Last Login" consistency.
+            const completedLogs = loginLogs.filter((log) => !!log.logout_time);
+            const selectedLog = completedLogs.length > 0 ? completedLogs[0] : loginLogs[0];
+            setLastLogin(selectedLog);
+          } else {
+            setLastLogin(null);
+          }
+        } catch (loginErr) {
+          console.error('Failed to load teacher last login:', loginErr);
+          setLastLogin(null);
+        }
       } catch (error) {
         console.error('Failed to load teacher classes:', error);
-        setError('Unable to load your classes from server.');
+        setError('Unable to load dashboard data from server.');
       } finally {
-        setLoading(false);
+        setInitialLoading(false);
       }
     };
 
     const timer = setTimeout(loadDashboard, 100);
-    const refreshInterval = setInterval(loadDashboard, 15000);
+    const refreshInterval = setInterval(loadDashboard, DASHBOARD_POLL_INTERVAL_MS);
     window.addEventListener('focus', loadDashboard);
     window.addEventListener(AUTH_STATUS_CHANGED_EVENT, loadDashboard);
 
@@ -92,31 +119,54 @@ function DashboardOverview() {
     };
   }, [user?.id]);
 
-  // Poll reset count every 15 seconds
-  useEffect(() => {
-    loadResetCount();
-    const interval = setInterval(loadResetCount, 15000);
-    return () => clearInterval(interval);
-  }, [user?.id]);
+  if (initialLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <LoadingDots className="justify-center gap-2" dotClassName="h-3 w-3" />
+      </div>
+    );
+  }
 
   const totalStudents = classes.reduce((sum, cls) => sum + cls.enrolled_count, 0);
   const activeClasses = classes.filter(cls => cls.is_active && !cls.is_archived).length;
   const inactiveClasses = classes.filter(cls => !cls.is_active && !cls.is_archived).length;
-  const archivedClasses = classes.filter(cls => cls.is_archived).length;
+  const archivedClassesCount = archivedClasses.length;
+
+  const parseSqlDateTimeLocal = (value?: string): Date | null => {
+    if (!value) return null;
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+    if (!match) return null;
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const hour = Number(match[4]);
+    const minute = Number(match[5]);
+    const second = Number(match[6] || '0');
+
+    const localDate = new Date(year, month - 1, day, hour, minute, second);
+    return Number.isNaN(localDate.getTime()) ? null : localDate;
+  };
+
+  const formatSqlDateTimeLocal = (value?: string): string => {
+    const parsed = parseSqlDateTimeLocal(value);
+    if (!parsed) return 'N/A';
+    return parsed.toLocaleString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  };
 
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-4 md:p-6">
       {/* Error Message */}
       {error && (
         <div className="mb-6 bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-md">
           <p>{error}</p>
-        </div>
-      )}
-
-      {/* Loading indicator */}
-      {loading && (
-        <div className="mb-6 bg-primary-50 border border-primary-200 text-primary-700 px-4 py-3 rounded-md">
-          <p>Loading your dashboard data...</p>
         </div>
       )}
 
@@ -125,12 +175,81 @@ function DashboardOverview() {
         <p className="text-sm text-gray-500">Here's what's going on today.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
+      <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        <div className="lg:col-span-2">
+          <Card className="h-fit">
+            <CardHeader title="Login Information" />
+            <CardBody>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <InfoCard
+                  icon={<Clock className="h-6 w-6" />}
+                  label="Last Login"
+                  value={formatSqlDateTimeLocal(lastLogin?.login_time)}
+                  iconColor="blue"
+                />
+                <InfoCard
+                  icon={<MapPin className="h-6 w-6" />}
+                  label="Last PC Used"
+                  value={lastLogin?.pc_number || 'Unknown'}
+                  iconColor="purple"
+                />
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+        <Card className="h-fit">
+          <CardHeader title="Quick Actions" />
+          <CardBody>
+            <div className="overflow-hidden rounded-lg border border-gray-200 divide-y divide-gray-200">
+              <Link
+                to="attendance"
+                className="flex items-center gap-3 bg-white hover:bg-gray-50 transition-colors p-3"
+              >
+                <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                  <ClipboardCheck className="h-5 w-5 text-primary-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">Take Attendance</h3>
+                  <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">Check and update today's attendance.</p>
+                </div>
+              </Link>
+
+              <Link
+                to="login-history"
+                className="flex items-center gap-3 bg-white hover:bg-gray-50 transition-colors p-3"
+              >
+                <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                  <Clock className="h-5 w-5 text-primary-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">View Login History</h3>
+                  <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">Review your login and logout records.</p>
+                </div>
+              </Link>
+
+              <Link
+                to="class-management"
+                className="flex items-center gap-3 bg-white hover:bg-gray-50 transition-colors p-3"
+              >
+                <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
+                  <Library className="h-5 w-5 text-primary-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">Manage Classes</h3>
+                  <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">View and manage your classes.</p>
+                </div>
+              </Link>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 mb-8 items-start">
         {/* Quick Stats */}
-        <div className="md:col-span-2 space-y-6">
+        <div className="space-y-6">
           <div className="space-y-4">
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Overview</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
               <StatCard
                 title="Active Classes"
                 value={activeClasses}
@@ -139,7 +258,7 @@ function DashboardOverview() {
               />
               <StatCard
                 title="Archived Classes"
-                value={archivedClasses}
+                value={archivedClassesCount}
                 icon={<ArchiveIcon />}
                 color="yellow"
               />
@@ -157,18 +276,17 @@ function DashboardOverview() {
               />
             </div>
           </div>
-
-          {/* List of Schedule */}
+          {/* My Classes */}
           {activeClasses > 0 && (
             <Card>
-              <CardHeader title="List of Schedule" />
+              <CardHeader title="My Classes" />
               <CardBody>
-                <div className="space-y-3">
+                <div className="overflow-hidden rounded-lg border border-gray-200 divide-y divide-gray-200">
                   {classes.filter(cls => cls.is_active).slice(0, 3).map(cls => (
                     <Link
                       key={cls.id}
                       to={`classes/${cls.id}`}
-                      className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                      className="flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition-colors"
                     >
                       <div className="flex items-center space-x-4">
                         <div className="w-10 h-10 bg-primary-50 rounded-lg flex items-center justify-center">
@@ -191,94 +309,6 @@ function DashboardOverview() {
             </Card>
           )}
 
-        </div>
-
-        <div className="md:border-l md:border-gray-300 md:pl-6 space-y-6">
-          {/* Password Reset Requests - link card */}
-          <Card>
-            <CardHeader
-              title={
-                <span className="flex items-center gap-2">
-                  Password Resets
-                  {pendingResetCount > 0 && (
-                    <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-warning-600 text-white text-xs font-bold">
-                      {pendingResetCount}
-                    </span>
-                  )}
-                </span>
-              }
-            />
-            <CardBody>
-              {pendingResetCount > 0 ? (
-                <p className="text-sm text-gray-600 mb-3">
-                  You have <span className="font-semibold text-warning-600">{pendingResetCount}</span> student password reset request{pendingResetCount !== 1 ? 's' : ''} waiting for your approval.
-                </p>
-              ) : (
-                <p className="text-sm text-gray-500 mb-3">No pending password reset requests.</p>
-              )}
-              <Link
-                to="password-resets"
-                className="inline-flex items-center px-4 py-2 text-sm font-semibold bg-warning-50 text-warning-700 border border-warning-200 rounded-lg hover:bg-warning-100 transition-colors"
-              >
-                Manage Requests
-              </Link>
-            </CardBody>
-          </Card>
-
-          <Card className="h-fit">
-            <CardHeader title="Notifications" />
-            <CardBody>
-              <BackendDashboardNotifications
-                emptyMessage="No new notifications."
-              />
-            </CardBody>
-          </Card>
-
-          <Card className="h-fit">
-            <CardHeader title="Quick Actions" />
-            <CardBody>
-              <div className="space-y-2">
-                <Link
-                  to="attendance"
-                  className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-200 transition-colors p-3"
-                >
-                  <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
-                    <ClipboardCheck className="h-5 w-5 text-primary-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">Take Attendance</h3>
-                    <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">Check and update today's attendance.</p>
-                  </div>
-                </Link>
-
-                <Link
-                  to="login-history"
-                  className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-200 transition-colors p-3"
-                >
-                  <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
-                    <Clock className="h-5 w-5 text-primary-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">View Login History</h3>
-                    <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">Review your login and logout records.</p>
-                  </div>
-                </Link>
-
-                <Link
-                  to="class-management"
-                  className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-primary-200 transition-colors p-3"
-                >
-                  <div className="hidden flex-shrink-0 w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center">
-                    <Library className="h-5 w-5 text-primary-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-semibold text-gray-900 leading-tight break-words">Manage Classes</h3>
-                    <p className="hidden text-xs text-gray-500 mt-0.5 leading-snug break-words">View and manage your classes.</p>
-                  </div>
-                </Link>
-              </div>
-            </CardBody>
-          </Card>
         </div>
       </div>
 

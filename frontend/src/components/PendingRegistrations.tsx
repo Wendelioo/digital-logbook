@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { CheckCircle, XCircle, User, Mail, Phone, Calendar, History, Search, Filter, X, ChevronDown } from 'lucide-react';
+import { CheckCircle, XCircle, User, Mail, Phone, Calendar, History, Search, Filter, X, ChevronDown, RefreshCw } from 'lucide-react';
 import { GetPendingRegistrations, ProcessRegistration, GetRegistrationHistory } from '../../wailsjs/go/backend/App';
 import Button from '../components/Button';
 import { Card } from '../components/Card';
@@ -250,8 +250,9 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
           </Button>
           <button
             onClick={() => { loadRegistrations(); loadHistory(); }}
-            className="px-4 py-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
           >
+            <RefreshCw className="h-4 w-4" />
             Refresh
           </button>
         </div>
@@ -386,11 +387,16 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
                 >
                   <Filter className="h-4 w-4" />
                   <span>Filter</span>
-                  {historyActiveFilterCount > 0 && (
-                    <span className="inline-flex items-center justify-center w-5 h-5 bg-primary-500 text-white rounded-full text-xs font-semibold">
-                      {historyActiveFilterCount}
-                    </span>
-                  )}
+                  <span
+                    className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs font-semibold transition-opacity ${
+                      historyActiveFilterCount > 0
+                        ? 'bg-primary-500 text-white opacity-100'
+                        : 'opacity-0'
+                    }`}
+                    aria-hidden={historyActiveFilterCount === 0}
+                  >
+                    {historyActiveFilterCount > 0 ? historyActiveFilterCount : '0'}
+                  </span>
                 </button>
                 {showHistoryFilterPanel && (
                   <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-xl z-30 overflow-hidden">

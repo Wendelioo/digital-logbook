@@ -10,6 +10,12 @@ export interface DashboardStats {
   teachers_logged_in: number;
   working_students_logged_in: number;
   today_logins: number;
+  today_teacher_logins: number;
+  today_admin_logins: number;
+  last_teacher_login_at?: string;
+  last_teacher_pc_number?: string;
+  last_admin_login_at?: string;
+  last_admin_pc_number?: string;
   today_new_users: number;
   pending_feedback: number;
 }
@@ -31,6 +37,7 @@ export interface User {
   // Activity tracking fields (populated by GetUsersByActivityStatus)
   last_login_at?: string;
   last_login_ago?: string;
+  currently_logged_in?: boolean;
   deactivated_at?: string;
   deleted_at?: string;
   activity_status?: string; // "active" | "archived" | "deactivated" | "deleted"
@@ -49,26 +56,6 @@ export interface LoginLog {
 
 // Use the generated Feedback model from main
 export type Feedback = backend.Feedback;
-
-// Archive sheet types
-export interface ArchivedLogSheet {
-  date: string;
-  total_logins: number;
-  student_count: number;
-  teacher_count: number;
-  admin_count: number;
-  working_student_count: number;
-  unique_pcs: number;
-}
-
-export interface ArchivedFeedbackSheet {
-  date: string;
-  total_reports: number;
-  good_count: number;
-  issue_count: number;
-  unique_pcs: number;
-  unique_students: number;
-}
 
 export interface Department {
   department_code: string;

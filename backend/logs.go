@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -13,8 +12,6 @@ import (
 // ==============================================================================
 // LOGIN LOG QUERIES
 // ==============================================================================
-
-const maxActiveLogEntries = 500
 
 // repairLogoutTimeWhenNewerLoginExists sets logout_time to the next session's login_time
 // for rows that are still open but the user logged in again later (e.g. PC shutdown without
@@ -28,73 +25,55 @@ func (a *App) repairLogoutTimeWhenNewerLoginExists(forUserID *int) error {
 	var err error
 	if forUserID != nil {
 		_, err = a.db.Exec(`
-;WITH ordered AS (
-  SELECT id,
-         LEAD(login_time) OVER (PARTITION BY user_id ORDER BY login_time ASC, id ASC) AS next_login
-  FROM log_entries
-  WHERE user_id = ?
-)
-UPDATE le
-SET le.logout_time = o.next_login
-FROM log_entries le
-INNER JOIN ordered o ON o.id = le.id
-WHERE le.logout_time IS NULL AND o.next_login IS NOT NULL
+UPDATE log_entries le
+INNER JOIN (
+	SELECT
+		le1.id,
+		(
+			SELECT le2.login_time
+			FROM log_entries le2
+			WHERE le2.user_id = le1.user_id
+				AND (
+					le2.login_time > le1.login_time
+					OR (le2.login_time = le1.login_time AND le2.id > le1.id)
+				)
+			ORDER BY le2.login_time ASC, le2.id ASC
+			LIMIT 1
+		) AS next_login
+	FROM log_entries le1
+	WHERE le1.user_id = ?
+) ordered ON ordered.id = le.id
+SET le.logout_time = ordered.next_login
+WHERE le.logout_time IS NULL
+	AND ordered.next_login IS NOT NULL
 `, *forUserID)
 	} else {
 		_, err = a.db.Exec(`
-;WITH ordered AS (
-  SELECT id,
-         LEAD(login_time) OVER (PARTITION BY user_id ORDER BY login_time ASC, id ASC) AS next_login
-  FROM log_entries
-)
-UPDATE le
-SET le.logout_time = o.next_login
-FROM log_entries le
-INNER JOIN ordered o ON o.id = le.id
-WHERE le.logout_time IS NULL AND o.next_login IS NOT NULL
+UPDATE log_entries le
+INNER JOIN (
+	SELECT
+		le1.id,
+		(
+			SELECT le2.login_time
+			FROM log_entries le2
+			WHERE le2.user_id = le1.user_id
+				AND (
+					le2.login_time > le1.login_time
+					OR (le2.login_time = le1.login_time AND le2.id > le1.id)
+				)
+			ORDER BY le2.login_time ASC, le2.id ASC
+			LIMIT 1
+		) AS next_login
+	FROM log_entries le1
+) ordered ON ordered.id = le.id
+SET le.logout_time = ordered.next_login
+WHERE le.logout_time IS NULL
+	AND ordered.next_login IS NOT NULL
 `)
 	}
 	if err != nil {
 		return fmt.Errorf("repair logout_time from next login: %w", err)
 	}
-	return nil
-}
-
-// autoArchiveLogsIfNeeded checks the number of non-archived log entries and,
-// if a configured limit is exceeded, automatically archives the oldest logs by date.
-func (a *App) autoArchiveLogsIfNeeded() error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	var activeCount int
-	if err := a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE is_archived = 0 OR is_archived IS NULL`).Scan(&activeCount); err != nil {
-		return fmt.Errorf("failed to count active log entries: %w", err)
-	}
-
-	if activeCount <= maxActiveLogEntries {
-		return nil
-	}
-
-	// Find the oldest login date that is still unarchived.
-	var oldestDate time.Time
-	err := a.db.QueryRow(`
-		SELECT MIN(CAST(login_time AS DATE)) 
-		FROM log_entries 
-		WHERE is_archived = 0 OR is_archived IS NULL`,
-	).Scan(&oldestDate)
-	if err != nil {
-		return fmt.Errorf("failed to find oldest log date: %w", err)
-	}
-
-	dateStr := oldestDate.Format("2006-01-02")
-	// Archive the oldest date worth of logs; this uses existing archival logic.
-	_, err = a.ArchiveLogsByDate(dateStr, 0)
-	if err != nil {
-		return fmt.Errorf("failed to auto-archive logs for date %s: %w", dateStr, err)
-	}
-
-	log.Printf("autoArchiveLogsIfNeeded archived logs for date %s to keep active log entries under limit", dateStr)
 	return nil
 }
 
@@ -114,16 +93,16 @@ func (a *App) GetArchivedLogs() ([]LoginLog, error) {
 			ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN s.last_name + ', ' + s.first_name +
-						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
+					THEN CONCAT(s.last_name, ', ', s.first_name,
+                CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN t.last_name + ', ' + t.first_name +
-						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
+					THEN CONCAT(t.last_name, ', ', t.first_name,
+                CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN a.last_name IS NOT NULL AND a.first_name IS NOT NULL
-					THEN a.last_name + ', ' + a.first_name +
-						CASE WHEN a.middle_name IS NOT NULL THEN ' ' + a.middle_name ELSE '' END
+					THEN CONCAT(a.last_name, ', ', a.first_name,
+                CASE WHEN a.middle_name IS NOT NULL THEN CONCAT(' ', a.middle_name) ELSE '' END)
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -163,12 +142,12 @@ func (a *App) GetArchivedLogs() ([]LoginLog, error) {
 			continue
 		}
 
-		logEntry.LoginTime = loginTime.Format("2006-01-02 15:04:05")
+		logEntry.LoginTime = loginTime.Format("2006-01-02 3:04 PM")
 		if pcNumber.Valid {
 			logEntry.PCNumber = &pcNumber.String
 		}
 		if logoutTime.Valid {
-			formattedLogoutTime := logoutTime.Time.Format("2006-01-02 15:04:05")
+			formattedLogoutTime := logoutTime.Time.Format("2006-01-02 3:04 PM")
 			logEntry.LogoutTime = &formattedLogoutTime
 		}
 		if userIDNumber.Valid {
@@ -184,7 +163,7 @@ func (a *App) GetArchivedLogs() ([]LoginLog, error) {
 	return logs, nil
 }
 
-// GetAllLogs returns all non-archived login logs (limited to 1000 most recent)
+// GetAllLogs returns all login logs.
 func (a *App) GetAllLogs() ([]LoginLog, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
@@ -200,14 +179,8 @@ func (a *App) GetAllLogs() ([]LoginLog, error) {
 		log.Printf("Failed to repair logout_time before GetAllLogs: %v", err)
 	}
 
-	// Ensure we keep only the most recent maxActiveLogEntries as "active"
-	if err := a.autoArchiveLogsIfNeeded(); err != nil {
-		log.Printf("autoArchiveLogsIfNeeded failed: %v", err)
-	}
-
 	// Query log_entries directly with joins to ensure all logs are returned
-	// even if user profile data is missing
-	// Only returns non-archived logs (is_archived = 0 or NULL for backwards compatibility)
+	// even if user profile data is missing.
 	query := `
 		SELECT 
 			ll.id, 
@@ -218,16 +191,16 @@ func (a *App) GetAllLogs() ([]LoginLog, error) {
 			ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN s.last_name + ', ' + s.first_name +
-						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
+					THEN CONCAT(s.last_name, ', ', s.first_name,
+                CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN t.last_name + ', ' + t.first_name +
-						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
+					THEN CONCAT(t.last_name, ', ', t.first_name,
+                CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN a.last_name IS NOT NULL AND a.first_name IS NOT NULL
-					THEN a.last_name + ', ' + a.first_name +
-						CASE WHEN a.middle_name IS NOT NULL THEN ' ' + a.middle_name ELSE '' END
+					THEN CONCAT(a.last_name, ', ', a.first_name,
+                CASE WHEN a.middle_name IS NOT NULL THEN CONCAT(' ', a.middle_name) ELSE '' END)
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -242,7 +215,6 @@ func (a *App) GetAllLogs() ([]LoginLog, error) {
 		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
 		LEFT JOIN admins a ON u.id = a.id AND u.user_type = 'admin'
-		WHERE (ll.is_archived = 0 OR ll.is_archived IS NULL)
 		ORDER BY ll.login_time DESC
 	`
 	rows, err := a.db.Query(query)
@@ -266,7 +238,7 @@ func (a *App) GetAllLogs() ([]LoginLog, error) {
 			continue
 		}
 
-		logEntry.LoginTime = loginTime.Format("2006-01-02 15:04:05")
+		logEntry.LoginTime = loginTime.Format("2006-01-02 3:04 PM")
 		if pcNumber.Valid {
 			logEntry.PCNumber = &pcNumber.String
 		}
@@ -317,16 +289,16 @@ func (a *App) GetStudentLoginLogs(userID int) ([]LoginLog, error) {
 			ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN s.last_name + ', ' + s.first_name +
-						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
+					THEN CONCAT(s.last_name, ', ', s.first_name,
+                CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN t.last_name + ', ' + t.first_name +
-						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
+					THEN CONCAT(t.last_name, ', ', t.first_name,
+                CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN a.last_name IS NOT NULL AND a.first_name IS NOT NULL
-					THEN a.last_name + ', ' + a.first_name +
-						CASE WHEN a.middle_name IS NOT NULL THEN ' ' + a.middle_name ELSE '' END
+					THEN CONCAT(a.last_name, ', ', a.first_name,
+                CASE WHEN a.middle_name IS NOT NULL THEN CONCAT(' ', a.middle_name) ELSE '' END)
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -390,7 +362,7 @@ func (a *App) GetStudentLoginLogs(userID int) ([]LoginLog, error) {
 // LOGIN LOG RANGE EXPORT FUNCTIONS
 // ==============================================================================
 
-// GetLogsRangeCount returns the count of non-archived log entries within a date range.
+// GetLogsRangeCount returns the count of log entries within a date range.
 func (a *App) GetLogsRangeCount(startDate, endDate string) (int, error) {
 	if err := a.checkDB(); err != nil {
 		return 0, err
@@ -398,8 +370,7 @@ func (a *App) GetLogsRangeCount(startDate, endDate string) (int, error) {
 	var count int
 	err := a.db.QueryRow(`
 		SELECT COUNT(*) FROM log_entries
-		WHERE (is_archived = 0 OR is_archived IS NULL)
-		AND CAST(login_time AS DATE) BETWEEN ? AND ?`,
+		WHERE CAST(login_time AS DATE) BETWEEN ? AND ?`,
 		startDate, endDate,
 	).Scan(&count)
 	if err != nil {
@@ -408,7 +379,7 @@ func (a *App) GetLogsRangeCount(startDate, endDate string) (int, error) {
 	return count, nil
 }
 
-// getLogsByDateRange fetches non-archived log entries within a date range.
+// getLogsByDateRange fetches log entries within a date range.
 func (a *App) getLogsByDateRange(startDate, endDate string) ([]LoginLog, error) {
 	query := `
 		SELECT
@@ -417,16 +388,16 @@ func (a *App) getLogsByDateRange(startDate, endDate string) ([]LoginLog, error) 
 			ll.pc_number, ll.login_time, ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN s.last_name + ', ' + s.first_name +
-						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
+					THEN CONCAT(s.last_name, ', ', s.first_name,
+                CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN t.last_name + ', ' + t.first_name +
-						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
+					THEN CONCAT(t.last_name, ', ', t.first_name,
+                CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN adm.last_name IS NOT NULL AND adm.first_name IS NOT NULL
-					THEN adm.last_name + ', ' + adm.first_name +
-						CASE WHEN adm.middle_name IS NOT NULL THEN ' ' + adm.middle_name ELSE '' END
+					THEN CONCAT(adm.last_name, ', ', adm.first_name,
+                CASE WHEN adm.middle_name IS NOT NULL THEN CONCAT(' ', adm.middle_name) ELSE '' END)
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -436,8 +407,7 @@ func (a *App) getLogsByDateRange(startDate, endDate string) ([]LoginLog, error) 
 		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
 		LEFT JOIN admins adm ON u.id = adm.id AND u.user_type = 'admin'
-		WHERE (ll.is_archived = 0 OR ll.is_archived IS NULL)
-		AND CAST(ll.login_time AS DATE) BETWEEN ? AND ?
+		WHERE CAST(ll.login_time AS DATE) BETWEEN ? AND ?
 		ORDER BY ll.login_time DESC`
 
 	rows, err := a.db.Query(query, startDate, endDate)
@@ -462,7 +432,7 @@ func (a *App) getLogsByDateRange(startDate, endDate string) ([]LoginLog, error) 
 			logEntry.PCNumber = &pcNumber.String
 		}
 		if logoutTime.Valid {
-			s := logoutTime.Time.Format("2006-01-02 15:04:05")
+			s := logoutTime.Time.Format("2006-01-02 3:04 PM")
 			logEntry.LogoutTime = &s
 		}
 		if userIDNumber.Valid {
@@ -486,6 +456,9 @@ func parseLogExportTimestamp(value string) (time.Time, bool) {
 		"2006-01-02T15:04:05",
 		time.RFC3339,
 		"2006-01-02",
+		// Support 12-hour formats with AM/PM (with/without leading zero hour)
+		"2006-01-02 3:04 PM",
+		"2006-01-02 03:04 PM",
 	}
 
 	for _, format := range formats {
@@ -503,7 +476,8 @@ func formatLogExportDate(value string) string {
 	if !ok {
 		return value
 	}
-	return parsed.Format("01/02/2006")
+	// Use ISO-like date format to improve CSV/Excel compatibility
+	return parsed.Format("2006-01-02")
 }
 
 func formatLogExportDateTime(value string) string {
@@ -511,24 +485,8 @@ func formatLogExportDateTime(value string) string {
 	if !ok {
 		return value
 	}
-	return parsed.Format("01/02 3:04 PM")
-}
-
-func calculateLogExportDuration(loginTime string, logoutTime *string) string {
-	if logoutTime == nil || strings.TrimSpace(*logoutTime) == "" {
-		return ""
-	}
-
-	loginParsed, loginOK := parseLogExportTimestamp(loginTime)
-	logoutParsed, logoutOK := parseLogExportTimestamp(*logoutTime)
-	if !loginOK || !logoutOK || logoutParsed.Before(loginParsed) {
-		return ""
-	}
-
-	diff := logoutParsed.Sub(loginParsed)
-	hours := int(diff.Hours())
-	minutes := int(diff.Minutes()) % 60
-	return fmt.Sprintf("%dh %dm", hours, minutes)
+	// Use full date + 12-hour time with AM/PM for clearer export readability
+	return parsed.Format("2006-01-02 3:04 PM")
 }
 
 func buildActiveLogExportRows(logs []LoginLog) [][]string {
@@ -551,7 +509,6 @@ func buildActiveLogExportRows(logs []LoginLog) [][]string {
 			pc,
 			formatLogExportDateTime(entry.LoginTime),
 			logout,
-			calculateLogExportDuration(entry.LoginTime, entry.LogoutTime),
 		})
 	}
 	return rows
@@ -598,11 +555,11 @@ func buildActiveLogExportDocumentByCount(requestedCount int, logs []LoginLog) pr
 		Subtitle:         subtitle,
 		Details:          nil,
 		TableNote:        "",
-		Headers:          []string{"Name", "ID Number", "User Type", "PC Number", "Login Time", "Logout Time", "Duration"},
+		Headers:          []string{"Name", "ID Number", "User Type", "PC Number", "Login Time", "Logout Time"},
 		Rows:             rows,
-		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
-		ColumnWidths:     []float64{52, 28, 26, 24, 34, 34, 18},
-		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L", "L"},
+		Footer:           nil,
+		ColumnWidths:     []float64{52, 28, 26, 24, 34, 34},
+		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L"},
 		Orientation:      "P",
 		GeneratedAt:      time.Now(),
 	}
@@ -620,11 +577,11 @@ func buildActiveLogExportDocumentByRowRange(fromRow, toRow int, logs []LoginLog)
 		Subtitle:         subtitle,
 		Details:          nil,
 		TableNote:        "",
-		Headers:          []string{"Name", "ID Number", "User Type", "PC Number", "Login Time", "Logout Time", "Duration"},
+		Headers:          []string{"Name", "ID Number", "User Type", "PC Number", "Login Time", "Logout Time"},
 		Rows:             rows,
-		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
-		ColumnWidths:     []float64{52, 28, 26, 24, 34, 34, 18},
-		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L", "L"},
+		Footer:           nil,
+		ColumnWidths:     []float64{52, 28, 26, 24, 34, 34},
+		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L"},
 		Orientation:      "P",
 		GeneratedAt:      time.Now(),
 	}
@@ -637,23 +594,20 @@ func buildActiveLogExportDocument(startDate, endDate string, logs []LoginLog) pr
 		Subtitle:         fmt.Sprintf("Date Range: %s to %s", startDate, endDate),
 		Details:          nil,
 		TableNote:        "",
-		Headers:          []string{"Name", "ID Number", "User Type", "PC Number", "Login Time", "Logout Time", "Duration"},
+		Headers:          []string{"Name", "ID Number", "User Type", "PC Number", "Login Time", "Logout Time"},
 		Rows:             rows,
-		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
-		ColumnWidths:     []float64{52, 28, 26, 24, 34, 34, 18},
-		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L", "L"},
+		Footer:           nil,
+		ColumnWidths:     []float64{52, 28, 26, 24, 34, 34},
+		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L"},
 		Orientation:      "P",
 		GeneratedAt:      time.Now(),
 	}
 }
 
-// getLogsByCount fetches the latest non-archived log entries, limited by count.
+// getLogsByCount fetches the latest log entries, limited by count.
 func (a *App) getLogsByCount(count int) ([]LoginLog, error) {
 	if count <= 0 {
 		return nil, fmt.Errorf("count must be greater than zero")
-	}
-	if count > maxActiveLogEntries {
-		return nil, fmt.Errorf("count cannot exceed %d", maxActiveLogEntries)
 	}
 
 	query := `
@@ -663,16 +617,16 @@ func (a *App) getLogsByCount(count int) ([]LoginLog, error) {
 			ll.pc_number, ll.login_time, ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN s.last_name + ', ' + s.first_name +
-						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
+					THEN CONCAT(s.last_name, ', ', s.first_name,
+                CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN t.last_name + ', ' + t.first_name +
-						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
+					THEN CONCAT(t.last_name, ', ', t.first_name,
+                CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN adm.last_name IS NOT NULL AND adm.first_name IS NOT NULL
-					THEN adm.last_name + ', ' + adm.first_name +
-						CASE WHEN adm.middle_name IS NOT NULL THEN ' ' + adm.middle_name ELSE '' END
+					THEN CONCAT(adm.last_name, ', ', adm.first_name,
+                CASE WHEN adm.middle_name IS NOT NULL THEN CONCAT(' ', adm.middle_name) ELSE '' END)
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -682,9 +636,8 @@ func (a *App) getLogsByCount(count int) ([]LoginLog, error) {
 		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
 		LEFT JOIN admins adm ON u.id = adm.id AND u.user_type = 'admin'
-		WHERE (ll.is_archived = 0 OR ll.is_archived IS NULL)
 		ORDER BY ll.login_time DESC
-		OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY`
+		LIMIT ?`
 
 	rows, err := a.db.Query(query, count)
 	if err != nil {
@@ -703,12 +656,12 @@ func (a *App) getLogsByCount(count int) ([]LoginLog, error) {
 		if err := rows.Scan(&logEntry.ID, &logEntry.UserID, &logEntry.UserType, &pcNumber, &loginTime, &logoutTime, &logEntry.UserName, &userIDNumber); err != nil {
 			continue
 		}
-		logEntry.LoginTime = loginTime.Format("2006-01-02 15:04:05")
+		logEntry.LoginTime = loginTime.Format("2006-01-02 3:04 PM")
 		if pcNumber.Valid {
 			logEntry.PCNumber = &pcNumber.String
 		}
 		if logoutTime.Valid {
-			s := logoutTime.Time.Format("2006-01-02 15:04:05")
+			s := logoutTime.Time.Format("2006-01-02 3:04 PM")
 			logEntry.LogoutTime = &s
 		}
 		if userIDNumber.Valid {
@@ -721,16 +674,13 @@ func (a *App) getLogsByCount(count int) ([]LoginLog, error) {
 	return logs, nil
 }
 
-// getLogsByRowRange fetches latest non-archived log entries from a 1-based row range.
+// getLogsByRowRange fetches latest log entries from a 1-based row range.
 func (a *App) getLogsByRowRange(fromRow, toRow int) ([]LoginLog, error) {
 	if fromRow <= 0 || toRow <= 0 {
 		return nil, fmt.Errorf("row range must be greater than zero")
 	}
 	if fromRow > toRow {
 		return nil, fmt.Errorf("from row cannot be greater than to row")
-	}
-	if toRow > maxActiveLogEntries {
-		return nil, fmt.Errorf("to row cannot exceed %d", maxActiveLogEntries)
 	}
 
 	offset := fromRow - 1
@@ -743,16 +693,16 @@ func (a *App) getLogsByRowRange(fromRow, toRow int) ([]LoginLog, error) {
 			ll.pc_number, ll.login_time, ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN s.last_name + ', ' + s.first_name +
-						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
+					THEN CONCAT(s.last_name, ', ', s.first_name,
+                CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN t.last_name + ', ' + t.first_name +
-						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
+					THEN CONCAT(t.last_name, ', ', t.first_name,
+                CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN adm.last_name IS NOT NULL AND adm.first_name IS NOT NULL
-					THEN adm.last_name + ', ' + adm.first_name +
-						CASE WHEN adm.middle_name IS NOT NULL THEN ' ' + adm.middle_name ELSE '' END
+					THEN CONCAT(adm.last_name, ', ', adm.first_name,
+                CASE WHEN adm.middle_name IS NOT NULL THEN CONCAT(' ', adm.middle_name) ELSE '' END)
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -762,11 +712,10 @@ func (a *App) getLogsByRowRange(fromRow, toRow int) ([]LoginLog, error) {
 		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
 		LEFT JOIN admins adm ON u.id = adm.id AND u.user_type = 'admin'
-		WHERE (ll.is_archived = 0 OR ll.is_archived IS NULL)
 		ORDER BY ll.login_time DESC
-		OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`
+		LIMIT ? OFFSET ?`
 
-	rows, err := a.db.Query(query, offset, count)
+	rows, err := a.db.Query(query, count, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query logs by row range: %w", err)
 	}
@@ -801,7 +750,7 @@ func (a *App) getLogsByRowRange(fromRow, toRow int) ([]LoginLog, error) {
 	return logs, nil
 }
 
-// ExportLogsCSVByRowRange exports non-archived log entries within a row range to CSV.
+// ExportLogsCSVByRowRange exports log entries within a row range to CSV.
 func (a *App) ExportLogsCSVByRowRange(fromRow, toRow int, savePath string) (string, error) {
 	if err := a.checkDB(); err != nil {
 		return "", err
@@ -821,7 +770,7 @@ func (a *App) ExportLogsCSVByRowRange(fromRow, toRow int, savePath string) (stri
 	return filename, nil
 }
 
-// ExportLogsPDFByRowRange exports non-archived log entries within a row range to PDF.
+// ExportLogsPDFByRowRange exports log entries within a row range to PDF.
 func (a *App) ExportLogsPDFByRowRange(fromRow, toRow int, savePath string) (string, error) {
 	if err := a.checkDB(); err != nil {
 		return "", err
@@ -840,7 +789,7 @@ func (a *App) ExportLogsPDFByRowRange(fromRow, toRow int, savePath string) (stri
 	return filename, nil
 }
 
-// ExportLogsDOCXByRowRange exports non-archived log entries within a row range to DOCX.
+// ExportLogsDOCXByRowRange exports log entries within a row range to DOCX.
 func (a *App) ExportLogsDOCXByRowRange(fromRow, toRow int, savePath string) (string, error) {
 	if err := a.checkDB(); err != nil {
 		return "", err
@@ -865,7 +814,7 @@ func (a *App) ExportLogsDOCXByRowRange(fromRow, toRow int, savePath string) (str
 	return filename, nil
 }
 
-// ExportLogsCSVByCount exports the latest non-archived log entries to CSV.
+// ExportLogsCSVByCount exports the latest log entries to CSV.
 // If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
 func (a *App) ExportLogsCSVByCount(count int, savePath string) (string, error) {
 	if err := a.checkDB(); err != nil {
@@ -886,7 +835,7 @@ func (a *App) ExportLogsCSVByCount(count int, savePath string) (string, error) {
 	return filename, nil
 }
 
-// ExportLogsPDFByCount exports the latest non-archived log entries to PDF.
+// ExportLogsPDFByCount exports the latest log entries to PDF.
 // If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
 func (a *App) ExportLogsPDFByCount(count int, savePath string) (string, error) {
 	if err := a.checkDB(); err != nil {
@@ -906,7 +855,7 @@ func (a *App) ExportLogsPDFByCount(count int, savePath string) (string, error) {
 	return filename, nil
 }
 
-// ExportLogsDOCXByCount exports the latest non-archived log entries to DOCX.
+// ExportLogsDOCXByCount exports the latest log entries to DOCX.
 // If savePath is non-empty, the file is saved there; otherwise it is saved to the user's Downloads folder.
 func (a *App) ExportLogsDOCXByCount(count int, savePath string) (string, error) {
 	if err := a.checkDB(); err != nil {
@@ -941,7 +890,7 @@ func buildArchivedLogExportDocument(date string, logs []LoginLog) printableExpor
 		TableNote:        "",
 		Headers:          []string{"Date", "Name", "ID Number", "User Type", "PC", "Login", "Logout"},
 		Rows:             rows,
-		Footer:           []printableExportField{{Label: "Total Records", Value: strconv.Itoa(len(rows))}},
+		Footer:           nil,
 		ColumnWidths:     []float64{24, 48, 28, 24, 20, 32, 32},
 		ColumnAlignments: []string{"L", "L", "L", "L", "L", "L", "L"},
 		Orientation:      "P",
@@ -1036,16 +985,16 @@ func (a *App) GetArchivedLogsByDate(date string) ([]LoginLog, error) {
 			ll.logout_time,
 			COALESCE(
 				CASE WHEN s.last_name IS NOT NULL AND s.first_name IS NOT NULL
-					THEN s.last_name + ', ' + s.first_name +
-						CASE WHEN s.middle_name IS NOT NULL THEN ' ' + s.middle_name ELSE '' END
+					THEN CONCAT(s.last_name, ', ', s.first_name,
+                CASE WHEN s.middle_name IS NOT NULL THEN CONCAT(' ', s.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN t.last_name IS NOT NULL AND t.first_name IS NOT NULL
-					THEN t.last_name + ', ' + t.first_name +
-						CASE WHEN t.middle_name IS NOT NULL THEN ' ' + t.middle_name ELSE '' END
+					THEN CONCAT(t.last_name, ', ', t.first_name,
+                CASE WHEN t.middle_name IS NOT NULL THEN CONCAT(' ', t.middle_name) ELSE '' END)
 					ELSE NULL END,
 				CASE WHEN ad.last_name IS NOT NULL AND ad.first_name IS NOT NULL
-					THEN ad.last_name + ', ' + ad.first_name +
-						CASE WHEN ad.middle_name IS NOT NULL THEN ' ' + ad.middle_name ELSE '' END
+					THEN CONCAT(ad.last_name, ', ', ad.first_name,
+                CASE WHEN ad.middle_name IS NOT NULL THEN CONCAT(' ', ad.middle_name) ELSE '' END)
 					ELSE NULL END,
 				u.username
 			) as full_name,
@@ -1114,7 +1063,7 @@ func (a *App) ArchiveLogsByDate(date string, adminUserID int) (int, error) {
 
 	query := `UPDATE log_entries 
 		SET is_archived = 1, 
-		    archived_at = GETDATE(), 
+		    archived_at = NOW(), 
 		    archived_by_user_id = ?
 		WHERE CAST(login_time AS DATE) = ? AND (is_archived = 0 OR is_archived IS NULL)`
 
@@ -1235,7 +1184,7 @@ func (a *App) ArchiveLogs(logIDs []int, adminUserID int) (int, error) {
 
 	query := fmt.Sprintf(`UPDATE log_entries 
 		SET is_archived = 1, 
-		    archived_at = GETDATE(), 
+		    archived_at = NOW(), 
 		    archived_by_user_id = ?
 		WHERE id IN (%s) AND is_archived = 0`, strings.Join(placeholders, ","))
 
@@ -1253,3 +1202,6 @@ func (a *App) ArchiveLogs(logIDs []int, adminUserID int) (int, error) {
 	log.Printf("%d login logs archived by admin %d", rowsAffected, adminUserID)
 	return int(rowsAffected), nil
 }
+
+
+

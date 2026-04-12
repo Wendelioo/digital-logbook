@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Button from '../../components/Button';
+import Modal from '../../components/Modal';
 import TeacherStoredArchiveModal from '../../components/TeacherStoredArchiveModal';
 import LoadingDots from '../../components/LoadingDots';
 import { ArchiveIcon } from '../../components/icons/ArchiveIcons';
@@ -8,13 +9,9 @@ import {
   Eye,
   Edit,
   Plus,
-  AlertCircle,
   X,
   Filter,
-  FileText,
-  FileSpreadsheet,
-  Download,
-  FileType,
+  Printer,
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
@@ -26,6 +23,7 @@ import {
   ExportClasslistDOCX,
 } from '../../../wailsjs/go/backend/App';
 import { openExportSaveDialog, defaultClasslistFilename, type ExportFormat } from '../../utils/exportSaveDialog';
+import { getArchiveErrorMessage, getArchiveSuccessMessage } from '../../utils/archiveNotifications';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppUi } from '../../contexts/AppUiContext';
 import { Class } from './types';
@@ -34,7 +32,7 @@ function ClassManagement() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const { toast } = useAppUi();
+  const { toast, confirm } = useAppUi();
   const [classes, setClasses] = useState<Class[]>([]);
   const [filteredClasses, setFilteredClasses] = useState<Class[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +53,7 @@ function ClassManagement() {
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [exportToast, setExportToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [exportingId, setExportingId] = useState<number | null>(null);
-  const [openExportDropdown, setOpenExportDropdown] = useState<{ id: number; top: number; left: number } | null>(null);
+  const [openExportModal, setOpenExportModal] = useState<number | null>(null);
 
   const normalizeSemester = (value?: string | null): string => {
     if (!value) return '';
@@ -64,14 +62,6 @@ function ClassManagement() {
     if (normalized.includes('2nd') || normalized.includes('second') || normalized === '2') return '2';
     return normalized;
   };
-
-  // Close export dropdown on outside click
-  useEffect(() => {
-    if (!openExportDropdown) return;
-    const handle = () => setOpenExportDropdown(null);
-    window.addEventListener('click', handle);
-    return () => window.removeEventListener('click', handle);
-  }, [openExportDropdown]);
 
   useEffect(() => {
     const state = location.state as { openArchiveModal?: boolean; archiveTab?: 'attendance' | 'classes' } | null;
@@ -180,13 +170,23 @@ function ClassManagement() {
   };
 
   const handleArchiveClass = async (classId: number) => {
+    const targetClass = classes.find((cls) => cls.class_id === classId);
+    const label = targetClass?.subject_code || 'this class';
+    const ok = await confirm({
+      title: 'Archive class',
+      message: `Are you sure you want to archive this classlist (${label})?`,
+      variant: 'default',
+      confirmLabel: 'Archive',
+    });
+    if (!ok) return;
+
     try {
       await ArchiveClass(classId);
       await loadClasses();
-      toast('Class archived successfully!', 'success');
+      toast(getArchiveSuccessMessage('class', 'archive'), 'success');
     } catch (error) {
       console.error('Failed to archive class:', error);
-      toast('Failed to archive class. ' + (error instanceof Error ? error.message : 'Please try again.'), 'error');
+      toast(getArchiveErrorMessage('class', 'archive', error), 'error');
     }
   };
 
@@ -198,18 +198,15 @@ function ClassManagement() {
   const handleExportClasslist = async (classId: number, format: ExportFormat) => {
     setExportingId(classId);
     try {
-      const ext = format;
-      const savePath = await openExportSaveDialog('Save classlist', defaultClasslistFilename(ext), format);
-      if (!savePath) {
-        setExportingId(null);
-        return;
-      }
-      const filename = format === 'csv'
-        ? await ExportClasslistCSV(classId, savePath)
-        : format === 'pdf'
-          ? await ExportClasslistPDF(classId, savePath)
-          : await ExportClasslistDOCX(classId, savePath);
-      showExportToast('success', `Saved: ${filename.split(/[\\/]/).pop()}`);
+      const savePath = await openExportSaveDialog('Save classlist', defaultClasslistFilename(format), format);
+      if (!savePath) return;
+
+      let filePath = '';
+      if (format === 'csv') filePath = await ExportClasslistCSV(classId, savePath);
+      else if (format === 'pdf') filePath = await ExportClasslistPDF(classId, savePath);
+      else filePath = await ExportClasslistDOCX(classId, savePath);
+
+      showExportToast('success', `Saved: ${filePath.split(/[\\/]/).pop()}`);
     } catch (err) {
       showExportToast('error', 'Export failed. Please try again.');
     } finally {
@@ -243,7 +240,7 @@ function ClassManagement() {
     (schoolYearFilter !== 'all' ? 1 : 0);
 
   return (
-    <div className="flex flex-col min-w-0">
+    <div className="flex flex-col min-w-0 min-h-0 overflow-x-hidden">
       {/* Export Toast */}
       {exportToast && (
         <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border ${
@@ -252,36 +249,6 @@ function ClassManagement() {
             : 'bg-red-50 border-red-200 text-red-800'
         }`}>
           <span className="font-medium">{exportToast.message}</span>
-        </div>
-      )}
-      {/* Fixed export dropdown (outside any overflow container) */}
-      {openExportDropdown && (
-        <div
-          style={{ position: 'fixed', top: openExportDropdown.top, left: openExportDropdown.left, zIndex: 9999 }}
-          className="w-44 bg-white border border-gray-200 rounded-lg shadow-xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            onClick={() => { setOpenExportDropdown(null); handleExportClasslist(openExportDropdown.id, 'csv'); }}
-            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-t-lg"
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
-            Export CSV
-          </button>
-          <button
-            onClick={() => { setOpenExportDropdown(null); handleExportClasslist(openExportDropdown.id, 'pdf'); }}
-            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
-          >
-            <FileText className="h-3.5 w-3.5 text-rose-600" />
-            Export PDF
-          </button>
-          <button
-            onClick={() => { setOpenExportDropdown(null); handleExportClasslist(openExportDropdown.id, 'docx'); }}
-            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-b-lg"
-          >
-            <FileType className="h-3.5 w-3.5 text-blue-600" />
-            Export DOCX
-          </button>
         </div>
       )}
       {/* Header Section */}
@@ -303,7 +270,7 @@ function ClassManagement() {
               size="sm"
               icon={<Plus className="h-4 w-4" />}
             >
-              ADD NEW
+              ADD CLASS
             </Button>
           </div>
         </div>
@@ -335,12 +302,12 @@ function ClassManagement() {
             </select>
             <span className="text-sm text-gray-700">entries</span>
           </div>
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto min-w-0">
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-72 max-w-full px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full sm:w-72 max-w-full px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Search..."
             />
             {/* Filter toggle button */}
@@ -375,18 +342,6 @@ function ClassManagement() {
                   <div className="p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-semibold text-gray-800">Filters</span>
-                      {activeFilterCount > 0 && (
-                        <button
-                          onClick={() => {
-                            setStatusFilter('all');
-                            setSemesterFilter('all');
-                            setSchoolYearFilter('all');
-                          }}
-                          className="text-xs text-primary-600 hover:underline"
-                        >
-                          Clear all
-                        </button>
-                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
@@ -469,27 +424,28 @@ function ClassManagement() {
       </div>
 
       {/* Table Section */}
-      <div className="flex-1 min-w-0 overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+      <div className="flex-1 min-w-0 overflow-auto">
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          <table className="w-full divide-y divide-gray-200" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+          <div className="overflow-x-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <table className="min-w-full w-full table-fixed divide-y divide-gray-200">
             <thead className="bg-gray-50 sticky top-0 z-10">
               <tr>
-                <th scope="col" className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '84px' }}>
+                <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[14%] sm:w-auto">
                   EDP Code
                 </th>
-                <th scope="col" className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '96px' }}>
+                <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[16%] sm:w-auto">
                   Subject Code
                 </th>
-                <th scope="col" className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '150px' }}>
+                <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[30%] sm:w-auto">
                   Descriptive Title
                 </th>
-                <th scope="col" className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '120px' }}>
+                <th scope="col" className="hidden sm:table-cell px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[18%] sm:w-auto">
                   Schedule
                 </th>
-                <th scope="col" className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '96px' }}>
+                <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[16%] sm:w-auto">
                   Status
                 </th>
-                <th scope="col" className="px-3 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap" style={{ minWidth: '104px' }}>
+                <th scope="col" className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[24%] sm:w-auto">
                   Action
                 </th>
               </tr>
@@ -499,19 +455,19 @@ function ClassManagement() {
                 const status = getClassStatusBadge(cls);
                 return (
                   <tr key={cls.class_id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
+                    <td className="px-2 sm:px-6 py-4 whitespace-normal break-words text-xs sm:text-sm text-gray-900 align-top">
                       {cls.edp_code || '-'}
                     </td>
-                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">
+                    <td className="px-2 sm:px-6 py-4 whitespace-normal break-words text-xs sm:text-sm text-gray-900 align-top">
                       {cls.subject_code || '-'}
                     </td>
-                    <td className="px-3 sm:px-6 py-4 whitespace-normal break-words text-xs sm:text-sm text-gray-900">
+                    <td className="px-2 sm:px-6 py-4 whitespace-normal break-words text-xs sm:text-sm text-gray-900 align-top">
                       {cls.descriptive_title || '-'}
                     </td>
-                    <td className="px-3 sm:px-6 py-4 whitespace-normal break-words text-xs sm:text-sm text-gray-900">
+                    <td className="hidden sm:table-cell px-3 sm:px-6 py-4 whitespace-normal break-words text-xs sm:text-sm text-gray-900 align-top">
                       {cls.schedule || '-'}
                     </td>
-                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-xs sm:text-sm">
+                    <td className="px-2 sm:px-6 py-4 whitespace-normal text-xs sm:text-sm align-top">
                       {cls.is_archived ? (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
                           Archived
@@ -520,7 +476,7 @@ function ClassManagement() {
                         <select
                           value={cls.is_active ? 'active' : 'inactive'}
                           onChange={(e) => handleStatusChange(cls.class_id, cls.is_active, e.target.value === 'active')}
-                          className={`px-2 py-1 border rounded-md text-xs font-medium focus:outline-none focus:ring-2 ${
+                          className={`w-full min-w-[84px] px-2 py-1 border rounded-md text-xs font-medium focus:outline-none focus:ring-2 ${
                             cls.is_active 
                               ? 'bg-green-50 text-green-700 border-green-200 focus:ring-green-500'
                               : 'bg-red-50 text-red-700 border-red-200 focus:ring-red-500'
@@ -532,8 +488,8 @@ function ClassManagement() {
                         </select>
                       )}
                     </td>
-                    <td className="px-3 sm:px-6 py-4 text-sm font-medium">
-                      <div className="flex items-center gap-1.5 sm:gap-2 whitespace-nowrap">
+                    <td className="px-2 sm:px-6 py-4 text-sm font-medium align-top">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                         <Button
                           onClick={() => handleViewClassList(cls.class_id)}
                           variant="outline"
@@ -565,19 +521,11 @@ function ClassManagement() {
                         )}
                         {/* Export dropdown */}
                         <Button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                            setOpenExportDropdown(
-                              openExportDropdown?.id === cls.class_id
-                                ? null
-                                : { id: cls.class_id, top: rect.bottom + 4, left: rect.right - 176 }
-                            );
-                          }}
+                          onClick={() => setOpenExportModal(cls.class_id)}
                           variant="outline"
                           size="xs"
                           className="text-gray-600 hover:bg-gray-100"
-                          icon={<Download className="h-3 w-3" />}
+                          icon={<Printer className="h-3 w-3" />}
                           title="Export"
                           disabled={exportingId === cls.class_id}
                         />
@@ -587,7 +535,8 @@ function ClassManagement() {
                 );
               })}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -658,18 +607,9 @@ function ClassManagement() {
           <div className="modal-surface w-full max-w-md mx-2 sm:mx-4 p-4 sm:p-6 max-h-[calc(100vh-2rem)] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                  selectedClassForStatus.newStatus ? 'bg-green-100' : 'bg-red-100'
-                }`}>
-                  <AlertCircle className={`h-6 w-6 ${
-                    selectedClassForStatus.newStatus ? 'text-green-600' : 'text-red-600'
-                  }`} />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Change Class Status
-                </h3>
-              </div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Change Class Status
+              </h3>
               <button
                 onClick={() => {
                   setShowStatusModal(false);
@@ -685,30 +625,26 @@ function ClassManagement() {
             <div className="mb-6">
               {selectedClassForStatus.newStatus ? (
                 <>
-                  <p className="text-gray-700 mb-3">
-                    You are about to <strong className="text-green-600">activate</strong> this class.
+                  <p className="text-sm text-gray-700 mb-3">
+                    This class will be set to <span className="font-semibold text-green-700">active</span>.
                   </p>
                   <div className="bg-green-50 border border-green-200 rounded-md p-3">
-                    <h4 className="font-semibold text-green-800 mb-2">Changes when activated:</h4>
-                    <ul className="text-sm text-green-700 space-y-1 list-disc list-inside">
-                      <li>Students can enroll in this class</li>
-                      <li>You can create and edit attendance</li>
-                      <li>Class will accept new activities</li>
+                    <ul className="text-sm text-green-800 space-y-1 list-disc list-inside">
+                      <li>Students can enroll.</li>
+                      <li>You can create and edit attendance.</li>
                     </ul>
                   </div>
                 </>
               ) : (
                 <>
-                  <p className="text-gray-700 mb-3">
-                    You are about to <strong className="text-red-600">deactivate</strong> this class.
+                  <p className="text-sm text-gray-700 mb-3">
+                    This class will be set to <span className="font-semibold text-red-700">inactive</span>.
                   </p>
                   <div className="bg-red-50 border border-red-200 rounded-md p-3">
-                    <h4 className="font-semibold text-red-800 mb-2">Restrictions when inactive:</h4>
-                    <ul className="text-sm text-red-700 space-y-1 list-disc list-inside">
-                      <li>Students <strong>cannot enroll</strong> in this class</li>
-                      <li>New attendance sheets <strong>cannot be created</strong></li>
-                      <li>Existing data remains viewable but not editable</li>
-                      <li>You can <strong>archive</strong> this class when inactive</li>
+                    <ul className="text-sm text-red-800 space-y-1 list-disc list-inside">
+                      <li>New student enrollment is disabled.</li>
+                      <li>New attendance sheets cannot be created.</li>
+                      <li>Existing records remain available for viewing.</li>
                     </ul>
                   </div>
                 </>
@@ -748,6 +684,52 @@ function ClassManagement() {
         initialTab="classes"
         onClassUnarchived={loadClasses}
       />
+
+      <Modal
+        isOpen={openExportModal !== null}
+        onClose={() => setOpenExportModal(null)}
+        title="Export Classlist"
+        size="sm"
+      >
+        <div className="space-y-3">
+          <Button
+            variant="outline"
+            className="w-full justify-center"
+            onClick={() => {
+              if (openExportModal === null) return;
+              const classID = openExportModal;
+              setOpenExportModal(null);
+              handleExportClasslist(classID, 'csv');
+            }}
+          >
+            CSV
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full justify-center"
+            onClick={() => {
+              if (openExportModal === null) return;
+              const classID = openExportModal;
+              setOpenExportModal(null);
+              handleExportClasslist(classID, 'pdf');
+            }}
+          >
+            PDF
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full justify-center"
+            onClick={() => {
+              if (openExportModal === null) return;
+              const classID = openExportModal;
+              setOpenExportModal(null);
+              handleExportClasslist(classID, 'docx');
+            }}
+          >
+            DOCX
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

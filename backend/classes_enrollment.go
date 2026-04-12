@@ -26,7 +26,7 @@ func (a *App) GetAllStudentsForEnrollment(classID int) ([]ClassStudent, error) {
 			CASE WHEN EXISTS(
 				SELECT 1 FROM classlist cl 
 				WHERE cl.student_id = s.id AND cl.class_id = ? AND cl.status = 'active' AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
-			) THEN CAST(1 AS BIT) ELSE CAST(0 AS BIT) END as is_enrolled
+			) THEN 1 ELSE 0 END as is_enrolled
 		FROM students s
 		ORDER BY last_name, first_name
 	`
@@ -76,14 +76,12 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 	}
 
 	query := `
-		MERGE classlist AS target
-		USING (SELECT ? AS class_id, ? AS student_id, CAST(GETDATE() AS DATE) AS enrollment_date, 'active' AS status, 0 AS is_archived) AS source
-		ON target.class_id = source.class_id AND target.student_id = source.student_id
-		WHEN MATCHED THEN
-			UPDATE SET status = 'active', is_archived = 0, updated_at = CURRENT_TIMESTAMP
-		WHEN NOT MATCHED THEN
-			INSERT (class_id, student_id, enrollment_date, status, is_archived)
-			VALUES (source.class_id, source.student_id, source.enrollment_date, source.status, source.is_archived);
+		INSERT INTO classlist (class_id, student_id, enrollment_date, status, is_archived)
+		VALUES (?, ?, CURDATE(), 'active', 0)
+		ON DUPLICATE KEY UPDATE
+			status = 'active',
+			is_archived = 0,
+			updated_at = CURRENT_TIMESTAMP
 	`
 	_, err = a.db.Exec(query, classID, studentID)
 	if err != nil {
@@ -101,12 +99,8 @@ func (a *App) EnrollStudentInClass(studentID int, classID int, enrolledBy int) e
 	if err == nil && attendanceExists > 0 {
 		// Insert attendance record for this student with status='absent'
 		insertQuery := `
-			MERGE attendance AS target
-			USING (SELECT ? AS class_id, ? AS student_id, ? AS attendance_date, 'absent' AS status, 0 AS is_archived) AS source
-			ON target.class_id = source.class_id AND target.student_id = source.student_id AND target.attendance_date = source.attendance_date
-			WHEN NOT MATCHED THEN
-				INSERT (class_id, student_id, attendance_date, status, is_archived)
-				VALUES (source.class_id, source.student_id, source.attendance_date, source.status, source.is_archived);
+			INSERT IGNORE INTO attendance (class_id, student_id, attendance_date, status, is_archived)
+			VALUES (?, ?, ?, 'absent', 0)
 		`
 		_, err = a.db.Exec(insertQuery, classID, studentID, today)
 		if err != nil {
@@ -146,14 +140,12 @@ func (a *App) EnrollMultipleStudents(studentIDs []int, classID int, enrolledBy i
 	defer tx.Rollback()
 
 	stmt, err := tx.Prepare(`
-		MERGE classlist AS target
-		USING (SELECT ? AS class_id, ? AS student_id, CAST(GETDATE() AS DATE) AS enrollment_date, 'active' AS status, 0 AS is_archived) AS source
-		ON target.class_id = source.class_id AND target.student_id = source.student_id
-		WHEN MATCHED THEN
-			UPDATE SET status = 'active', is_archived = 0, updated_at = CURRENT_TIMESTAMP
-		WHEN NOT MATCHED THEN
-			INSERT (class_id, student_id, enrollment_date, status, is_archived)
-			VALUES (source.class_id, source.student_id, source.enrollment_date, source.status, source.is_archived);
+		INSERT INTO classlist (class_id, student_id, enrollment_date, status, is_archived)
+		VALUES (?, ?, CURDATE(), 'active', 0)
+		ON DUPLICATE KEY UPDATE
+			status = 'active',
+			is_archived = 0,
+			updated_at = CURRENT_TIMESTAMP
 	`)
 	if err != nil {
 		return err
@@ -218,7 +210,7 @@ func (a *App) GetClassesByEDPCode(edpCode string) ([]CourseClass, error) {
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, (t.last_name + ', ' + t.first_name) as teacher_name,
+			c.teacher_id, (CONCAT(t.last_name, ', ', t.first_name)) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.created_by_user_id, c.created_at
@@ -409,7 +401,7 @@ func (a *App) resolveDepartmentCode(value string) (string, error) {
 
 	var code sql.NullString
 	err := a.db.QueryRow(`
-		SELECT TOP 1 department_code
+		SELECT department_code
 		FROM departments
 		WHERE UPPER(LTRIM(RTRIM(department_code))) = UPPER(?)
 		   OR UPPER(LTRIM(RTRIM(department_name))) = UPPER(?)
@@ -438,41 +430,26 @@ func (a *App) ensureStudentArchivedClassesTable() error {
 	}
 
 	createQuery := `
-		IF OBJECT_ID('student_archived_classes', 'U') IS NULL
-		BEGIN
-			CREATE TABLE student_archived_classes (
-				student_id INT NOT NULL,
-				class_id INT NOT NULL,
-				archived_at DATETIME NOT NULL DEFAULT GETDATE(),
-				updated_at DATETIME NOT NULL DEFAULT GETDATE(),
-				CONSTRAINT PK_student_archived_classes PRIMARY KEY (student_id, class_id),
-				CONSTRAINT FK_student_archived_classes_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-				CONSTRAINT FK_student_archived_classes_class FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE
-			)
-		END
+		CREATE TABLE IF NOT EXISTS student_archived_classes (
+			student_id INT NOT NULL,
+			class_id INT NOT NULL,
+			archived_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			CONSTRAINT PK_student_archived_classes PRIMARY KEY (student_id, class_id),
+			CONSTRAINT FK_student_archived_classes_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+			CONSTRAINT FK_student_archived_classes_class FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE
+		)
 	`
 
 	if _, err := a.db.Exec(createQuery); err != nil {
 		return err
 	}
 
-	// Compatibility migration: if old table name exists, copy data once.
-	_, _ = a.db.Exec(`
-		IF OBJECT_ID('student_hidden_classes', 'U') IS NOT NULL
-		BEGIN
-			INSERT INTO student_archived_classes (student_id, class_id, archived_at, updated_at)
-			SELECT sh.student_id, sh.class_id, GETDATE(), GETDATE()
-			FROM student_hidden_classes sh
-			LEFT JOIN student_archived_classes sac ON sac.student_id = sh.student_id AND sac.class_id = sh.class_id
-			WHERE sac.student_id IS NULL
-		END
-	`)
-
 	// Legacy migration: old student personal archives were stored in classlist.is_archived.
 	// Move only ACTIVE (non-globally-archived) classes to personal archive table.
 	_, _ = a.db.Exec(`
 		INSERT INTO student_archived_classes (student_id, class_id, archived_at, updated_at)
-		SELECT cl.student_id, cl.class_id, GETDATE(), GETDATE()
+		SELECT cl.student_id, cl.class_id, NOW(), NOW()
 		FROM classlist cl
 		INNER JOIN classes c ON c.class_id = cl.class_id
 		LEFT JOIN student_archived_classes sac ON sac.student_id = cl.student_id AND sac.class_id = cl.class_id
@@ -483,11 +460,10 @@ func (a *App) ensureStudentArchivedClassesTable() error {
 	`)
 
 	_, _ = a.db.Exec(`
-		UPDATE cl
+		UPDATE classlist cl
+		INNER JOIN classes c ON c.class_id = cl.class_id
 		SET cl.is_archived = 0,
 			cl.updated_at = CURRENT_TIMESTAMP
-		FROM classlist cl
-		INNER JOIN classes c ON c.class_id = cl.class_id
 		WHERE cl.status = 'active'
 			AND COALESCE(cl.is_archived, 0) = 1
 			AND COALESCE(c.is_archived, 0) = 0
@@ -527,14 +503,9 @@ func (a *App) ArchiveStudentEnrollment(studentUserID int, classID int) error {
 	}
 
 	result, err := a.db.Exec(
-		`MERGE student_archived_classes AS target
-		 USING (SELECT ? AS student_id, ? AS class_id) AS source
-		 ON target.student_id = source.student_id AND target.class_id = source.class_id
-		 WHEN MATCHED THEN
-		 	UPDATE SET updated_at = GETDATE()
-		 WHEN NOT MATCHED THEN
-		 	INSERT (student_id, class_id, archived_at, updated_at)
-		 	VALUES (source.student_id, source.class_id, GETDATE(), GETDATE());`,
+		`INSERT INTO student_archived_classes (student_id, class_id, archived_at, updated_at)
+		 VALUES (?, ?, NOW(), NOW())
+		 ON DUPLICATE KEY UPDATE updated_at = NOW()`,
 		studentUserID, classID,
 	)
 	if err != nil {
@@ -604,7 +575,7 @@ func (a *App) buildClasslistPrintableDocument(classID int) (printableExportDocum
 			s.description,
 			c.schedule,
 			c.room,
-			(t.last_name + ', ' + t.first_name) as teacher_name,
+			(CONCAT(t.last_name, ', ', t.first_name)) as teacher_name,
 			c.semester,
 			c.school_year
 		FROM classes c
@@ -666,27 +637,27 @@ func (a *App) buildClasslistPrintableDocument(classID int) (printableExportDocum
 		students = append(students, s)
 	}
 
-	subjectNameValue := "N/A"
+	subjectNameValue := ""
 	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
 		subjectNameValue = subjectName.String
 	}
-	scheduleValue := "N/A"
+	scheduleValue := ""
 	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
 		scheduleValue = schedule.String
 	}
-	roomValue := "N/A"
+	roomValue := ""
 	if room.Valid && strings.TrimSpace(room.String) != "" {
 		roomValue = room.String
 	}
-	teacherValue := "N/A"
+	teacherValue := ""
 	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
 		teacherValue = teacherName.String
 	}
-	semesterValue := "N/A"
+	semesterValue := ""
 	if semester.Valid && strings.TrimSpace(semester.String) != "" {
 		semesterValue = semester.String
 	}
-	schoolYearValue := "N/A"
+	schoolYearValue := ""
 	if schoolYear.Valid && strings.TrimSpace(schoolYear.String) != "" {
 		schoolYearValue = schoolYear.String
 	}
@@ -726,10 +697,10 @@ func (a *App) buildClasslistPrintableDocument(classID int) (printableExportDocum
 			{Label: "Schedule", Value: scheduleValue},
 			{Label: "Room", Value: roomValue},
 		},
-		TableNote:        fmt.Sprintf("Total: %d", len(exportRows)),
+		TableNote:        "",
 		Headers:          []string{"NO.", "STUDENT ID", "NAME", "EMAIL", "CONTACT"},
 		Rows:             exportRows,
-		Footer:           []printableExportField{{Label: "Total Students", Value: fmt.Sprintf("%d", len(exportRows))}},
+		Footer:           nil,
 		ColumnWidths:     []float64{12, 28, 60, 55, 35},
 		ColumnAlignments: []string{"C", "L", "L", "L", "L"},
 		Orientation:      "P",
@@ -793,3 +764,5 @@ func (a *App) ExportClasslistDOCX(classID int, savePath string) (string, error) 
 	log.Printf("Classlist exported to DOCX: %s (%d students)", filename, studentCount)
 	return filename, nil
 }
+
+

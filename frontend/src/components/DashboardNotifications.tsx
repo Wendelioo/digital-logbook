@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bell } from 'lucide-react';
-import { useNotifications, type BackendNotification } from '../contexts/NotificationContext';
+import { useNotifications } from '../contexts/NotificationContext';
+import { Card, CardBody, CardHeader } from './Card';
 
 export interface DashboardNotificationItem {
   id: string;
@@ -14,6 +15,8 @@ interface DashboardNotificationsProps {
   items: DashboardNotificationItem[];
   emptyMessage: string;
 }
+
+const DEFAULT_VISIBLE_LIMIT = 5;
 
 function getRelativeTime(timestamp: number, now: number): string {
   const seconds = Math.max(0, Math.floor((now - timestamp) / 1000));
@@ -39,8 +42,6 @@ export default function DashboardNotifications({ items, emptyMessage }: Dashboar
     return () => clearInterval(timer);
   }, []);
 
-  const visibleItems = useMemo(() => items.slice(0, 5), [items]);
-
   const toneAccent = (tone?: DashboardNotificationItem['tone']) => {
     switch (tone) {
       case 'success':
@@ -55,7 +56,7 @@ export default function DashboardNotifications({ items, emptyMessage }: Dashboar
 
   return (
     <div className="space-y-3">
-      {visibleItems.length === 0 ? (
+      {items.length === 0 ? (
         <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
           <div className="flex items-center">
             <Bell className="h-5 w-5 text-primary-600 mr-3" />
@@ -64,7 +65,7 @@ export default function DashboardNotifications({ items, emptyMessage }: Dashboar
           <span className="text-xs text-gray-500">Now</span>
         </div>
       ) : (
-        visibleItems.map((item) => (
+        items.map((item) => (
           <div
             key={item.id}
             className={`flex items-start justify-between p-3 bg-white rounded-xl border border-gray-200 border-l-4 ${toneAccent(item.tone)} shadow-sm`}
@@ -96,20 +97,69 @@ interface BackendDashboardNotificationsProps {
   emptyMessage: string;
 }
 
-export function BackendDashboardNotifications({ category, emptyMessage }: BackendDashboardNotificationsProps) {
+interface BackendDashboardNotificationsCardProps extends BackendDashboardNotificationsProps {
+  title?: string;
+  className?: string;
+}
+
+function useDashboardNotificationItems(category?: string): DashboardNotificationItem[] {
   const { notifications } = useNotifications();
 
   const filtered = category
     ? notifications.filter(n => n.category === category)
     : notifications;
 
-  const items: DashboardNotificationItem[] = filtered.map(n => ({
+  return filtered.map(n => ({
     id: String(n.id),
     title: n.title,
     message: n.message,
     createdAt: new Date(n.created_at).getTime(),
     tone: n.tone as DashboardNotificationItem['tone'],
   }));
+}
+
+export function BackendDashboardNotifications({ category, emptyMessage }: BackendDashboardNotificationsProps) {
+  const items = useDashboardNotificationItems(category);
 
   return <DashboardNotifications items={items} emptyMessage={emptyMessage} />;
+}
+
+export function BackendDashboardNotificationsCard({
+  category,
+  emptyMessage,
+  title = 'Notifications',
+  className = 'h-full',
+}: BackendDashboardNotificationsCardProps) {
+  const items = useDashboardNotificationItems(category);
+  const [showAll, setShowAll] = useState(false);
+
+  useEffect(() => {
+    if (items.length <= DEFAULT_VISIBLE_LIMIT) {
+      setShowAll(false);
+    }
+  }, [items.length]);
+
+  const hasOverflow = items.length > DEFAULT_VISIBLE_LIMIT;
+  const hiddenCount = Math.max(0, items.length - DEFAULT_VISIBLE_LIMIT);
+  const visibleItems = showAll ? items : items.slice(0, DEFAULT_VISIBLE_LIMIT);
+
+  return (
+    <Card className={className}>
+      <CardHeader
+        title={title}
+        action={hasOverflow ? (
+          <button
+            type="button"
+            onClick={() => setShowAll(prev => !prev)}
+            className="text-xs font-medium text-primary-700 hover:text-primary-800 hover:underline"
+          >
+            {showAll ? 'Show less' : `Show all (${hiddenCount} more)`}
+          </button>
+        ) : undefined}
+      />
+      <CardBody>
+        <DashboardNotifications items={visibleItems} emptyMessage={emptyMessage} />
+      </CardBody>
+    </Card>
+  );
 }

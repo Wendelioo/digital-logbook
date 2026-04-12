@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Login, Logout, UnlockScreen, LockScreen, IsKioskMode } from '../../wailsjs/go/backend/App';
+import { Login, Logout, UnlockScreen, LockScreen } from '../../wailsjs/go/backend/App';
 import type { User } from '../types';
-import { useInactivityDetection, useWindowUnload } from '../hooks/useInactivity';
+import { useWindowUnload } from '../hooks/useInactivity';
 
 // Extend Window interface to include Wails runtime
 declare global {
@@ -103,7 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(parsedUser);
         setIsAuthenticated(true);
         setIsRememberedSession(true);
-        // If user session exists, unlock screen (kiosk mode - user was already logged in)
+        // If user session exists, unlock screen (lock mode - user was already logged in)
         UnlockScreen().catch(() => {});
       } catch (error) {
         console.error('Failed to parse saved user:', error);
@@ -128,11 +128,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       clearLocalSession();
 
-      // Lock screen in kiosk mode on auto-logout
+      // Lock screen in lock mode on auto-logout
       try {
         await LockScreen();
       } catch (e) {
-        // Silently ignore if not in kiosk mode
+        // Silently ignore if not in lock mode
       }
 
       logoutInProgressRef.current = false;
@@ -146,7 +146,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearLocalSession();
   }, [clearLocalSession]);
 
-  useInactivityDetection(handleAutoLogout, !!user);
   useWindowUnload(handleWindowClose, !!user);
 
   const login = async (username: string, password: string, rememberMe: boolean): Promise<User> => {
@@ -187,11 +186,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(REMEMBER_ME_KEY, String(rememberMe));
       window.dispatchEvent(new CustomEvent(AUTH_STATUS_CHANGED_EVENT));
 
-      // Unlock screen in kiosk mode so user can freely use Windows
+      // Unlock screen in lock mode so user can freely use Windows
       try {
         await UnlockScreen();
       } catch (e) {
-        // Silently ignore if not in kiosk mode
+        // Silently ignore if not in lock mode
       }
       
       return userData;
@@ -216,11 +215,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       clearLocalSession();
 
-      // Lock screen in kiosk mode so next user must login
+      // Lock screen in lock mode so next user must login
       try {
         await LockScreen();
       } catch (e) {
-        // Silently ignore if not in kiosk mode
+        // Silently ignore if not in lock mode
       }
 
       logoutInProgressRef.current = false;

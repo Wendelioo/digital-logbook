@@ -2,13 +2,11 @@ import React, { useState, useEffect } from 'react';
 import Button from '../../components/Button';
 import LoadingDots from '../../components/LoadingDots';
 import {
-  X,
+  CornerUpLeft,
   Search,
   Loader2,
   Eye,
-  Filter,
-  ChevronDown,
-  ChevronRight
+  Filter
 } from 'lucide-react';
 import { ArchiveIcon, ArchiveRestoreIcon } from '../../components/icons/ArchiveIcons';
 import {
@@ -18,7 +16,8 @@ import {
 } from '../../../wailsjs/go/backend/App';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppUi } from '../../contexts/AppUiContext';
-import { CourseClass, ClasslistEntry, SemesterGroup } from './types';
+import { getArchiveErrorMessage, getArchiveSuccessMessage } from '../../utils/archiveNotifications';
+import { CourseClass, ClasslistEntry } from './types';
 
 interface ArchivedClassesProps {
   hideHeader?: boolean;
@@ -31,13 +30,26 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
   const [archivedClasses, setArchivedClasses] = useState<CourseClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
-  const [expandedSemesters, setExpandedSemesters] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
-  const [semesterFilter, setSemesterFilter] = useState<string>('all');
+  const [teacherFilter, setTeacherFilter] = useState<string>('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [pendingTeacherFilter, setPendingTeacherFilter] = useState<string>('');
+  const [entriesPerPage, setEntriesPerPage] = useState<number>(10);
+  const [currentPage, setCurrentPage] = useState<number>(1);
   const [viewingClasslist, setViewingClasslist] = useState<CourseClass | null>(null);
   const [classlistStudents, setClasslistStudents] = useState<ClasslistEntry[]>([]);
   const [loadingClasslist, setLoadingClasslist] = useState(false);
-  const isSemesterFilterActive = semesterFilter !== 'all';
+
+  const activeFilterCount = [teacherFilter].filter(Boolean).length;
+
+  const teacherOptions = React.useMemo(
+    () => Array.from(new Set(archivedClasses.map(c => c.teacher_name).filter(Boolean))).sort(),
+    [archivedClasses]
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, teacherFilter, archivedClasses, entriesPerPage]);
 
   useEffect(() => {
     loadArchivedClasses();
@@ -50,13 +62,6 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
     try {
       const data = await GetStudentArchivedClasses(user.id);
       setArchivedClasses(data || []);
-      
-      // Auto-expand the first semester group
-      if (data && data.length > 0) {
-        const firstClass = data[0];
-        const key = `${firstClass.semester || 'Unknown'}-${firstClass.school_year || 'Unknown'}`;
-        setExpandedSemesters(new Set([key]));
-      }
       setError('');
     } catch (error) {
       console.error('Failed to load archived classes:', error);
@@ -89,10 +94,10 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
     if (!user) return;
     
     const ok = await confirm({
-      title: 'Restore class',
-      message: `Are you sure you want to restore "${classInfo.subject_code}" to My Classes?`,
+      title: 'Unarchive class',
+      message: `Are you sure you want to unarchive this class (${classInfo.subject_code})?`,
       variant: 'default',
-      confirmLabel: 'Restore',
+      confirmLabel: 'Unarchive',
     });
 
     if (!ok) return;
@@ -100,32 +105,26 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
     try {
       await UnarchiveStudentEnrollment(user.id, classInfo.class_id);
       await loadArchivedClasses(); // Refresh the list
+      toast(getArchiveSuccessMessage('class', 'restore'), 'success');
       onClassRestored?.();
     } catch (error) {
       console.error('Failed to restore class:', error);
-      toast(`Failed to restore class. ${error instanceof Error ? error.message : 'Please try again.'}`, 'error');
+      toast(getArchiveErrorMessage('class', 'restore', error), 'error');
     }
   };
 
-  // Group classes by semester and school year
-  const groupedClasses = React.useMemo(() => {
-    const groups: SemesterGroup[] = [];
-    const groupMap = new Map<string, SemesterGroup>();
+  const filteredClasses = React.useMemo(() => {
+    let filtered = archivedClasses;
 
-    // Filter classes based on search term and semester filter
-    let filteredClasses = archivedClasses;
-    
-    // Apply semester filter
-    if (semesterFilter !== 'all') {
-      filteredClasses = filteredClasses.filter(cls => 
-        cls.semester?.toLowerCase() === semesterFilter.toLowerCase()
+    if (teacherFilter) {
+      filtered = filtered.filter(cls =>
+        (cls.teacher_name || '').toLowerCase() === teacherFilter.toLowerCase()
       );
     }
-    
-    // Apply search term
+
     if (searchTerm) {
       const query = searchTerm.toLowerCase();
-      filteredClasses = filteredClasses.filter(cls =>
+      filtered = filtered.filter(cls =>
         cls.subject_code.toLowerCase().includes(query) ||
         (cls.subject_name && cls.subject_name.toLowerCase().includes(query)) ||
         (cls.descriptive_title && cls.descriptive_title.toLowerCase().includes(query)) ||
@@ -134,42 +133,21 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
       );
     }
 
-    filteredClasses.forEach(cls => {
-      const semester = cls.semester || 'Unknown Semester';
-      const schoolYear = cls.school_year || 'Unknown Year';
-      const key = `${semester}-${schoolYear}`;
+    return filtered;
+  }, [archivedClasses, searchTerm, teacherFilter]);
 
-      if (!groupMap.has(key)) {
-        const group: SemesterGroup = {
-          semester,
-          schoolYear,
-          classes: []
-        };
-        groupMap.set(key, group);
-        groups.push(group);
-      }
-      const group = groupMap.get(key);
-      if (group) {
-        group.classes.push(cls);
-      }
-    });
+  const totalPages = Math.max(1, Math.ceil(filteredClasses.length / entriesPerPage));
+  const startIndex = (currentPage - 1) * entriesPerPage;
+  const endIndex = startIndex + entriesPerPage;
+  const paginatedClasses = filteredClasses.slice(startIndex, endIndex);
+  const startEntry = filteredClasses.length > 0 ? startIndex + 1 : 0;
+  const endEntry = Math.min(endIndex, filteredClasses.length);
 
-    return groups;
-  }, [archivedClasses, searchTerm, semesterFilter]);
-
-  const toggleSemester = (key: string) => {
-    const newExpanded = new Set(expandedSemesters);
-    if (newExpanded.has(key)) {
-      newExpanded.delete(key);
-    } else {
-      newExpanded.add(key);
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
     }
-    setExpandedSemesters(newExpanded);
-  };
-
-  const formatSemesterLabel = (semester: string, schoolYear: string) => {
-    return `${semester} - ${schoolYear}`;
-  };
+  }, [currentPage, totalPages]);
 
   if (loading) {
     return (
@@ -207,7 +185,20 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
 
       {/* Search and Filter Section */}
       <div className="flex-shrink-0 mb-4">
-        <div className="flex justify-end">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700">Show</span>
+            <select
+              value={entriesPerPage}
+              onChange={(e) => setEntriesPerPage(Number(e.target.value))}
+              className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+            </select>
+            <span className="text-sm text-gray-700">entries</span>
+          </div>
           <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
             <div className="relative w-72 max-w-full">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -219,185 +210,219 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                 placeholder="Search classes..."
               />
             </div>
-            <div className={`flex h-10 w-full items-center gap-2 rounded-lg px-3 sm:w-56 ${
-              isSemesterFilterActive
-                ? 'bg-primary-50 border border-primary-500 text-primary-700'
-                : 'bg-white border border-gray-300 text-gray-700'
-            }`}>
-              <Filter className="h-4 w-4" />
-              <span className="text-sm font-medium">Filter</span>
-              <select
-                value={semesterFilter}
-                onChange={(e) => setSemesterFilter(e.target.value)}
-                className="h-full min-w-0 flex-1 bg-transparent text-sm font-medium focus:outline-none"
+            <div className="relative">
+              <button
+                onClick={() => {
+                  const nextOpen = !showFilters;
+                  if (nextOpen) {
+                    setPendingTeacherFilter(teacherFilter);
+                  }
+                  setShowFilters(nextOpen);
+                }}
+                className={`flex h-10 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${
+                  showFilters || activeFilterCount > 0
+                    ? 'bg-primary-50 border-primary-500 text-primary-700'
+                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
               >
-                <option value="all">Filter: All semesters</option>
-                <option value="1st Semester">Filter: 1st Semester</option>
-                <option value="2nd Semester">Filter: 2nd Semester</option>
-                <option value="Summer">Filter: Summer</option>
-              </select>
+                <Filter className="h-4 w-4" />
+                <span>Filter</span>
+                {activeFilterCount > 0 && (
+                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary-500 text-xs font-bold text-white">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+
+              {showFilters && (
+                <div className="absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                  <div className="space-y-3 p-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-gray-800">Filters</span>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-gray-600">Teacher</label>
+                      <select
+                        value={pendingTeacherFilter}
+                        onChange={(e) => setPendingTeacherFilter(e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      >
+                        <option value="">All teachers</option>
+                        {teacherOptions.map(name => (
+                          <option key={name} value={name!}>{name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPendingTeacherFilter('');
+                          setTeacherFilter('');
+                          setShowFilters(false);
+                        }}
+                        className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTeacherFilter(pendingTeacherFilter);
+                          setShowFilters(false);
+                        }}
+                        className="rounded-lg border border-primary-600 bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Archived Classes by Semester */}
-      {groupedClasses.length > 0 ? (
-        <div className="space-y-4">
-          {groupedClasses.map((group) => {
-            const key = `${group.semester}-${group.schoolYear}`;
-            const isExpanded = expandedSemesters.has(key);
-
-            return (
-              <div key={key} className="bg-white shadow rounded-lg overflow-hidden">
-                {/* Semester Header */}
-                <button
-                  onClick={() => toggleSemester(key)}
-                  className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    {isExpanded ? (
-                      <ChevronDown className="h-5 w-5 text-gray-500" />
+      {/* Archived Classes */}
+      <div className="bg-white shadow rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Subject Code
+                </th>
+                <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Descriptive Title
+                </th>
+                <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Teacher
+                </th>
+                <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Schedule
+                </th>
+                <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Action
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {paginatedClasses.length > 0 ? (
+                paginatedClasses.map((cls) => (
+                  <tr key={cls.class_id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      {cls.subject_code || '-'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      {cls.descriptive_title || cls.subject_name || '-'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      {cls.teacher_name || '-'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      {cls.schedule || '-'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleViewClasslist(cls)}
+                          className="h-9 w-9 inline-flex items-center justify-center text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="View Class List"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        {cls.is_archived ? (
+                          <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600" title="Archived by teacher">
+                            Teacher Archived
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleUnarchiveClass(cls)}
+                            className="h-9 w-9 inline-flex items-center justify-center text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Restore to My Classes"
+                          >
+                            <ArchiveRestoreIcon />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center">
+                    {searchTerm || activeFilterCount > 0 ? (
+                      <>
+                        <p className="text-gray-500 font-medium">No matching archived classes found</p>
+                        <button
+                          onClick={() => {
+                            setSearchTerm('');
+                            setTeacherFilter('');
+                            setPendingTeacherFilter('');
+                          }}
+                          className="mt-4 text-primary-600 hover:text-primary-700 text-sm font-medium"
+                        >
+                          Clear Filters
+                        </button>
+                      </>
                     ) : (
-                      <ChevronRight className="h-5 w-5 text-gray-500" />
+                      <p className="text-gray-500 font-medium">No archived classes.</p>
                     )}
-                    <div className="text-left">
-                      <h3 className="text-sm font-semibold text-gray-900">
-                        {formatSemesterLabel(group.semester, group.schoolYear)}
-                      </h3>
-                      <p className="text-xs text-gray-500">
-                        {group.classes.length} {group.classes.length === 1 ? 'class' : 'classes'}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700">
-                    Archived
-                  </span>
-                </button>
-
-                {/* Classes Table */}
-                {isExpanded && (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            EDP Code
-                          </th>
-                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Subject Code
-                          </th>
-                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Descriptive Title
-                          </th>
-                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Teacher
-                          </th>
-                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Schedule
-                          </th>
-                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Room
-                          </th>
-                          <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Action
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {group.classes.map((cls) => (
-                          <tr key={cls.class_id} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                              {cls.edp_code || '-'}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                              {cls.subject_code || '-'}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                              {cls.descriptive_title || cls.subject_name || '-'}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                              {cls.teacher_name || '-'}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                              {cls.schedule || '-'}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                              {cls.room || '-'}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium">
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => handleViewClasslist(cls)}
-                                  className="h-9 w-9 inline-flex items-center justify-center text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors"
-                                  title="View Class List"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </button>
-                                {cls.is_archived ? (
-                                  <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-600" title="Archived by teacher">
-                                    Teacher Archived
-                                  </span>
-                                ) : (
-                                  <button
-                                    onClick={() => handleUnarchiveClass(cls)}
-                                    className="h-9 w-9 inline-flex items-center justify-center text-green-600 hover:text-green-800 hover:bg-green-50 rounded-lg transition-colors"
-                                    title="Restore to My Classes"
-                                  >
-                                    <ArchiveRestoreIcon />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      ) : (
-        <div className="bg-white shadow rounded-lg p-12 text-center">
-          {searchTerm ? (
-            <>
-              <p className="text-gray-500 font-medium">No matching archived classes found</p>
-              <button
-                onClick={() => setSearchTerm('')}
-                className="mt-4 text-primary-600 hover:text-primary-700 text-sm font-medium"
-              >
-                Clear Search
-              </button>
-            </>
-          ) : (
-            <p className="text-gray-500 font-medium">No archived classes.</p>
-          )}
+      </div>
+
+      {filteredClasses.length > 0 && (
+        <div className="flex-shrink-0 mt-4 flex items-center justify-between">
+          <div className="text-sm text-gray-700">
+            Showing {startEntry} to {endEntry} of {filteredClasses.length} entries
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              variant="outline"
+            >
+              Previous
+            </Button>
+            <Button variant="primary">
+              {currentPage}
+            </Button>
+            <Button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              variant="outline"
+            >
+              Next
+            </Button>
+          </div>
         </div>
       )}
 
       {/* Classlist Modal */}
       {viewingClasslist && (
-        <div className="modal-backdrop-dense">
-          <div className="min-h-screen p-3 sm:p-4 md:p-8">
-            {/* Bond Paper Style Class List Sheet */}
-            <div className="bg-white max-w-4xl mx-auto my-4 sm:my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
+        <div className="modal-backdrop">
+          <div className="modal-surface w-full max-w-6xl mx-2 sm:mx-4 p-4 sm:p-6 relative max-h-[calc(100vh-2rem)] overflow-auto">
               {/* Close Button */}
               <button
                 onClick={() => {
                   setViewingClasslist(null);
                   setClasslistStudents([]);
                 }}
-                className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
-                title="Close"
+                className="absolute top-4 right-4 inline-flex items-center rounded-md border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50 transition-colors"
+                title="Back"
               >
-                <X className="h-6 w-6" />
+                <CornerUpLeft className="h-5 w-5" />
               </button>
 
               {/* Header */}
-              <div className="text-center mb-6 pb-4 border-b-2 border-gray-300">
-                <h1 className="text-2xl font-bold text-gray-900 uppercase tracking-wide">Class List</h1>
+              <div className="text-center mb-6 pb-4 border-b border-gray-200">
+                <h1 className="text-2xl font-bold text-gray-900">Class List</h1>
                 <p className="text-sm text-gray-600 mt-1">{viewingClasslist.semester} - {viewingClasslist.school_year}</p>
                 <span className="inline-flex items-center mt-2 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700">
                   Archived
@@ -410,8 +435,8 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                   {/* Class Information Header */}
                   <thead>
                     <tr>
-                      <th colSpan={3} className="px-4 py-2 text-left border-b-2 border-gray-900">
-                        <div className="text-gray-900 font-bold text-sm tracking-wide">CLASS INFORMATION</div>
+                      <th colSpan={3} className="px-4 py-2 text-left border-b border-gray-200 bg-gray-50">
+                        <div className="text-gray-900 font-semibold text-sm">Class Information</div>
                       </th>
                     </tr>
                   </thead>
@@ -441,9 +466,9 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                   {/* Student List Header */}
                   <thead>
                     <tr>
-                      <th colSpan={3} className="px-4 py-3 text-left border-b-2 border-t-2 border-gray-900">
+                      <th colSpan={3} className="px-4 py-3 text-left border-y border-gray-200 bg-gray-50">
                         <div className="flex items-center justify-between">
-                          <span className="text-gray-900 font-bold text-sm tracking-wide">STUDENTS LIST</span>
+                          <span className="text-gray-900 font-semibold text-sm">Students List</span>
                           <div className="flex items-center gap-4">
                             <span className="text-xs text-gray-600">Total: {classlistStudents.length}</span>
                             {loadingClasslist && (
@@ -499,13 +524,6 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                   </tbody>
                 </table>
               </div>
-
-              {/* Footer */}
-              <div className="mt-8 pt-4 border-t border-gray-300 text-xs text-gray-600 flex justify-between">
-                <span>Printed: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
-                <span>Digital Logbook System</span>
-              </div>
-            </div>
           </div>
         </div>
       )}

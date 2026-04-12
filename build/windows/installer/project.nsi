@@ -87,14 +87,15 @@ Section
     SetOutPath $INSTDIR
 
     !insertmacro wails.files
-    
-    # Include config.json in installation
-    File "..\..\..\config.json"
+
+    # Install DB config for first-time installs; keep existing config on upgrade.
+    IfFileExists "$INSTDIR\config.ini" +2 0
+    File "..\..\..\config.ini"
 
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
 
-    # Auto-start Digital Logbook on Windows startup (for lab kiosk mode)
+    # Auto-start Digital Logbook on Windows startup (for lab lock mode)
     WriteRegStr HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "${INFO_PRODUCTNAME}" '"$INSTDIR\${PRODUCT_EXECUTABLE}"'
 
     !insertmacro wails.associateFiles
@@ -107,9 +108,6 @@ Section "uninstall"
     !insertmacro wails.setShellContext
 
     RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
-
-    # Remove config.json
-    Delete "$INSTDIR\config.json"
 
     # Remove auto-startup registry entry
     DeleteRegValue HKLM "SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "${INFO_PRODUCTNAME}"

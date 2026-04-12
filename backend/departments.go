@@ -28,17 +28,22 @@ func (a *App) ensureDepartmentArchiveColumn() error {
 		return err
 	}
 
-	_, err := a.db.Exec(`
-		IF NOT EXISTS (
-			SELECT * FROM INFORMATION_SCHEMA.COLUMNS
-			WHERE TABLE_NAME = 'departments' AND COLUMN_NAME = 'is_archived'
-		)
-		BEGIN
-			ALTER TABLE departments ADD is_archived BIT NOT NULL DEFAULT 0
-		END
-	`)
+	var exists int
+	err := a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND TABLE_NAME = 'departments'
+		  AND COLUMN_NAME = 'is_archived'
+	`).Scan(&exists)
 	if err != nil {
-		return fmt.Errorf("failed to ensure is_archived column in departments: %w", err)
+		return fmt.Errorf("failed to check is_archived column in departments: %w", err)
+	}
+
+	if exists == 0 {
+		if _, err := a.db.Exec(`ALTER TABLE departments ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("failed to ensure is_archived column in departments: %w", err)
+		}
 	}
 
 	return nil

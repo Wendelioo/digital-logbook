@@ -532,10 +532,11 @@ function FeedbackHistory() {
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <button
                               onClick={() => setSelectedFeedback(feedback)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
+                              className="inline-flex h-8 w-8 items-center justify-center text-primary-700 bg-primary-50 border border-primary-200 rounded-lg hover:bg-primary-100 transition-colors"
+                              title="View details"
+                              aria-label="View details"
                             >
                               <Eye className="h-3.5 w-3.5" />
-                              View
                             </button>
                           </td>
                         </tr>

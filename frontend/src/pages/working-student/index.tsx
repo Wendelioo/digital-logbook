@@ -5,7 +5,7 @@ import LoginHistory from '../../components/LoginHistory';
 import { MyClasses, ArchivedClasses, StudentAttendance } from '../student';
 import {
   LayoutDashboard,
-  Clock,
+  History,
   BarChart3,
   ClipboardList,
   Library,
@@ -37,7 +37,7 @@ function WorkingStudentDashboard() {
     // Note: No "My Feedback History" because working students forward feedback, they don't submit it
     { name: 'Attendance', href: '/working-student/attendance', icon: <ClipboardCheck className="h-5 w-5" />, current: location.pathname === '/working-student/attendance' },
     { name: 'My Classes', href: '/working-student/my-classes', icon: <Library className="h-5 w-5" />, current: location.pathname === '/working-student/my-classes' },
-    { name: 'Login History', href: '/working-student/login-history', icon: <Clock className="h-5 w-5" />, current: location.pathname === '/working-student/login-history' },
+    { name: 'Login History', href: '/working-student/login-history', icon: <History className="h-5 w-5" />, current: location.pathname === '/working-student/login-history' },
   ];
 
   return (

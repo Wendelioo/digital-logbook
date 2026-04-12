@@ -28,6 +28,11 @@ type RegistrationRequest struct {
 	ConfirmPassword string `json:"confirm_password"`
 }
 
+// RegistrationSubmissionResult includes one-time registration output values.
+type RegistrationSubmissionResult struct {
+	RecoveryCode string `json:"recovery_code"`
+}
+
 // PendingRegistration represents a registration awaiting approval
 type PendingRegistration struct {
 	UserID        int     `json:"user_id"`
@@ -59,19 +64,22 @@ type RegistrationHistoryEntry struct {
 }
 
 // SubmitRegistration handles student self-registration
-func (a *App) SubmitRegistration(req RegistrationRequest) error {
+func (a *App) SubmitRegistration(req RegistrationRequest) (RegistrationSubmissionResult, error) {
 	if err := a.checkDB(); err != nil {
-		return err
+		return RegistrationSubmissionResult{}, err
+	}
+	if err := a.ensureUserRecoveryCodesTable(); err != nil {
+		return RegistrationSubmissionResult{}, err
 	}
 
 	// Validation
 	if err := validateRegistration(req); err != nil {
-		return err
+		return RegistrationSubmissionResult{}, err
 	}
 
 	normalizedDepartmentCode, err := a.validateActiveDepartmentCode(req.DepartmentCode)
 	if err != nil {
-		return err
+		return RegistrationSubmissionResult{}, err
 	}
 	req.DepartmentCode = normalizedDepartmentCode
 
@@ -84,16 +92,16 @@ func (a *App) SubmitRegistration(req RegistrationRequest) error {
 	if err == nil {
 		switch existingStatus {
 		case "pending":
-			return fmt.Errorf("this student ID has a pending registration - please wait for working student approval")
+			return RegistrationSubmissionResult{}, fmt.Errorf("this student ID has a pending registration - please wait for working student approval")
 		case "rejected":
 			isReRegistration = true
 		case "active":
-			return fmt.Errorf("this student ID is already active - please try logging in instead")
+			return RegistrationSubmissionResult{}, fmt.Errorf("this student ID is already active - please try logging in instead")
 		default:
-			return fmt.Errorf("student ID already registered")
+			return RegistrationSubmissionResult{}, fmt.Errorf("student ID already registered")
 		}
 	} else if err != sql.ErrNoRows {
-		return fmt.Errorf("database error: %v", err)
+		return RegistrationSubmissionResult{}, fmt.Errorf("database error: %v", err)
 	}
 
 	// Check if email already exists
@@ -110,29 +118,29 @@ func (a *App) SubmitRegistration(req RegistrationRequest) error {
 		if !(isReRegistration && existingEmailUserID == existingID) {
 			switch existingEmailStatus {
 			case "pending":
-				return fmt.Errorf("this email has a pending registration - please wait for working student approval")
+				return RegistrationSubmissionResult{}, fmt.Errorf("this email has a pending registration - please wait for working student approval")
 			case "rejected":
-				return fmt.Errorf("this email was previously rejected - use the same student ID to re-register")
+				return RegistrationSubmissionResult{}, fmt.Errorf("this email was previously rejected - use the same student ID to re-register")
 			case "active":
-				return fmt.Errorf("this email is already registered to an active account")
+				return RegistrationSubmissionResult{}, fmt.Errorf("this email is already registered to an active account")
 			default:
-				return fmt.Errorf("email already registered")
+				return RegistrationSubmissionResult{}, fmt.Errorf("email already registered")
 			}
 		}
 	} else if err != sql.ErrNoRows {
-		return fmt.Errorf("database error: %v", err)
+		return RegistrationSubmissionResult{}, fmt.Errorf("database error: %v", err)
 	}
 
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return fmt.Errorf("password hashing failed: %v", err)
+		return RegistrationSubmissionResult{}, fmt.Errorf("password hashing failed: %v", err)
 	}
 
 	// Start transaction
 	tx, err := a.db.Begin()
 	if err != nil {
-		return fmt.Errorf("transaction failed: %v", err)
+		return RegistrationSubmissionResult{}, fmt.Errorf("transaction failed: %v", err)
 	}
 	defer tx.Rollback()
 
@@ -143,36 +151,36 @@ func (a *App) SubmitRegistration(req RegistrationRequest) error {
 		// Reset rejected account to pending and apply the newly submitted password.
 		_, err = tx.Exec(`
 			UPDATE users
-			SET password = ?, account_status = 'pending', is_active = 0, updated_at = GETDATE()
+			SET password = ?, account_status = 'pending', updated_at = NOW()
 			WHERE id = ? AND account_status = 'rejected'
 		`, string(hashedPassword), userID)
 		if err != nil {
-			return fmt.Errorf("failed to reset rejected user account: %v", err)
+			return RegistrationSubmissionResult{}, fmt.Errorf("failed to reset rejected user account: %v", err)
 		}
 
 		// Refresh student profile details from the new submission.
 		_, err = tx.Exec(`
 			UPDATE students
-			SET student_id = ?, first_name = ?, middle_name = ?, last_name = ?, email = ?, contact_number = ?, department_code = ?, updated_at = GETDATE()
+			SET student_id = ?, first_name = ?, middle_name = ?, last_name = ?, email = ?, contact_number = ?, department_code = ?, updated_at = NOW()
 			WHERE id = ?
 		`, req.StudentID, req.FirstName, nullString(req.MiddleName), req.LastName, req.Email, req.ContactNumber, req.DepartmentCode, userID)
 		if err != nil {
-			return fmt.Errorf("failed to update rejected student profile: %v", err)
+			return RegistrationSubmissionResult{}, fmt.Errorf("failed to update rejected student profile: %v", err)
 		}
 
 		// Reopen approval workflow.
 		result, err := tx.Exec(`
 			UPDATE registration_approvals
-			SET status = 'pending', approved_by_user_id = NULL, rejection_reason = NULL, processed_at = NULL, updated_at = GETDATE()
+			SET status = 'pending', approved_by_user_id = NULL, rejection_reason = NULL, processed_at = NULL, updated_at = NOW()
 			WHERE user_id = ?
 		`, userID)
 		if err != nil {
-			return fmt.Errorf("failed to reset approval record: %v", err)
+			return RegistrationSubmissionResult{}, fmt.Errorf("failed to reset approval record: %v", err)
 		}
 
 		rowsAffected, err := result.RowsAffected()
 		if err != nil {
-			return fmt.Errorf("failed to verify approval reset: %v", err)
+			return RegistrationSubmissionResult{}, fmt.Errorf("failed to verify approval reset: %v", err)
 		}
 		if rowsAffected == 0 {
 			_, err = tx.Exec(`
@@ -180,20 +188,25 @@ func (a *App) SubmitRegistration(req RegistrationRequest) error {
 				VALUES (?, 'pending')
 			`, userID)
 			if err != nil {
-				return fmt.Errorf("failed to recreate approval record: %v", err)
+				return RegistrationSubmissionResult{}, fmt.Errorf("failed to recreate approval record: %v", err)
 			}
 		}
 	} else {
 		// Insert into users table with pending status.
 		insertUserQuery := `
-			INSERT INTO users (username, password, user_type, account_status, is_active)
-			OUTPUT INSERTED.id
-			VALUES (?, ?, 'student', 'pending', 0)
+			INSERT INTO users (username, password, user_type, account_status)
+			VALUES (?, ?, 'student', 'pending')
 		`
-		err = tx.QueryRow(insertUserQuery, req.StudentID, string(hashedPassword)).Scan(&userID)
+		result, execErr := tx.Exec(insertUserQuery, req.StudentID, string(hashedPassword))
+		err = execErr
 		if err != nil {
-			return fmt.Errorf("failed to create user: %v", err)
+			return RegistrationSubmissionResult{}, fmt.Errorf("failed to create user: %v", err)
 		}
+		lastID, idErr := result.LastInsertId()
+		if idErr != nil {
+			return RegistrationSubmissionResult{}, fmt.Errorf("failed to get created user id: %v", idErr)
+		}
+		userID = lastID
 
 		// Insert into students table.
 		_, err = tx.Exec(`
@@ -201,7 +214,7 @@ func (a *App) SubmitRegistration(req RegistrationRequest) error {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
 		`, userID, req.StudentID, req.FirstName, nullString(req.MiddleName), req.LastName, req.Email, req.ContactNumber, req.DepartmentCode)
 		if err != nil {
-			return fmt.Errorf("failed to create student profile: %v", err)
+			return RegistrationSubmissionResult{}, fmt.Errorf("failed to create student profile: %v", err)
 		}
 
 		// Create pending approval record.
@@ -210,13 +223,18 @@ func (a *App) SubmitRegistration(req RegistrationRequest) error {
 			VALUES (?, 'pending')
 		`, userID)
 		if err != nil {
-			return fmt.Errorf("failed to create approval record: %v", err)
+			return RegistrationSubmissionResult{}, fmt.Errorf("failed to create approval record: %v", err)
 		}
+	}
+
+	recoveryCode, err := a.issueRecoveryCodeForUserTx(tx, int(userID))
+	if err != nil {
+		return RegistrationSubmissionResult{}, fmt.Errorf("failed to issue recovery code: %v", err)
 	}
 
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %v", err)
+		return RegistrationSubmissionResult{}, fmt.Errorf("failed to commit transaction: %v", err)
 	}
 
 	if isReRegistration {
@@ -231,7 +249,7 @@ func (a *App) SubmitRegistration(req RegistrationRequest) error {
 		fmt.Sprintf("Student %s submitted a registration request.", req.StudentID),
 		"info", notifRef("registration"), notifRefID64(userID))
 
-	return nil
+	return RegistrationSubmissionResult{RecoveryCode: formatRecoveryCode(recoveryCode)}, nil
 }
 
 // GetPendingRegistrations returns all registrations awaiting approval
@@ -323,20 +341,17 @@ func (a *App) ProcessRegistration(req ApprovalRequest) error {
 
 	// Update user status
 	var newStatus string
-	var isActive bool
 	if req.Action == "approve" {
 		newStatus = "active"
-		isActive = true
 	} else {
 		newStatus = "rejected"
-		isActive = false
 	}
 
 	_, err = tx.Exec(`
 		UPDATE users 
-		SET account_status = ?, is_active = ?
+		SET account_status = ?
 		WHERE id = ? AND account_status = 'pending'
-	`, newStatus, isActive, req.UserID)
+	`, newStatus, req.UserID)
 	if err != nil {
 		return fmt.Errorf("failed to update user status: %v", err)
 	}
@@ -353,7 +368,7 @@ func (a *App) ProcessRegistration(req ApprovalRequest) error {
 
 	_, err = tx.Exec(`
 		UPDATE registration_approvals
-		SET status = ?, approved_by_user_id = ?, rejection_reason = ?, processed_at = GETDATE()
+		SET status = ?, approved_by_user_id = ?, rejection_reason = ?, processed_at = NOW()
 		WHERE user_id = ? AND status = 'pending'
 	`, approvalStatus, req.ApprovedBy, rejectionReason, req.UserID)
 	if err != nil {

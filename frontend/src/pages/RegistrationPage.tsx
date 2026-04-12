@@ -165,7 +165,6 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
   const MAX_LEN_CONTACT = 30;
   const MAX_LEN_PASSWORD = 256;
   const MAX_LEN_STUDENT_ID = 50;
-  const STUDENT_ID_REGEX = /^\d{7}$/;
   const EMAIL_REGEX = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
   // Philippine mobile 09 + 9 digits, or 7–15 digits for landline (backend: cleaned of spaces/dashes)
   const PHONE_REGEX = /^(09\d{9}|\d{7,15})$/;
@@ -196,8 +195,6 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
             message = `Student ID must be at most ${MAX_LEN_STUDENT_ID} characters.`;
           } else if (hasControlOrNull(value)) {
             message = 'Student ID contains invalid characters.';
-          } else if (!STUDENT_ID_REGEX.test(value)) {
-            message = 'Student ID must be exactly 7 digits (e.g. 2211172).';
           }
           break;
         case 'department_code':
@@ -384,7 +381,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
 
   return (
     <div className="modal-backdrop">
-      <div className="modal-surface-2xl max-w-xl w-full max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+      <div className="modal-surface-2xl max-w-2xl w-full max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
         <div className="px-4 sm:px-8 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-primary-200/80 bg-gradient-to-r from-primary-50/90 to-white">
           <h2 className="text-2xl font-bold text-gray-900">Create Your Account</h2>
           <p className="mt-1 text-sm text-gray-500">

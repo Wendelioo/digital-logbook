@@ -569,7 +569,7 @@ function EquipmentReports() {
             }
           }}
         >
-          <div className="modal-surface w-full max-w-2xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
+          <div className="modal-surface w-full max-w-xl mx-2 sm:mx-4 relative max-h-[calc(100vh-2rem)] overflow-y-auto">
             <Button
               variant="outline"
               size="sm"
@@ -579,9 +579,9 @@ function EquipmentReports() {
               ×
             </Button>
             
-            <div className="text-center p-4 sm:p-8 pb-3 sm:pb-4">
-              <Send className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">
+            <div className="text-center p-4 sm:p-6 pb-3 sm:pb-4">
+              <Send className="h-10 w-10 text-blue-600 mx-auto mb-3" />
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
                 Forward to Admin
               </h3>
               <p className="text-gray-600">
@@ -589,7 +589,7 @@ function EquipmentReports() {
               </p>
             </div>
 
-            <div className="px-4 sm:px-8 pb-4 sm:pb-8">
+            <div className="px-4 sm:px-6 pb-4 sm:pb-6">
               <div className="bg-gray-50 rounded-lg p-4 mb-6">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Report Summary</h4>
                 <div className="grid grid-cols-2 gap-4 text-sm">
@@ -625,7 +625,7 @@ function EquipmentReports() {
                     </p>
                   </div>
                 </div>
-                <div className="mt-4 grid grid-cols-4 gap-3">
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
                     <span className="text-xs text-gray-600">Equipment</span>
                     <p className={`text-xs font-semibold mt-1 ${

@@ -3,7 +3,6 @@ package backend
 import (
 	"fmt"
 	"log"
-	"os"
 )
 
 const sessionHeartbeatTimeoutSeconds = 120
@@ -14,16 +13,13 @@ func (a *App) ensureSessionHeartbeatTable() error {
 	}
 
 	query := `
-		IF OBJECT_ID('user_session_heartbeats', 'U') IS NULL
-		BEGIN
-			CREATE TABLE user_session_heartbeats (
-				user_id INT NOT NULL PRIMARY KEY,
-				last_seen DATETIME NOT NULL DEFAULT GETDATE(),
-				created_at DATETIME NOT NULL DEFAULT GETDATE(),
-				updated_at DATETIME NOT NULL DEFAULT GETDATE(),
-				CONSTRAINT FK_user_session_heartbeats_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-			)
-		END
+		CREATE TABLE IF NOT EXISTS user_session_heartbeats (
+			user_id INT NOT NULL PRIMARY KEY,
+			last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+			CONSTRAINT FK_user_session_heartbeats_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
 	`
 
 	_, err := a.db.Exec(query)
@@ -36,14 +32,11 @@ func (a *App) TouchSession(userID int) error {
 	}
 
 	query := `
-		MERGE user_session_heartbeats AS target
-		USING (SELECT ? AS user_id) AS source
-		ON target.user_id = source.user_id
-		WHEN MATCHED THEN
-			UPDATE SET last_seen = GETDATE(), updated_at = GETDATE()
-		WHEN NOT MATCHED THEN
-			INSERT (user_id, last_seen, created_at, updated_at)
-			VALUES (source.user_id, GETDATE(), GETDATE(), GETDATE());
+		INSERT INTO user_session_heartbeats (user_id, last_seen, created_at, updated_at)
+		VALUES (?, NOW(), NOW(), NOW())
+		ON DUPLICATE KEY UPDATE
+			last_seen = NOW(),
+			updated_at = NOW()
 	`
 
 	_, err := a.db.Exec(query, userID)
@@ -71,14 +64,13 @@ func (a *App) closeStaleSessions() error {
 	}
 
 	query := `
-		UPDATE le
-		SET le.logout_time = GETDATE()
-		FROM log_entries le
+		UPDATE log_entries le
 		LEFT JOIN user_session_heartbeats sh ON sh.user_id = le.user_id
+		SET le.logout_time = NOW()
 		WHERE le.logout_time IS NULL
 			AND (
 				sh.user_id IS NULL
-				OR sh.last_seen < DATEADD(SECOND, -?, GETDATE())
+				OR sh.last_seen < DATE_SUB(NOW(), INTERVAL ? SECOND)
 			)
 	`
 
@@ -94,7 +86,7 @@ func (a *App) closeStaleSessions() error {
 
 	_, _ = a.db.Exec(`
 		DELETE FROM user_session_heartbeats
-		WHERE last_seen < DATEADD(SECOND, -?, GETDATE())
+		WHERE last_seen < DATE_SUB(NOW(), INTERVAL ? SECOND)
 	`, sessionHeartbeatTimeoutSeconds)
 
 	return nil
@@ -105,24 +97,21 @@ func (a *App) CloseSessionsForCurrentHost() error {
 		return err
 	}
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		return err
-	}
+	stationLabel := a.currentStationLabel()
 
 	result, err := a.db.Exec(`
 		UPDATE log_entries
-		SET logout_time = GETDATE()
+		SET logout_time = NOW()
 		WHERE logout_time IS NULL
 			AND pc_number = ?
-	`, hostname)
+	`, stationLabel)
 	if err != nil {
 		return err
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err == nil && rowsAffected > 0 {
-		log.Printf("Closed %d active session(s) for host %s", rowsAffected, hostname)
+		log.Printf("Closed %d active session(s) for station %s", rowsAffected, stationLabel)
 	}
 
 	_, _ = a.db.Exec(`

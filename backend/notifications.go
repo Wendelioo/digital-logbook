@@ -38,30 +38,29 @@ func (a *App) ensureNotificationsTable() error {
 	}
 
 	query := `
-		IF OBJECT_ID('notifications', 'U') IS NULL
-		BEGIN
-			CREATE TABLE notifications (
-				id              INT IDENTITY(1,1) PRIMARY KEY,
-				user_id         INT NOT NULL,
-				category        NVARCHAR(50) NOT NULL,
-				title           NVARCHAR(200) NOT NULL,
-				message         NVARCHAR(500) NOT NULL,
-				tone            NVARCHAR(20) NOT NULL DEFAULT 'info',
-				is_read         BIT NOT NULL DEFAULT 0,
-				reference_type  NVARCHAR(50) NULL,
-				reference_id    INT NULL,
-				created_at      DATETIME NOT NULL DEFAULT GETDATE(),
-				read_at         DATETIME NULL,
-				CONSTRAINT FK_notifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-			);
-			CREATE INDEX idx_notifications_user_unread ON notifications(user_id, is_read);
-			CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at DESC);
-			CREATE INDEX idx_notifications_category ON notifications(category);
-		END
+		CREATE TABLE IF NOT EXISTS notifications (
+			id              INT AUTO_INCREMENT PRIMARY KEY,
+			user_id         INT NOT NULL,
+			category        VARCHAR(50) NOT NULL,
+			title           VARCHAR(200) NOT NULL,
+			message         VARCHAR(500) NOT NULL,
+			tone            VARCHAR(20) NOT NULL DEFAULT 'info',
+			is_read         TINYINT(1) NOT NULL DEFAULT 0,
+			reference_type  VARCHAR(50) NULL,
+			reference_id    INT NULL,
+			created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			read_at         DATETIME NULL,
+			CONSTRAINT FK_notifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
 	`
 
-	_, err := a.db.Exec(query)
-	return err
+	if _, err := a.db.Exec(query); err != nil {
+		return err
+	}
+	_, _ = a.db.Exec(`CREATE INDEX idx_notifications_user_unread ON notifications(user_id, is_read)`)
+	_, _ = a.db.Exec(`CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at)`)
+	_, _ = a.db.Exec(`CREATE INDEX idx_notifications_category ON notifications(category)`)
+	return nil
 }
 
 // GetNotifications returns recent notifications for a user plus the unread count
@@ -70,23 +69,38 @@ func (a *App) GetNotifications(userID int, limit int) (NotificationSummary, erro
 	if err := a.checkDB(); err != nil {
 		return summary, err
 	}
-	if limit <= 0 || limit > 50 {
+	// limit semantics:
+	// - 0: fetch all notifications
+	// - >0: fetch that many, capped for safety
+	// - <0: fallback to default
+	if limit < 0 {
 		limit = 20
+	}
+	if limit > 500 {
+		limit = 500
 	}
 
 	// Unread count
 	_ = a.db.QueryRow(`SELECT COUNT(*) FROM notifications WHERE user_id = ? AND is_read = 0`, userID).Scan(&summary.UnreadCount)
 
 	// Recent notifications
-	rows, err := a.db.Query(`
-		SELECT TOP(?) id, user_id, category, title, message, tone, is_read,
+	query := `
+		SELECT id, user_id, category, title, message, tone, is_read,
 		       reference_type, reference_id,
-		       CONVERT(VARCHAR(19), created_at, 120) AS created_at,
-		       CASE WHEN read_at IS NOT NULL THEN CONVERT(VARCHAR(19), read_at, 120) ELSE NULL END AS read_at
+		       DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+		       CASE WHEN read_at IS NOT NULL THEN DATE_FORMAT(read_at, '%Y-%m-%d %H:%i:%s') ELSE NULL END AS read_at
 		FROM notifications
 		WHERE user_id = ?
 		ORDER BY created_at DESC
-	`, limit, userID)
+	`
+
+	args := []interface{}{userID}
+	if limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit)
+	}
+
+	rows, err := a.db.Query(query, args...)
 	if err != nil {
 		return summary, fmt.Errorf("failed to fetch notifications: %w", err)
 	}
@@ -128,7 +142,7 @@ func (a *App) MarkNotificationRead(notificationID int, userID int) error {
 		return err
 	}
 	_, err := a.db.Exec(`
-		UPDATE notifications SET is_read = 1, read_at = GETDATE()
+		UPDATE notifications SET is_read = 1, read_at = NOW()
 		WHERE id = ? AND user_id = ?
 	`, notificationID, userID)
 	return err
@@ -140,7 +154,7 @@ func (a *App) MarkAllNotificationsRead(userID int) error {
 		return err
 	}
 	_, err := a.db.Exec(`
-		UPDATE notifications SET is_read = 1, read_at = GETDATE()
+		UPDATE notifications SET is_read = 1, read_at = NOW()
 		WHERE user_id = ? AND is_read = 0
 	`, userID)
 	return err
@@ -151,7 +165,7 @@ func (a *App) CleanOldNotifications() error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
-	_, err := a.db.Exec(`DELETE FROM notifications WHERE created_at < DATEADD(DAY, -30, GETDATE())`)
+	_, err := a.db.Exec(`DELETE FROM notifications WHERE created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)`)
 	return err
 }
 
@@ -168,7 +182,7 @@ func (a *App) createNotification(userID int, category, title, message, tone stri
 	_ = a.db.QueryRow(`
 		SELECT COUNT(*) FROM notifications
 		WHERE user_id = ? AND category = ? AND message = ?
-		AND created_at >= DATEADD(SECOND, -60, GETDATE())
+		AND created_at >= DATE_SUB(NOW(), INTERVAL 60 SECOND)
 	`, userID, category, message).Scan(&exists)
 	if exists > 0 {
 		return
@@ -183,14 +197,14 @@ func (a *App) createNotification(userID int, category, title, message, tone stri
 	}
 }
 
-// createNotificationForRole creates a notification for all active users of a given role.
+// createNotificationForRole creates a notification for all accounts in active lifecycle state for a given role.
 func (a *App) createNotificationForRole(role, category, title, message, tone string, refType *string, refID *int) {
 	if a.db == nil {
 		return
 	}
 
 	rows, err := a.db.Query(`
-		SELECT id FROM users WHERE user_type = ? AND is_active = 1 AND account_status = 'active'
+		SELECT id FROM users WHERE user_type = ? AND account_status = 'active'
 	`, role)
 	if err != nil {
 		log.Printf("Failed to query users for role notification: %v", err)
@@ -237,3 +251,4 @@ func notifRefID64(id int64) *int {
 	v := int(id)
 	return &v
 }
+

@@ -7,8 +7,7 @@ import {
   Plus,
   Edit,
   Search,
-  X,
-  AlertCircle
+  X
 } from 'lucide-react';
 import {
   GetDepartments,
@@ -17,9 +16,11 @@ import {
   ArchiveDepartment,
   UnarchiveDepartment
 } from '../../../wailsjs/go/backend/App';
+import { useAppUi } from '../../contexts/AppUiContext';
 import { Department } from './types';
 
 function DepartmentManagement() {
+  const { confirm } = useAppUi();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -128,6 +129,15 @@ function DepartmentManagement() {
       return;
     }
 
+    const ok = await confirm({
+      title: 'Archive department',
+      message: `Are you sure you want to archive this department (${dept.department_name})?`,
+      confirmLabel: 'Archive',
+      variant: 'default',
+    });
+
+    if (!ok) return;
+
     try {
       await ArchiveDepartment(dept.department_code);
       await loadDepartments();
@@ -215,14 +225,23 @@ function DepartmentManagement() {
   const endIndex = Math.min(startIndex + pageSize, total);
   const pagedDepartments = searchedDepartments.slice(startIndex, endIndex);
 
-  const handleUnarchiveDepartment = async (deptCode: string) => {
+  const handleUnarchiveDepartment = async (dept: Department) => {
+    const ok = await confirm({
+      title: 'Unarchive department',
+      message: `Are you sure you want to unarchive this department (${dept.department_name})?`,
+      confirmLabel: 'Unarchive',
+      variant: 'default',
+    });
+
+    if (!ok) return;
+
     try {
-      await UnarchiveDepartment(deptCode);
+      await UnarchiveDepartment(dept.department_code);
       await loadDepartments();
-      showNotification('success', 'Department unarchived successfully!');
+      showNotification('success', 'Department restored successfully.');
     } catch (error) {
       console.error('Failed to unarchive department:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to unarchive department. Please try again.';
+      const errorMessage = error instanceof Error ? error.message : 'Failed to restore department. Please try again.';
       showNotification('error', errorMessage);
     }
   };
@@ -394,36 +413,14 @@ function DepartmentManagement() {
                 </div>
               </div>
               
-              {/* Status Toggle - Only show when editing */}
-              {editingDepartment && (
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                      formData.isActive ? 'bg-blue-600' : 'bg-gray-300'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        formData.isActive ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                  <span className={`text-sm font-medium ${formData.isActive ? 'text-blue-600' : 'text-gray-500'}`}>
-                    {formData.isActive ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
-              )}
-
               {/* Submit Button */}
-              <div className="text-center">
+              <div className="flex justify-end">
                 <Button
                   type="submit"
                   variant="danger"
-                  className="w-full max-w-xs"
+                  className="min-w-[140px]"
                 >
-                  {editingDepartment ? 'UPDATE' : 'SUBMIT'}
+                  {editingDepartment ? 'UPDATE' : 'ADD'}
                 </Button>
               </div>
             </form>
@@ -441,10 +438,10 @@ function DepartmentManagement() {
                   #
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Name
+                  Program Code
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Description
+                  Program Name
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Status
@@ -556,11 +553,7 @@ function DepartmentManagement() {
         showVariantIcon={false}
         contentMinHeightClassName={MODAL_BODY_MIN_HEIGHT_CLASS}
       >
-        <div className="mb-4 flex items-center gap-2 text-sm text-gray-600">
-          <ArchiveIcon size="sm" className="text-gray-600" />
-          <span>{archivedDepartments.length} archived department{archivedDepartments.length === 1 ? '' : 's'}</span>
-        </div>
-        <div className="mb-4">
+        <div className="mb-4 flex justify-end">
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
             <input
@@ -585,10 +578,10 @@ function DepartmentManagement() {
             <thead className="bg-gradient-to-r from-gray-50 via-primary-50/30 to-gray-50 sticky top-0 z-10">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '220px' }}>
-                  Name
+                  Program Code
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '300px' }}>
-                  Description
+                  Program Name
                 </th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '120px' }}>
                   Action
@@ -610,12 +603,12 @@ function DepartmentManagement() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">
                     <Button
-                      onClick={() => handleUnarchiveDepartment(dept.department_code)}
+                      onClick={() => handleUnarchiveDepartment(dept)}
                       variant="success"
                       size="sm"
                       className="h-9 w-9 px-0 py-0"
                       icon={<ArchiveRestoreIcon size="xs" />}
-                      title="Unarchive"
+                      title="Restore"
                     />
                   </td>
                 </tr>
@@ -638,18 +631,9 @@ function DepartmentManagement() {
           <div className="modal-surface w-full max-w-md mx-2 sm:mx-4 p-4 sm:p-6 max-h-[calc(100vh-2rem)] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                  selectedDeptForStatus.newStatus ? 'bg-green-100' : 'bg-red-100'
-                }`}>
-                  <AlertCircle className={`h-6 w-6 ${
-                    selectedDeptForStatus.newStatus ? 'text-green-600' : 'text-red-600'
-                  }`} />
-                </div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Change Department Status
-                </h3>
-              </div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Change Department Status
+              </h3>
               <button
                 onClick={() => {
                   setShowStatusModal(false);
@@ -663,35 +647,31 @@ function DepartmentManagement() {
 
             {/* Content */}
             <div className="mb-6">
-              <p className="text-gray-700 mb-2">
+              <p className="text-sm text-gray-700 mb-2">
                 Department: <strong>{selectedDeptForStatus.name}</strong>
               </p>
               {selectedDeptForStatus.newStatus ? (
                 <>
-                  <p className="text-gray-700 mb-3">
-                    You are about to <strong className="text-green-600">{selectedDeptForStatus.actionContext === 'unarchive' ? 'unarchive' : 'activate'}</strong> this department.
+                  <p className="text-sm text-gray-700 mb-3">
+                    This department will be set to <span className="font-semibold text-green-700">{selectedDeptForStatus.actionContext === 'unarchive' ? 'restored' : 'active'}</span>.
                   </p>
                   <div className="bg-green-50 border border-green-200 rounded-md p-3">
-                    <h4 className="font-semibold text-green-800 mb-2">{selectedDeptForStatus.actionContext === 'unarchive' ? 'Changes when unarchived:' : 'Changes when activated:'}</h4>
-                    <ul className="text-sm text-green-700 space-y-1 list-disc list-inside">
-                      <li>Department will be available for new user assignments</li>
-                      <li>Classes can be created under this department</li>
-                      <li>Department will appear in all active listings</li>
+                    <ul className="text-sm text-green-800 space-y-1 list-disc list-inside">
+                      <li>It will be available for new user assignments.</li>
+                      <li>New classes can be created under this department.</li>
                     </ul>
                   </div>
                 </>
               ) : (
                 <>
-                  <p className="text-gray-700 mb-3">
-                    You are about to <strong className="text-red-600">deactivate</strong> this department.
+                  <p className="text-sm text-gray-700 mb-3">
+                    This department will be set to <span className="font-semibold text-red-700">inactive</span>.
                   </p>
                   <div className="bg-red-50 border border-red-200 rounded-md p-3">
-                    <h4 className="font-semibold text-red-800 mb-2">Restrictions when inactive:</h4>
-                    <ul className="text-sm text-red-700 space-y-1 list-disc list-inside">
-                      <li>New users <strong>cannot be assigned</strong> to this department</li>
-                      <li>New classes <strong>cannot be created</strong> under this department</li>
-                      <li>Existing data remains viewable</li>
-                      <li>Department will be hidden from active selections</li>
+                    <ul className="text-sm text-red-800 space-y-1 list-disc list-inside">
+                      <li>New user assignments are disabled.</li>
+                      <li>New class creation under this department is disabled.</li>
+                      <li>Existing records remain available for viewing.</li>
                     </ul>
                   </div>
                 </>
@@ -715,7 +695,7 @@ function DepartmentManagement() {
                 variant={selectedDeptForStatus.newStatus ? 'success' : 'danger'}
                 disabled={changingStatus}
               >
-                {changingStatus ? 'Changing...' : selectedDeptForStatus.newStatus ? (selectedDeptForStatus.actionContext === 'unarchive' ? 'Unarchive Department' : 'Activate Department') : 'Deactivate Department'}
+                {changingStatus ? 'Changing...' : selectedDeptForStatus.newStatus ? (selectedDeptForStatus.actionContext === 'unarchive' ? 'Restore Department' : 'Activate Department') : 'Deactivate Department'}
               </Button>
             </div>
           </div>

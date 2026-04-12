@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import Button from '../../components/Button';
 import Modal, { MODAL_BODY_MIN_HEIGHT_CLASS } from '../../components/Modal';
-import { CheckCircle2, History, Filter, X, Search } from 'lucide-react';
+import { CheckCircle2, History, Filter, X, Search, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppUi } from '../../contexts/AppUiContext';
 import { GetStudentOpenAttendanceSessions, StudentTimeIn, GetStudentAttendanceHistory } from '../../../wailsjs/go/backend/App';
 import LoadingDots from '../../components/LoadingDots';
 
@@ -34,11 +35,11 @@ interface AttendanceHistoryRecord {
 
 function StudentAttendance() {
   const { user } = useAuth();
+  const { toast } = useAppUi();
   const SESSION_POLL_INTERVAL_MS = 8000;
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [timingInSession, setTimingInSession] = useState<number | null>(null);
-  const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
   const previousSessionCountRef = useRef<number | null>(null);
 
@@ -91,19 +92,21 @@ function StudentAttendance() {
       const previousCount = previousSessionCountRef.current;
       if (previousCount !== null && nextCount !== previousCount) {
         if (nextCount > previousCount) {
-          setNotice({ type: 'success', text: `${nextCount} attendance session(s) are open for your classes.` });
+          toast(`${nextCount} attendance session(s) are open for your classes.`, 'success');
         } else {
-          setNotice({ type: 'success', text: 'One or more attendance sessions have closed.' });
+          toast('One or more attendance sessions have closed.', 'success');
         }
       }
       previousSessionCountRef.current = nextCount;
     } catch (error) {
       console.error('Failed to load attendance sessions:', error);
-      setNotice({ type: 'error', text: 'Unable to load attendance sessions.' });
+      if (showLoading) {
+        toast('Unable to load attendance sessions.', 'error');
+      }
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [user?.id]);
+  }, [toast, user?.id]);
 
   const loadHistory = useCallback(async () => {
     if (!user?.id) { setHistoryLoading(false); return; }
@@ -141,18 +144,17 @@ function StudentAttendance() {
     const expectedStatus = getExpectedTimeInStatus(targetSession);
 
     setTimingInSession(sessionId);
-    setNotice(null);
 
     try {
       await StudentTimeIn(sessionId, user.id);
-      setNotice({
-        type: 'success',
-        text: expectedStatus === 'late' ? 'Time In recorded successfully as Late.' : 'Time In recorded successfully as Present.',
-      });
+      toast(
+        expectedStatus === 'late' ? 'Time In recorded successfully as Late.' : 'Time In recorded successfully as Present.',
+        'success'
+      );
       await Promise.all([loadSessions(), loadHistory()]);
     } catch (error: any) {
       console.error('Failed to time in:', error);
-      setNotice({ type: 'error', text: error?.message || 'Failed to submit attendance.' });
+      toast(error?.message || 'Failed to submit attendance.', 'error');
     } finally {
       setTimingInSession(null);
     }
@@ -214,15 +216,16 @@ function StudentAttendance() {
           >
             History
           </Button>
-          <Button onClick={() => { loadSessions({ showLoading: true }); loadHistory(); }} variant="outline" size="sm">Refresh</Button>
+          <Button
+            onClick={() => { loadSessions({ showLoading: true }); loadHistory(); }}
+            variant="outline"
+            size="sm"
+            icon={<RefreshCw className="h-4 w-4" />}
+          >
+            Refresh
+          </Button>
         </div>
       </div>
-
-      {notice && (
-        <div className={`px-3 py-2 rounded-md text-sm border ${notice.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-          {notice.text}
-        </div>
-      )}
 
       {/* Open Sessions */}
       <div>
@@ -361,14 +364,6 @@ function StudentAttendance() {
                     <div className="p-4 space-y-4">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-semibold text-gray-800">Filters</span>
-                        {(classFilter !== 'all' || statusFilter !== 'all') && (
-                          <button
-                            onClick={() => { setClassFilter('all'); setStatusFilter('all'); }}
-                            className="text-xs text-primary-600 hover:underline"
-                          >
-                            Clear all
-                          </button>
-                        )}
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-gray-600 mb-1">Class</label>

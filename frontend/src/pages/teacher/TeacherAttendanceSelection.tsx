@@ -13,12 +13,9 @@ import {
   X,
   Pause,
   Play,
-  Square,
+  RotateCw,
   Filter,
-  FileText,
-  FileSpreadsheet,
-  Download,
-  FileType,
+  Printer,
 } from 'lucide-react';
 import {
   GetTeacherClassesByUserID,
@@ -32,6 +29,8 @@ import {
   ExportAttendanceDOCXBySession,
 } from '../../../wailsjs/go/backend/App';
 import { openExportSaveDialog, defaultAttendanceFilename, type ExportFormat } from '../../utils/exportSaveDialog';
+import { getArchiveErrorMessage, getArchiveSuccessMessage } from '../../utils/archiveNotifications';
+import { useAppUi } from '../../contexts/AppUiContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Class } from './types';
 
@@ -72,12 +71,13 @@ interface AttendanceSession {
   late_count: number;
 }
 
-type TimerMode = 'running' | 'paused' | 'stopped';
+type TimerMode = 'running' | 'paused';
 
 function AttendanceClassSelection() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { confirm, toast } = useAppUi();
   const [allTeacherClasses, setAllTeacherClasses] = useState<Class[]>([]);
   const [attendanceSheets, setAttendanceSheets] = useState<AttendanceSheet[]>([]);
   const [filteredSheets, setFilteredSheets] = useState<AttendanceSheet[]>([]);
@@ -103,18 +103,8 @@ function AttendanceClassSelection() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<number | null>(null);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
-  const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [exportToast, setExportToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [exportingKey, setExportingKey] = useState<string | null>(null);
-  const [openExportDropdown, setOpenExportDropdown] = useState<{ key: string; top: number; left: number } | null>(null);
-
-  // Close export dropdown on outside click
-  useEffect(() => {
-    if (!openExportDropdown) return;
-    const handle = () => setOpenExportDropdown(null);
-    window.addEventListener('click', handle);
-    return () => window.removeEventListener('click', handle);
-  }, [openExportDropdown]);
+  const [openExportModal, setOpenExportModal] = useState<{ classId: number; date: string; sessionId?: number } | null>(null);
   const [attendanceSessions, setAttendanceSessions] = useState<AttendanceSession[]>([]);
   const [sessionBusyId, setSessionBusyId] = useState<number | null>(null);
   const [sessionToRename, setSessionToRename] = useState<AttendanceSession | null>(null);
@@ -148,23 +138,19 @@ function AttendanceClassSelection() {
     if (!user?.id) return;
 
     setSessionBusyId(session.session_id);
-    setNotice(null);
     try {
       if (mode === 'paused') {
         await (window as any).go.backend.App.PauseAttendanceSession(session.session_id, user.id);
-        setNotice({ type: 'success', text: 'Attendance timer paused.' });
-      } else if (mode === 'running') {
-        await (window as any).go.backend.App.ResumeAttendanceSession(session.session_id, user.id);
-        setNotice({ type: 'success', text: 'Attendance timer resumed.' });
+        toast('Attendance timer paused.', 'success');
       } else {
-        await (window as any).go.backend.App.SaveAttendanceSession(session.session_id, user.id);
-        setNotice({ type: 'success', text: 'Attendance timer stopped and session saved.' });
+        await (window as any).go.backend.App.ResumeAttendanceSession(session.session_id, user.id);
+        toast('Attendance timer resumed.', 'success');
       }
 
       setRefreshKey((prev) => prev + 1);
     } catch (error) {
       console.error('Failed to update attendance timer mode:', error);
-      setNotice({ type: 'error', text: 'Failed to update attendance session timer.' });
+      toast('Failed to update attendance session timer.', 'error');
     } finally {
       setSessionBusyId(null);
     }
@@ -290,10 +276,9 @@ function AttendanceClassSelection() {
   ).sort((a, b) => a.localeCompare(b));
 
   const handleTakeAttendance = async (classId: number) => {
+    const today = new Date().toISOString().split('T')[0];
     setOpeningAttendance(classId);
-    setNotice(null);
     try {
-      const today = new Date().toISOString().split('T')[0];
       const hasOpenTodaySession = attendanceSessions.some(
         (session) => session.class_id === classId && session.attendance_date === today && session.status === 'open'
       );
@@ -313,11 +298,11 @@ function AttendanceClassSelection() {
       );
 
       if (!hasOpenTodaySession && hasClosedTodaySession) {
-        setNotice({ type: 'success', text: 'New attendance session created for this class today.' });
+        toast('New attendance session created for this class today.', 'success');
       } else if (hasOpenTodaySession) {
-        setNotice({ type: 'success', text: 'Current active attendance session loaded.' });
+        toast('Current active attendance session loaded.', 'success');
       } else {
-        setNotice({ type: 'success', text: 'Attendance sheet is active and ready for editing.' });
+        toast('Attendance sheet is active and ready for editing.', 'success');
       }
 
       // Keep existing behavior to open the sheet view.
@@ -329,7 +314,28 @@ function AttendanceClassSelection() {
       }
     } catch (error) {
       console.error('Failed to start attendance:', error);
-      setNotice({ type: 'error', text: 'Failed to create attendance session. Please try again.' });
+
+      const errorMessage = error instanceof Error ? error.message : String(error || '');
+      if (errorMessage.toLowerCase().includes('cannot open another attendance sheet for this class list')) {
+        toast('You cannot open two attendance sheets for the same class list. Opening the current active sheet instead.', 'error');
+
+        try {
+          const sessions = await (window as any).go.backend.App.GetTeacherAttendanceSessions(user?.id || 0);
+          const activeSession = (sessions || []).find(
+            (session: AttendanceSession) => session.class_id === classId && session.attendance_date === today && session.status === 'open'
+          );
+
+          if (activeSession?.session_id) {
+            navigate(`/teacher/attendance/${classId}?date=${today}&sessionId=${activeSession.session_id}`);
+          }
+        } catch (sessionError) {
+          console.error('Failed to locate active attendance session after duplicate-open attempt:', sessionError);
+        }
+
+        return;
+      }
+
+      toast('Failed to create attendance session. Please try again.', 'error');
     } finally {
       setOpeningAttendance(null);
       setShowAddModal(false);
@@ -339,14 +345,13 @@ function AttendanceClassSelection() {
 
   const handleSaveSession = async (session: AttendanceSession) => {
     setSessionBusyId(session.session_id);
-    setNotice(null);
     try {
       await (window as any).go.backend.App.SaveAttendanceSession(session.session_id, user?.id || 0);
-      setNotice({ type: 'success', text: 'Attendance saved successfully.' });
+      toast('Attendance saved successfully.', 'success');
       setRefreshKey(prev => prev + 1);
     } catch (error) {
       console.error('Failed to save session:', error);
-      setNotice({ type: 'error', text: 'Failed to save attendance session.' });
+      toast('Failed to save attendance session.', 'error');
     } finally {
       setSessionBusyId(null);
     }
@@ -366,12 +371,11 @@ function AttendanceClassSelection() {
     if (!sessionToRename || !user?.id) return;
     const trimmed = renameSessionName.trim();
     if (!trimmed) {
-      setNotice({ type: 'error', text: 'Session name is required.' });
+      toast('Session name is required.', 'error');
       return;
     }
 
     setSessionBusyId(sessionToRename.session_id);
-    setNotice(null);
     try {
       await (window as any).go.backend.App.RenameAttendanceSession(
         sessionToRename.session_id,
@@ -382,14 +386,28 @@ function AttendanceClassSelection() {
       setRefreshKey((prev) => prev + 1);
     } catch (error) {
       console.error('Failed to rename session:', error);
-      setNotice({ type: 'error', text: 'Failed to rename attendance session.' });
+      toast('Failed to rename attendance session.', 'error');
     } finally {
       setSessionBusyId(null);
     }
   };
 
   const handleArchiveClick = async (sheet: AttendanceSheet) => {
-    setNotice(null);
+    const formattedDate = new Date(sheet.date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+
+    const ok = await confirm({
+      title: 'Archive attendance',
+      message: `Are you sure you want to archive this attendance sheet (${sheet.subject_code} - ${formattedDate})?`,
+      confirmLabel: 'Archive',
+      variant: 'default',
+    });
+
+    if (!ok) return;
+
     try {
       if (sheet.session_id) {
         await (window as any).go.backend.App.ArchiveAttendanceSession(sheet.session_id, user?.id || 0);
@@ -397,13 +415,10 @@ function AttendanceClassSelection() {
         await (window as any).go.backend.App.ArchiveAttendanceSheet(sheet.class_id, sheet.date);
       }
       setRefreshKey(prev => prev + 1);
-      setNotice({ type: 'success', text: 'Attendance archived successfully.' });
+      toast(getArchiveSuccessMessage('attendance', 'archive'), 'success');
     } catch (error) {
       console.error('Failed to archive attendance:', error);
-      setNotice({
-        type: 'error',
-        text: 'Failed to archive attendance. ' + (error instanceof Error ? error.message : 'Please try again.'),
-      });
+      toast(getArchiveErrorMessage('attendance', 'archive', error), 'error');
     }
   };
 
@@ -413,35 +428,26 @@ function AttendanceClassSelection() {
     }
   };
 
-  const showExportToast = (type: 'success' | 'error', message: string) => {
-    setExportToast({ type, message });
-    setTimeout(() => setExportToast(null), 5000);
-  };
-
   const handleExportAttendance = async (classId: number, date: string, format: ExportFormat, sessionId?: number) => {
     const key = sessionId ? `${classId}-${date}-${sessionId}-${format}` : `${classId}-${date}-${format}`;
     setExportingKey(key);
     try {
-      const defaultName = defaultAttendanceFilename(date, format, false);
-      const savePath = await openExportSaveDialog('Save attendance', defaultName, format);
-      if (!savePath) {
-        setExportingKey(null);
-        return;
+      const savePath = await openExportSaveDialog('Save attendance report', defaultAttendanceFilename(date, format), format);
+      if (!savePath) return;
+
+      let filename = '';
+      if (sessionId && sessionId > 0) {
+        if (format === 'csv') filename = await ExportAttendanceCSVBySession(classId, date, sessionId, savePath);
+        else if (format === 'pdf') filename = await ExportAttendancePDFBySession(classId, date, sessionId, savePath);
+        else filename = await ExportAttendanceDOCXBySession(classId, date, sessionId, savePath);
+      } else {
+        if (format === 'csv') filename = await ExportAttendanceCSVByDate(classId, date, savePath);
+        else if (format === 'pdf') filename = await ExportAttendancePDFByDate(classId, date, savePath);
+        else filename = await ExportAttendanceDOCXByDate(classId, date, savePath);
       }
-      const filename = sessionId && sessionId > 0
-        ? format === 'csv'
-          ? await ExportAttendanceCSVBySession(classId, date, sessionId, savePath)
-          : format === 'pdf'
-            ? await ExportAttendancePDFBySession(classId, date, sessionId, savePath)
-            : await ExportAttendanceDOCXBySession(classId, date, sessionId, savePath)
-        : format === 'csv'
-          ? await ExportAttendanceCSVByDate(classId, date, savePath)
-          : format === 'pdf'
-            ? await ExportAttendancePDFByDate(classId, date, savePath)
-            : await ExportAttendanceDOCXByDate(classId, date, savePath);
-      showExportToast('success', `Saved: ${filename.split(/[\\/]/).pop()}`);
+      toast(`Saved: ${filename.split(/[\\/]/).pop()}`, 'success');
     } catch (err) {
-      showExportToast('error', 'Export failed. Please try again.');
+      toast('Export failed. Please try again.', 'error');
     } finally {
       setExportingKey(null);
     }
@@ -498,60 +504,6 @@ function AttendanceClassSelection() {
 
   return (
     <div className="flex flex-col">
-      {exportToast && (
-        <div className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border ${
-          exportToast.type === 'success'
-            ? 'bg-green-50 border-green-200 text-green-800'
-            : 'bg-red-50 border-red-200 text-red-800'
-        }`}>
-          <span className="font-medium">{exportToast.message}</span>
-        </div>
-      )}
-      {/* Fixed export dropdown (outside any overflow container) */}
-      {openExportDropdown && (
-        <div
-          style={{ position: 'fixed', top: openExportDropdown.top, left: openExportDropdown.left, zIndex: 9999 }}
-          className="w-44 bg-white border border-gray-200 rounded-lg shadow-xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-			onClick={() => {
-			  const d = openExportDropdown;
-			  setOpenExportDropdown(null);
-			  const [cId, dt, sessionId] = d.key.split('|');
-			  handleExportAttendance(Number(cId), dt, 'csv', sessionId ? Number(sessionId) : undefined);
-			}}
-            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-t-lg"
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
-            Export CSV
-          </button>
-          <button
-			onClick={() => {
-			  const d = openExportDropdown;
-			  setOpenExportDropdown(null);
-			  const [cId, dt, sessionId] = d.key.split('|');
-			  handleExportAttendance(Number(cId), dt, 'pdf', sessionId ? Number(sessionId) : undefined);
-			}}
-            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
-          >
-            <FileText className="h-3.5 w-3.5 text-rose-600" />
-            Export PDF
-          </button>
-          <button
-			onClick={() => {
-			  const d = openExportDropdown;
-			  setOpenExportDropdown(null);
-			  const [cId, dt, sessionId] = d.key.split('|');
-			  handleExportAttendance(Number(cId), dt, 'docx', sessionId ? Number(sessionId) : undefined);
-			}}
-            className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-b-lg"
-          >
-            <FileType className="h-3.5 w-3.5 text-blue-600" />
-            Export DOCX
-          </button>
-        </div>
-      )}
       <div className="flex-shrink-0 mb-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-900">Attendance Management</h2>
@@ -579,12 +531,6 @@ function AttendanceClassSelection() {
       {error && (
         <div className="flex-shrink-0 mb-2 bg-yellow-50 border border-yellow-200 text-yellow-700 px-3 py-2 rounded-md text-sm">
           <p>{error}</p>
-        </div>
-      )}
-
-      {notice && (
-        <div className={`flex-shrink-0 mb-2 px-3 py-2 rounded-md text-sm border ${notice.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-          <p>{notice.text}</p>
         </div>
       )}
 
@@ -637,6 +583,14 @@ function AttendanceClassSelection() {
                   )}
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setRefreshKey((prev) => prev + 1)}
+                    variant="outline"
+                    size="sm"
+                    disabled={sessionBusyId === session.session_id}
+                    icon={<RotateCw className="h-3 w-3" />}
+                    title="Refresh active attendance sheet"
+                  />
                   {(() => {
                     const isPaused = !!session.paused_at;
                     const isBusy = sessionBusyId === session.session_id;
@@ -657,14 +611,6 @@ function AttendanceClassSelection() {
                     disabled={!isPaused || isBusy}
                     icon={<Play className="h-3 w-3" />}
                     title="Play Timer"
-                  />
-                  <Button
-                    onClick={() => handleSessionTimerMode(session, 'stopped')}
-                    variant="outline"
-                    size="sm"
-                    disabled={isBusy}
-                    icon={<Square className="h-3 w-3" />}
-                    title="Stop Timer"
                   />
                       </>
                     );
@@ -692,9 +638,7 @@ function AttendanceClassSelection() {
                     disabled={sessionBusyId === session.session_id}
                     icon={<Save className="h-3 w-3" />}
                     title="Save Attendance"
-                  >
-                    Save
-                  </Button>
+                  />
                 </div>
               </div>
             ))}
@@ -791,7 +735,7 @@ function AttendanceClassSelection() {
                         <select
                           value={pendingClassFilter}
                           onChange={(e) => setPendingClassFilter(e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 appearance-none"
                         >
                           <option value="all">All classes</option>
                           {allTeacherClasses.map(cls => (
@@ -814,7 +758,7 @@ function AttendanceClassSelection() {
                         <select
                           value={pendingSemesterFilter}
                           onChange={(e) => setPendingSemesterFilter(e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 appearance-none"
                         >
                           <option value="all">All semesters</option>
                           <option value="1">1st Sem</option>
@@ -834,7 +778,7 @@ function AttendanceClassSelection() {
                         <select
                           value={pendingSchoolYearFilter}
                           onChange={(e) => setPendingSchoolYearFilter(e.target.value)}
-                          className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          className="w-full border border-gray-300 rounded-lg pl-3 pr-8 py-2 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 appearance-none"
                         >
                           <option value="all">All school years</option>
                           {schoolYearOptions.map((schoolYear) => (
@@ -917,88 +861,81 @@ function AttendanceClassSelection() {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {currentSheets.length > 0 ? (
-                currentSheets.map((sheet) => {
-                  const isToday = sheet.date === today;
-                  const sheetKey = `${sheet.class_id}-${sheet.date}`;
-                  const preferredSession = preferredSessionByKey.get(sheetKey);
-                  const preferredSessionId = preferredSession?.session_id;
-                  const sheetSessionId = sheet.session_id || preferredSessionId;
-                  const generatedAt = sheet.opened_at || preferredSession?.opened_at;
-                  const sessionStatus = sheet.status || preferredSession?.status;
-                  const canArchive = !isToday || sessionStatus === 'closed';
+                <>
+                  {currentSheets.map((sheet) => {
+                    const isToday = sheet.date === today;
+                    const sheetKey = `${sheet.class_id}-${sheet.date}`;
+                    const preferredSession = preferredSessionByKey.get(sheetKey);
+                    const preferredSessionId = preferredSession?.session_id;
+                    const sheetSessionId = sheet.session_id || preferredSessionId;
+                    const generatedAt = sheet.opened_at || preferredSession?.opened_at;
+                    const sessionStatus = sheet.status || preferredSession?.status;
+                    const canArchive = !isToday || sessionStatus === 'closed';
 
-                  return (
-                    <tr
-                      key={sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`}
-                      className={`hover:bg-gray-50 transition-colors ${isToday ? 'bg-green-50' : ''}`}
-                    >
-                      <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
-                        <div className="font-medium">{sheet.subject_code} - {sheet.subject_name}</div>
-                        <div className="text-xs text-gray-500">EDP: {sheet.edp_code || '-'}</div>
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <div>{new Date(sheet.date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</div>
-                        {generatedAt && (
-                          <div className="text-[11px] text-gray-500">
-                            Generated: {new Date(generatedAt.replace(' ', 'T')).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    return (
+                      <tr
+                        key={sheet.session_id ? `${sheet.class_id}-${sheet.date}-${sheet.session_id}` : `${sheet.class_id}-${sheet.date}`}
+                        className={`hover:bg-gray-50 transition-colors ${isToday ? 'bg-green-50' : ''}`}
+                      >
+                        <td className="px-4 py-4 text-sm text-gray-900" style={{ wordBreak: 'break-word' }}>
+                          <div className="font-medium">{sheet.subject_code} - {sheet.subject_name}</div>
+                          <div className="text-xs text-gray-500">EDP: {sheet.edp_code || '-'}</div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                          <div>{new Date(sheet.date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' })}</div>
+                          {generatedAt && (
+                            <div className="text-[11px] text-gray-500">
+                              Generated: {new Date(generatedAt.replace(' ', 'T')).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                          <div className="flex items-center justify-center gap-2 text-xs">
+                            <span className="text-green-700 font-medium">P:{sheet.present_count}</span>
+                            <span className="text-red-700 font-medium">A:{sheet.absent_count}</span>
+                            <span className="text-yellow-700 font-medium">L:{sheet.late_count}</span>
                           </div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                        <div className="flex items-center justify-center gap-2 text-xs">
-                          <span className="text-green-700 font-medium">P:{sheet.present_count}</span>
-                          <span className="text-red-700 font-medium">A:{sheet.absent_count}</span>
-                          <span className="text-yellow-700 font-medium">L:{sheet.late_count}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex items-center justify-center gap-2">
-                          <Button
-                            onClick={() => navigate(
-                              sheetSessionId
-                                ? `/teacher/attendance/${sheet.class_id}?date=${sheet.date}&sessionId=${sheetSessionId}`
-                                : `/teacher/attendance/${sheet.class_id}?date=${sheet.date}`
-                            )}
-                            variant="outline"
-                            size="sm"
-                            className="text-gray-600 bg-gray-50 hover:bg-gray-100"
-                            icon={<Eye className="h-3 w-3" />}
-                            title="View Attendance"
-                          />
-                          {/* Archive button - past dates, or today's saved session */}
-                          {canArchive && (
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                          <div className="flex items-center justify-center gap-2">
                             <Button
-                              onClick={() => handleArchiveClick(sheet)}
+                              onClick={() => navigate(
+                                sheetSessionId
+                                  ? `/teacher/attendance/${sheet.class_id}?date=${sheet.date}&sessionId=${sheetSessionId}`
+                                  : `/teacher/attendance/${sheet.class_id}?date=${sheet.date}`
+                              )}
                               variant="outline"
                               size="sm"
-                              className="text-orange-600 hover:bg-orange-50"
-                              icon={<ArchiveIcon size="xs" />}
-                              title="Archive"
+                              className="text-gray-600 bg-gray-50 hover:bg-gray-100"
+                              icon={<Eye className="h-3 w-3" />}
+                              title="View Attendance"
                             />
-                          )}
-                          <Button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                              const key = `${sheet.class_id}|${sheet.date}|${sheetSessionId || ''}`;
-                              setOpenExportDropdown(
-                                openExportDropdown?.key === key
-                                  ? null
-                                  : { key, top: rect.bottom + 4, left: rect.right - 176 }
-                              );
-                            }}
-                            variant="outline"
-                            size="sm"
-                            className="text-gray-600 hover:bg-gray-100"
-                            icon={<Download className="h-3 w-3" />}
-                            title="Export"
-                            disabled={exportingKey !== null && exportingKey.startsWith(`${sheet.class_id}-${sheet.date}`)}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+                            {/* Archive button - past dates, or today's saved session */}
+                            {canArchive && (
+                              <Button
+                                onClick={() => handleArchiveClick(sheet)}
+                                variant="outline"
+                                size="sm"
+                                className="text-orange-600 hover:bg-orange-50"
+                                icon={<ArchiveIcon size="xs" />}
+                                title="Archive"
+                              />
+                            )}
+                            <Button
+                              onClick={() => setOpenExportModal({ classId: sheet.class_id, date: sheet.date, sessionId: sheetSessionId || undefined })}
+                              variant="outline"
+                              size="sm"
+                              className="text-gray-600 hover:bg-gray-100"
+                              icon={<Printer className="h-3 w-3" />}
+                              title="Export"
+                              disabled={exportingKey !== null && exportingKey.startsWith(`${sheet.class_id}-${sheet.date}`)}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </>
               ) : (
                 <tr>
                   <td colSpan={4} className="px-6 py-12 text-center">
@@ -1166,6 +1103,52 @@ function AttendanceClassSelection() {
         initialTab="attendance"
         onAttendanceUnarchived={() => setRefreshKey((prev) => prev + 1)}
       />
+
+      <Modal
+        isOpen={!!openExportModal}
+        onClose={() => setOpenExportModal(null)}
+        title="Export Attendance"
+        size="sm"
+      >
+        <div className="space-y-3">
+          <Button
+            variant="outline"
+            className="w-full justify-center"
+            onClick={() => {
+              if (!openExportModal) return;
+              const target = openExportModal;
+              setOpenExportModal(null);
+              handleExportAttendance(target.classId, target.date, 'csv', target.sessionId);
+            }}
+          >
+            CSV
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full justify-center"
+            onClick={() => {
+              if (!openExportModal) return;
+              const target = openExportModal;
+              setOpenExportModal(null);
+              handleExportAttendance(target.classId, target.date, 'pdf', target.sessionId);
+            }}
+          >
+            PDF
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full justify-center"
+            onClick={() => {
+              if (!openExportModal) return;
+              const target = openExportModal;
+              setOpenExportModal(null);
+              handleExportAttendance(target.classId, target.date, 'docx', target.sessionId);
+            }}
+          >
+            DOCX
+          </Button>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={!!sessionToRename}

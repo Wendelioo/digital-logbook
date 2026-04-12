@@ -120,7 +120,7 @@ function Table<T extends Record<string, any>>({
   return (
     <div className="bg-white rounded-xl shadow-soft border border-gray-200 overflow-hidden">
       <div className={`${stickyHeader ? 'overflow-x-auto overflow-y-auto max-h-[600px]' : 'overflow-x-auto'}`} style={{ WebkitOverflowScrolling: 'touch' }}>
-        <table className="w-full border-collapse" style={{ minWidth: '100%', tableLayout: 'auto' }}>
+        <table className="w-full border-collapse table-fixed" style={{ minWidth: '100%' }}>
           <thead
             className={`bg-gradient-to-r from-gray-50 via-primary-50/30 to-gray-50 ${stickyHeader ? 'sticky top-0 z-10 shadow-sm' : ''}`}
           >
@@ -130,14 +130,13 @@ function Table<T extends Record<string, any>>({
                   key={column.key}
                   scope="col"
                   className={`
-                    px-6 ${compact ? 'py-2.5' : 'py-3.5'}
-                    text-xs font-semibold text-gray-700 uppercase tracking-wider
+                    px-3 sm:px-6 ${compact ? 'py-2.5' : 'py-3.5'}
+                    text-[11px] sm:text-xs font-semibold text-gray-700 uppercase tracking-wider
                     border-b border-gray-200/90 align-middle
                     ${getAlignmentClass(column.align)}
                     ${column.sortable ? 'cursor-pointer select-none hover:bg-gray-100 transition-colors' : ''}
-                    ${column.width ? '' : 'whitespace-nowrap'}
                   `}
-                  style={column.width ? { width: column.width, minWidth: column.width } : { minWidth: '100px' }}
+                  style={column.width ? { width: column.width, minWidth: column.width } : { minWidth: 0 }}
                   onClick={() => column.sortable && handleHeaderClick(column)}
                 >
                   <div className={`flex items-center gap-2 ${getHeaderContentAlignmentClass(column.align)}`}>
@@ -188,39 +187,41 @@ function Table<T extends Record<string, any>>({
                 </td>
               </tr>
             ) : (
-              data.map((item, index) => (
-                <tr
-                  key={index}
-                  className={`
-                    ${
-                      striped
-                        ? index % 2 === 0
-                          ? 'bg-white'
-                          : 'bg-slate-50/70'
-                        : 'bg-white'
-                    }
-                    ${hoverable ? 'hover:bg-primary-50/40 transition-colors duration-150' : ''}
-                    ${onRowClick ? 'cursor-pointer' : ''}
-                  `}
-                  onClick={() => onRowClick && onRowClick(item, index)}
-                >
-                  {columns.map((column) => (
-                    <td
-                      key={column.key}
-                      className={`
-                        px-6 ${compact ? 'py-2.5' : 'py-3.5'}
-                        text-sm text-gray-900
-                        align-middle
-                        ${getAlignmentClass(column.align)}
-                        ${column.key === 'actions' ? '[&_button]:shadow-sm' : ''}
-                      `}
-                      style={{ whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: column.width || 'none' }}
-                    >
-                      {getCellValue(item, column)}
-                    </td>
-                  ))}
-                </tr>
-              ))
+              <>
+                {data.map((item, index) => (
+                  <tr
+                    key={index}
+                    className={`
+                      ${
+                        striped
+                          ? index % 2 === 0
+                            ? 'bg-white'
+                            : 'bg-slate-50/70'
+                          : 'bg-white'
+                      }
+                      ${hoverable ? 'hover:bg-primary-50/40 transition-colors duration-150' : ''}
+                      ${onRowClick ? 'cursor-pointer' : ''}
+                    `}
+                    onClick={() => onRowClick && onRowClick(item, index)}
+                  >
+                    {columns.map((column) => (
+                      <td
+                        key={column.key}
+                        className={`
+                          px-3 sm:px-6 ${compact ? 'py-2.5' : 'py-3.5'}
+                          text-xs sm:text-sm text-gray-900
+                          align-middle
+                          ${getAlignmentClass(column.align)}
+                          ${column.key === 'actions' ? '[&_button]:shadow-sm' : ''}
+                        `}
+                        style={{ whiteSpace: 'normal', wordBreak: 'break-word', maxWidth: column.width || 'none' }}
+                      >
+                        {getCellValue(item, column)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </>
             )}
           </tbody>
         </table>

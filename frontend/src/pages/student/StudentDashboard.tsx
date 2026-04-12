@@ -22,8 +22,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { useAppUi } from '../../contexts/AppUiContext';
 import { backend } from '../../../wailsjs/go/models';
-import { BackendDashboardNotifications } from '../../components/DashboardNotifications';
 import { StudentDashboardData, LoginLog } from './types';
+
+const AUTH_STATUS_CHANGED_EVENT = 'auth-status-changed';
+const DASHBOARD_POLL_INTERVAL_MS = 10000;
 
 interface AttendanceSession {
   session_id: number;
@@ -42,7 +44,6 @@ interface AttendanceSession {
 
 function DashboardOverview() {
   const SESSION_POLL_INTERVAL_MS = 8000;
-  const DASHBOARD_POLL_INTERVAL_MS = 30000;
   const { user } = useAuth();
   const { refresh: refreshNotifications } = useNotifications();
   const { toast } = useAppUi();
@@ -54,6 +55,7 @@ function DashboardOverview() {
   const [openSessions, setOpenSessions] = useState<AttendanceSession[]>([]);
   const [timingInSession, setTimingInSession] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [nowTimestamp, setNowTimestamp] = useState<number>(Date.now());
 
   const parseSessionDateTime = (value?: string): Date | null => {
@@ -110,11 +112,15 @@ function DashboardOverview() {
 
   useEffect(() => {
     const loadDashboard = async () => {
-      if (!user) return;
+      if (!user?.id) {
+        setLoading(false);
+        return;
+      }
 
       try {
         const data = await GetStudentDashboard(user.id);
         setDashboardData(data);
+        setError('');
 
         // Fetch last login log
         try {
@@ -143,6 +149,7 @@ function DashboardOverview() {
         }
       } catch (error) {
         console.error('Failed to load student dashboard:', error);
+        setError('Unable to load dashboard data from server.');
       } finally {
         setLoading(false);
       }
@@ -151,12 +158,16 @@ function DashboardOverview() {
     loadDashboard();
 
     // Auto-refresh dashboard data periodically.
-    const refreshInterval = setInterval(() => {
-      if (user) loadDashboard();
-    }, DASHBOARD_POLL_INTERVAL_MS);
+    const refreshInterval = setInterval(loadDashboard, DASHBOARD_POLL_INTERVAL_MS);
+    window.addEventListener('focus', loadDashboard);
+    window.addEventListener(AUTH_STATUS_CHANGED_EVENT, loadDashboard);
 
-    return () => clearInterval(refreshInterval);
-  }, [user, DASHBOARD_POLL_INTERVAL_MS]);
+    return () => {
+      clearInterval(refreshInterval);
+      window.removeEventListener('focus', loadDashboard);
+      window.removeEventListener(AUTH_STATUS_CHANGED_EVENT, loadDashboard);
+    };
+  }, [user?.id, DASHBOARD_POLL_INTERVAL_MS]);
 
   // Poll open attendance sessions more frequently so newly opened sessions
   // show up in the "Attendance Today" card with less delay.
@@ -222,12 +233,134 @@ function DashboardOverview() {
 
   return (
     <div>
+      {error && (
+        <div className="mb-6 bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-md">
+          <p>{error}</p>
+        </div>
+      )}
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-gray-900">Welcome back, {user?.first_name || user?.name}!</h2>
         <p className="text-sm text-gray-500">Here's what's going on today.</p>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-        <div className="md:col-span-2 space-y-6">
+      <div className="mb-6 grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        <div className="lg:col-span-2">
+          <Card className="h-fit">
+            <CardHeader title="Login Information" />
+            <CardBody>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <InfoCard
+                  icon={<Clock className="h-6 w-6" />}
+                  label="Last Login"
+                  value={formatSqlDateTimeLocal(lastLogin?.login_time)}
+                  iconColor="blue"
+                />
+                <InfoCard
+                  icon={<MapPin className="h-6 w-6" />}
+                  label="Last PC Used"
+                  value={lastLogin?.pc_number || 'Unknown'}
+                  iconColor="purple"
+                />
+              </div>
+            </CardBody>
+          </Card>
+        </div>
+        <Card className="h-fit">
+          <CardHeader title="Attendance Today" />
+          <CardBody>
+            {openSessions.length > 0 ? (
+              <div className="space-y-4">
+                {openSessions.map((session) => {
+                  const openedAt = parseSessionDateTime(session.opened_at);
+                  const pausedAt = parseSessionDateTime(session.paused_at);
+                  const effectiveNow = pausedAt ? pausedAt.getTime() : nowTimestamp;
+                  const classMinutes = Math.max(0, session.class_duration_minutes || 0);
+                  const graceMinutes = Math.max(0, session.grace_period_minutes || 0);
+                  const classDeadline = openedAt ? new Date(openedAt.getTime() + classMinutes * 60 * 1000) : null;
+                  const graceDeadline = openedAt ? new Date(openedAt.getTime() + graceMinutes * 60 * 1000) : null;
+                  const classRemaining = classDeadline ? Math.max(0, Math.floor((classDeadline.getTime() - effectiveNow) / 1000)) : 0;
+                  const graceRemaining = graceDeadline ? Math.max(0, Math.floor((graceDeadline.getTime() - effectiveNow) / 1000)) : 0;
+                  const expectedStatus = getExpectedTimeInStatus(session, effectiveNow);
+                  const statusMessage =
+                    classRemaining <= 0
+                      ? 'Session ended. Time in no longer available—you will be marked Absent if you did not time in.'
+                      : graceRemaining > 0
+                        ? 'Time in now to be marked Present.'
+                        : 'Grace period over. You can still time in—you will be marked Late.';
+
+                  return (
+                    <div
+                      key={session.session_id}
+                      className="rounded-lg border border-gray-200 bg-gray-50/80 p-4 space-y-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 leading-tight">
+                            {session.subject_code}
+                          </p>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            {session.subject_name}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {session.session_name || 'Attendance'} · EDP {session.edp_code || '—'}
+                          </p>
+                          {session.paused_at && (
+                            <p className="text-[11px] text-warning-700 mt-1">Session is paused. Time In is temporarily disabled.</p>
+                          )}
+                        </div>
+                        <Button
+                          onClick={() => handleTimeIn(session.session_id)}
+                          variant="primary"
+                          size="sm"
+                          disabled={timingInSession === session.session_id || !!session.paused_at}
+                          className="flex-shrink-0"
+                        >
+                          {timingInSession === session.session_id
+                            ? 'Submitting...'
+                            : session.paused_at
+                              ? 'Paused'
+                              : 'Time In'}
+                        </Button>
+                      </div>
+
+                      {openedAt && (
+                        <div className="pt-2 border-t border-gray-200/80 space-y-2">
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                            <span className="text-gray-500">Class remaining</span>
+                            <span className="font-medium tabular-nums text-gray-700">
+                              {formatRemaining(classRemaining)}
+                            </span>
+                            <span className="text-gray-500">Grace remaining</span>
+                            <span className="font-medium tabular-nums text-gray-700">
+                              {formatRemaining(graceRemaining)}
+                            </span>
+                          </div>
+                          <p
+                            className={`text-xs font-medium ${
+                              expectedStatus === 'late' && graceRemaining <= 0 && classRemaining > 0
+                                ? 'text-warning-700'
+                                : classRemaining <= 0
+                                  ? 'text-danger-700'
+                                  : 'text-success-700'
+                            }`}
+                          >
+                            {statusMessage}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 text-center py-2">
+                No open attendance sessions for your classes.
+              </p>
+            )}
+          </CardBody>
+        </Card>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        <div className="lg:col-span-2 space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <StatCard
               title="Current PC Used"
@@ -248,29 +381,6 @@ function DashboardOverview() {
               color="yellow"
             />
           </div>
-
-          {lastLogin && (
-            <Card>
-              <CardHeader title="Login Information" />
-              <CardBody>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <InfoCard
-                    icon={<Clock className="h-6 w-6" />}
-                    label="Last Login"
-                    value={formatSqlDateTimeLocal(lastLogin.login_time)}
-                    iconColor="blue"
-                  />
-                  <InfoCard
-                    icon={<MapPin className="h-6 w-6" />}
-                    label="Last PC Used"
-                    value={lastLogin.pc_number || 'Unknown'}
-                    iconColor="purple"
-                  />
-                </div>
-              </CardBody>
-            </Card>
-          )}
-
           <Card>
             <CardHeader title="Recent Records" />
             <CardBody>
@@ -354,112 +464,7 @@ function DashboardOverview() {
           </Card>
         </div>
 
-        <div className="space-y-6 md:border-l md:border-gray-300 md:pl-6">
-          <Card className="h-fit">
-            <CardHeader title="Attendance Today" />
-            <CardBody>
-              {openSessions.length > 0 ? (
-                <div className="space-y-4">
-                  {openSessions.map((session) => {
-                    const openedAt = parseSessionDateTime(session.opened_at);
-                    const pausedAt = parseSessionDateTime(session.paused_at);
-                    const effectiveNow = pausedAt ? pausedAt.getTime() : nowTimestamp;
-                    const classMinutes = Math.max(0, session.class_duration_minutes || 0);
-                    const graceMinutes = Math.max(0, session.grace_period_minutes || 0);
-                    const classDeadline = openedAt ? new Date(openedAt.getTime() + classMinutes * 60 * 1000) : null;
-                    const graceDeadline = openedAt ? new Date(openedAt.getTime() + graceMinutes * 60 * 1000) : null;
-                    const classRemaining = classDeadline ? Math.max(0, Math.floor((classDeadline.getTime() - effectiveNow) / 1000)) : 0;
-                    const graceRemaining = graceDeadline ? Math.max(0, Math.floor((graceDeadline.getTime() - effectiveNow) / 1000)) : 0;
-                    const expectedStatus = getExpectedTimeInStatus(session, effectiveNow);
-                    const statusMessage =
-                      classRemaining <= 0
-                        ? 'Session ended. Time in no longer available—you will be marked Absent if you did not time in.'
-                        : graceRemaining > 0
-                          ? 'Time in now to be marked Present.'
-                          : 'Grace period over. You can still time in—you will be marked Late.';
-
-                    return (
-                      <div
-                        key={session.session_id}
-                        className="rounded-lg border border-gray-200 bg-gray-50/80 p-4 space-y-3"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 leading-tight">
-                              {session.subject_code}
-                            </p>
-                            <p className="text-xs text-gray-600 mt-0.5">
-                              {session.subject_name}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {session.session_name || 'Attendance'} · EDP {session.edp_code || '—'}
-                            </p>
-                            {session.paused_at && (
-                              <p className="text-[11px] text-warning-700 mt-1">Session is paused. Time In is temporarily disabled.</p>
-                            )}
-                          </div>
-                          <Button
-                            onClick={() => handleTimeIn(session.session_id)}
-                            variant="primary"
-                            size="sm"
-                            disabled={timingInSession === session.session_id || !!session.paused_at}
-                            className="flex-shrink-0"
-                          >
-                            {timingInSession === session.session_id
-                              ? 'Submitting...'
-                              : session.paused_at
-                                ? 'Paused'
-                                : 'Time In'}
-                          </Button>
-                        </div>
-
-                        {openedAt && (
-                          <div className="pt-2 border-t border-gray-200/80 space-y-2">
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                              <span className="text-gray-500">Class remaining</span>
-                              <span className="font-medium tabular-nums text-gray-700">
-                                {formatRemaining(classRemaining)}
-                              </span>
-                              <span className="text-gray-500">Grace remaining</span>
-                              <span className="font-medium tabular-nums text-gray-700">
-                                {formatRemaining(graceRemaining)}
-                              </span>
-                            </div>
-                            <p
-                              className={`text-xs font-medium ${
-                                expectedStatus === 'late' && graceRemaining <= 0 && classRemaining > 0
-                                  ? 'text-warning-700'
-                                  : classRemaining <= 0
-                                    ? 'text-danger-700'
-                                    : 'text-success-700'
-                              }`}
-                            >
-                              {statusMessage}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500 text-center py-2">
-                  No open attendance sessions for your classes.
-                </p>
-              )}
-            </CardBody>
-          </Card>
-
-          <Card className="h-fit">
-            <CardHeader title="Notifications" />
-            <CardBody>
-              <BackendDashboardNotifications
-                category="attendance"
-                emptyMessage="No new notifications."
-              />
-            </CardBody>
-          </Card>
-
+        <div className="space-y-6 lg:border-l lg:border-gray-300 lg:pl-6">
           <Card className="h-fit">
             <CardHeader title="Quick Actions" />
             <CardBody>

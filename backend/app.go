@@ -21,8 +21,10 @@ import (
 type App struct {
 	ctx          context.Context
 	db           *sql.DB
-	kioskMode    bool
+	lockMode     bool
 	screenLocked bool
+	computerLab  string
+	pcNumber     string
 }
 
 // SetFeedbackAdminStatus updates the admin-facing workflow status for a feedback entry.
@@ -46,7 +48,7 @@ func (a *App) SetFeedbackAdminStatus(feedbackID int, adminUserID int, status str
 	query := `
 		UPDATE feedback
 		SET admin_status = ?,
-			admin_resolved_at = CASE WHEN ? = 'resolved' THEN GETDATE() ELSE NULL END
+			admin_resolved_at = CASE WHEN ? = 'resolved' THEN NOW() ELSE NULL END
 		WHERE id = ?
 	`
 
@@ -76,10 +78,12 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	// Load app settings for kiosk mode
+	// Load app settings for lock mode
 	appConfig := LoadAppSettings()
-	a.kioskMode = appConfig.KioskMode
-	a.screenLocked = appConfig.KioskMode // Start locked if kiosk mode is on
+	a.lockMode = appConfig.LockMode
+	a.screenLocked = appConfig.LockMode // Start locked if lock mode is on
+	a.computerLab = appConfig.ComputerLab
+	a.pcNumber = appConfig.PCNumber
 
 	// Initialize database connection with retry
 	var db *sql.DB
@@ -113,11 +117,17 @@ func (a *App) startup(ctx context.Context) {
 		if err := a.ensureAccountStatusConstraint(); err != nil {
 			log.Printf("Failed to ensure account status constraint: %v", err)
 		}
+		if err := a.ensureLegacyUsersIsActiveRemoved(); err != nil {
+			log.Printf("Failed to remove legacy users.is_active column: %v", err)
+		}
 		if err := a.closeStaleSessions(); err != nil {
 			log.Printf("Failed to close stale sessions on startup: %v", err)
 		}
 		if err := a.ensureNotificationsTable(); err != nil {
 			log.Printf("Failed to ensure notifications table: %v", err)
+		}
+		if err := a.ensureUserRecoveryCodesTable(); err != nil {
+			log.Printf("Failed to ensure user recovery code table: %v", err)
 		}
 		if err := a.ensureFeedbackAdminResolvedAtColumn(); err != nil {
 			log.Printf("Failed to ensure feedback admin resolved timestamp column: %v", err)
@@ -130,15 +140,15 @@ func (a *App) startup(ctx context.Context) {
 		}
 	}
 
-	// If kiosk mode is on, force lock the screen on startup
+	// If lock mode is on, force lock the screen on startup
 	// (using runtime API since Wails startup options alone aren't reliable)
-	if a.kioskMode {
+	if a.lockMode {
 		go func() {
 			// Small delay to let the window fully initialize
 			time.Sleep(500 * time.Millisecond)
 			wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
 			wailsRuntime.WindowFullscreen(a.ctx)
-			log.Println("Kiosk mode: Screen locked on startup")
+			log.Println("Lock mode: Screen locked on startup")
 		}()
 	}
 }
@@ -175,13 +185,13 @@ func (a *App) SaveFileDialog(title string, defaultFilename string, filterDisplay
 }
 
 // ==============================================================================
-// KIOSK / SCREEN LOCK METHODS
+// LOCK MODE / SCREEN LOCK METHODS
 // ==============================================================================
 
 // UnlockScreen is called after successful login.
 // Turns the app into a normal resizable window so the user can use it alongside other apps.
 func (a *App) UnlockScreen() {
-	if !a.kioskMode {
+	if !a.lockMode {
 		return
 	}
 	a.screenLocked = false
@@ -195,7 +205,7 @@ func (a *App) UnlockScreen() {
 // LockScreen is called after logout.
 // Restores fullscreen and always-on-top to force the next user to login.
 func (a *App) LockScreen() {
-	if !a.kioskMode {
+	if !a.lockMode {
 		return
 	}
 	a.screenLocked = true
@@ -205,9 +215,172 @@ func (a *App) LockScreen() {
 	log.Println("Screen locked - waiting for next user to login")
 }
 
-// IsKioskMode returns whether kiosk mode is enabled (for frontend to know)
-func (a *App) IsKioskMode() bool {
-	return a.kioskMode
+// IsLockMode returns whether lock mode is enabled (for frontend consumption)
+func (a *App) IsLockMode() bool {
+	return a.lockMode
+}
+
+// LockSettings represents lock mode and station identity configuration.
+type LockSettings struct {
+	LockMode    bool   `json:"lock_mode"`
+	ComputerLab  string `json:"computer_lab"`
+	PCNumber     string `json:"pc_number"`
+	StationLabel string `json:"station_label"`
+}
+
+func formatStationLabel(computerLab, pcNumber string) string {
+	trimmedLab := strings.TrimSpace(computerLab)
+	trimmedPC := strings.TrimSpace(pcNumber)
+
+	switch {
+	case trimmedLab != "" && trimmedPC != "":
+		return fmt.Sprintf("%s - PC %s", trimmedLab, trimmedPC)
+	case trimmedPC != "":
+		return fmt.Sprintf("PC %s", trimmedPC)
+	case trimmedLab != "":
+		return trimmedLab
+	default:
+		return "Unconfigured PC"
+	}
+}
+
+func (a *App) currentStationLabel() string {
+	return formatStationLabel(a.computerLab, a.pcNumber)
+}
+
+func (a *App) currentLockSettings() LockSettings {
+	return LockSettings{
+		LockMode:    a.lockMode,
+		ComputerLab:  strings.TrimSpace(a.computerLab),
+		PCNumber:     strings.TrimSpace(a.pcNumber),
+		StationLabel: a.currentStationLabel(),
+	}
+}
+
+func sanitizeComputerLab(input string) (string, error) {
+	s := SanitizeString(input, MaxLenPCNumber)
+	if ContainsControlOrNull(input) {
+		return "", fmt.Errorf("computer lab contains invalid characters")
+	}
+	return s, nil
+}
+
+// GetLockSettings returns the current lock mode + station settings for the login page modal.
+func (a *App) GetLockSettings() LockSettings {
+	return a.currentLockSettings()
+}
+
+// SetLockMode updates lock mode at runtime and persists it for next launch.
+func (a *App) SetLockMode(enabled bool) error {
+	previousLockMode := a.lockMode
+	previousScreenLocked := a.screenLocked
+
+	a.lockMode = enabled
+	if enabled {
+		a.screenLocked = true
+		wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
+		wailsRuntime.WindowMaximise(a.ctx)
+		wailsRuntime.WindowFullscreen(a.ctx)
+		log.Println("Lock mode enabled via settings")
+	} else {
+		a.screenLocked = false
+		wailsRuntime.WindowUnfullscreen(a.ctx)
+		wailsRuntime.WindowSetAlwaysOnTop(a.ctx, false)
+		wailsRuntime.WindowSetSize(a.ctx, 1000, 700)
+		wailsRuntime.WindowCenter(a.ctx)
+		log.Println("Lock mode disabled via settings")
+	}
+
+	if err := SaveAppSettings(AppConfig{
+		LockMode:   enabled,
+		ComputerLab: strings.TrimSpace(a.computerLab),
+		PCNumber:    strings.TrimSpace(a.pcNumber),
+	}); err != nil {
+		a.lockMode = previousLockMode
+		a.screenLocked = previousScreenLocked
+
+		if previousLockMode {
+			wailsRuntime.WindowSetAlwaysOnTop(a.ctx, true)
+			wailsRuntime.WindowMaximise(a.ctx)
+			wailsRuntime.WindowFullscreen(a.ctx)
+		} else {
+			wailsRuntime.WindowUnfullscreen(a.ctx)
+			wailsRuntime.WindowSetAlwaysOnTop(a.ctx, false)
+			wailsRuntime.WindowSetSize(a.ctx, 1000, 700)
+			wailsRuntime.WindowCenter(a.ctx)
+		}
+
+		return fmt.Errorf("failed to save lock mode setting: %w", err)
+	}
+
+	return nil
+}
+
+func parseLockModeInput(input string) (bool, error) {
+	normalized := strings.ToLower(strings.TrimSpace(input))
+	if normalized == "" {
+		return false, fmt.Errorf("lock mode value is required")
+	}
+
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	prefixes := []string{"lockmode:", "lockmode=", "lock_mode:", "lock_mode="}
+	for _, prefix := range prefixes {
+		normalized = strings.TrimPrefix(normalized, prefix)
+	}
+
+	switch normalized {
+	case "true", "1", "on", "enabled":
+		return true, nil
+	case "false", "0", "off", "disabled":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid lock mode value; use true or false (example: lockmode: true)")
+	}
+}
+
+// SetLockModeFromInput accepts values like "lockmode: true" or "false".
+func (a *App) SetLockModeFromInput(input string) (bool, error) {
+	enabled, err := parseLockModeInput(input)
+	if err != nil {
+		return a.lockMode, err
+	}
+
+	if err := a.SetLockMode(enabled); err != nil {
+		return a.lockMode, err
+	}
+
+	return a.lockMode, nil
+}
+
+// SetLockSettingsFromInput updates lock mode and station identity in one operation.
+func (a *App) SetLockSettingsFromInput(lockInput, computerLab, pcNumber string) (LockSettings, error) {
+	enabled, err := parseLockModeInput(lockInput)
+	if err != nil {
+		return a.currentLockSettings(), err
+	}
+
+	sanitizedLab, err := sanitizeComputerLab(computerLab)
+	if err != nil {
+		return a.currentLockSettings(), err
+	}
+
+	sanitizedPC, err := ValidatePCNumber(pcNumber)
+	if err != nil {
+		return a.currentLockSettings(), err
+	}
+
+	previousLab := a.computerLab
+	previousPC := a.pcNumber
+	a.computerLab = sanitizedLab
+	a.pcNumber = sanitizedPC
+
+	if err := a.SetLockMode(enabled); err != nil {
+		a.computerLab = previousLab
+		a.pcNumber = previousPC
+		return a.currentLockSettings(), err
+	}
+
+	return a.currentLockSettings(), nil
 }
 
 // ==============================================================================
@@ -234,6 +407,7 @@ type User struct {
 	// Activity tracking fields (populated by GetUsersByActivityStatus)
 	LastLoginAt    *string `json:"last_login_at,omitempty"`   // ISO datetime of last login
 	LastLoginAgo   string  `json:"last_login_ago,omitempty"`  // Human-readable "2 months ago"
+	CurrentlyLoggedIn bool `json:"currently_logged_in"`       // True when latest session has no logout yet
 	DeactivatedAt  *string `json:"deactivated_at,omitempty"`  // When auto-deactivated by system
 	DeletedAt      *string `json:"deleted_at,omitempty"`      // When soft-deleted (4-year rule)
 	ActivityStatus string  `json:"activity_status,omitempty"` // active | archived | deactivated | deleted
@@ -315,17 +489,23 @@ type ClassStudent struct {
 
 // AdminDashboard represents admin dashboard data
 type AdminDashboard struct {
-	TotalStudents           int `json:"total_students"`
-	TotalTeachers           int `json:"total_teachers"`
-	WorkingStudents         int `json:"working_students"`
-	RecentLogins            int `json:"recent_logins"`
-	ActiveUsersNow          int `json:"active_users_now"`
-	StudentsLoggedIn        int `json:"students_logged_in"`
-	TeachersLoggedIn        int `json:"teachers_logged_in"`
-	WorkingStudentsLoggedIn int `json:"working_students_logged_in"`
-	TodayLogins             int `json:"today_logins"`
-	TodayNewUsers           int `json:"today_new_users"`
-	PendingFeedback         int `json:"pending_feedback"`
+	TotalStudents           int     `json:"total_students"`
+	TotalTeachers           int     `json:"total_teachers"`
+	WorkingStudents         int     `json:"working_students"`
+	RecentLogins            int     `json:"recent_logins"`
+	ActiveUsersNow          int     `json:"active_users_now"`
+	StudentsLoggedIn        int     `json:"students_logged_in"`
+	TeachersLoggedIn        int     `json:"teachers_logged_in"`
+	WorkingStudentsLoggedIn int     `json:"working_students_logged_in"`
+	TodayLogins             int     `json:"today_logins"`
+	TodayTeacherLogins      int     `json:"today_teacher_logins"`
+	TodayAdminLogins        int     `json:"today_admin_logins"`
+	LastTeacherLoginAt      *string `json:"last_teacher_login_at,omitempty"`
+	LastTeacherPCNumber     *string `json:"last_teacher_pc_number,omitempty"`
+	LastAdminLoginAt        *string `json:"last_admin_login_at,omitempty"`
+	LastAdminPCNumber       *string `json:"last_admin_pc_number,omitempty"`
+	TodayNewUsers           int     `json:"today_new_users"`
+	PendingFeedback         int     `json:"pending_feedback"`
 }
 
 // GetAdminDashboard returns admin dashboard statistics
@@ -350,18 +530,18 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	a.db.QueryRow(`SELECT COUNT(*) FROM users WHERE user_type = 'working_student'`).Scan(&dashboard.WorkingStudents)
 
 	// Count recent logins (last 24 hours)
-	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE login_time >= DATEADD(HOUR, -24, GETDATE())`).Scan(&dashboard.RecentLogins)
+	a.db.QueryRow(`SELECT COUNT(*) FROM log_entries WHERE login_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)`).Scan(&dashboard.RecentLogins)
 
 	// Count active users now (logged in today without logout, distinct per user)
 	a.db.QueryRow(`
 		SELECT COUNT(DISTINCT ll.user_id)
 		FROM log_entries ll
 		WHERE ll.logout_time IS NULL
-			AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE)
+			AND DATE(ll.login_time) = CURDATE()
 			AND EXISTS (
 				SELECT 1 FROM user_session_heartbeats sh
 				WHERE sh.user_id = ll.user_id
-				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+				AND sh.last_seen >= DATE_SUB(NOW(), INTERVAL ? SECOND)
 			)
 	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.ActiveUsersNow)
 
@@ -369,11 +549,11 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	a.db.QueryRow(`
 		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
-		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'student'
+		WHERE ll.logout_time IS NULL AND DATE(ll.login_time) = CURDATE() AND u.user_type = 'student'
 			AND EXISTS (
 				SELECT 1 FROM user_session_heartbeats sh
 				WHERE sh.user_id = ll.user_id
-				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+				AND sh.last_seen >= DATE_SUB(NOW(), INTERVAL ? SECOND)
 			)
 	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.StudentsLoggedIn)
 
@@ -381,11 +561,11 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	a.db.QueryRow(`
 		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
-		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'teacher'
+		WHERE ll.logout_time IS NULL AND DATE(ll.login_time) = CURDATE() AND u.user_type = 'teacher'
 			AND EXISTS (
 				SELECT 1 FROM user_session_heartbeats sh
 				WHERE sh.user_id = ll.user_id
-				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+				AND sh.last_seen >= DATE_SUB(NOW(), INTERVAL ? SECOND)
 			)
 	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.TeachersLoggedIn)
 
@@ -393,24 +573,86 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 	a.db.QueryRow(`
 		SELECT COUNT(DISTINCT ll.user_id) FROM log_entries ll
 		INNER JOIN users u ON ll.user_id = u.id
-		WHERE ll.logout_time IS NULL AND CAST(ll.login_time AS DATE) = CAST(GETDATE() AS DATE) AND u.user_type = 'working_student'
+		WHERE ll.logout_time IS NULL AND DATE(ll.login_time) = CURDATE() AND u.user_type = 'working_student'
 			AND EXISTS (
 				SELECT 1 FROM user_session_heartbeats sh
 				WHERE sh.user_id = ll.user_id
-				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+				AND sh.last_seen >= DATE_SUB(NOW(), INTERVAL ? SECOND)
 			)
 	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.WorkingStudentsLoggedIn)
 
 	// Count today's logins
 	a.db.QueryRow(`
 		SELECT COUNT(*) FROM log_entries 
-		WHERE CAST(login_time AS DATE) = CAST(GETDATE() AS DATE)
+		WHERE DATE(login_time) = CURDATE()
 	`).Scan(&dashboard.TodayLogins)
+
+	// Count teacher logins today
+	a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM log_entries ll
+		INNER JOIN users u ON ll.user_id = u.id
+		WHERE DATE(ll.login_time) = CURDATE() AND u.user_type = 'teacher'
+	`).Scan(&dashboard.TodayTeacherLogins)
+
+	// Count admin logins today
+	a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM log_entries ll
+		INNER JOIN users u ON ll.user_id = u.id
+		WHERE DATE(ll.login_time) = CURDATE() AND u.user_type = 'admin'
+	`).Scan(&dashboard.TodayAdminLogins)
+
+	// Latest teacher login information
+	var lastTeacherLoginAt sql.NullString
+	var lastTeacherPC sql.NullString
+	err := a.db.QueryRow(`
+		SELECT DATE_FORMAT(ll.login_time, '%Y-%m-%d %H:%i:%s') AS login_time, ll.pc_number
+		FROM log_entries ll
+		INNER JOIN users u ON ll.user_id = u.id
+		WHERE u.user_type = 'teacher'
+		ORDER BY ll.login_time DESC
+		LIMIT 1
+	`).Scan(&lastTeacherLoginAt, &lastTeacherPC)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("Failed to load latest teacher login info: %v", err)
+	}
+	if lastTeacherLoginAt.Valid {
+		v := lastTeacherLoginAt.String
+		dashboard.LastTeacherLoginAt = &v
+	}
+	if lastTeacherPC.Valid && strings.TrimSpace(lastTeacherPC.String) != "" {
+		v := lastTeacherPC.String
+		dashboard.LastTeacherPCNumber = &v
+	}
+
+	// Latest admin login information
+	var lastAdminLoginAt sql.NullString
+	var lastAdminPC sql.NullString
+	err = a.db.QueryRow(`
+		SELECT DATE_FORMAT(ll.login_time, '%Y-%m-%d %H:%i:%s') AS login_time, ll.pc_number
+		FROM log_entries ll
+		INNER JOIN users u ON ll.user_id = u.id
+		WHERE u.user_type = 'admin'
+		ORDER BY ll.login_time DESC
+		LIMIT 1
+	`).Scan(&lastAdminLoginAt, &lastAdminPC)
+	if err != nil && err != sql.ErrNoRows {
+		log.Printf("Failed to load latest admin login info: %v", err)
+	}
+	if lastAdminLoginAt.Valid {
+		v := lastAdminLoginAt.String
+		dashboard.LastAdminLoginAt = &v
+	}
+	if lastAdminPC.Valid && strings.TrimSpace(lastAdminPC.String) != "" {
+		v := lastAdminPC.String
+		dashboard.LastAdminPCNumber = &v
+	}
 
 	// Count users created today
 	a.db.QueryRow(`
 		SELECT COUNT(*) FROM users 
-		WHERE CAST(created_at AS DATE) = CAST(GETDATE() AS DATE)
+		WHERE DATE(created_at) = CURDATE()
 	`).Scan(&dashboard.TodayNewUsers)
 
 	// Count pending feedback (forwarded to admin but not archived)
@@ -518,11 +760,11 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	// Get all attendance records for this student
 	query := `
 		SELECT 
-			a.class_id, a.student_id, CONVERT(VARCHAR(10), a.attendance_date, 23) as date,
+			a.class_id, a.student_id, DATE_FORMAT(a.attendance_date, '%Y-%m-%d') as date,
 			stu.student_id,
 			stu.first_name, stu.middle_name, stu.last_name,
 			c.subject_code, s.description as subject_name,
-			CONVERT(VARCHAR(8), a.time_in_at, 108) as time_in,
+			DATE_FORMAT(a.time_in_at, '%H:%i:%s') as time_in,
 			a.status, a.remarks
 		FROM attendance a
 		JOIN students stu ON a.student_id = stu.id
@@ -599,7 +841,7 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 			AND EXISTS (
 				SELECT 1 FROM user_session_heartbeats sh
 				WHERE sh.user_id = log_entries.user_id
-				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+				AND sh.last_seen >= DATE_SUB(NOW(), INTERVAL ? SECOND)
 			)
 		GROUP BY pc_number
 	`, userID, sessionHeartbeatTimeoutSeconds).Scan(&loggedIn, &pcNumber)
@@ -676,7 +918,7 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 	a.db.QueryRow(`
 		SELECT COUNT(*) FROM users u
 		JOIN students s ON u.id = s.id
-		WHERE CAST(u.created_at AS DATE) = CAST(GETDATE() AS DATE)
+		WHERE DATE(u.created_at) = CURDATE()
 	`).Scan(&dashboard.TodayRegistrations)
 
 	// Count students currently logged in
@@ -689,7 +931,7 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 			AND EXISTS (
 				SELECT 1 FROM user_session_heartbeats sh
 				WHERE sh.user_id = ll.user_id
-				AND sh.last_seen >= DATEADD(SECOND, -?, GETDATE())
+				AND sh.last_seen >= DATE_SUB(NOW(), INTERVAL ? SECOND)
 			)
 	`, sessionHeartbeatTimeoutSeconds).Scan(&dashboard.ActiveStudentsNow)
 

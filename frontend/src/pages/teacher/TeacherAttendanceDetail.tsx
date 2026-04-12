@@ -5,8 +5,9 @@ import LoadingDots from '../../components/LoadingDots';
 import { ArchiveIcon } from '../../components/icons/ArchiveIcons';
 import {
   Calendar,
-  X,
-  Download,
+  CornerUpLeft,
+  Printer,
+  RotateCw,
 } from 'lucide-react';
 import {
   OpenClassAttendance,
@@ -14,11 +15,18 @@ import {
   UpdateAttendanceRecord,
   GetClassByID,
   ExportAttendanceCSVByDate,
+  ExportAttendancePDFByDate,
+  ExportAttendanceDOCXByDate,
   ExportAttendanceCSVBySession,
+  ExportAttendancePDFBySession,
+  ExportAttendanceDOCXBySession,
   ExportArchivedAttendanceCSVByDate,
+  ExportArchivedAttendancePDFByDate,
+  ExportArchivedAttendanceDOCXByDate,
 } from '../../../wailsjs/go/backend/App';
-import { openExportSaveDialog, defaultAttendanceFilename } from '../../utils/exportSaveDialog';
+import { openExportSaveDialog, defaultAttendanceFilename, type ExportFormat } from '../../utils/exportSaveDialog';
 import { useAuth } from '../../contexts/AuthContext';
+import { useAppUi } from '../../contexts/AppUiContext';
 import { Class, Attendance } from './types';
 
 function AttendanceManagementDetail() {
@@ -27,6 +35,7 @@ function AttendanceManagementDetail() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const { toast } = useAppUi();
   const [selectedClass, setSelectedClass] = useState<Class | null>(null);
   const [attendanceRecords, setAttendanceRecords] = useState<Attendance[]>([]);
   const initialDate = searchParams.get('date') || '';
@@ -39,7 +48,7 @@ function AttendanceManagementDetail() {
   const [sessionStatus, setSessionStatus] = useState<'open' | 'closed' | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<{[key: string]: boolean}>({});
   const [exportingAttendance, setExportingAttendance] = useState(false);
-  const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [exportDropdown, setExportDropdown] = useState<{ top: number; left: number } | null>(null);
 
   // Computed: is the selected date today?
   const today = new Date().toISOString().split('T')[0];
@@ -90,46 +99,74 @@ function AttendanceManagementDetail() {
     }
   };
 
-  const handleExportAttendance = async (classId: number) => {
+  const handleExportAttendance = async (classId: number, format: ExportFormat) => {
     if (!selectedDate) {
-      setNotice({ type: 'error', text: 'Select a date before exporting attendance.' });
+      toast('Select a date before exporting attendance.', 'error');
       return;
     }
 
     const isArchivedView = attendanceRecords.length > 0 && attendanceRecords[0]?.is_archived;
-    const defaultName = defaultAttendanceFilename(selectedDate, 'csv', isArchivedView);
-    const savePath = await openExportSaveDialog('Save attendance', defaultName, 'csv');
-    if (!savePath) return;
 
     setExportingAttendance(true);
-    setNotice(null);
     try {
-      const filePath = isArchivedView
-        ? sessionId && sessionId > 0
-          ? await ExportArchivedAttendanceCSVByDate(classId, selectedDate, sessionId, savePath)
-          : await ExportArchivedAttendanceCSVByDate(classId, selectedDate, 0, savePath)
-        : sessionId && sessionId > 0
-          ? await ExportAttendanceCSVBySession(classId, selectedDate, sessionId, savePath)
-          : await ExportAttendanceCSVByDate(classId, selectedDate, savePath);
-      setNotice({ type: 'success', text: `Attendance exported successfully. File saved to: ${filePath}` });
+      const savePath = await openExportSaveDialog('Save attendance report', defaultAttendanceFilename(selectedDate, format, isArchivedView), format);
+      if (!savePath) return;
+
+      if (isArchivedView) {
+        if (format === 'csv') {
+          await ExportArchivedAttendanceCSVByDate(classId, selectedDate, sessionId && sessionId > 0 ? sessionId : 0, savePath);
+        } else if (format === 'pdf') {
+          await ExportArchivedAttendancePDFByDate(classId, selectedDate, sessionId && sessionId > 0 ? sessionId : 0, savePath);
+        } else {
+          await ExportArchivedAttendanceDOCXByDate(classId, selectedDate, sessionId && sessionId > 0 ? sessionId : 0, savePath);
+        }
+      } else if (sessionId && sessionId > 0) {
+        if (format === 'csv') {
+          await ExportAttendanceCSVBySession(classId, selectedDate, sessionId, savePath);
+        } else if (format === 'pdf') {
+          await ExportAttendancePDFBySession(classId, selectedDate, sessionId, savePath);
+        } else {
+          await ExportAttendanceDOCXBySession(classId, selectedDate, sessionId, savePath);
+        }
+      } else {
+        if (format === 'csv') {
+          await ExportAttendanceCSVByDate(classId, selectedDate, savePath);
+        } else if (format === 'pdf') {
+          await ExportAttendancePDFByDate(classId, selectedDate, savePath);
+        } else {
+          await ExportAttendanceDOCXByDate(classId, selectedDate, savePath);
+        }
+      }
+
+      toast(`Saved: ${savePath.split(/[\\/]/).pop()}`, 'success');
     } catch (error) {
       console.error('Failed to export attendance:', error);
-      setNotice({ type: 'error', text: 'Failed to export attendance. Please try again.' });
+      toast('Failed to export attendance. Please try again.', 'error');
     } finally {
       setExportingAttendance(false);
     }
   };
 
+  useEffect(() => {
+    const closeDropdown = () => setExportDropdown(null);
+    if (exportDropdown) {
+      document.addEventListener('click', closeDropdown);
+    }
+
+    return () => {
+      document.removeEventListener('click', closeDropdown);
+    };
+  }, [exportDropdown]);
+
   const handleStatusChange = async (record: Attendance, newStatus: string) => {
     // Enforce same-day only editing
     if (!isEditable) {
-      setNotice({ type: 'error', text: 'Attendance can only be edited on the same day.' });
+      toast('Attendance can only be edited on the same day.', 'error');
       return;
     }
 
     const key = `${record.class_id}-${record.student_user_id}-${record.date}`;
     setUpdatingStatus(prev => ({ ...prev, [key]: true }));
-    setNotice(null);
     
     try {
       if (sessionId && user?.id) {
@@ -162,10 +199,7 @@ function AttendanceManagementDetail() {
       );
     } catch (error) {
       console.error('Failed to update attendance:', error);
-      setNotice({
-        type: 'error',
-        text: 'Failed to update attendance. ' + (error instanceof Error ? error.message : 'Please try again.'),
-      });
+      toast('Failed to update attendance. ' + (error instanceof Error ? error.message : 'Please try again.'), 'error');
     } finally {
       setUpdatingStatus(prev => ({ ...prev, [key]: false }));
     }
@@ -276,17 +310,22 @@ function AttendanceManagementDetail() {
   }
 
   return (
-    <div className="modal-backdrop-dense">
-      <div className="min-h-screen p-3 sm:p-4 md:p-8">
+    <div className="flex flex-col min-w-0 min-h-0 overflow-x-hidden">
+      {exportDropdown && selectedClass && (
+        <div
+          style={{ position: 'fixed', top: exportDropdown.top, left: exportDropdown.left, zIndex: 9999 }}
+          className="w-44 bg-white border border-gray-200 rounded-lg shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button onClick={() => { setExportDropdown(null); handleExportAttendance(selectedClass.class_id, 'csv'); }} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-t-lg">CSV</button>
+          <button onClick={() => { setExportDropdown(null); handleExportAttendance(selectedClass.class_id, 'pdf'); }} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">PDF</button>
+          <button onClick={() => { setExportDropdown(null); handleExportAttendance(selectedClass.class_id, 'docx'); }} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-b-lg">DOCX</button>
+        </div>
+      )}
+      <div className="p-3 sm:p-4 md:p-6">
         {error && (
           <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md max-w-7xl mx-auto">
             {error}
-          </div>
-        )}
-
-        {notice && (
-          <div className={`mb-6 px-4 py-3 rounded-md max-w-7xl mx-auto border ${notice.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
-            {notice.text}
           </div>
         )}
 
@@ -301,10 +340,10 @@ function AttendanceManagementDetail() {
           <div className="bg-white shadow rounded-lg p-6 mb-6 border border-gray-300 max-w-4xl mx-auto relative">
             <button
               onClick={handleCancelClick}
-              className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
-              title="Close"
+              className="absolute top-4 right-4 inline-flex items-center rounded-md border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50 transition-colors"
+              title="Back"
             >
-              <X className="h-5 w-5" />
+              <CornerUpLeft className="h-5 w-5" />
             </button>
             <div className="text-center py-8">
               <Calendar className="mx-auto h-12 w-12 text-gray-300 mb-4" />
@@ -319,16 +358,14 @@ function AttendanceManagementDetail() {
           </div>
         )}
 
-        {/* Attendance Sheet - Bond Paper Style */}
         {!loading && selectedClass && hasSelectedDate && (
-          <div className="bg-white max-w-4xl mx-auto my-4 sm:my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
-            {/* Close Button */}
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm max-w-7xl mx-auto my-2 sm:my-4 p-4 sm:p-6 relative">
             <button
               onClick={handleCancelClick}
-              className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
-              title="Close"
+              className="absolute top-4 right-4 inline-flex items-center rounded-md border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50 transition-colors"
+              title="Back"
             >
-              <X className="h-5 w-5" />
+              <CornerUpLeft className="h-5 w-5" />
             </button>
 
             {/* Archived Banner */}
@@ -339,11 +376,10 @@ function AttendanceManagementDetail() {
               </div>
             )}
 
-            {/* Sheet Title */}
-            <div className="mb-6 pb-4 border-b border-gray-400">
+            <div className="mb-6 pb-4 border-b border-gray-200">
               <div className="text-center mb-4">
                 <div className="flex items-center justify-center gap-2">
-                  <h2 className="text-xl font-bold text-gray-900 tracking-wide">ATTENDANCE SHEET</h2>
+                  <h2 className="text-xl font-bold text-gray-900">Attendance</h2>
                   {attendanceRecords.length > 0 && attendanceRecords[0].is_archived && (
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
                       ARCHIVED
@@ -356,16 +392,34 @@ function AttendanceManagementDetail() {
               </div>
               {/* Export actions */}
               <div className="flex justify-end gap-2">
+                <Button
+                  onClick={() => loadAttendance()}
+                  variant="outline"
+                  size="sm"
+                  icon={<RotateCw className="h-4 w-4" />}
+                  disabled={loadingAttendance}
+                  title="Refresh attendance sheet"
+                >
+                  Refresh
+                </Button>
                 {attendanceRecords.length > 0 && attendanceRecords[0].is_archived && (
                   <Button
-                    onClick={() => handleExportAttendance(selectedClass.class_id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                      setExportDropdown(
+                        exportDropdown
+                          ? null
+                          : { top: rect.bottom + 4, left: rect.right - 176 }
+                      );
+                    }}
                     variant="outline"
                     size="sm"
-                    icon={<Download className="h-4 w-4" />}
+                    icon={<Printer className="h-4 w-4" />}
                     disabled={exportingAttendance}
-                    title="Export to CSV"
+                    title="Export"
                   >
-                    Export CSV
+                    Export
                   </Button>
                 )}
               </div>
@@ -381,11 +435,10 @@ function AttendanceManagementDetail() {
               <>
                 <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
                   <table className="w-full" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-                    {/* Class Information Header */}
                     <thead>
                       <tr>
-                        <th colSpan={4} className="px-4 py-2 text-left border-b-2 border-gray-900">
-                          <div className="text-gray-900 font-bold text-sm tracking-wide">CLASS INFORMATION</div>
+                        <th colSpan={4} className="px-4 py-2 text-left border-b border-gray-200 bg-gray-50">
+                          <div className="text-gray-900 font-semibold text-sm">Class Information</div>
                         </th>
                       </tr>
                     </thead>
@@ -410,12 +463,11 @@ function AttendanceManagementDetail() {
                       </tr>
                     </tbody>
 
-                    {/* Attendance List Header */}
                     <thead>
                       <tr>
-                        <th colSpan={5} className="px-4 py-3 text-left border-b-2 border-gray-900">
+                        <th colSpan={5} className="px-4 py-3 text-left border-b border-gray-200 bg-gray-50">
                           <div className="flex items-center justify-between">
-                            <span className="text-gray-900 font-bold text-sm tracking-wide">DAILY ATTENDANCE RECORD</span>
+                            <span className="text-gray-900 font-semibold text-sm">Daily Attendance Record</span>
                             <div className="flex items-center gap-3">
                               <span className="text-xs text-gray-600">Total Students: {attendanceRecords.length}</span>
                             </div>
@@ -466,9 +518,8 @@ function AttendanceManagementDetail() {
                       )}
                     </tbody>
 
-                    {/* Summary Footer */}
                     <tfoot>
-                      <tr className="border-t-2 border-gray-900">
+                      <tr className="border-t border-gray-200 bg-gray-50/50">
                         <td colSpan={5} className="px-4 py-3">
                           <div className="flex justify-between items-center text-xs">
                             <div className="flex gap-4 font-medium">

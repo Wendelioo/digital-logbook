@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { User, Lock, Eye, EyeOff, UserPlus, Settings, KeyRound, Check, X } from 'lucide-react';
-import { CreateUser, GetDepartments, GetStudentTeachers, RequestPasswordReset } from '../../wailsjs/go/backend/App';
+import { CreateUser, GetDepartments } from '../../wailsjs/go/backend/App';
 import { backend } from '../../wailsjs/go/models';
 import Button from '../components/Button';
 import LoadingDots from '../components/LoadingDots';
@@ -11,7 +11,6 @@ import backgroundImage from '../assets/background/background.jpg';
 import RegistrationModal from './RegistrationPage';
 
 type Department = backend.Department;
-type TeacherOption = backend.TeacherOption;
 
 const roleRoutes: { [key: string]: string } = {
   student: '/student',
@@ -173,60 +172,214 @@ function LoginPage() {
 
   // Forgot password modal state
   const [showForgotModal, setShowForgotModal] = useState(false);
-  type ForgotStep = 'form' | 'submitted';
+  type ForgotStep = 'form' | 'completed';
   const [forgotStep, setForgotStep] = useState<ForgotStep>('form');
-  const [forgotStudentCode, setForgotStudentCode] = useState('');
-  const [forgotTeachers, setForgotTeachers] = useState<TeacherOption[]>([]);
-  const [forgotTeacherID, setForgotTeacherID] = useState<number | ''>('');
+  const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [forgotIdentityVerified, setForgotIdentityVerified] = useState(false);
+  const [forgotCodeVerified, setForgotCodeVerified] = useState(false);
+  const [forgotRecoveryCode, setForgotRecoveryCode] = useState('');
   const [forgotNewPassword, setForgotNewPassword] = useState('');
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
   const [forgotShowNew, setForgotShowNew] = useState(false);
   const [forgotShowConfirm, setForgotShowConfirm] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState('');
-  const [forgotTeacherName, setForgotTeacherName] = useState('');
+  const [showLockSettingsModal, setShowLockSettingsModal] = useState(false);
+  const [lockExpression, setLockExpression] = useState('lockmode: false');
+  const [lockComputerLab, setLockComputerLab] = useState('');
+  const [lockPCNumber, setLockPCNumber] = useState('');
+  const [lockStationLabel, setLockStationLabel] = useState('Unconfigured PC');
+  const [lockStatusMessage, setLockStatusMessage] = useState('');
+  const [lockErrorMessage, setLockErrorMessage] = useState('');
+  const [lockSaving, setLockSaving] = useState(false);
+  const [lockModeEnabled, setLockModeEnabled] = useState(false);
+  const [showLockTrigger, setShowLockTrigger] = useState(false);
+
+  type LockSettings = {
+    lock_mode: boolean;
+    computer_lab: string;
+    pc_number: string;
+    station_label: string;
+  };
+
+  const verifyPasswordResetIdentifierBridge = async (
+    identifier: string
+  ): Promise<void> => {
+    const appBridge = (window as any)?.go?.backend?.App;
+    if (!appBridge || typeof appBridge.VerifyPasswordResetIdentifier !== 'function') {
+      throw new Error('This app build does not support ID-first recovery verification yet. Please restart after updating.');
+    }
+
+    await appBridge.VerifyPasswordResetIdentifier(identifier);
+  };
+
+  const verifyRecoveryCodeForIdentifierBridge = async (
+    identifier: string,
+    recoveryCode: string
+  ): Promise<void> => {
+    const appBridge = (window as any)?.go?.backend?.App;
+    if (!appBridge || typeof appBridge.VerifyRecoveryCodeForIdentifier !== 'function') {
+      throw new Error('This app build does not support account-bound recovery-code verification yet. Please restart after updating.');
+    }
+
+    await appBridge.VerifyRecoveryCodeForIdentifier(identifier, recoveryCode);
+  };
+
+  const resetPasswordWithIdentifierRecoveryCodeBridge = async (
+    identifier: string,
+    recoveryCode: string,
+    newPasswordValue: string
+  ): Promise<void> => {
+    const appBridge = (window as any)?.go?.backend?.App;
+    if (!appBridge || typeof appBridge.ResetPasswordWithIdentifierRecoveryCode !== 'function') {
+      throw new Error('This app build does not support ID-first recovery reset yet. Please restart after updating.');
+    }
+
+    await appBridge.ResetPasswordWithIdentifierRecoveryCode(identifier, recoveryCode, newPasswordValue);
+  };
+
+  const loadLockSettingsBridge = async (): Promise<LockSettings> => {
+    const appBridge = (window as any)?.go?.backend?.App;
+    if (!appBridge || typeof appBridge.GetLockSettings !== 'function') {
+      throw new Error('This app build does not support lock mode settings yet. Please restart after updating.');
+    }
+
+    return appBridge.GetLockSettings();
+  };
+
+  const setLockSettingsFromInputBridge = async (
+    input: string,
+    computerLab: string,
+    pcNumber: string
+  ): Promise<LockSettings> => {
+    const appBridge = (window as any)?.go?.backend?.App;
+    if (!appBridge || typeof appBridge.SetLockSettingsFromInput !== 'function') {
+      throw new Error('This app build does not support lock mode updates yet. Please restart after updating.');
+    }
+
+    return appBridge.SetLockSettingsFromInput(input, computerLab, pcNumber);
+  };
+
+  const handleForgotVerifyIdentity = async () => {
+    if (!forgotIdentifier.trim()) {
+      setForgotError('Please enter your account ID first.');
+      return;
+    }
+
+    setForgotLoading(true);
+    setForgotError('');
+
+    try {
+      await verifyPasswordResetIdentifierBridge(forgotIdentifier.trim());
+      setForgotIdentityVerified(true);
+      setForgotCodeVerified(false);
+      setForgotError('');
+    } catch (error) {
+      setForgotIdentityVerified(false);
+      setForgotCodeVerified(false);
+      const message = getThrowableMessage(error, '');
+      const normalized = message.toLowerCase();
+      if (
+        normalized.includes('does not support') ||
+        normalized.includes('restart after updating') ||
+        normalized.includes('runtime')
+      ) {
+        setForgotError(message || 'Unable to process account ID right now.');
+      } else {
+        setForgotError('Invalid or unregistered account ID.');
+      }
+    } finally {
+      setForgotLoading(false);
+    }
+  };
 
   const pwRules = {
     length: forgotNewPassword.length >= 8,
     upper: /[A-Z]/.test(forgotNewPassword),
+    lower: /[a-z]/.test(forgotNewPassword),
     number: /[0-9]/.test(forgotNewPassword),
     special: /[^A-Za-z0-9]/.test(forgotNewPassword),
   };
   const pwValid = Object.values(pwRules).every(Boolean);
   const pwMatch = forgotNewPassword === forgotConfirmPassword && forgotConfirmPassword.length > 0;
 
-  const handleForgotStudentBlur = async () => {
-    const code = forgotStudentCode.trim();
-    if (!code) return;
-    setForgotError('');
-    setForgotTeachers([]);
-    setForgotTeacherID('');
-    try {
-      const teachers = await GetStudentTeachers(code);
-      if (!teachers || teachers.length === 0) {
-        setForgotError('No active classes found for this Student ID.');
-      } else {
-        setForgotTeachers(teachers);
+  const getThrowableMessage = (err: unknown, fallback: string): string => {
+    if (err instanceof Error && err.message.trim()) {
+      return err.message;
+    }
+    if (typeof err === 'string' && err.trim()) {
+      return err;
+    }
+    if (err && typeof err === 'object') {
+      const maybeMessage = (err as { message?: unknown; error?: unknown }).message
+        ?? (err as { message?: unknown; error?: unknown }).error;
+      if (typeof maybeMessage === 'string' && maybeMessage.trim()) {
+        return maybeMessage;
       }
-    } catch (err) {
-      setForgotError('Student ID not found.');
+    }
+    return fallback;
+  };
+
+  const handleForgotVerifyRecoveryCode = async () => {
+    if (!forgotIdentityVerified) {
+      setForgotError('Please enter your account ID first.');
+      return;
+    }
+    if (!forgotRecoveryCode.trim()) {
+      setForgotError('Please enter your recovery code.');
+      return;
+    }
+
+    setForgotLoading(true);
+    setForgotError('');
+
+    try {
+      await verifyRecoveryCodeForIdentifierBridge(forgotIdentifier.trim(), forgotRecoveryCode.trim());
+      setForgotCodeVerified(true);
+      setForgotError('');
+    } catch (error) {
+      setForgotCodeVerified(false);
+      setForgotError(getThrowableMessage(error, 'Unable to verify recovery code.'));
+    } finally {
+      setForgotLoading(false);
     }
   };
 
-  const handleForgotSubmit = async (e: React.FormEvent) => {
+  const handleForgotResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pwValid) { setForgotError('Password does not meet requirements.'); return; }
-    if (!pwMatch) { setForgotError('Passwords do not match.'); return; }
-    if (!forgotTeacherID) { setForgotError('Please select a teacher.'); return; }
+    if (!forgotIdentityVerified) {
+      setForgotError('Please enter your account ID first.');
+      return;
+    }
+    if (!forgotCodeVerified) {
+      setForgotError('Please verify your recovery code first.');
+      return;
+    }
+    if (!forgotIdentifier.trim()) {
+      setForgotError('Please enter your account ID first.');
+      return;
+    }
+    if (!forgotRecoveryCode.trim()) {
+      setForgotError('Please enter your recovery code.');
+      return;
+    }
+    if (!pwValid || !pwMatch) {
+      setForgotError('Please meet all password requirements and ensure passwords match.');
+      return;
+    }
+
     setForgotLoading(true);
     setForgotError('');
+
     try {
-      await RequestPasswordReset(forgotStudentCode.trim(), Number(forgotTeacherID), forgotNewPassword);
-      const selected = forgotTeachers.find(t => t.teacher_user_id === Number(forgotTeacherID));
-      setForgotTeacherName(selected?.full_name ?? 'your teacher');
-      setForgotStep('submitted');
+      await resetPasswordWithIdentifierRecoveryCodeBridge(
+        forgotIdentifier.trim(),
+        forgotRecoveryCode.trim(),
+        forgotNewPassword
+      );
+      setForgotStep('completed');
     } catch (err) {
-      setForgotError(err instanceof Error ? err.message : 'Failed to submit request.');
+      setForgotError(getThrowableMessage(err, 'Failed to reset password.'));
     } finally {
       setForgotLoading(false);
     }
@@ -235,13 +388,91 @@ function LoginPage() {
   const closeForgotModal = () => {
     setShowForgotModal(false);
     setForgotStep('form');
-    setForgotStudentCode('');
-    setForgotTeachers([]);
-    setForgotTeacherID('');
+    setForgotIdentifier('');
+    setForgotIdentityVerified(false);
+    setForgotCodeVerified(false);
+    setForgotRecoveryCode('');
     setForgotNewPassword('');
     setForgotConfirmPassword('');
     setForgotError('');
-    setForgotTeacherName('');
+    setForgotShowNew(false);
+    setForgotShowConfirm(false);
+  };
+
+  const forgotStage: 'identifier' | 'code' | 'password' = !forgotIdentityVerified
+    ? 'identifier'
+    : !forgotCodeVerified
+      ? 'code'
+      : 'password';
+
+  const openLockSettingsModal = async () => {
+    setShowLockSettingsModal(true);
+    setLockErrorMessage('');
+    setLockStatusMessage('');
+
+    try {
+      const settings = await loadLockSettingsBridge();
+      setLockModeEnabled(Boolean(settings.lock_mode));
+      setLockExpression(`lockmode: ${settings.lock_mode ? 'true' : 'false'}`);
+      setLockComputerLab(settings.computer_lab ?? '');
+      setLockPCNumber(settings.pc_number ?? '');
+      setLockStationLabel(settings.station_label ?? 'Unconfigured PC');
+    } catch (err) {
+      setLockErrorMessage(getThrowableMessage(err, 'Unable to load lock mode status.'));
+    }
+  };
+
+  const closeLockSettingsModal = () => {
+    setShowLockSettingsModal(false);
+    setLockErrorMessage('');
+    setLockStatusMessage('');
+    setShowLockTrigger(false);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setShowLockTrigger(true);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, []);
+
+  const applyLockSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!lockExpression.trim()) {
+      setLockErrorMessage('Please enter a value, for example: lockmode: true');
+      return;
+    }
+
+    setLockSaving(true);
+    setLockErrorMessage('');
+    setLockStatusMessage('');
+
+    try {
+      const updatedSettings = await setLockSettingsFromInputBridge(
+        lockExpression.trim(),
+        lockComputerLab.trim(),
+        lockPCNumber.trim()
+      );
+      const updatedMode = Boolean(updatedSettings.lock_mode);
+      setLockModeEnabled(updatedMode);
+      setLockExpression(`lockmode: ${updatedMode ? 'true' : 'false'}`);
+      setLockComputerLab(updatedSettings.computer_lab ?? '');
+      setLockPCNumber(updatedSettings.pc_number ?? '');
+      setLockStationLabel(updatedSettings.station_label ?? 'Unconfigured PC');
+      setLockStatusMessage(`Lock mode is now ${updatedMode ? 'enabled' : 'disabled'}.`);
+    } catch (err) {
+      setLockErrorMessage(getThrowableMessage(err, 'Unable to update lock mode.'));
+    } finally {
+      setLockSaving(false);
+    }
   };
 
   const [registrationData, setRegistrationData] = useState({
@@ -296,12 +527,6 @@ function LoginPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const isDatabaseError = (errorMsg: string) => {
-    return errorMsg.toLowerCase().includes('database') || 
-           errorMsg.toLowerCase().includes('connection') ||
-           errorMsg.toLowerCase().includes('connect');
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -360,9 +585,9 @@ function LoginPage() {
 
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen md:h-screen flex flex-col md:flex-row relative overflow-y-auto">
       {/* Left Section - Background Image with Title and Text */}
-      <div className="w-1/2 relative flex flex-col justify-center items-start p-16 overflow-hidden">
+      <div className="w-full md:w-1/2 relative flex flex-col justify-center items-start p-6 sm:p-10 lg:p-16 overflow-hidden min-h-[240px] sm:min-h-[300px] md:min-h-screen">
         {/* Blurred Background Image */}
         <div 
           className="absolute inset-0"
@@ -382,7 +607,7 @@ function LoginPage() {
         <div className="relative z-10 max-w-2xl">
           {/* Text Content */}
           <div className="space-y-6">
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight tracking-[-0.04em] text-white drop-shadow-2xl">
+            <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight tracking-[-0.04em] text-white drop-shadow-2xl">
               <span className="block">Easily Track</span>
               <span className="block text-teal-300">Your Lab Entries.</span>
             </h1>
@@ -395,7 +620,7 @@ function LoginPage() {
       </div>
 
       {/* Right Section - White Background with Login Form */}
-      <div className="w-1/2 bg-white flex items-center justify-center p-12">
+      <div className="w-full md:w-1/2 bg-white flex items-center justify-center p-6 sm:p-10 lg:p-12">
         <div className="w-full max-w-md">
           {/* Form Header */}
           <div className="mb-8">
@@ -418,19 +643,6 @@ function LoginPage() {
           {error && (
             <div className="mb-5 bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded-r-lg">
               <p className="text-sm font-medium">{error}</p>
-              {isDatabaseError(error) && (
-                <div className="mt-3 pt-3 border-t border-red-200">
-                  <p className="text-xs mb-2">Can't connect to the database? You may need to configure the database settings.</p>
-                  <button
-                    type="button"
-                    onClick={() => navigate('/database-setup')}
-                    className="inline-flex items-center gap-2 text-xs font-semibold text-red-800 hover:text-red-900 underline"
-                  >
-                    <Settings className="w-4 h-4" />
-                    Configure Database Connection
-                  </button>
-                </div>
-              )}
             </div>
           )}
 
@@ -441,7 +653,7 @@ function LoginPage() {
                 ID
               </label>
               <div className="relative rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500 overflow-hidden">
-                <div className="absolute inset-y-0 left-0 w-32 border-r border-gray-300 flex items-center justify-center gap-1.5 text-sm font-semibold text-gray-500 pointer-events-none bg-gray-50">
+                <div className="absolute inset-y-0 left-0 w-24 sm:w-32 border-r border-gray-300 flex items-center justify-center gap-1.5 text-xs sm:text-sm font-semibold text-gray-500 pointer-events-none bg-gray-50">
                   <span>ID</span>
                   <User className="w-4 h-4" />
                 </div>
@@ -451,7 +663,7 @@ function LoginPage() {
                   name="login-username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full pl-36 pr-4 py-3 border-0 rounded-lg focus:outline-none focus:ring-0"
+                  className="w-full pl-28 sm:pl-36 pr-4 py-3 border-0 rounded-lg focus:outline-none focus:ring-0"
                   autoComplete="off"
                   spellCheck={false}
                   required
@@ -465,7 +677,7 @@ function LoginPage() {
                 Password
               </label>
               <div className="relative rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500 overflow-hidden">
-                <div className="absolute inset-y-0 left-0 w-32 border-r border-gray-300 flex items-center justify-center gap-1.5 text-sm font-semibold text-gray-500 pointer-events-none bg-gray-50">
+                <div className="absolute inset-y-0 left-0 w-24 sm:w-32 border-r border-gray-300 flex items-center justify-center gap-1.5 text-xs sm:text-sm font-semibold text-gray-500 pointer-events-none bg-gray-50">
                   <span>Password</span>
                   <Lock className="w-4 h-4" />
                 </div>
@@ -475,7 +687,7 @@ function LoginPage() {
                   name="login-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="login-password-input w-full pl-36 pr-11 py-3 border-0 rounded-lg focus:outline-none focus:ring-0"
+                  className="login-password-input w-full pl-28 sm:pl-36 pr-11 py-3 border-0 rounded-lg focus:outline-none focus:ring-0"
                   autoComplete="new-password"
                   required
                 />
@@ -491,7 +703,7 @@ function LoginPage() {
             </div>
 
             {/* Remember Me + Forgot Password Info */}
-            <div className="pt-1 flex items-center justify-between">
+            <div className="pt-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
               <label className="flex items-center cursor-pointer group">
                 <input 
                   type="checkbox" 
@@ -542,12 +754,136 @@ function LoginPage() {
           </form>
         </div>
       </div>
-      
+
       {/* Registration Modal */}
       <RegistrationModal 
         isOpen={showRegistrationModal} 
         onClose={() => setShowRegistrationModal(false)} 
       />
+
+      {showLockTrigger && (
+        <button
+          type="button"
+          onClick={openLockSettingsModal}
+          className="absolute bottom-4 left-4 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-gray-700 shadow-md ring-1 ring-gray-200 hover:bg-white"
+          title="Settings"
+          aria-label="Settings"
+        >
+          <Settings className="h-4 w-4" />
+        </button>
+      )}
+
+      {/* Lock Mode Settings Modal */}
+      {showLockSettingsModal && (
+        <div className="modal-backdrop p-4 z-40">
+          <div className="modal-surface-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-3.5 border-b border-primary-200/80 bg-gradient-to-r from-primary-50/95 to-gray-50/90">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
+                  <Settings className="h-5 w-5 text-slate-700" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Lock Mode</h3>
+                </div>
+              </div>
+              <button onClick={closeLockSettingsModal} className="text-gray-400 hover:text-gray-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={applyLockSettings} className="px-6 py-5 space-y-4" noValidate>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                Current status: <span className={`font-semibold ${lockModeEnabled ? 'text-emerald-700' : 'text-slate-700'}`}>
+                  {lockModeEnabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                Station label: <span className="font-semibold text-slate-700">{lockStationLabel}</span>
+              </div>
+
+              <div>
+                <label htmlFor="lock-expression" className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Lock Setting
+                </label>
+                <input
+                  id="lock-expression"
+                  type="text"
+                  value={lockExpression}
+                  onChange={(e) => setLockExpression(e.target.value)}
+                  placeholder=""
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  autoComplete="off"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="lock-computer-lab" className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Computer Lab
+                </label>
+                <input
+                  id="lock-computer-lab"
+                  type="text"
+                  value={lockComputerLab}
+                  onChange={(e) => setLockComputerLab(e.target.value)}
+                  placeholder="Example: Lab A"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  autoComplete="off"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="lock-pc-number" className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  PC Number
+                </label>
+                <input
+                  id="lock-pc-number"
+                  type="text"
+                  value={lockPCNumber}
+                  onChange={(e) => setLockPCNumber(e.target.value)}
+                  placeholder="Example: 12"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  autoComplete="off"
+                />
+              </div>
+
+              {lockErrorMessage && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
+                  {lockErrorMessage}
+                </div>
+              )}
+
+              {lockStatusMessage && (
+                <div className="bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-lg text-sm">
+                  {lockStatusMessage}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={closeLockSettingsModal}
+                  className="flex-1 py-2.5 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  type="submit"
+                  disabled={lockSaving}
+                  className="flex-1 inline-flex items-center justify-center gap-2 bg-teal-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {lockSaving ? (
+                    <>
+                      <LoadingDots dotClassName="h-2.5 w-2.5 bg-white" />
+                      Saving...
+                    </>
+                  ) : 'Apply'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Forgot Password Modal */}
       {showForgotModal && (
@@ -567,68 +903,78 @@ function LoginPage() {
             </div>
 
             <div className="px-6 py-5">
-              {forgotStep === 'submitted' ? (
+              {forgotStep === 'completed' ? (
                 <div className="text-center py-4">
-                  <div className="w-16 h-16 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Check className="h-8 w-8 text-teal-600" />
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Check className="h-8 w-8 text-green-600" />
                   </div>
-                  <h4 className="text-lg font-semibold text-gray-900 mb-2">Request Submitted</h4>
-                  <p className="text-sm text-gray-600 mb-1">
-                    Please wait for <strong>{forgotTeacherName}</strong> to approve your password reset request.
+                  <h4 className="text-lg font-semibold text-gray-900 mb-2">Password Updated</h4>
+                  <p className="text-sm text-gray-600">
+                    Your password was reset successfully. You can now sign in with your new password.
                   </p>
-                  <p className="text-sm text-gray-500">Approach your teacher during your lab session.</p>
                   <button
                     onClick={closeForgotModal}
                     className="mt-6 w-full bg-teal-600 text-white py-2.5 rounded-lg font-semibold hover:bg-teal-700 transition-colors"
                   >
-                    Close
+                    Back To Login
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleForgotSubmit} className="space-y-4" noValidate>
+                <form onSubmit={handleForgotResetPassword} className="space-y-4" noValidate>
                   {forgotError && (
                     <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
                       {forgotError}
                     </div>
                   )}
 
-                  {/* Student ID */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Student ID</label>
-                    <input
-                      type="text"
-                      value={forgotStudentCode}
-                      onChange={e => { setForgotStudentCode(e.target.value); setForgotTeachers([]); setForgotTeacherID(''); }}
-                      onBlur={handleForgotStudentBlur}
-                      placeholder="Enter your Student ID"
-                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                      required
-                    />
-                  </div>
-
-                  {/* Teacher dropdown — shown after valid student ID */}
-                  {forgotTeachers.length > 0 && (
+                  {forgotStage === 'identifier' && (
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Select Teacher</label>
-                      <select
-                        value={forgotTeacherID}
-                        onChange={e => setForgotTeacherID(Number(e.target.value))}
-                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white"
+                      <label className="block text-sm font-semibold text-gray-700 mb-1.5">Account ID</label>
+                      <input
+                        type="text"
+                        value={forgotIdentifier}
+                        onChange={(e) => {
+                          setForgotIdentifier(e.target.value);
+                          setForgotIdentityVerified(false);
+                          setForgotCodeVerified(false);
+                          setForgotRecoveryCode('');
+                          setForgotNewPassword('');
+                          setForgotConfirmPassword('');
+                        }}
+                        placeholder="Enter your ID"
+                        className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                         required
-                      >
-                        <option value="">— Select a teacher —</option>
-                        {forgotTeachers.map(t => (
-                          <option key={t.teacher_user_id} value={t.teacher_user_id}>
-                            {t.full_name}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </div>
                   )}
 
-                  {/* New Password */}
-                  {forgotTeachers.length > 0 && (
+                  {forgotStage === 'code' && (
                     <>
+                      <div className="bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-lg text-sm">
+                        ID accepted. Enter your recovery code.
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">Recovery Code</label>
+                        <input
+                          type="text"
+                          value={forgotRecoveryCode}
+                          onChange={(e) => {
+                            setForgotRecoveryCode(e.target.value.toUpperCase());
+                            setForgotCodeVerified(false);
+                          }}
+                          placeholder="Example: ABCDE-FGHJK"
+                          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          required
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {forgotStage === 'password' && (
+                    <>
+                      <div className="bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-lg text-sm">
+                        Recovery code verified. Enter your new password.
+                      </div>
                       <div>
                         <label className="block text-sm font-semibold text-gray-700 mb-1.5">New Password</label>
                         <div className="relative">
@@ -640,20 +986,22 @@ function LoginPage() {
                             className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                             required
                           />
-                          <button type="button" tabIndex={-1}
+                          <button
+                            type="button"
+                            tabIndex={-1}
                             onClick={() => setForgotShowNew(v => !v)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-teal-600"
                           >
                             {forgotShowNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
-                        {/* Live checklist */}
                         {forgotNewPassword.length > 0 && (
                           <ul className="mt-2 space-y-1">
                             {[
-                              { ok: pwRules.length,  label: 'At least 8 characters' },
-                              { ok: pwRules.upper,   label: 'Uppercase letter (A-Z)' },
-                              { ok: pwRules.number,  label: 'Number (0-9)' },
+                              { ok: pwRules.length, label: 'At least 8 characters' },
+                              { ok: pwRules.upper, label: 'Uppercase letter (A-Z)' },
+                              { ok: pwRules.lower, label: 'Lowercase letter (a-z)' },
+                              { ok: pwRules.number, label: 'Number (0-9)' },
                               { ok: pwRules.special, label: 'Special character (!@#$%...)' },
                             ].map(r => (
                               <li key={r.label} className={`flex items-center gap-1.5 text-xs ${r.ok ? 'text-green-600' : 'text-gray-400'}`}>
@@ -680,7 +1028,9 @@ function LoginPage() {
                             }`}
                             required
                           />
-                          <button type="button" tabIndex={-1}
+                          <button
+                            type="button"
+                            tabIndex={-1}
                             onClick={() => setForgotShowConfirm(v => !v)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-teal-600"
                           >
@@ -700,18 +1050,50 @@ function LoginPage() {
                     >
                       Cancel
                     </button>
-                    <button
-                      type="submit"
-                      disabled={forgotLoading || !pwValid || !pwMatch || !forgotTeacherID}
-                      className="flex-1 inline-flex items-center justify-center gap-2 bg-teal-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {forgotLoading ? (
-                        <>
-                          <LoadingDots dotClassName="h-2.5 w-2.5 bg-white" />
-                          Submitting...
-                        </>
-                      ) : 'Submit Request'}
-                    </button>
+                    {forgotStage === 'identifier' && (
+                      <button
+                        type="button"
+                        onClick={handleForgotVerifyIdentity}
+                        disabled={forgotLoading || !forgotIdentifier.trim()}
+                        className="flex-1 inline-flex items-center justify-center gap-2 bg-teal-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {forgotLoading ? (
+                          <>
+                            <LoadingDots dotClassName="h-2.5 w-2.5 bg-white" />
+                            Processing...
+                          </>
+                        ) : 'Next'}
+                      </button>
+                    )}
+                    {forgotStage === 'code' && (
+                      <button
+                        type="button"
+                        onClick={handleForgotVerifyRecoveryCode}
+                        disabled={forgotLoading || !forgotRecoveryCode.trim()}
+                        className="flex-1 inline-flex items-center justify-center gap-2 bg-teal-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {forgotLoading ? (
+                          <>
+                            <LoadingDots dotClassName="h-2.5 w-2.5 bg-white" />
+                            Processing...
+                          </>
+                        ) : 'Next'}
+                      </button>
+                    )}
+                    {forgotStage === 'password' && (
+                      <button
+                        type="submit"
+                        disabled={forgotLoading || !forgotIdentityVerified || !forgotCodeVerified || !forgotIdentifier.trim() || !forgotRecoveryCode.trim() || !pwValid || !pwMatch}
+                        className="flex-1 inline-flex items-center justify-center gap-2 bg-teal-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {forgotLoading ? (
+                          <>
+                            <LoadingDots dotClassName="h-2.5 w-2.5 bg-white" />
+                            Resetting...
+                          </>
+                        ) : 'Reset Password'}
+                      </button>
+                    )}
                   </div>
                 </form>
               )}

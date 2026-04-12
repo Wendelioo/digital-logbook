@@ -3,15 +3,12 @@ module digital-logbook-wails-app
 go 1.23.0
 
 require (
-	github.com/denisenkom/go-mssqldb v0.12.3
+	github.com/go-sql-driver/mysql v1.9.3
 	github.com/jung-kurt/gofpdf v1.16.2
 	github.com/wailsapp/wails/v2 v2.11.0
 )
 
-require (
-	github.com/golang-sql/civil v0.0.0-20190719163853-cb61b32ac6fe // indirect
-	github.com/golang-sql/sqlexp v0.1.0 // indirect
-)
+require filippo.io/edwards25519 v1.1.0 // indirect
 
 require (
 	github.com/bep/debounce v1.2.1 // indirect

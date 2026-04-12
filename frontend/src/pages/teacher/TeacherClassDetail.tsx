@@ -7,21 +7,23 @@ import {
   Edit,
   Trash2,
   Plus,
-  X,
-  Download,
+  CornerUpLeft,
+  Printer,
   Eye,
 } from 'lucide-react';
 import {
   GetClassStudents,
-  ExportClasslistCSV,
   UpdateClass,
   GetAllStudentsForEnrollment,
   EnrollMultipleStudents,
   UnenrollStudentFromClassByIDs,
   GetTeacherClassesByUserID,
   GetClassByID,
+  ExportClasslistCSV,
+  ExportClasslistPDF,
+  ExportClasslistDOCX,
 } from '../../../wailsjs/go/backend/App';
-import { openExportSaveDialog, defaultClasslistFilename } from '../../utils/exportSaveDialog';
+import { openExportSaveDialog, defaultClasslistFilename, type ExportFormat } from '../../utils/exportSaveDialog';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppUi } from '../../contexts/AppUiContext';
 import { Class, ClasslistEntry, ClassStudent } from './types';
@@ -54,17 +56,23 @@ function ClassManagementDetail() {
   });
   const [saving, setSaving] = useState(false);
   const [exportingClasslist, setExportingClasslist] = useState(false);
+  const [exportDropdown, setExportDropdown] = useState<{ top: number; left: number } | null>(null);
 
-  const handleExportClasslist = async (classId: number) => {
+  const handleExportClasslist = async (classId: number, format: ExportFormat) => {
     setExportingClasslist(true);
     try {
-      const savePath = await openExportSaveDialog('Save classlist', defaultClasslistFilename('csv'), 'csv');
-      if (!savePath) {
-        setExportingClasslist(false);
-        return;
+      const savePath = await openExportSaveDialog('Save classlist', defaultClasslistFilename(format), format);
+      if (!savePath) return;
+
+      if (format === 'csv') {
+        await ExportClasslistCSV(classId, savePath);
+      } else if (format === 'pdf') {
+        await ExportClasslistPDF(classId, savePath);
+      } else {
+        await ExportClasslistDOCX(classId, savePath);
       }
-      const filePath = await ExportClasslistCSV(classId, savePath);
-      toast(`Classlist exported successfully. File saved to: ${filePath}`, 'success');
+
+      toast(`Saved: ${savePath.split(/[\\/]/).pop()}`, 'success');
     } catch (error) {
       console.error('Failed to export classlist:', error);
       toast('Failed to export classlist. Please try again.', 'error');
@@ -72,6 +80,17 @@ function ClassManagementDetail() {
       setExportingClasslist(false);
     }
   };
+
+  useEffect(() => {
+    const closeDropdown = () => setExportDropdown(null);
+    if (exportDropdown) {
+      document.addEventListener('click', closeDropdown);
+    }
+
+    return () => {
+      document.removeEventListener('click', closeDropdown);
+    };
+  }, [exportDropdown]);
 
   const loadClassDetails = async () => {
     if (!id) return;
@@ -280,17 +299,26 @@ function ClassManagementDetail() {
   const isFromArchivedClasslistView = archiveState?.fromArchiveModal && archiveState.returnToArchiveTab === 'classes';
 
   return (
-    <div className="modal-backdrop-dense">
-      <div className="min-h-screen p-3 sm:p-4 md:p-8">
+    <div className="flex flex-col min-w-0 min-h-0 overflow-x-hidden">
+      {exportDropdown && classInfo && (
+        <div
+          style={{ position: 'fixed', top: exportDropdown.top, left: exportDropdown.left, zIndex: 9999 }}
+          className="w-44 bg-white border border-gray-200 rounded-lg shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button onClick={() => { setExportDropdown(null); handleExportClasslist(classInfo.class_id, 'csv'); }} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-t-lg">CSV</button>
+          <button onClick={() => { setExportDropdown(null); handleExportClasslist(classInfo.class_id, 'pdf'); }} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">PDF</button>
+          <button onClick={() => { setExportDropdown(null); handleExportClasslist(classInfo.class_id, 'docx'); }} className="flex items-center gap-2 w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 rounded-b-lg">DOCX</button>
+        </div>
+      )}
+      <div className="p-3 sm:p-4 md:p-6">
         {error && (
           <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-md">
             {error}
           </div>
         )}
 
-        {/* Single Class List Sheet - Bond Paper Style */}
-        <div className="bg-white max-w-4xl mx-auto my-4 sm:my-8 relative" style={{ boxShadow: '0 0 20px rgba(0,0,0,0.3)', minHeight: '11in', padding: '0.75in' }}>
-          {/* Close Button - Inside Sheet */}
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm max-w-7xl mx-auto my-2 sm:my-4 p-4 sm:p-6 relative">
           <button
             onClick={() => {
               if (isFromArchivedClasslistView) {
@@ -303,16 +331,15 @@ function ClassManagementDetail() {
 
               navigate('/teacher/class-management');
             }}
-            className="absolute top-4 right-4 p-1 text-gray-500 hover:text-gray-800 transition-colors"
-            title="Close"
+            className="absolute top-4 right-4 inline-flex items-center rounded-md border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50 transition-colors"
+            title="Back"
           >
-            <X className="h-5 w-5" />
+            <CornerUpLeft className="h-5 w-5" />
           </button>
 
-          {/* Sheet Title and Controls */}
-          <div className="mb-6 pb-4 border-b border-gray-400">
+          <div className="mb-6 pb-4 border-b border-gray-200">
             <div className="text-center mb-4">
-              <h2 className="text-xl font-bold text-gray-900 tracking-wide">CLASS LIST</h2>
+              <h2 className="text-xl font-bold text-gray-900">Class List</h2>
               <p className="text-xs text-gray-600 mt-1">School Year {classInfo.school_year || 'N/A'} • {classInfo.semester || 'N/A'}</p>
             </div>
             <div className="flex justify-end items-center gap-2">
@@ -329,14 +356,22 @@ function ClassManagementDetail() {
               </Button>
               {classInfo.is_archived && !isFromArchivedClasslistView && (
                 <Button
-                  onClick={() => handleExportClasslist(classInfo.class_id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setExportDropdown(
+                      exportDropdown
+                        ? null
+                        : { top: rect.bottom + 4, left: rect.right - 176 }
+                    );
+                  }}
                   variant="outline"
                   size="sm"
-                  icon={<Download className="h-4 w-4" />}
+                  icon={<Printer className="h-4 w-4" />}
                   disabled={exportingClasslist}
-                  title="Export to CSV"
+                  title="Export"
                 >
-                  Export CSV
+                  Export
                 </Button>
               )}
               {isEditMode && classInfo.is_active && !classInfo.is_archived && (
@@ -370,11 +405,10 @@ function ClassManagementDetail() {
           {/* Combined Class Info and Student List Table */}
           <div className="overflow-x-auto overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
             <table className="w-full" style={{ minWidth: '100%', tableLayout: 'auto' }}>
-              {/* Class Information Header */}
               <thead>
                 <tr>
-                  <th colSpan={6} className="px-4 py-2 text-left border-b-2 border-gray-900">
-                    <div className="text-gray-900 font-bold text-sm tracking-wide">CLASS INFORMATION</div>
+                  <th colSpan={6} className="px-4 py-2 text-left border-b border-gray-200 bg-gray-50">
+                    <div className="text-gray-900 font-semibold text-sm">Class Information</div>
                   </th>
                 </tr>
               </thead>
@@ -403,12 +437,11 @@ function ClassManagementDetail() {
                 </tr>
               </tbody>
 
-              {/* Student List Header */}
               <thead>
                 <tr>
-                  <th colSpan={6} className="px-4 py-3 text-left border-b-2 border-gray-900">
+                  <th colSpan={6} className="px-4 py-3 text-left border-b border-gray-200 bg-gray-50">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-900 font-bold text-sm tracking-wide">STUDENTS LIST</span>
+                      <span className="text-gray-900 font-semibold text-sm">Students List</span>
                       <div className="flex items-center gap-4 text-xs text-gray-600">
                         <span>Total: {filteredStudents.length}</span>
                         <div className="relative">

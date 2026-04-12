@@ -56,20 +56,13 @@ func writePrintableCSV(filename string, doc printableExportDocument) error {
 }
 
 func buildPrintableCSVRows(doc printableExportDocument) [][]string {
-	generatedAt := doc.GeneratedAt
-	if generatedAt.IsZero() {
-		generatedAt = time.Now()
-	}
-
 	rows := [][]string{{doc.Title}}
 	if strings.TrimSpace(doc.Subtitle) != "" {
 		rows = append(rows, []string{doc.Subtitle})
 	}
-	rows = append(rows, []string{fmt.Sprintf("Generated: %s", generatedAt.Format("January 02, 2006 3:04 PM"))})
 
 	if len(doc.Details) > 0 {
-		// Match UI section label used in on-screen views
-		rows = append(rows, []string{""}, []string{"CLASS INFORMATION"})
+		rows = append(rows, []string{""})
 		for _, field := range doc.Details {
 			rows = append(rows, []string{field.Label, field.Value})
 		}
@@ -83,7 +76,7 @@ func buildPrintableCSVRows(doc printableExportDocument) [][]string {
 	rows = append(rows, doc.Rows...)
 
 	if len(doc.Footer) > 0 {
-		rows = append(rows, []string{""}, []string{"SUMMARY"})
+		rows = append(rows, []string{""})
 		for _, field := range doc.Footer {
 			rows = append(rows, []string{field.Label, field.Value})
 		}
@@ -113,17 +106,7 @@ func writePrintablePDF(filename string, doc printableExportDocument) error {
 		pdf.Ln(7)
 	}
 
-	generatedAt := doc.GeneratedAt
-	if generatedAt.IsZero() {
-		generatedAt = time.Now()
-	}
-
 	if len(doc.Details) > 0 {
-		pdf.SetFont("Arial", "B", 10)
-		// Match UI section label used in on-screen views
-		pdf.Cell(0, 6, "CLASS INFORMATION")
-		pdf.Ln(7)
-
 		pdf.SetFont("Arial", "", 9)
 		pageWidth, _ := pdf.GetPageSize()
 		usableWidth := pageWidth - 20
@@ -199,9 +182,6 @@ func writePrintablePDF(filename string, doc printableExportDocument) error {
 
 	if len(doc.Footer) > 0 {
 		pdf.Ln(4)
-		pdf.SetFont("Arial", "B", 10)
-		pdf.Cell(0, 6, "SUMMARY")
-		pdf.Ln(7)
 		pdf.SetFont("Arial", "", 9)
 		for _, field := range doc.Footer {
 			pdf.SetFont("Arial", "B", 9)
@@ -211,20 +191,10 @@ func writePrintablePDF(filename string, doc printableExportDocument) error {
 		}
 	}
 
-	// Generated timestamp at the bottom of the content
-	pdf.Ln(6)
-	pdf.SetFont("Arial", "", 8)
-	pdf.CellFormat(0, 4, fmt.Sprintf("Generated: %s", generatedAt.Format("January 02, 2006 3:04 PM")), "", 0, "R", false, 0, "")
-
 	return pdf.OutputFileAndClose(filename)
 }
 
 func generatePrintableDocx(doc printableExportDocument) ([]byte, error) {
-	generatedAt := doc.GeneratedAt
-	if generatedAt.IsZero() {
-		generatedAt = time.Now()
-	}
-
 	buf := new(bytes.Buffer)
 	w := zip.NewWriter(buf)
 
@@ -269,26 +239,29 @@ func generatePrintableDocx(doc printableExportDocument) ([]byte, error) {
 	sb.WriteString(`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`)
 	sb.WriteString(`<w:body>`)
 
-	sb.WriteString(docxParagraph(doc.Title, true, 32, true))
+	// Left-align title and subtitle to match PDF output
+	sb.WriteString(docxParagraph(doc.Title, true, 32, false))
 	if strings.TrimSpace(doc.Subtitle) != "" {
-		sb.WriteString(docxParagraph(doc.Subtitle, false, 22, true))
+		sb.WriteString(docxParagraph(doc.Subtitle, false, 22, false))
 	}
 
 	if len(doc.Details) > 0 {
-		// Match UI section label used in on-screen views
-		sb.WriteString(docxParagraph("CLASS INFORMATION", true, 22, false))
-		for _, field := range doc.Details {
-			sb.WriteString(docxParagraph(fmt.Sprintf("%s: %s", field.Label, field.Value), false, 18, false))
-		}
+		sb.WriteString(buildDocxDetailsTable(doc.Details))
 	}
 
 	if strings.TrimSpace(doc.TableNote) != "" {
 		sb.WriteString(docxParagraph(doc.TableNote, false, 18, false))
 	}
 
+	const tableWidthTwips = 9360
+	columnWidths := resolvePrintableDocxColumnWidthsTwips(doc, tableWidthTwips)
+	columnCharLimits := resolvePrintableDocxColumnCharLimits(columnWidths)
+	alignments := resolvePrintableAlignments(doc)
+
+	// DOCX table: font size 16 (8pt), reduced spacing for PDF-like density
 	sb.WriteString(`<w:tbl>`)
 	sb.WriteString(`<w:tblPr>`)
-	sb.WriteString(`<w:tblW w:w="9360" w:type="dxa"/>`)
+	sb.WriteString(fmt.Sprintf(`<w:tblW w:w="%d" w:type="dxa"/>`, tableWidthTwips))
 	sb.WriteString(`<w:tblBorders>`)
 	sb.WriteString(`<w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>`)
 	sb.WriteString(`<w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>`)
@@ -298,25 +271,28 @@ func generatePrintableDocx(doc printableExportDocument) ([]byte, error) {
 	sb.WriteString(`<w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/>`)
 	sb.WriteString(`</w:tblBorders>`)
 	sb.WriteString(`</w:tblPr>`)
+	sb.WriteString(`<w:tblGrid>`)
+	for _, width := range columnWidths {
+		sb.WriteString(fmt.Sprintf(`<w:gridCol w:w="%d"/>`, width))
+	}
+	sb.WriteString(`</w:tblGrid>`)
 
+	// Header row
 	sb.WriteString(`<w:tr>`)
-	for _, header := range doc.Headers {
-		sb.WriteString(docxTableCell(header, "1F3864", true, true))
+	for index, header := range doc.Headers {
+		sb.WriteString(docxTableCellWithFont(header, true, alignments[index], columnWidths[index], columnCharLimits[index], 16, 0))
 	}
 	sb.WriteString(`</w:tr>`)
 
-	for rowIndex, row := range doc.Rows {
-		fillColor := "FFFFFF"
-		if rowIndex%2 == 1 {
-			fillColor = "DCE6F1"
-		}
+	// Data rows
+	for _, row := range doc.Rows {
 		sb.WriteString(`<w:tr>`)
 		for index := range doc.Headers {
 			cell := ""
 			if index < len(row) {
 				cell = row[index]
 			}
-			sb.WriteString(docxTableCell(cell, fillColor, false, false))
+			sb.WriteString(docxTableCellWithFont(cell, false, alignments[index], columnWidths[index], columnCharLimits[index], 16, 0))
 		}
 		sb.WriteString(`</w:tr>`)
 	}
@@ -324,16 +300,17 @@ func generatePrintableDocx(doc printableExportDocument) ([]byte, error) {
 	sb.WriteString(`</w:tbl>`)
 
 	if len(doc.Footer) > 0 {
-		sb.WriteString(docxParagraph("SUMMARY", true, 22, false))
 		for _, field := range doc.Footer {
 			sb.WriteString(docxParagraph(fmt.Sprintf("%s: %s", field.Label, field.Value), false, 18, false))
 		}
 	}
 
-	// Generated timestamp near the bottom of the document
-	sb.WriteString(docxParagraph(fmt.Sprintf("Generated: %s", generatedAt.Format("January 02, 2006 3:04 PM")), false, 16, false))
-
-	sb.WriteString(`<w:sectPr><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>`)
+	orientation := strings.ToUpper(strings.TrimSpace(doc.Orientation))
+	if orientation == "L" {
+		sb.WriteString(`<w:sectPr><w:pgSz w:w="16840" w:h="11900" w:orient="landscape"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>`)
+	} else {
+		sb.WriteString(`<w:sectPr><w:pgSz w:w="11900" w:h="16840"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"/></w:sectPr>`)
+	}
 	sb.WriteString(`</w:body></w:document>`)
 
 	f, err = w.Create("word/document.xml")
@@ -393,7 +370,7 @@ func resolvePrintableAlignments(doc printableExportDocument) []string {
 func pdfCellValue(value string, maxChars int) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
-		return "N/A"
+		return ""
 	}
 	if maxChars <= 3 {
 		return trimmed
@@ -427,18 +404,185 @@ func docxParagraph(text string, bold bool, size int, centered bool) string {
 	return sb.String()
 }
 
-func docxTableCell(text, _ string, bold bool, _ bool) string {
+// docxTableCellWithFont: like docxTableCell, but allows font size and spacing control
+func docxTableCellWithFont(text string, bold bool, align string, widthTwips int, maxChars int, fontSz int, spacing int) string {
 	var sb strings.Builder
 	sb.WriteString(`<w:tc><w:tcPr>`)
-	// Plain cell: no background color shading
-	sb.WriteString(`<w:shd w:val="clear" w:color="auto" w:fill="FFFFFF"/>`)
-	sb.WriteString(`</w:tcPr><w:p><w:r><w:rPr>`)
+	sb.WriteString(fmt.Sprintf(`<w:tcW w:w="%d" w:type="dxa"/>`, widthTwips))
+	sb.WriteString(`</w:tcPr><w:p><w:pPr>`)
+	sb.WriteString(fmt.Sprintf(`<w:jc w:val="%s"/>`, docxAlignment(align)))
+	if spacing > 0 {
+		sb.WriteString(fmt.Sprintf(`<w:spacing w:after="%d"/>`, spacing))
+	} else {
+		sb.WriteString(`<w:spacing w:after="0"/>`)
+	}
+	sb.WriteString(`</w:pPr><w:r><w:rPr>`)
 	if bold {
 		sb.WriteString(`<w:b/>`)
 	}
-	// Always use default text color (no explicit color)
-	sb.WriteString(`<w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">`)
-	sb.WriteString(docxEscape(strings.TrimSpace(text)))
+	sb.WriteString(fmt.Sprintf(`<w:sz w:val="%d"/>`, fontSz))
+	sb.WriteString(`</w:rPr><w:t xml:space="preserve">`)
+	sb.WriteString(docxEscape(pdfCellValue(text, maxChars)))
 	sb.WriteString(`</w:t></w:r></w:p></w:tc>`)
 	return sb.String()
+}
+
+func docxAlignment(align string) string {
+	switch strings.ToUpper(strings.TrimSpace(align)) {
+	case "C":
+		return "center"
+	case "R":
+		return "right"
+	default:
+		return "left"
+	}
+}
+
+func resolvePrintableDocxColumnWidthsTwips(doc printableExportDocument, tableWidthTwips int) []int {
+	columnCount := len(doc.Headers)
+	widths := make([]int, columnCount)
+	if columnCount == 0 {
+		return widths
+	}
+
+	if len(doc.ColumnWidths) == columnCount {
+		var total float64
+		for _, width := range doc.ColumnWidths {
+			total += width
+		}
+		if total > 0 {
+			remaining := tableWidthTwips
+			for i, width := range doc.ColumnWidths {
+				computed := int((width / total) * float64(tableWidthTwips))
+				if computed < 1 {
+					computed = 1
+				}
+				widths[i] = computed
+				remaining -= computed
+			}
+			if remaining != 0 {
+				widths[columnCount-1] += remaining
+			}
+			return widths
+		}
+	}
+
+	defaultWidth := tableWidthTwips / columnCount
+	for i := range widths {
+		widths[i] = defaultWidth
+	}
+	widths[columnCount-1] += tableWidthTwips - (defaultWidth * columnCount)
+	return widths
+}
+
+func resolvePrintableDocxColumnCharLimits(widths []int) []int {
+	limits := make([]int, len(widths))
+	if len(widths) == 0 {
+		return limits
+	}
+
+	total := 0
+	for _, width := range widths {
+		total += width
+	}
+	if total <= 0 {
+		for i := range limits {
+			limits[i] = 32
+		}
+		return limits
+	}
+
+	const totalChars = 160
+	for i, width := range widths {
+		chars := int((float64(width) / float64(total)) * totalChars)
+		if chars < 4 {
+			chars = 4
+		}
+		limits[i] = chars
+	}
+
+	return limits
+}
+
+func buildDocxDetailsTable(details []printableExportField) string {
+	if len(details) == 0 {
+		return ""
+	}
+
+	const tableWidthTwips = 9360
+	pairWidth := tableWidthTwips / 2
+	leftLabelWidth := int(float64(pairWidth) * 0.44)
+	leftValueWidth := pairWidth - leftLabelWidth
+	rightLabelWidth := leftLabelWidth
+	rightValueWidth := pairWidth - rightLabelWidth
+
+	leftLabelChars := max(8, leftLabelWidth/120)
+	leftValueChars := max(12, leftValueWidth/80)
+	rightLabelChars := max(8, rightLabelWidth/120)
+	rightValueChars := max(12, rightValueWidth/80)
+
+	var sb strings.Builder
+	sb.WriteString(`<w:tbl>`)
+	sb.WriteString(`<w:tblPr>`)
+	sb.WriteString(fmt.Sprintf(`<w:tblW w:w="%d" w:type="dxa"/>`, tableWidthTwips))
+	sb.WriteString(`<w:tblBorders>`)
+	sb.WriteString(`<w:top w:val="nil"/>`)
+	sb.WriteString(`<w:left w:val="nil"/>`)
+	sb.WriteString(`<w:bottom w:val="nil"/>`)
+	sb.WriteString(`<w:right w:val="nil"/>`)
+	sb.WriteString(`<w:insideH w:val="nil"/>`)
+	sb.WriteString(`<w:insideV w:val="nil"/>`)
+	sb.WriteString(`</w:tblBorders>`)
+	sb.WriteString(`</w:tblPr>`)
+	sb.WriteString(`<w:tblGrid>`)
+	sb.WriteString(fmt.Sprintf(`<w:gridCol w:w="%d"/>`, leftLabelWidth))
+	sb.WriteString(fmt.Sprintf(`<w:gridCol w:w="%d"/>`, leftValueWidth))
+	sb.WriteString(fmt.Sprintf(`<w:gridCol w:w="%d"/>`, rightLabelWidth))
+	sb.WriteString(fmt.Sprintf(`<w:gridCol w:w="%d"/>`, rightValueWidth))
+	sb.WriteString(`</w:tblGrid>`)
+
+	for i := 0; i < len(details); i += 2 {
+		left := details[i]
+
+		rightLabel := ""
+		rightValue := ""
+		if i+1 < len(details) {
+			right := details[i+1]
+			rightLabel = right.Label
+			rightValue = right.Value
+		}
+
+		sb.WriteString(`<w:tr>`)
+		sb.WriteString(docxDetailsCellWithFont(strings.TrimSpace(left.Label)+":", true, leftLabelWidth, leftLabelChars, 16))
+		sb.WriteString(docxDetailsCellWithFont(left.Value, false, leftValueWidth, leftValueChars, 16))
+		sb.WriteString(docxDetailsCellWithFont(strings.TrimSpace(rightLabel)+":", true, rightLabelWidth, rightLabelChars, 16))
+		sb.WriteString(docxDetailsCellWithFont(rightValue, false, rightValueWidth, rightValueChars, 16))
+		sb.WriteString(`</w:tr>`)
+	}
+
+	sb.WriteString(`</w:tbl>`)
+	return sb.String()
+}
+
+// docxDetailsCellWithFont: like docxDetailsCell, but allows font size
+func docxDetailsCellWithFont(text string, bold bool, widthTwips int, maxChars int, fontSz int) string {
+	var sb strings.Builder
+	sb.WriteString(`<w:tc><w:tcPr>`)
+	sb.WriteString(fmt.Sprintf(`<w:tcW w:w="%d" w:type="dxa"/>`, widthTwips))
+	sb.WriteString(`</w:tcPr><w:p><w:pPr><w:spacing w:after="0"/></w:pPr><w:r><w:rPr>`)
+	if bold {
+		sb.WriteString(`<w:b/>`)
+	}
+	sb.WriteString(fmt.Sprintf(`<w:sz w:val="%d"/>`, fontSz))
+	sb.WriteString(`</w:rPr><w:t xml:space="preserve">`)
+	sb.WriteString(docxEscape(pdfCellValue(text, maxChars)))
+	sb.WriteString(`</w:t></w:r></w:p></w:tc>`)
+	return sb.String()
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

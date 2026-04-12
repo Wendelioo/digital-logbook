@@ -127,7 +127,7 @@ func (a *App) GetArchivedClasses(teacherUserID int) ([]CourseClass, error) {
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, (t.last_name + ', ' + t.first_name) as teacher_name,
+			c.teacher_id, (CONCAT(t.last_name, ', ', t.first_name)) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.is_archived, c.created_by_user_id
@@ -222,7 +222,7 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 	query := `
 		SELECT 
 			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
-			c.teacher_id, (t.last_name + ', ' + t.first_name) as teacher_name,
+			c.teacher_id, (CONCAT(t.last_name, ', ', t.first_name)) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.is_archived, c.created_by_user_id, c.created_at
@@ -314,3 +314,4 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 	log.Printf("Found %d archived classes for student user_id=%d", len(classes), studentUserID)
 	return classes, nil
 }
+

@@ -171,37 +171,32 @@ func ValidateContactNumber(contact string) error {
 	return nil
 }
 
-// sevenDigitIDRegex matches a valid 7-digit numeric ID (e.g. 2211172).
-var sevenDigitIDRegex = regexp.MustCompile(`^\d{7}$`)
-
 // ValidateStudentID validates student ID format and length.
-// Accepted format: exactly 7 digits (e.g. 2211172).
 func ValidateStudentID(studentID string) error {
 	s := strings.TrimSpace(studentID)
 	if s == "" {
 		return fmt.Errorf("student ID is required")
 	}
+	if len(s) > MaxLenStudentID {
+		return fmt.Errorf("student ID must be at most %d characters", MaxLenStudentID)
+	}
 	if ContainsControlOrNull(s) {
 		return fmt.Errorf("student ID contains invalid characters")
-	}
-	if !sevenDigitIDRegex.MatchString(s) {
-		return fmt.Errorf("invalid student ID — must be exactly 7 digits (e.g. 2211172)")
 	}
 	return nil
 }
 
 // ValidateEmployeeID validates employee/teacher/admin ID.
-// Accepted format: exactly 7 digits (e.g. 2211172).
 func ValidateEmployeeID(employeeID string) error {
 	s := strings.TrimSpace(employeeID)
 	if s == "" {
 		return fmt.Errorf("employee ID is required")
 	}
+	if len(s) > MaxLenEmployeeID {
+		return fmt.Errorf("employee ID must be at most %d characters", MaxLenEmployeeID)
+	}
 	if ContainsControlOrNull(s) {
 		return fmt.Errorf("employee ID contains invalid characters")
-	}
-	if !sevenDigitIDRegex.MatchString(s) {
-		return fmt.Errorf("invalid employee ID — must be exactly 7 digits (e.g. 2211172)")
 	}
 	return nil
 }
@@ -249,7 +244,7 @@ func ValidateComments(comments string) (string, error) {
 	return s, nil
 }
 
-// ValidatePCNumber validates PC number or hostname for feedback.
+// ValidatePCNumber validates configured PC number text for logs and feedback.
 func ValidatePCNumber(pcNumber string) (string, error) {
 	s := SanitizeString(pcNumber, MaxLenPCNumber)
 	if ContainsControlOrNull(pcNumber) {

@@ -147,16 +147,6 @@ export default function LoginHistory({
     ? filtered.slice((currentPage - 1) * entriesPerPage, currentPage * entriesPerPage)
     : filtered;
 
-  const clearFilters = () => {
-    setDateRangeStart('');
-    setDateRangeEnd('');
-    setTimePeriod('all');
-    setSearchQuery('');
-    setPendingDateRangeStart('');
-    setPendingDateRangeEnd('');
-    setPendingTimePeriod('all');
-  };
-
   const activeFilterCount = (dateRangeStart || dateRangeEnd ? 1 : 0) + (timePeriod !== 'all' ? 1 : 0);
 
   if (loading) {
@@ -332,11 +322,6 @@ export default function LoginHistory({
               )}
             </div>
 
-            {(searchQuery || activeFilterCount > 0) && (
-              <Button onClick={clearFilters} variant="outline" size="sm">
-                Clear All
-              </Button>
-            )}
           </div>
         </div>
       </div>
