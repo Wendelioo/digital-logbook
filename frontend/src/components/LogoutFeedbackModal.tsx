@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, CornerUpLeft } from 'lucide-react';
 import { useAppUi } from '../contexts/AppUiContext';
 
 interface LogoutFeedbackModalProps {
@@ -13,13 +13,8 @@ interface FeedbackData {
   mouse: { status: 'yes' | 'no' | null; issue: string };
   keyboard: { status: 'yes' | 'no' | null; issue: string };
   monitor: { status: 'yes' | 'no' | null; issue: string };
-  issueCategory: 'computer' | 'mouse' | 'keyboard' | 'monitor' | 'other';
-  issueDescription: string;
   reportingContext: 'current_pc' | 'other_pc';
-  reportedBy: 'self' | 'classmate';
   targetPCNumber: string;
-  affectedStudentID: string;
-  severity: 'normal' | 'high' | 'critical';
   additionalComments: string;
 }
 
@@ -27,50 +22,9 @@ interface EquipmentItemProps {
   label: string;
   value: { status: 'yes' | 'no' | null; issue: string };
   onChange: (value: { status: 'yes' | 'no' | null; issue: string }) => void;
-  issueOnly?: boolean;
 }
 
-function EquipmentItem({ label, value, onChange, issueOnly = false }: EquipmentItemProps) {
-  if (issueOnly) {
-    const hasIssue = value.status === 'no';
-    return (
-      <div className={`border rounded-xl p-4 transition-all duration-200 ${
-        hasIssue ? 'border-red-200 bg-red-50/50' : 'border-gray-200 bg-white'
-      }`}>
-        {/* Equipment Header */}
-        <div className="mb-3">
-          <h4 className="font-medium text-gray-900">{label}</h4>
-        </div>
-
-        {/* Issue Button */}
-        <button
-          type="button"
-          onClick={() => onChange({ status: hasIssue ? 'yes' : 'no', issue: hasIssue ? '' : value.issue })}
-          className={`w-full px-4 py-2 rounded-xl font-medium text-sm transition-all ${
-            hasIssue
-              ? 'bg-red-600 text-white shadow-sm'
-              : 'bg-white border border-gray-300 text-gray-700 hover:border-red-400 hover:bg-red-50'
-          }`}
-        >
-          Issue
-        </button>
-
-        {/* Issue Description */}
-        {hasIssue && (
-          <div className="mt-3">
-            <input
-              type="text"
-              value={value.issue}
-              onChange={(e) => onChange({ status: 'no', issue: e.target.value })}
-              placeholder="Describe the issue..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-danger-500 focus:border-transparent text-sm"
-            />
-          </div>
-        )}
-      </div>
-    );
-  }
-
+function EquipmentItem({ label, value, onChange }: EquipmentItemProps) {
   const isComplete = value.status !== null && (value.status === 'yes' || (value.status === 'no' && value.issue.trim()));
 
   return (
@@ -142,22 +96,24 @@ function EquipmentItem({ label, value, onChange, issueOnly = false }: EquipmentI
 
 function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedbackModalProps) {
   const { toast } = useAppUi();
+  const initialEquipmentStatus: 'yes' | null = mode === 'manual' ? 'yes' : null;
   const [feedback, setFeedback] = useState<FeedbackData>({
-    computer: { status: null, issue: '' },
-    mouse: { status: null, issue: '' },
-    keyboard: { status: null, issue: '' },
-    monitor: { status: null, issue: '' },
-    issueCategory: 'computer',
-    issueDescription: '',
+    computer: { status: initialEquipmentStatus, issue: '' },
+    mouse: { status: initialEquipmentStatus, issue: '' },
+    keyboard: { status: initialEquipmentStatus, issue: '' },
+    monitor: { status: initialEquipmentStatus, issue: '' },
     reportingContext: 'current_pc',
-    reportedBy: 'self',
     targetPCNumber: '',
-    affectedStudentID: '',
-    severity: 'normal',
     additionalComments: ''
   });
 
   const isOtherPC = feedback.reportingContext === 'other_pc';
+  const equipmentItems = [
+    { eq: feedback.computer, name: 'Computer' },
+    { eq: feedback.mouse, name: 'Mouse' },
+    { eq: feedback.keyboard, name: 'Keyboard' },
+    { eq: feedback.monitor, name: 'Monitor' },
+  ];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,13 +124,7 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
           toast('Please enter the lab and PC number you are reporting for.', 'error');
           return;
         }
-        const items = [
-          { eq: feedback.computer, name: 'Computer' },
-          { eq: feedback.mouse, name: 'Mouse' },
-          { eq: feedback.keyboard, name: 'Keyboard' },
-          { eq: feedback.monitor, name: 'Monitor' },
-        ];
-        for (const { eq, name } of items) {
+        for (const { eq, name } of equipmentItems) {
           if (eq.status === null) {
             toast(`Please indicate status for the ${name} (Working or Issue).`, 'error');
             return;
@@ -209,12 +159,26 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
       }
     }
 
-    if (mode === 'manual' && !feedback.issueDescription.trim()) {
-      toast('Please describe the issue you are reporting.', 'error');
-      return;
+    if (mode === 'manual') {
+      if (!feedback.targetPCNumber.trim()) {
+        toast('Please enter the computer lab and PC number.', 'error');
+        return;
+      }
+
+      const hasIssue = equipmentItems.some(({ eq }) => eq.status === 'no');
+      if (!hasIssue) {
+        toast('Please mark at least one equipment item as Issue.', 'error');
+        return;
+      }
+
+      const missingIssueDetail = equipmentItems.find(({ eq }) => eq.status === 'no' && !eq.issue.trim());
+      if (missingIssueDetail) {
+        toast(`Please describe the issue with the ${missingIssueDetail.name}.`, 'error');
+        return;
+      }
     }
 
-    if (feedback.reportingContext === 'other_pc' && !feedback.targetPCNumber.trim()) {
+    if (mode === 'logout' && feedback.reportingContext === 'other_pc' && !feedback.targetPCNumber.trim()) {
       toast('Please enter the lab and PC number you are reporting for.', 'error');
       return;
     }
@@ -242,12 +206,18 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
   const otherPcCanSubmit =
     feedback.targetPCNumber.trim().length > 0 && otherPcAllComplete;
 
+  const manualHasIssue = equipmentItems.some(({ eq }) => eq.status === 'no');
+  const manualIssuesComplete = equipmentItems.every(({ eq }) => eq.status !== 'no' || eq.issue.trim().length > 0);
+  const manualCanSubmit =
+    manualHasIssue &&
+    manualIssuesComplete &&
+    feedback.targetPCNumber.trim().length > 0;
+
   const canSubmit = mode === 'logout'
     ? isOtherPC
       ? otherPcCanSubmit
       : progress === 100
-    : feedback.issueDescription.trim().length > 0 &&
-      (feedback.reportingContext === 'current_pc' || feedback.targetPCNumber.trim().length > 0);
+    : manualCanSubmit;
 
   return (
     <div 
@@ -282,9 +252,11 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
             <button
               type="button"
               onClick={onClose}
-              className="ml-4 text-gray-400 hover:text-gray-600 transition-colors p-1"
+              className="modal-back-icon-btn shrink-0"
+              title="Back"
+              aria-label="Back"
             >
-              <X className="h-5 w-5" />
+              <CornerUpLeft className="h-5 w-5" />
             </button>
           </div>
         </div>
@@ -293,76 +265,15 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
         <form onSubmit={handleSubmit} className="p-4 sm:p-8" noValidate>
           {mode === 'manual' && (
             <div className="border border-gray-200 rounded-xl p-4 mb-6 bg-gray-50">
-              <h4 className="text-sm font-semibold text-gray-800 mb-3">Reporting Context</h4>
+              <h4 className="text-sm font-semibold text-gray-800 mb-3">Report Details</h4>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-2">You are reporting for</label>
-                  <select
-                    value={feedback.reportingContext}
-                    onChange={(e) => setFeedback({
-                      ...feedback,
-                      reportingContext: e.target.value as 'current_pc' | 'other_pc'
-                    })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  >
-                    <option value="current_pc">Current PC</option>
-                    <option value="other_pc">Another PC</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-2">Reported by</label>
-                  <select
-                    value={feedback.reportedBy}
-                    onChange={(e) => setFeedback({
-                      ...feedback,
-                      reportedBy: e.target.value as 'self' | 'classmate'
-                    })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  >
-                    <option value="self">Self</option>
-                    <option value="classmate">Classmate</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-2">Lab & PC Number {feedback.reportingContext === 'other_pc' ? '*' : '(Optional)'}</label>
-                  <input
-                    type="text"
-                    value={feedback.targetPCNumber}
-                    onChange={(e) => setFeedback({ ...feedback, targetPCNumber: e.target.value })}
-                    placeholder="e.g. CL1-PC01"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-2">Urgency</label>
-                  <select
-                    value={feedback.severity}
-                    onChange={(e) => setFeedback({
-                      ...feedback,
-                      severity: e.target.value as 'normal' | 'high' | 'critical'
-                    })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  >
-                    <option value="normal">Normal</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <label className="block text-xs font-medium text-gray-700 mb-2">Affected Student ID (Optional)</label>
+              <div className="md:max-w-md">
+                <label className="block text-xs font-medium text-gray-700 mb-2">Computer Lab &amp; PC Number *</label>
                 <input
                   type="text"
-                  value={feedback.affectedStudentID}
-                  onChange={(e) => setFeedback({ ...feedback, affectedStudentID: e.target.value })}
-                  placeholder="If reporting for classmate"
+                  value={feedback.targetPCNumber}
+                  onChange={(e) => setFeedback({ ...feedback, targetPCNumber: e.target.value })}
+                  placeholder="e.g. CL1-PC01"
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
               </div>
@@ -476,34 +387,30 @@ function LogoutFeedbackModal({ onClose, onSubmit, mode = 'logout' }: LogoutFeedb
             </>
           ) : (
             <div className="border border-gray-200 rounded-xl p-4 mb-6 bg-white">
-              <h4 className="text-sm font-semibold text-gray-800 mb-3">Issue Details</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-2">Issue Category</label>
-                  <select
-                    value={feedback.issueCategory}
-                    onChange={(e) => setFeedback({
-                      ...feedback,
-                      issueCategory: e.target.value as 'computer' | 'mouse' | 'keyboard' | 'monitor' | 'other'
-                    })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  >
-                    <option value="computer">Computer</option>
-                    <option value="monitor">Monitor</option>
-                    <option value="keyboard">Keyboard</option>
-                    <option value="mouse">Mouse</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">Issue Description *</label>
-                <textarea
-                  value={feedback.issueDescription}
-                  onChange={(e) => setFeedback({ ...feedback, issueDescription: e.target.value })}
-                  rows={4}
-                  placeholder="Describe what is not working..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+              <h4 className="text-sm font-semibold text-gray-800 mb-2">Equipment Status</h4>
+              <p className="text-xs text-gray-500 mb-3">
+                Mark only the affected equipment as Issue. If only one item has a problem, keep the rest as Working.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <EquipmentItem
+                  label="Computer"
+                  value={feedback.computer}
+                  onChange={(value) => setFeedback({ ...feedback, computer: value })}
+                />
+                <EquipmentItem
+                  label="Mouse"
+                  value={feedback.mouse}
+                  onChange={(value) => setFeedback({ ...feedback, mouse: value })}
+                />
+                <EquipmentItem
+                  label="Keyboard"
+                  value={feedback.keyboard}
+                  onChange={(value) => setFeedback({ ...feedback, keyboard: value })}
+                />
+                <EquipmentItem
+                  label="Monitor"
+                  value={feedback.monitor}
+                  onChange={(value) => setFeedback({ ...feedback, monitor: value })}
                 />
               </div>
             </div>

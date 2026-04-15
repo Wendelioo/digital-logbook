@@ -79,15 +79,17 @@ Inside the project directory, install the frontend dependencies:
 >wails dev
 
 **Database Configuration (config.ini):**
--Create a `config.ini` file in the project root (for development) or beside the built executable (for deployment).
+-Development mode (`wails dev`) reads and writes `config.ini` in the project root.
+-Production/installed mode reads user-level config first at `%APPDATA%/digital-logbook/config.ini`, then falls back to installer `config.ini` beside the executable.
+-The installer can now ship with blank database fields; configure them after install from the login page using `Ctrl+Shift+K` then **Save DB Config**.
 -Use this format:
 
 >[database]
->host=127.0.0.1
->port=3306
->dbname=your_database_name
->username=your_username
->password=your_password
+>host=
+>port=
+>dbname=
+>username=
+>password=
 >
 >[policy]
 >; Optional: days before auto-deactivation for inactive non-admin accounts
@@ -97,9 +99,15 @@ Inside the project directory, install the frontend dependencies:
 >; Default is 1460 when not set
 >deactivated_deletion_days=1460
 
--The app will look for `config.ini` in:
->1. Executable directory (installed/built app)
->2. Current working directory (development)
+-The app will look for `config.ini` in this order:
+>Development mode:
+>1. Current working directory (project root)
+>2. Executable directory
+>
+>Production/installed mode:
+>1. `%APPDATA%/digital-logbook/config.ini`
+>2. Executable directory
+>3. Current working directory
 
 -If `config.ini` is missing or malformed, database connection will fail with a clear error in logs.
 -You can also override policy thresholds via environment variables:

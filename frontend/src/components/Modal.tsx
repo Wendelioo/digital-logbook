@@ -1,5 +1,5 @@
 import React, { ReactNode, useEffect } from 'react';
-import { X, AlertCircle, CheckCircle, Info, AlertTriangle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Info, AlertTriangle, CornerUpLeft } from 'lucide-react';
 import Button from './Button';
 
 /** Use on modals with filters or variable-length lists so the shell height stays stable. */
@@ -141,11 +141,13 @@ const Modal: React.FC<ModalProps> = ({
           </div>
           {showCloseButton && (
             <button
+              type="button"
               onClick={onClose}
-              className="text-primary-500 hover:text-primary-800 transition-colors p-2 rounded-lg hover:bg-primary-100/80 shrink-0"
-              aria-label="Close modal"
+              className="modal-back-icon-btn shrink-0"
+              title="Back"
+              aria-label="Back"
             >
-              <X className="h-4 w-4" strokeWidth={1.75} />
+              <CornerUpLeft className="h-5 w-5" />
             </button>
           )}
         </div>

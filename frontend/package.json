@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "patch:wails-bridge": "node scripts/patch-wails-bridge.mjs",
+    "dev": "npm run patch:wails-bridge && vite",
+    "build": "npm run patch:wails-bridge && tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

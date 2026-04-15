@@ -1,5 +1,5 @@
 import Modal, { MODAL_BODY_MIN_HEIGHT_CLASS } from './Modal';
-import TeacherAttendanceArchive, { AttendanceArchiveTab } from '../pages/teacher/TeacherAttendanceArchive';
+import TeacherAttendanceArchive, { AttendanceArchiveTab } from '../pages/roles/teacher/AttendanceArchivePage';
 
 interface TeacherStoredArchiveModalProps {
   isOpen: boolean;

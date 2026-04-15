@@ -12,7 +12,7 @@ import (
 func normalizeAttendanceRemark(status string, remarks sql.NullString) *string {
 	if remarks.Valid {
 		trimmedRemark := strings.TrimSpace(remarks.String)
-		placeholderTrimmed := strings.Trim(trimmedRemark, "-—–_")
+		placeholderTrimmed := strings.Trim(trimmedRemark, "-â€”â€“_")
 		if trimmedRemark != "" && strings.TrimSpace(placeholderTrimmed) != "" {
 			return &trimmedRemark
 		}
@@ -32,6 +32,39 @@ func normalizeAttendanceRemark(status string, remarks sql.NullString) *string {
 	default:
 		return nil
 	}
+}
+
+func (a *App) buildAttendanceSessionOpenMessage(classID int, sessionName string) string {
+	var subjectCode, subjectName, schedule sql.NullString
+	err := a.db.QueryRow(`
+		SELECT c.subject_code, s.description, c.schedule
+		FROM classes c
+		LEFT JOIN subjects s ON c.subject_code = s.subject_code
+		WHERE c.class_id = ?
+	`, classID).Scan(&subjectCode, &subjectName, &schedule)
+	if err != nil {
+		return fmt.Sprintf("Attendance session opened: %s.", sessionName)
+	}
+
+	classLabelParts := make([]string, 0, 2)
+	if subjectCode.Valid && strings.TrimSpace(subjectCode.String) != "" {
+		classLabelParts = append(classLabelParts, strings.TrimSpace(subjectCode.String))
+	}
+	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
+		classLabelParts = append(classLabelParts, strings.TrimSpace(subjectName.String))
+	}
+
+	classLabel := strings.Join(classLabelParts, " - ")
+	if classLabel == "" {
+		classLabel = fmt.Sprintf("Class #%d", classID)
+	}
+
+	scheduleLabel := "Schedule: TBA"
+	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
+		scheduleLabel = fmt.Sprintf("Schedule: %s", strings.TrimSpace(schedule.String))
+	}
+
+	return fmt.Sprintf("Attendance session opened for %s (%s). %s.", classLabel, sessionName, scheduleLabel)
 }
 
 // ==============================================================================
@@ -112,8 +145,9 @@ func (a *App) OpenClassAttendance(classID int, date string) ([]Attendance, error
 
 					// Notify enrolled students about the opened session
 					go func(cID, sID int, sName string) {
+						message := a.buildAttendanceSessionOpenMessage(cID, sName)
 						studentRows, qErr := a.db.Query(
-							`SELECT student_id FROM classlist WHERE class_id = ? AND status = 'active'`, cID)
+							`SELECT student_id FROM joined_classes WHERE class_id = ? AND status IN ('join', 'added', 'active') AND (is_archived = 0 OR is_archived IS NULL)`, cID)
 						if qErr != nil || studentRows == nil {
 							return
 						}
@@ -123,7 +157,7 @@ func (a *App) OpenClassAttendance(classID int, date string) ([]Attendance, error
 							if studentRows.Scan(&sid) == nil {
 								a.createNotification(sid, "attendance",
 									"Attendance Session Open",
-									fmt.Sprintf("Attendance session opened: %s.", sName),
+									message,
 									"info", notifRef("attendance_session"), notifRefID(sID))
 							}
 						}
@@ -854,6 +888,67 @@ func (a *App) ArchiveAttendanceSession(sessionID int, teacherUserID int) error {
 	return nil
 }
 
+// DeleteAttendanceSession soft-deletes one session and hides its attendance rows.
+func (a *App) DeleteAttendanceSession(sessionID int, teacherUserID int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return fmt.Errorf("failed to initialize attendance sessions table: %w", err)
+	}
+
+	var classArchived int
+	err := a.db.QueryRow(`
+SELECT COALESCE(c.is_archived, 0)
+FROM attendance_sessions s
+JOIN classes c ON s.class_id = c.class_id
+WHERE s.session_id = ?
+  AND c.teacher_id = ?
+  AND COALESCE(s.is_archived, 0) = 0
+  AND COALESCE(s.is_deleted, 0) = 0
+`, sessionID, teacherUserID).Scan(&classArchived)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("session not found or not authorized")
+	}
+	if err != nil {
+		return err
+	}
+	if classArchived != 0 {
+		return fmt.Errorf("cannot delete attendance for an archived class")
+	}
+
+	if _, err := a.db.Exec(`
+UPDATE attendance
+SET is_archived = 1,
+updated_at = CURRENT_TIMESTAMP
+WHERE session_id = ?
+`, sessionID); err != nil {
+		log.Printf("Failed to mark attendance rows deleted for session %d: %v", sessionID, err)
+		return err
+	}
+	res, err := a.db.Exec(`
+UPDATE attendance_sessions
+SET is_archived = 1,
+is_deleted = 1,
+deleted_at = CURRENT_TIMESTAMP,
+deleted_by_user_id = ?,
+updated_at = CURRENT_TIMESTAMP
+WHERE session_id = ?
+  AND COALESCE(is_deleted, 0) = 0
+`, teacherUserID, sessionID)
+	if err != nil {
+		log.Printf("Failed to soft-delete attendance session %d: %v", sessionID, err)
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("session not found or not authorized")
+	}
+	log.Printf("Soft-deleted attendance session: session_id=%d deleted_by=%d", sessionID, teacherUserID)
+	return nil
+}
+
 // UnarchiveAttendanceSession removes the archived flag from one specific attendance session.
 // This is used when there are multiple sessions on the same class/date and only one should be restored.
 func (a *App) UnarchiveAttendanceSession(sessionID int, teacherUserID int) error {
@@ -1216,10 +1311,10 @@ func (a *App) ensureAttendanceRowsForSession(sessionID, classID int, date string
 			NULL,
 			0,
 			CURRENT_TIMESTAMP
-		FROM classlist cl
+		FROM joined_classes cl
 		JOIN classes c ON cl.class_id = c.class_id
 		WHERE cl.class_id = ?
-			AND cl.status = 'active'
+			AND cl.status IN ('join', 'added', 'active')
 			AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
 			AND COALESCE(c.is_archived, 0) = 0
 			AND NOT EXISTS (
@@ -1440,8 +1535,9 @@ func (a *App) CreateAttendanceSession(classID int, date, sessionName string, tea
 
 	// Notify enrolled students about the opened session
 	go func(cID, sID int, sName string) {
+		message := a.buildAttendanceSessionOpenMessage(cID, sName)
 		studentRows, qErr := a.db.Query(
-			`SELECT student_id FROM classlist WHERE class_id = ? AND status = 'active'`, cID)
+			`SELECT student_id FROM joined_classes WHERE class_id = ? AND status IN ('join', 'added', 'active') AND (is_archived = 0 OR is_archived IS NULL)`, cID)
 		if qErr != nil || studentRows == nil {
 			return
 		}
@@ -1451,7 +1547,7 @@ func (a *App) CreateAttendanceSession(classID int, date, sessionName string, tea
 			if studentRows.Scan(&sid) == nil {
 				a.createNotification(sid, "attendance",
 					"Attendance Session Open",
-					fmt.Sprintf("Attendance session opened: %s.", sName),
+					message,
 					"info", notifRef("attendance_session"), notifRefID(sID))
 			}
 		}
@@ -1624,7 +1720,7 @@ func (a *App) SaveAttendanceSession(sessionID int, teacherUserID int) error {
 
 		studentRows, err := a.db.Query(`
 			SELECT student_id
-			FROM classlist
+			FROM joined_classes
 			WHERE class_id = ? AND status = 'active' AND (is_archived = 0 OR is_archived IS NULL)
 		`, classID)
 		if err != nil || studentRows == nil {
@@ -1778,7 +1874,7 @@ func (a *App) GetStudentOpenAttendanceSessions(studentUserID int) ([]AttendanceS
 			SUM(CASE WHEN a.status = 'late' THEN 1 ELSE 0 END) AS late_count
 		FROM attendance_sessions s
 		JOIN classes c ON s.class_id = c.class_id
-		JOIN classlist cl ON cl.class_id = c.class_id
+		JOIN joined_classes cl ON cl.class_id = c.class_id
 		JOIN subjects subj ON c.subject_code = subj.subject_code
 		LEFT JOIN attendance sa
 			ON sa.session_id = s.session_id
@@ -1787,7 +1883,7 @@ func (a *App) GetStudentOpenAttendanceSessions(studentUserID int) ([]AttendanceS
 			AND sa.attendance_date = s.attendance_date
 		LEFT JOIN attendance a ON a.session_id = s.session_id
 		WHERE cl.student_id = ?
-			AND cl.status = 'active'
+			AND cl.status IN ('join', 'added', 'active')
 			AND (cl.is_archived = 0 OR cl.is_archived IS NULL)
 			AND s.status = 'open'
 			AND COALESCE(s.is_archived, 0) = 0
@@ -1898,8 +1994,8 @@ func (a *App) StudentTimeIn(sessionID int, studentUserID int) error {
 
 	var enrolled int
 	err = a.db.QueryRow(`
-		SELECT 1 FROM classlist
-		WHERE class_id = ? AND student_id = ? AND status = 'active' AND (is_archived = 0 OR is_archived IS NULL)
+		SELECT 1 FROM joined_classes
+		WHERE class_id = ? AND student_id = ? AND status IN ('join', 'added', 'active') AND (is_archived = 0 OR is_archived IS NULL)
 	`, classID, studentUserID).Scan(&enrolled)
 	if err != nil {
 		return fmt.Errorf("student is not enrolled in this class")
@@ -2004,6 +2100,65 @@ func (a *App) StudentTimeIn(sessionID int, studentUserID int) error {
 		a.createNotification(sID, "attendance", title, msg, tone, notifRef("attendance_session"), notifRefID(sessID))
 	}(studentUserID, sessionID, classID)
 
+	// Notify the teacher when a student times in.
+	go func(sID, sessID, cID int) {
+		var teacherID int
+		var studentFirstName, studentLastName, subjectCode, status string
+
+		err := a.db.QueryRow(`
+			SELECT
+				c.teacher_id,
+				COALESCE(stu.first_name, ''),
+				COALESCE(stu.last_name, ''),
+				COALESCE(c.subject_code, ''),
+				COALESCE(att.status, '')
+			FROM classes c
+			JOIN students stu ON stu.id = ?
+			JOIN attendance att
+				ON att.class_id = c.class_id
+				AND att.student_id = stu.id
+				AND att.session_id = ?
+				AND COALESCE(att.is_archived, 0) = 0
+			WHERE c.class_id = ?
+			LIMIT 1
+		`, sID, sessID, cID).Scan(&teacherID, &studentFirstName, &studentLastName, &subjectCode, &status)
+		if err != nil {
+			log.Printf("Failed to load teacher time-in notification payload: student_id=%d session_id=%d class_id=%d err=%v", sID, sessID, cID, err)
+			return
+		}
+		if teacherID <= 0 {
+			log.Printf("Skipped teacher time-in notification: invalid teacher_id=%d class_id=%d session_id=%d", teacherID, cID, sessID)
+			return
+		}
+
+		studentName := strings.TrimSpace(strings.TrimSpace(studentFirstName) + " " + strings.TrimSpace(studentLastName))
+		if studentName == "" {
+			studentName = fmt.Sprintf("Student #%d", sID)
+		}
+
+		statusLabel := strings.TrimSpace(status)
+		if statusLabel == "" {
+			statusLabel = "present"
+		}
+		statusLabel = strings.ToUpper(statusLabel[:1]) + strings.ToLower(statusLabel[1:])
+
+		classLabel := strings.TrimSpace(subjectCode)
+		if classLabel == "" {
+			classLabel = fmt.Sprintf("class #%d", cID)
+		}
+
+		a.createNotification(
+			teacherID,
+			"attendance",
+			"Student Timed In",
+			fmt.Sprintf("%s timed in for %s as %s.", studentName, classLabel, statusLabel),
+			"info",
+			notifRef("attendance_session"),
+			notifRefID(sessID),
+		)
+		log.Printf("Teacher notified for student time-in: teacher_id=%d student_id=%d class_id=%d session_id=%d status=%s", teacherID, sID, cID, sessID, statusLabel)
+	}(studentUserID, sessionID, classID)
+
 	return nil
 }
 
@@ -2082,5 +2237,3 @@ func (a *App) GetStudentAttendanceHistory(userID int) ([]AttendanceHistoryRecord
 	}
 	return records, nil
 }
-
-

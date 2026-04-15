@@ -18,7 +18,7 @@ const (
 	MaxLenEmployeeID   = 50
 	MaxLenDepartment   = 20
 	MaxLenSearchTerm   = 200
-	MaxLenEDPCode      = 50
+	MaxLenJoinCode     = 50
 	MaxLenComments     = 2000
 	MaxLenPCNumber     = 50
 	MaxLenRejectReason = 500
@@ -210,17 +210,17 @@ func ValidateSearchTerm(searchTerm string) (string, error) {
 	return s, nil
 }
 
-// ValidateEDPCode validates EDP code for class join.
-func ValidateEDPCode(edpCode string) (string, error) {
-	s := strings.TrimSpace(edpCode)
+// ValidateJoinCode validates join code for class join.
+func ValidateJoinCode(joinCode string) (string, error) {
+	s := strings.TrimSpace(joinCode)
 	if s == "" {
-		return "", fmt.Errorf("EDP code cannot be empty")
+		return "", fmt.Errorf("join code cannot be empty")
 	}
-	if len(s) > MaxLenEDPCode {
-		return "", fmt.Errorf("EDP code must be at most %d characters", MaxLenEDPCode)
+	if len(s) > MaxLenJoinCode {
+		return "", fmt.Errorf("join code must be at most %d characters", MaxLenJoinCode)
 	}
 	if ContainsControlOrNull(s) {
-		return "", fmt.Errorf("EDP code contains invalid characters")
+		return "", fmt.Errorf("join code contains invalid characters")
 	}
 	return s, nil
 }

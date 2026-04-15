@@ -1,11 +1,90 @@
 package backend
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
+
+const joinCodeCharset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+const joinCodeRawLength = 8
+
+func (a *App) ensureClassDeleteColumns() error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+
+	ensureClassColumn := func(columnName, columnDef string) error {
+		var exists int
+		err := a.db.QueryRow(`
+			SELECT COUNT(*)
+			FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+			  AND TABLE_NAME = 'classes'
+			  AND COLUMN_NAME = ?
+		`, columnName).Scan(&exists)
+		if err != nil {
+			return err
+		}
+		if exists == 0 {
+			if _, err := a.db.Exec(fmt.Sprintf("ALTER TABLE classes ADD COLUMN %s %s", columnName, columnDef)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	if err := ensureClassColumn("is_deleted", "TINYINT(1) NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := ensureClassColumn("deleted_at", "DATETIME NULL"); err != nil {
+		return err
+	}
+	if err := ensureClassColumn("deleted_by_user_id", "INT NULL"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func generateJoinCodeCandidate() (string, error) {
+	randomBytes := make([]byte, joinCodeRawLength)
+	if _, err := rand.Read(randomBytes); err != nil {
+		return "", err
+	}
+
+	code := make([]byte, joinCodeRawLength)
+	for i, b := range randomBytes {
+		code[i] = joinCodeCharset[int(b)%len(joinCodeCharset)]
+	}
+
+	return fmt.Sprintf("%s-%s", string(code[:4]), string(code[4:])), nil
+}
+
+func (a *App) generateUniqueJoinCode() (string, error) {
+	const maxAttempts = 25
+
+	for i := 0; i < maxAttempts; i++ {
+		candidate, err := generateJoinCodeCandidate()
+		if err != nil {
+			return "", err
+		}
+
+		var exists int
+		err = a.db.QueryRow(`SELECT 1 FROM classes WHERE join_code = ? LIMIT 1`, candidate).Scan(&exists)
+		if err == sql.ErrNoRows {
+			return candidate, nil
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return "", fmt.Errorf("failed to generate a unique join code")
+}
 
 // ==============================================================================
 // CLASS & SUBJECT MANAGEMENT
@@ -42,6 +121,9 @@ func (a *App) GetTeacherClassesByUserID(userID int) ([]CourseClass, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
+		return nil, err
+	}
 
 	// First get the teacher ID from the user ID
 	teacherID, err := a.GetTeacherID(userID)
@@ -58,10 +140,13 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
+		return nil, err
+	}
 
 	query := `
 		SELECT 
-			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
+			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code, c.join_code,
 			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
@@ -71,10 +156,13 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 		LEFT JOIN teachers t ON c.teacher_id = t.id
 		LEFT JOIN (
 			SELECT class_id, COUNT(*) as count 
-			FROM classlist 
+			FROM joined_classes 
+			WHERE status IN ('join', 'added') AND COALESCE(is_archived, 0) = 0
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE c.teacher_id = ? AND (c.is_archived = 0 OR c.is_archived IS NULL)
+		WHERE c.teacher_id = ?
+		  AND (c.is_archived = 0 OR c.is_archived IS NULL)
+		  AND COALESCE(c.is_deleted, 0) = 0
 		ORDER BY c.subject_code, c.semester, c.school_year
 	`
 	rows, err := a.db.Query(query, teacherID)
@@ -86,11 +174,11 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 	var classes []CourseClass
 	for rows.Next() {
 		var class CourseClass
-		var subjectName, descriptiveTitle, edpCode, schedule, room, semester, schoolYear sql.NullString
+		var subjectName, descriptiveTitle, edpCode, joinCode, schedule, room, semester, schoolYear sql.NullString
 		var teacherName sql.NullString
 		var createdBy sql.NullInt64
 		err := rows.Scan(
-			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &edpCode,
+			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &edpCode, &joinCode,
 			&class.TeacherUserID, &teacherName,
 			&schedule, &room, &semester, &schoolYear,
 			&class.EnrolledCount, &class.IsActive, &createdBy,
@@ -106,6 +194,9 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 		}
 		if edpCode.Valid {
 			class.EdpCode = &edpCode.String
+		}
+		if joinCode.Valid {
+			class.JoinCode = &joinCode.String
 		}
 		if teacherName.Valid {
 			class.TeacherName = &teacherName.String
@@ -137,32 +228,36 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
+		return nil, err
+	}
 	if err := a.ensureStudentArchivedClassesTable(); err != nil {
 		return nil, err
 	}
 
 	query := `
 		SELECT 
-			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
+			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code, c.join_code,
 			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
-			c.schedule, c.room, c.semester, c.school_year,
+			c.schedule, c.section, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.created_by_user_id, c.created_at
-		FROM classlist cl
+		FROM joined_classes cl
 		JOIN classes c ON cl.class_id = c.class_id
 		LEFT JOIN student_archived_classes sac ON sac.student_id = cl.student_id AND sac.class_id = cl.class_id
 		LEFT JOIN subjects s ON c.subject_code = s.subject_code
 		LEFT JOIN teachers t ON c.teacher_id = t.id
 		LEFT JOIN (
 			SELECT class_id, COUNT(*) as count 
-			FROM classlist 
-			WHERE status = 'active'
+			FROM joined_classes 
+			WHERE status IN ('join', 'added') AND COALESCE(is_archived, 0) = 0
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
 		WHERE cl.student_id = ?
-		  AND cl.status = 'active'
+		  AND cl.status IN ('join', 'added')
 		  AND c.is_active = 1
 		  AND COALESCE(c.is_archived, 0) = 0
+		  AND COALESCE(c.is_deleted, 0) = 0
 		  AND sac.class_id IS NULL
 		ORDER BY c.subject_code
 	`
@@ -175,14 +270,14 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 	var classes []CourseClass
 	for rows.Next() {
 		var class CourseClass
-		var subjectName, descriptiveTitle, edpCode, schedule, room, semester, schoolYear sql.NullString
+		var subjectName, descriptiveTitle, edpCode, joinCode, schedule, section, room, semester, schoolYear sql.NullString
 		var teacherName sql.NullString
 		var createdBy sql.NullInt64
 		var createdAt time.Time
 		err := rows.Scan(
-			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &edpCode,
+			&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &edpCode, &joinCode,
 			&class.TeacherUserID, &teacherName,
-			&schedule, &room, &semester, &schoolYear,
+			&schedule, &section, &room, &semester, &schoolYear,
 			&class.EnrolledCount, &class.IsActive, &createdBy, &createdAt,
 		)
 		if err != nil {
@@ -197,11 +292,17 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 		if edpCode.Valid {
 			class.EdpCode = &edpCode.String
 		}
+		if joinCode.Valid {
+			class.JoinCode = &joinCode.String
+		}
 		if teacherName.Valid {
 			class.TeacherName = &teacherName.String
 		}
 		if schedule.Valid {
 			class.Schedule = &schedule.String
+		}
+		if section.Valid {
+			class.Section = &section.String
 		}
 		if room.Valid {
 			class.Room = &room.String
@@ -227,45 +328,101 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 // CLASS CRUD OPERATIONS
 // ==============================================================================
 
-// CreateClass creates a new class instance (by working student)
-// If a class with the same EDP code exists and is archived, it will be reactivated
-// If a class with the same EDP code exists and is NOT archived, it will return an error
+// CreateClass creates a new class instance (by working student).
+// EDP codes are reference values and may repeat across offerings; we only
+// treat a class as duplicate when the full offering metadata matches.
+// If an exact offering match exists and is archived/inactive, it is reactivated.
 func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedule, room, section, semester, schoolYear, descriptiveTitle string, createdBy int) (int, error) {
 	if err := a.checkDB(); err != nil {
 		return 0, err
 	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
+		return 0, err
+	}
 
-	// Check if a class with the same EDP code already exists (only if edpCode is provided)
-	if edpCode != "" {
+	normalizedEDPCode := strings.TrimSpace(edpCode)
+	normalizedSchedule := strings.TrimSpace(schedule)
+	normalizedRoom := strings.TrimSpace(room)
+	normalizedSection := strings.TrimSpace(section)
+	normalizedSemester := strings.TrimSpace(semester)
+	normalizedSchoolYear := strings.TrimSpace(schoolYear)
+	normalizedDescriptiveTitle := strings.TrimSpace(descriptiveTitle)
+
+	// Check for an exact existing offering, not EDP uniqueness.
+	if normalizedEDPCode != "" {
 		var existingClassID int
 		var isArchived bool
 		var isActive bool
+		var existingJoinCode sql.NullString
 		checkQuery := `
-			SELECT class_id, is_archived, is_active 
-			FROM classes 
-			WHERE edp_code = ?
+			SELECT class_id, is_archived, is_active, join_code
+			FROM classes
+			WHERE subject_code = ?
+			  AND teacher_id = ?
+			  AND COALESCE(edp_code, '') = ?
+			  AND COALESCE(schedule, '') = ?
+			  AND COALESCE(room, '') = ?
+			  AND COALESCE(section, '') = ?
+			  AND COALESCE(semester, '') = ?
+			  AND COALESCE(school_year, '') = ?
+			  AND COALESCE(descriptive_title, '') = ?
+			  AND COALESCE(is_deleted, 0) = 0
+			ORDER BY class_id DESC
+			LIMIT 1
 		`
-		err := a.db.QueryRow(checkQuery, edpCode).Scan(&existingClassID, &isArchived, &isActive)
+		err := a.db.QueryRow(
+			checkQuery,
+			subjectCode,
+			teacherUserID,
+			normalizedEDPCode,
+			normalizedSchedule,
+			normalizedRoom,
+			normalizedSection,
+			normalizedSemester,
+			normalizedSchoolYear,
+			normalizedDescriptiveTitle,
+		).Scan(&existingClassID, &isArchived, &isActive, &existingJoinCode)
 		if err == nil {
-			// Class with this EDP code exists
+			// Exact offering already exists.
 			if !isArchived && isActive {
-				// Class is active and not archived - this is a duplicate
-				log.Printf("Class with EDP code %s already exists and is active (class_id=%d)", edpCode, existingClassID)
-				return 0, fmt.Errorf("a class with EDP code '%s' already exists", edpCode)
+				if !existingJoinCode.Valid || strings.TrimSpace(existingJoinCode.String) == "" {
+					if generatedJoinCode, genErr := a.generateUniqueJoinCode(); genErr == nil {
+						_, _ = a.db.Exec(
+							`UPDATE classes SET join_code = ?, updated_at = CURRENT_TIMESTAMP WHERE class_id = ? AND (join_code IS NULL OR join_code = '')`,
+							generatedJoinCode,
+							existingClassID,
+						)
+					}
+				}
+
+				log.Printf("Class offering already exists and is active (class_id=%d, edp_code=%s)", existingClassID, normalizedEDPCode)
+				return 0, fmt.Errorf("a class offering with the same subject, EDP code, schedule, and term already exists")
 			}
 
-			// Class exists but is archived or inactive - reactivate and update it
-			log.Printf("Reactivating archived/inactive class with EDP code %s (class_id=%d)", edpCode, existingClassID)
+			// Exact offering exists but is archived/inactive - reactivate and update it.
+			log.Printf("Reactivating archived/inactive class offering (class_id=%d, edp_code=%s)", existingClassID, normalizedEDPCode)
+
+			joinCodeForExisting := strings.TrimSpace(existingJoinCode.String)
+			if joinCodeForExisting == "" {
+				joinCodeForExisting, err = a.generateUniqueJoinCode()
+				if err != nil {
+					log.Printf("Failed to generate join code for reactivated class: %v", err)
+					return 0, err
+				}
+			}
 
 			updateQuery := `
 				UPDATE classes 
 				SET subject_code = ?, 
 				    teacher_id = ?, 
+				    edp_code = ?,
 				    schedule = ?, 
 				    room = ?, 
+				    section = ?,
 				    semester = ?, 
 				    school_year = ?, 
 				    descriptive_title = ?,
+				    join_code = COALESCE(NULLIF(join_code, ''), ?),
 				    is_active = 1,
 				    is_archived = 0,
 				    updated_at = CURRENT_TIMESTAMP
@@ -274,9 +431,12 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 			_, err = a.db.Exec(
 				updateQuery,
 				subjectCode, teacherUserID,
-				nullString(schedule), nullString(room),
-				nullString(semester), nullString(schoolYear),
-				nullString(descriptiveTitle),
+				nullString(normalizedEDPCode),
+				nullString(normalizedSchedule), nullString(normalizedRoom),
+				nullString(normalizedSection),
+				nullString(normalizedSemester), nullString(normalizedSchoolYear),
+				nullString(normalizedDescriptiveTitle),
+				joinCodeForExisting,
 				existingClassID,
 			)
 			if err != nil {
@@ -284,16 +444,25 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 				return 0, err
 			}
 
-			log.Printf("Class reactivated: class_id=%d, edp_code=%s", existingClassID, edpCode)
+			log.Printf("Class reactivated: class_id=%d, edp_code=%s, join_code=%s", existingClassID, normalizedEDPCode, joinCodeForExisting)
 			return existingClassID, nil
 		}
-		// If error is sql.ErrNoRows, class doesn't exist, proceed with creation
+		if err != sql.ErrNoRows {
+			log.Printf("Failed to check existing class offering: %v", err)
+			return 0, err
+		}
+	}
+
+	joinCode, err := a.generateUniqueJoinCode()
+	if err != nil {
+		log.Printf("Failed to generate join code for new class: %v", err)
+		return 0, err
 	}
 
 	// No existing class found, create a new one
 	query := `
-		INSERT INTO classes (subject_code, teacher_id, edp_code, schedule, room, semester, school_year, descriptive_title, created_by_user_id, is_active)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+		INSERT INTO classes (subject_code, teacher_id, edp_code, join_code, schedule, room, semester, school_year, descriptive_title, created_by_user_id, is_active)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
 	`
 	// Handle created_by_user_id
 	var createdByValue interface{}
@@ -306,10 +475,11 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 	result, err := a.db.Exec(
 		query,
 		subjectCode, teacherUserID,
-		nullString(edpCode),
-		nullString(schedule), nullString(room),
-		nullString(semester), nullString(schoolYear),
-		nullString(descriptiveTitle),
+		nullString(normalizedEDPCode),
+		joinCode,
+		nullString(normalizedSchedule), nullString(normalizedRoom),
+		nullString(normalizedSemester), nullString(normalizedSchoolYear),
+		nullString(normalizedDescriptiveTitle),
 		createdByValue,
 	)
 	if err != nil {
@@ -322,7 +492,7 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 		return 0, err
 	}
 
-	log.Printf("Class created: class_id=%d, subject_code=%s, teacher_id=%d", classID, subjectCode, teacherUserID)
+	log.Printf("Class created: class_id=%d, subject_code=%s, teacher_id=%d, join_code=%s", classID, subjectCode, teacherUserID, joinCode)
 	return int(classID), nil
 }
 
@@ -331,11 +501,14 @@ func (a *App) UpdateClass(classID int, schedule, room, section, semester, school
 	if err := a.checkDB(); err != nil {
 		return err
 	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
+		return err
+	}
 
 	query := `
 		UPDATE classes 
 		SET schedule = ?, room = ?, section = ?, semester = ?, school_year = ?, is_active = ?
-		WHERE class_id = ?
+		WHERE class_id = ? AND COALESCE(is_deleted, 0) = 0
 	`
 	_, err := a.db.Exec(
 		query,
@@ -353,17 +526,20 @@ func (a *App) UpdateClass(classID int, schedule, room, section, semester, school
 	return nil
 }
 
-// CloseClass closes a class (ACTIVE → CLOSED).
+// CloseClass closes a class (ACTIVE -> CLOSED).
 // A closed class can no longer accept new enrollments or attendance.
 // Students remain enrolled but no new attendance records are created.
 func (a *App) CloseClass(classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
+		return err
+	}
 
 	// Check class exists and is active
 	var isActive bool
-	err := a.db.QueryRow(`SELECT is_active FROM classes WHERE class_id = ?`, classID).Scan(&isActive)
+	err := a.db.QueryRow(`SELECT is_active FROM classes WHERE class_id = ? AND COALESCE(is_deleted, 0) = 0`, classID).Scan(&isActive)
 	if err != nil {
 		return fmt.Errorf("class not found")
 	}
@@ -371,7 +547,7 @@ func (a *App) CloseClass(classID int) error {
 		return fmt.Errorf("class is already closed")
 	}
 
-	query := `UPDATE classes SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`
+	query := `UPDATE classes SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE class_id = ? AND COALESCE(is_deleted, 0) = 0`
 	_, err = a.db.Exec(query, classID)
 	if err != nil {
 		log.Printf("Failed to close class: %v", err)
@@ -382,18 +558,25 @@ func (a *App) CloseClass(classID int) error {
 	return nil
 }
 
-// ReopenClass reopens a previously closed class (CLOSED → ACTIVE)
+// ReopenClass reopens a previously closed class (CLOSED -> ACTIVE)
 func (a *App) ReopenClass(classID int) error {
 	if err := a.checkDB(); err != nil {
+		return err
+	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
 		return err
 	}
 
 	// Check class exists and is not archived
 	var isActive bool
 	var isArchived bool
-	err := a.db.QueryRow(`SELECT is_active, COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isActive, &isArchived)
+	var isDeleted bool
+	err := a.db.QueryRow(`SELECT is_active, COALESCE(is_archived, 0), COALESCE(is_deleted, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isActive, &isArchived, &isDeleted)
 	if err != nil {
 		return fmt.Errorf("class not found")
+	}
+	if isDeleted {
+		return fmt.Errorf("deleted classes cannot be reopened")
 	}
 	if isActive {
 		return fmt.Errorf("class is already active")
@@ -402,7 +585,7 @@ func (a *App) ReopenClass(classID int) error {
 		return fmt.Errorf("archived classes cannot be reopened. Unarchive first")
 	}
 
-	query := `UPDATE classes SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`
+	query := `UPDATE classes SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ? AND COALESCE(is_deleted, 0) = 0`
 	_, err = a.db.Exec(query, classID)
 	if err != nil {
 		log.Printf("Failed to reopen class: %v", err)
@@ -410,6 +593,85 @@ func (a *App) ReopenClass(classID int) error {
 	}
 
 	log.Printf("Class reopened: class_id=%d", classID)
+	return nil
+}
+
+// DeleteClass soft-deletes a class owned by the teacher.
+// The class must be closed (inactive) and not archived so active classlists are not removed by accident.
+func (a *App) DeleteClass(classID int, teacherUserID int) error {
+	if err := a.checkDB(); err != nil {
+		return err
+	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
+		return err
+	}
+	if err := a.ensureAttendanceSessionsTable(); err != nil {
+		return fmt.Errorf("failed to initialize attendance sessions table: %w", err)
+	}
+
+	teacherID, err := a.GetTeacherID(teacherUserID)
+	if err != nil {
+		return fmt.Errorf("teacher not found")
+	}
+
+	var isActive bool
+	var isArchived bool
+	var isDeleted bool
+	err = a.db.QueryRow(
+		`SELECT is_active, COALESCE(is_archived, 0), COALESCE(is_deleted, 0) FROM classes WHERE class_id = ? AND teacher_id = ?`,
+		classID, teacherID,
+	).Scan(&isActive, &isArchived, &isDeleted)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("class not found or not authorized")
+	}
+	if err != nil {
+		return err
+	}
+	if isDeleted {
+		return fmt.Errorf("class has already been deleted")
+	}
+	if isArchived {
+		return fmt.Errorf("this class is archived — restore it from Stored archives first if you still need to remove it")
+	}
+	if isActive {
+		return fmt.Errorf("set the class to Inactive before deleting; use Edit to correct details while the class is active")
+	}
+
+	res, err := a.db.Exec(`
+		UPDATE classes
+		SET is_deleted = 1,
+			deleted_at = CURRENT_TIMESTAMP,
+			deleted_by_user_id = ?,
+			is_archived = 1,
+			is_active = 0,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE class_id = ?
+		  AND teacher_id = ?
+		  AND COALESCE(is_deleted, 0) = 0
+	`, teacherUserID, classID, teacherID)
+	if err != nil {
+		log.Printf("Failed to delete class: %v", err)
+		return err
+	}
+
+	// Keep related records hidden and immutable after class deletion.
+	_, _ = a.db.Exec(`UPDATE joined_classes SET is_archived = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`, classID)
+	_, _ = a.db.Exec(`UPDATE attendance SET is_archived = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`, classID)
+	_, _ = a.db.Exec(`
+		UPDATE attendance_sessions
+		SET is_archived = 1,
+			is_deleted = 1,
+			deleted_at = CURRENT_TIMESTAMP,
+			deleted_by_user_id = ?,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE class_id = ?
+	`, teacherUserID, classID)
+
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("class not found or not authorized")
+	}
+	log.Printf("Soft-deleted class: class_id=%d teacher_id=%d deleted_by=%d", classID, teacherID, teacherUserID)
 	return nil
 }
 
@@ -433,22 +695,26 @@ func (a *App) GetClassStudents(classID int) ([]ClasslistEntry, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
+		return nil, err
+	}
 
 	query := `
 		SELECT 
 			cl.class_id, cl.student_id, stu.student_id,
 			stu.first_name, stu.middle_name, stu.last_name,
 			cl.status,
-			cl.enrollment_date,
+			cl.joined_date,
 			stu.email,
 			stu.contact_number,
 			sub.description as course
-		FROM classlist cl
+		FROM joined_classes cl
 		JOIN students stu ON cl.student_id = stu.id
 		JOIN classes c ON cl.class_id = c.class_id
 		JOIN subjects sub ON c.subject_code = sub.subject_code
 		WHERE cl.class_id = ? 
-		  AND cl.status = 'active'
+		  AND cl.status IN ('join', 'added')
+		  AND COALESCE(c.is_deleted, 0) = 0
 		  AND (
 			COALESCE(c.is_archived, 0) = 1
 			OR cl.is_archived = 0
@@ -489,7 +755,7 @@ func (a *App) GetClassStudents(classID int) ([]ClasslistEntry, error) {
 		if course.Valid {
 			student.Course = &course.String
 		}
-		student.EnrollmentDate = enrollmentDate.Format("2006-01-02")
+		student.JoinedDate = enrollmentDate.Format("2006-01-02")
 		students = append(students, student)
 	}
 
@@ -501,9 +767,12 @@ func (a *App) GetClassByID(classID int) (*CourseClass, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
+		return nil, err
+	}
 
 	query := `
-		SELECT c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
+		SELECT c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code, c.join_code,
 			c.teacher_id, CONCAT(t.last_name, ', ', t.first_name) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
@@ -513,20 +782,21 @@ func (a *App) GetClassByID(classID int) (*CourseClass, error) {
 		LEFT JOIN teachers t ON c.teacher_id = t.id
 		LEFT JOIN (
 			SELECT class_id, COUNT(*) as count 
-			FROM classlist 
-			WHERE status = 'active'
+			FROM joined_classes 
+			WHERE status IN ('join', 'added') AND COALESCE(is_archived, 0) = 0
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
 		WHERE c.class_id = ?
+		  AND COALESCE(c.is_deleted, 0) = 0
 	`
 
 	var class CourseClass
-	var subjectName, descriptiveTitle, edpCode, schedule, room, semester, schoolYear sql.NullString
+	var subjectName, descriptiveTitle, edpCode, joinCode, schedule, room, semester, schoolYear sql.NullString
 	var teacherName sql.NullString
 	var createdBy sql.NullInt64
 
 	err := a.db.QueryRow(query, classID).Scan(
-		&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &edpCode,
+		&class.ClassID, &class.SubjectCode, &subjectName, &descriptiveTitle, &edpCode, &joinCode,
 		&class.TeacherUserID, &teacherName,
 		&schedule, &room, &semester, &schoolYear,
 		&class.EnrolledCount, &class.IsActive, &class.IsArchived, &createdBy,
@@ -548,6 +818,9 @@ func (a *App) GetClassByID(classID int) (*CourseClass, error) {
 	}
 	if edpCode.Valid {
 		class.EdpCode = &edpCode.String
+	}
+	if joinCode.Valid {
+		class.JoinCode = &joinCode.String
 	}
 	if teacherName.Valid {
 		class.TeacherName = &teacherName.String
@@ -644,4 +917,3 @@ func (a *App) GetAllRegisteredStudents() ([]ClassStudent, error) {
 
 	return students, nil
 }
-

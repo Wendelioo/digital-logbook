@@ -105,6 +105,7 @@ export function AppUiProvider({ children }: { children: React.ReactNode }) {
         title={confirmState?.title ?? 'Confirm'}
         size="sm"
         variant={confirmState?.variant === 'danger' ? 'danger' : 'default'}
+        showVariantIcon={confirmState?.variant !== 'danger'}
         showCloseButton
         closeOnOverlayClick
         backdropClassName="modal-backdrop !z-[60]"

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  X,
+  CornerUpLeft,
   Eye,
   EyeOff,
   AlertCircle,
@@ -351,9 +351,11 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
       <div className="modal-surface max-w-md w-full p-5 sm:p-8 text-center relative max-h-[calc(100vh-2rem)] overflow-y-auto">
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+            className="absolute top-4 right-4 modal-back-icon-btn"
+            title="Back"
+            aria-label="Back"
           >
-            <X className="w-6 h-6" />
+            <CornerUpLeft className="w-5 h-5" />
           </button>
           
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -365,7 +367,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
             Registration Submitted!
           </h2>
           <p className="text-gray-600 mb-8 text-sm">
-            Your registration has been submitted successfully. Please wait for working student approval. 
+            Your registration has been submitted successfully. Please wait for student staff approval. 
             You will be able to login once your account is approved.
           </p>
           <button
@@ -381,7 +383,17 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
 
   return (
     <div className="modal-backdrop">
-      <div className="modal-surface-2xl max-w-2xl w-full max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+      <div className="modal-surface-2xl max-w-2xl w-full max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden relative">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-4 right-4 modal-back-icon-btn"
+          title="Back"
+          aria-label="Back"
+        >
+          <CornerUpLeft className="h-5 w-5" />
+        </button>
+
         <div className="px-4 sm:px-8 pt-4 sm:pt-6 pb-3 sm:pb-4 border-b border-primary-200/80 bg-gradient-to-r from-primary-50/90 to-white">
           <h2 className="text-2xl font-bold text-gray-900">Create Your Account</h2>
           <p className="mt-1 text-sm text-gray-500">

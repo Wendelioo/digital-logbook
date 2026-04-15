@@ -5,10 +5,10 @@ import { AppUiProvider } from './contexts/AppUiContext';
 import { ProtectedRoute, RoleRoute } from './components/ProtectedRoute';
 import AppErrorBoundary from './components/AppErrorBoundary';
 import LoginPage from './pages/LoginPage';
-import Admin from './pages/admin';
-import Teacher from './pages/teacher';
-import Student from './pages/student';
-import WorkingStudent from './pages/working-student';
+import Admin from './pages/roles/admin';
+import Teacher from './pages/roles/teacher';
+import Student from './pages/roles/student';
+import StudentStaff from './pages/roles/student-staff';
 import './style.css';
 
 function AppRoutes() {
@@ -57,15 +57,17 @@ function AppRoutes() {
           />
           
           <Route 
-            path="/working-student/*" 
+            path="/student-staff/*" 
             element={
               <ProtectedRoute>
                 <RoleRoute allowedRoles={['working_student']}>
-                  <WorkingStudent />
+                  <StudentStaff />
                 </RoleRoute>
               </ProtectedRoute>
             } 
           />
+
+          <Route path="/working-student/*" element={<Navigate to="/student-staff" replace />} />
           
           <Route path="/" element={<Navigate to="/login" />} />
           <Route path="/dashboard" element={<Navigate to="/login" />} />

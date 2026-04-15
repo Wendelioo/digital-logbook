@@ -17,6 +17,8 @@ export namespace backend {
 	    last_admin_login_at?: string;
 	    last_admin_pc_number?: string;
 	    today_new_users: number;
+	    issue_reports_today: number;
+	    no_issue_reports_today: number;
 	    pending_feedback: number;
 	
 	    static createFrom(source: any = {}) {
@@ -41,6 +43,8 @@ export namespace backend {
 	        this.last_admin_login_at = source["last_admin_login_at"];
 	        this.last_admin_pc_number = source["last_admin_pc_number"];
 	        this.today_new_users = source["today_new_users"];
+	        this.issue_reports_today = source["issue_reports_today"];
+	        this.no_issue_reports_today = source["no_issue_reports_today"];
 	        this.pending_feedback = source["pending_feedback"];
 	    }
 	}
@@ -297,7 +301,7 @@ export namespace backend {
 	    contact_number?: string;
 	    photo_url?: string;
 	    class_id?: number;
-	    is_enrolled: boolean;
+	    is_joined: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ClassStudent(source);
@@ -315,7 +319,7 @@ export namespace backend {
 	        this.contact_number = source["contact_number"];
 	        this.photo_url = source["photo_url"];
 	        this.class_id = source["class_id"];
-	        this.is_enrolled = source["is_enrolled"];
+	        this.is_joined = source["is_joined"];
 	    }
 	}
 	export class ClasslistEntry {
@@ -325,7 +329,7 @@ export namespace backend {
 	    first_name: string;
 	    middle_name?: string;
 	    last_name: string;
-	    enrollment_date: string;
+	    joined_date: string;
 	    status: string;
 	    email?: string;
 	    contact_number?: string;
@@ -343,7 +347,7 @@ export namespace backend {
 	        this.first_name = source["first_name"];
 	        this.middle_name = source["middle_name"];
 	        this.last_name = source["last_name"];
-	        this.enrollment_date = source["enrollment_date"];
+	        this.joined_date = source["joined_date"];
 	        this.status = source["status"];
 	        this.email = source["email"];
 	        this.contact_number = source["contact_number"];
@@ -357,6 +361,7 @@ export namespace backend {
 	    subject_name: string;
 	    descriptive_title?: string;
 	    edp_code?: string;
+	    join_code?: string;
 	    section?: string;
 	    schedule?: string;
 	    room?: string;
@@ -385,6 +390,7 @@ export namespace backend {
 	        this.subject_name = source["subject_name"];
 	        this.descriptive_title = source["descriptive_title"];
 	        this.edp_code = source["edp_code"];
+	        this.join_code = source["join_code"];
 	        this.section = source["section"];
 	        this.schedule = source["schedule"];
 	        this.room = source["room"];
@@ -402,10 +408,37 @@ export namespace backend {
 	        this.class_status = source["class_status"];
 	    }
 	}
+	export class DatabaseSetupSettings {
+	    host: string;
+	    port: string;
+	    dbname: string;
+	    username: string;
+	    password: string;
+	    mode: string;
+	    source_path: string;
+	    write_path: string;
+	    is_configured: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DatabaseSetupSettings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.host = source["host"];
+	        this.port = source["port"];
+	        this.dbname = source["dbname"];
+	        this.username = source["username"];
+	        this.password = source["password"];
+	        this.mode = source["mode"];
+	        this.source_path = source["source_path"];
+	        this.write_path = source["write_path"];
+	        this.is_configured = source["is_configured"];
+	    }
+	}
 	export class Department {
 	    department_code: string;
 	    department_name: string;
-	    description?: string;
 	    is_active: boolean;
 	    is_archived: boolean;
 	    created_at: string;
@@ -419,7 +452,6 @@ export namespace backend {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.department_code = source["department_code"];
 	        this.department_name = source["department_name"];
-	        this.description = source["description"];
 	        this.is_active = source["is_active"];
 	        this.is_archived = source["is_archived"];
 	        this.created_at = source["created_at"];
@@ -439,10 +471,9 @@ export namespace backend {
 	    monitor_condition: string;
 	    keyboard_condition: string;
 	    mouse_condition: string;
-	    comments?: string;
+	    additional_comments?: string;
 	    date_submitted: string;
 	    status: string;
-	    priority: string;
 	    admin_status: string;
 	    admin_resolved_at?: string;
 	    verified_by_user_id?: number;
@@ -450,7 +481,7 @@ export namespace backend {
 	    forwarded_by_user_id?: number;
 	    forwarded_by_name?: string;
 	    forwarded_at?: string;
-	    working_student_notes?: string;
+	    forward_notes?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Feedback(source);
@@ -470,10 +501,9 @@ export namespace backend {
 	        this.monitor_condition = source["monitor_condition"];
 	        this.keyboard_condition = source["keyboard_condition"];
 	        this.mouse_condition = source["mouse_condition"];
-	        this.comments = source["comments"];
+	        this.additional_comments = source["additional_comments"];
 	        this.date_submitted = source["date_submitted"];
 	        this.status = source["status"];
-	        this.priority = source["priority"];
 	        this.admin_status = source["admin_status"];
 	        this.admin_resolved_at = source["admin_resolved_at"];
 	        this.verified_by_user_id = source["verified_by_user_id"];
@@ -481,7 +511,7 @@ export namespace backend {
 	        this.forwarded_by_user_id = source["forwarded_by_user_id"];
 	        this.forwarded_by_name = source["forwarded_by_name"];
 	        this.forwarded_at = source["forwarded_at"];
-	        this.working_student_notes = source["working_student_notes"];
+	        this.forward_notes = source["forward_notes"];
 	    }
 	}
 	export class InactivityPolicySettings {
@@ -800,6 +830,9 @@ export namespace backend {
 	    students_registered: number;
 	    classlists_created: number;
 	    pending_feedback: number;
+	    issue_reports: number;
+	    no_issue_reports: number;
+	    forwarded_reports: number;
 	    today_registrations: number;
 	    active_students_now: number;
 	    pending_registrations: number;
@@ -813,6 +846,9 @@ export namespace backend {
 	        this.students_registered = source["students_registered"];
 	        this.classlists_created = source["classlists_created"];
 	        this.pending_feedback = source["pending_feedback"];
+	        this.issue_reports = source["issue_reports"];
+	        this.no_issue_reports = source["no_issue_reports"];
+	        this.forwarded_reports = source["forwarded_reports"];
 	        this.today_registrations = source["today_registrations"];
 	        this.active_students_now = source["active_students_now"];
 	        this.pending_registrations = source["pending_registrations"];

@@ -42,6 +42,8 @@ const (
 	maxInactivityDeactivationDays     = 3650
 	defaultDeactivatedDeletionDays    = 1460
 	maxDeactivatedDeletionDays        = 36500
+	runtimeModeDevelopment            = "development"
+	runtimeModeProduction             = "production"
 )
 
 // LoadInactivityDeactivationDays returns the inactivity threshold (in days)
@@ -455,6 +457,44 @@ func getUserAppConfigPath() (string, error) {
 	return filepath.Join(configDir, "digital-logbook", "config.json"), nil
 }
 
+func getUserConfigINIPath() (string, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(configDir, "digital-logbook", "config.ini"), nil
+}
+
+func getRuntimeMode() string {
+	forcedMode := strings.ToLower(strings.TrimSpace(os.Getenv("DIGITAL_LOGBOOK_MODE")))
+	switch forcedMode {
+	case "dev", "development":
+		return runtimeModeDevelopment
+	case "prod", "production", "release":
+		return runtimeModeProduction
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		log.Printf("Unable to determine current working directory for runtime mode detection: %v", err)
+		return runtimeModeProduction
+	}
+
+	if _, err := os.Stat(filepath.Join(cwd, "wails.json")); err == nil {
+		if info, err := os.Stat(filepath.Join(cwd, "frontend")); err == nil && info.IsDir() {
+			return runtimeModeDevelopment
+		}
+	}
+
+	return runtimeModeProduction
+}
+
+// GetRuntimeMode reports which config mode is active: development or production.
+func GetRuntimeMode() string {
+	return getRuntimeMode()
+}
+
 // LoadAppSettings loads lock-mode settings from per-user app config storage.
 // Returns default config (lock mode off) if config file is not found.
 func LoadAppSettings() AppConfig {
@@ -533,8 +573,8 @@ func getExecutableDir() (string, error) {
 	return filepath.Dir(exePath), nil
 }
 
-// LoadDatabaseSettings loads database configuration from config.ini.
-// It checks executable and current working directory to support deployed and dev modes.
+// LoadDatabaseSettings loads database configuration from config.ini using mode-aware lookup paths.
+// Development prefers project-root config.ini; production prefers user-scoped config.ini.
 func LoadDatabaseSettings() (DBConfig, error) {
 	configPaths := getConfigINIPaths()
 	if len(configPaths) == 0 {
@@ -564,18 +604,39 @@ func LoadDatabaseSettings() (DBConfig, error) {
 }
 
 func getConfigINIPaths() []string {
-	paths := make([]string, 0, 2)
+	mode := getRuntimeMode()
+	paths := make([]string, 0, 3)
 
-	if exeDir, err := getExecutableDir(); err == nil {
-		paths = append(paths, filepath.Join(exeDir, "config.ini"))
-	} else {
-		log.Printf("Unable to determine executable directory: %v", err)
-	}
+	if mode == runtimeModeDevelopment {
+		if cwd, err := os.Getwd(); err == nil {
+			paths = append(paths, filepath.Join(cwd, "config.ini"))
+		} else {
+			log.Printf("Unable to determine current working directory: %v", err)
+		}
 
-	if cwd, err := os.Getwd(); err == nil {
-		paths = append(paths, filepath.Join(cwd, "config.ini"))
+		if exeDir, err := getExecutableDir(); err == nil {
+			paths = append(paths, filepath.Join(exeDir, "config.ini"))
+		} else {
+			log.Printf("Unable to determine executable directory: %v", err)
+		}
 	} else {
-		log.Printf("Unable to determine current working directory: %v", err)
+		if userConfigPath, err := getUserConfigINIPath(); err == nil {
+			paths = append(paths, userConfigPath)
+		} else {
+			log.Printf("Unable to determine user config.ini path: %v", err)
+		}
+
+		if exeDir, err := getExecutableDir(); err == nil {
+			paths = append(paths, filepath.Join(exeDir, "config.ini"))
+		} else {
+			log.Printf("Unable to determine executable directory: %v", err)
+		}
+
+		if cwd, err := os.Getwd(); err == nil {
+			paths = append(paths, filepath.Join(cwd, "config.ini"))
+		} else {
+			log.Printf("Unable to determine current working directory: %v", err)
+		}
 	}
 
 	seen := make(map[string]struct{})
@@ -655,32 +716,216 @@ func parseDatabaseConfigINI(configPath string) (DBConfig, error) {
 		return DBConfig{}, fmt.Errorf("missing [database] section")
 	}
 
-	missing := make([]string, 0, 5)
-	if config.Host == "" {
-		missing = append(missing, "database.host")
-	}
-	if config.Port == "" {
-		missing = append(missing, "database.port")
-	}
-	if config.DBName == "" {
-		missing = append(missing, "database.dbname")
-	}
-	if config.Username == "" {
-		missing = append(missing, "database.username")
-	}
-	if config.Password == "" {
-		missing = append(missing, "database.password")
-	}
-	if len(missing) > 0 {
-		return DBConfig{}, fmt.Errorf("missing required settings: %s", strings.Join(missing, ", "))
-	}
-
-	port, err := strconv.Atoi(config.Port)
-	if err != nil || port < 1 || port > 65535 {
-		return DBConfig{}, fmt.Errorf("database.port must be a valid TCP port (1-65535)")
+	if err := validateDatabaseConfig(config); err != nil {
+		return DBConfig{}, err
 	}
 
 	return config, nil
+}
+
+func parseDatabaseConfigINIOptional(configPath string) (DBConfig, bool, error) {
+	file, err := os.Open(configPath)
+	if err != nil {
+		return DBConfig{}, false, err
+	}
+	defer file.Close()
+
+	config := DBConfig{}
+	foundDatabaseSection := false
+	inDatabaseSection := false
+
+	scanner := bufio.NewScanner(file)
+	lineNumber := 0
+	for scanner.Scan() {
+		lineNumber++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section := strings.ToLower(strings.TrimSpace(line[1 : len(line)-1]))
+			inDatabaseSection = section == "database"
+			if inDatabaseSection {
+				foundDatabaseSection = true
+			}
+			continue
+		}
+
+		if !inDatabaseSection {
+			continue
+		}
+
+		key, value, found := strings.Cut(line, "=")
+		if !found {
+			return DBConfig{}, false, fmt.Errorf("invalid key/value on line %d", lineNumber)
+		}
+
+		key = strings.ToLower(strings.TrimSpace(key))
+		value = strings.TrimSpace(value)
+		value = strings.Trim(value, `"'`)
+
+		switch key {
+		case "host":
+			config.Host = value
+		case "port":
+			config.Port = value
+		case "dbname":
+			config.DBName = value
+		case "username":
+			config.Username = value
+		case "password":
+			config.Password = value
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return DBConfig{}, false, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	return config, foundDatabaseSection, nil
+}
+
+func validateDatabaseConfig(config DBConfig) error {
+	missing := make([]string, 0, 5)
+	if strings.TrimSpace(config.Host) == "" {
+		missing = append(missing, "database.host")
+	}
+	if strings.TrimSpace(config.Port) == "" {
+		missing = append(missing, "database.port")
+	}
+	if strings.TrimSpace(config.DBName) == "" {
+		missing = append(missing, "database.dbname")
+	}
+	if strings.TrimSpace(config.Username) == "" {
+		missing = append(missing, "database.username")
+	}
+	if strings.TrimSpace(config.Password) == "" {
+		missing = append(missing, "database.password")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required settings: %s", strings.Join(missing, ", "))
+	}
+
+	port, err := strconv.Atoi(strings.TrimSpace(config.Port))
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("database.port must be a valid TCP port (1-65535)")
+	}
+
+	return nil
+}
+
+func resolveDatabaseConfigINIPathForWrite() (string, error) {
+	if getRuntimeMode() == runtimeModeDevelopment {
+		if cwd, err := os.Getwd(); err == nil {
+			return filepath.Join(cwd, "config.ini"), nil
+		}
+	}
+
+	if userConfigPath, err := getUserConfigINIPath(); err == nil {
+		return userConfigPath, nil
+	}
+
+	configPaths := getConfigINIPaths()
+	if len(configPaths) > 0 {
+		return configPaths[0], nil
+	}
+
+	return "", fmt.Errorf("unable to determine config.ini write path")
+}
+
+// ResolveDatabaseConfigINIPathForWrite returns where runtime DB settings should be persisted.
+func ResolveDatabaseConfigINIPathForWrite() (string, error) {
+	return resolveDatabaseConfigINIPathForWrite()
+}
+
+// LoadDatabaseSettingsDraft returns database settings even when incomplete.
+// The bool indicates whether all required DB fields are present and valid.
+func LoadDatabaseSettingsDraft() (DBConfig, string, bool, error) {
+	defaultConfig := DBConfig{Port: "3306"}
+	configPaths := getConfigINIPaths()
+	if len(configPaths) == 0 {
+		return defaultConfig, "", false, fmt.Errorf("unable to determine config.ini search paths")
+	}
+
+	for _, configPath := range configPaths {
+		config, foundSection, err := parseDatabaseConfigINIOptional(configPath)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return defaultConfig, "", false, fmt.Errorf("failed to parse database settings from %s: %w", configPath, err)
+		}
+
+		if !foundSection {
+			continue
+		}
+
+		if strings.TrimSpace(config.Port) == "" {
+			config.Port = "3306"
+		}
+
+		isConfigured := validateDatabaseConfig(config) == nil
+		return config, configPath, isConfigured, nil
+	}
+
+	return defaultConfig, "", false, nil
+}
+
+func renderConfigINIContent(config DBConfig, inactivityDays, deletionDays int) string {
+	return fmt.Sprintf(
+		"[database]\n"+
+			"host=%s\n"+
+			"port=%s\n"+
+			"dbname=%s\n"+
+			"username=%s\n"+
+			"password=%s\n\n"+
+			"[policy]\n"+
+			"inactivity_deactivation_days=%d\n"+
+			"deactivated_deletion_days=%d\n",
+		config.Host,
+		config.Port,
+		config.DBName,
+		config.Username,
+		config.Password,
+		inactivityDays,
+		deletionDays,
+	)
+}
+
+// SaveDatabaseSettings persists database settings to the active config.ini write target.
+// Development writes to project config.ini; production writes to user config directory.
+func SaveDatabaseSettings(config DBConfig) (string, error) {
+	toSave := DBConfig{
+		Host:     strings.TrimSpace(config.Host),
+		Port:     strings.TrimSpace(config.Port),
+		DBName:   strings.TrimSpace(config.DBName),
+		Username: strings.TrimSpace(config.Username),
+		Password: strings.TrimSpace(config.Password),
+	}
+
+	if err := validateDatabaseConfig(toSave); err != nil {
+		return "", err
+	}
+
+	writePath, err := resolveDatabaseConfigINIPathForWrite()
+	if err != nil {
+		return "", err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(writePath), 0755); err != nil {
+		return "", fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	inactivityDays, deletionDays := LoadConfiguredPolicyThresholds()
+	content := renderConfigINIContent(toSave, inactivityDays, deletionDays)
+
+	if err := os.WriteFile(writePath, []byte(content), 0644); err != nil {
+		return "", fmt.Errorf("failed to write database settings: %w", err)
+	}
+
+	log.Printf("Database settings saved to %s", writePath)
+	return writePath, nil
 }
 
 // InitDatabase initializes and returns a database connection

@@ -19,12 +19,19 @@ func (a *App) ArchiveClass(classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
+		return err
+	}
 
 	// Check class status
 	var isArchived bool
-	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isArchived)
+	var isDeleted bool
+	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0), COALESCE(is_deleted, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isArchived, &isDeleted)
 	if err != nil {
 		return fmt.Errorf("class not found")
+	}
+	if isDeleted {
+		return fmt.Errorf("deleted classes cannot be archived")
 	}
 	if isArchived {
 		return fmt.Errorf("class is already archived")
@@ -55,7 +62,7 @@ func (a *App) ArchiveClass(classID int) error {
 
 	// Also archive all enrollment records for this class
 	_, err = a.db.Exec(
-		`UPDATE classlist SET is_archived = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`,
+		`UPDATE joined_classes SET is_archived = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`,
 		classID,
 	)
 	if err != nil {
@@ -71,11 +78,18 @@ func (a *App) UnarchiveClass(classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
+		return err
+	}
 
 	var classArchived bool
-	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&classArchived)
+	var classDeleted bool
+	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0), COALESCE(is_deleted, 0) FROM classes WHERE class_id = ?`, classID).Scan(&classArchived, &classDeleted)
 	if err != nil {
 		return fmt.Errorf("class not found")
+	}
+	if classDeleted {
+		return fmt.Errorf("deleted classes cannot be restored")
 	}
 	if !classArchived {
 		return fmt.Errorf("class is not archived")
@@ -106,7 +120,7 @@ func (a *App) UnarchiveClass(classID int) error {
 
 	// Restore archived class enrollments so class membership returns after restore.
 	_, err = a.db.Exec(
-		`UPDATE classlist SET is_archived = 0, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`,
+		`UPDATE joined_classes SET is_archived = 0, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`,
 		classID,
 	)
 	if err != nil {
@@ -123,10 +137,13 @@ func (a *App) GetArchivedClasses(teacherUserID int) ([]CourseClass, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
+		return nil, err
+	}
 
 	query := `
 		SELECT 
-			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
+			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code, c.join_code,
 			c.teacher_id, (CONCAT(t.last_name, ', ', t.first_name)) as teacher_name,
 			c.schedule, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
@@ -136,11 +153,13 @@ func (a *App) GetArchivedClasses(teacherUserID int) ([]CourseClass, error) {
 		LEFT JOIN teachers t ON c.teacher_id = t.id
 		LEFT JOIN (
 			SELECT class_id, COUNT(*) as count 
-			FROM classlist 
-			WHERE status = 'active'
+			FROM joined_classes 
+			WHERE status IN ('join', 'added') AND COALESCE(is_archived, 0) = 0
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
-		WHERE c.teacher_id = ? AND c.is_archived = 1
+		WHERE c.teacher_id = ?
+		  AND c.is_archived = 1
+		  AND COALESCE(c.is_deleted, 0) = 0
 		ORDER BY c.school_year DESC, c.semester DESC, s.subject_code
 	`
 
@@ -154,11 +173,11 @@ func (a *App) GetArchivedClasses(teacherUserID int) ([]CourseClass, error) {
 	var classes []CourseClass
 	for rows.Next() {
 		var cls CourseClass
-		var subjectName, descriptiveTitle, edpCode, teacherName, schedule, room, semester, schoolYear sql.NullString
+		var subjectName, descriptiveTitle, edpCode, joinCode, teacherName, schedule, room, semester, schoolYear sql.NullString
 		var createdByUserID sql.NullInt64
 
 		err := rows.Scan(
-			&cls.ClassID, &cls.SubjectCode, &subjectName, &descriptiveTitle, &edpCode,
+			&cls.ClassID, &cls.SubjectCode, &subjectName, &descriptiveTitle, &edpCode, &joinCode,
 			&cls.TeacherUserID, &teacherName,
 			&schedule, &room, &semester, &schoolYear,
 			&cls.EnrolledCount, &cls.IsActive, &cls.IsArchived, &createdByUserID,
@@ -178,6 +197,10 @@ func (a *App) GetArchivedClasses(teacherUserID int) ([]CourseClass, error) {
 		if edpCode.Valid {
 			oc := edpCode.String
 			cls.EdpCode = &oc
+		}
+		if joinCode.Valid {
+			jc := joinCode.String
+			cls.JoinCode = &jc
 		}
 		if teacherName.Valid {
 			tn := teacherName.String
@@ -215,30 +238,34 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
+	if err := a.ensureClassDeleteColumns(); err != nil {
+		return nil, err
+	}
 	if err := a.ensureStudentArchivedClassesTable(); err != nil {
 		return nil, err
 	}
 
 	query := `
 		SELECT 
-			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code,
+			c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code, c.join_code,
 			c.teacher_id, (CONCAT(t.last_name, ', ', t.first_name)) as teacher_name,
-			c.schedule, c.room, c.semester, c.school_year,
+			c.schedule, c.section, c.room, c.semester, c.school_year,
 			COALESCE(enrollment_count.count, 0) as enrolled_count,
 			c.is_active, c.is_archived, c.created_by_user_id, c.created_at
-		FROM classlist cl
+		FROM joined_classes cl
 		JOIN classes c ON cl.class_id = c.class_id
 		LEFT JOIN student_archived_classes sac ON sac.student_id = cl.student_id AND sac.class_id = cl.class_id
 		LEFT JOIN subjects s ON c.subject_code = s.subject_code
 		LEFT JOIN teachers t ON c.teacher_id = t.id
 		LEFT JOIN (
 			SELECT class_id, COUNT(*) as count 
-			FROM classlist 
-			WHERE status = 'active'
+			FROM joined_classes 
+			WHERE status IN ('join', 'added') AND COALESCE(is_archived, 0) = 0
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
 		WHERE cl.student_id = ?
-		  AND cl.status = 'active'
+		  AND cl.status IN ('join', 'added')
+		  AND COALESCE(c.is_deleted, 0) = 0
 		  AND (
 			COALESCE(c.is_archived, 0) = 1
 			OR sac.class_id IS NOT NULL
@@ -256,14 +283,14 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 	var classes []CourseClass
 	for rows.Next() {
 		var cls CourseClass
-		var subjectName, descriptiveTitle, edpCode, teacherName, schedule, room, semester, schoolYear sql.NullString
+		var subjectName, descriptiveTitle, edpCode, joinCode, teacherName, schedule, section, room, semester, schoolYear sql.NullString
 		var createdByUserID sql.NullInt64
 		var createdAt time.Time
 
 		err := rows.Scan(
-			&cls.ClassID, &cls.SubjectCode, &subjectName, &descriptiveTitle, &edpCode,
+			&cls.ClassID, &cls.SubjectCode, &subjectName, &descriptiveTitle, &edpCode, &joinCode,
 			&cls.TeacherUserID, &teacherName,
-			&schedule, &room, &semester, &schoolYear,
+			&schedule, &section, &room, &semester, &schoolYear,
 			&cls.EnrolledCount, &cls.IsActive, &cls.IsArchived, &createdByUserID, &createdAt,
 		)
 		if err != nil {
@@ -282,6 +309,10 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 			ec := edpCode.String
 			cls.EdpCode = &ec
 		}
+		if joinCode.Valid {
+			jc := joinCode.String
+			cls.JoinCode = &jc
+		}
 		if teacherName.Valid {
 			tn := teacherName.String
 			cls.TeacherName = &tn
@@ -289,6 +320,10 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 		if schedule.Valid {
 			s := schedule.String
 			cls.Schedule = &s
+		}
+		if section.Valid {
+			sec := section.String
+			cls.Section = &sec
 		}
 		if room.Valid {
 			r := room.String
@@ -314,4 +349,3 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 	log.Printf("Found %d archived classes for student user_id=%d", len(classes), studentUserID)
 	return classes, nil
 }
-

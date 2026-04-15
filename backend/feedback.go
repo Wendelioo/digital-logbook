@@ -39,6 +39,49 @@ func (a *App) ensureFeedbackAdminResolvedAtColumn() error {
 	return nil
 }
 
+func (a *App) ensureFeedbackNoteColumns() error {
+	if a.db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	hasColumn := func(columnName string) (bool, error) {
+		var exists int
+		err := a.db.QueryRow(`
+			SELECT COUNT(*)
+			FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+			  AND TABLE_NAME = 'feedback'
+			  AND COLUMN_NAME = ?
+		`, columnName).Scan(&exists)
+		if err != nil {
+			return false, err
+		}
+		return exists > 0, nil
+	}
+
+	hasAdditionalComments, err := hasColumn("additional_comments")
+	if err != nil {
+		return fmt.Errorf("failed to inspect feedback.additional_comments: %w", err)
+	}
+	if !hasAdditionalComments {
+		if _, err := a.db.Exec(`ALTER TABLE feedback ADD COLUMN additional_comments LONGTEXT NULL`); err != nil {
+			return fmt.Errorf("failed to add feedback.additional_comments column: %w", err)
+		}
+	}
+
+	hasForwardNotes, err := hasColumn("forward_notes")
+	if err != nil {
+		return fmt.Errorf("failed to inspect feedback.forward_notes: %w", err)
+	}
+	if !hasForwardNotes {
+		if _, err := a.db.Exec(`ALTER TABLE feedback ADD COLUMN forward_notes LONGTEXT NULL`); err != nil {
+			return fmt.Errorf("failed to add feedback.forward_notes column: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // GetFeedback returns all forwarded feedback for admin.
 func (a *App) GetFeedback() ([]Feedback, error) {
 	if err := a.checkDB(); err != nil {
@@ -48,17 +91,17 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 	query := `
 		SELECT 
 			f.id, 
-			f.student_id, 
-			COALESCE(s.student_id, 'N/A') as student_id_str,
-			s.first_name, 
-			s.middle_name, 
-			s.last_name, 
+			COALESCE(f.reported_by_user_id, 0) as student_user_id, 
+			COALESCE(s_rep.student_id, 'N/A') as student_id_str,
+			COALESCE(s_rep.first_name, t_rep.first_name, a_rep.first_name, 'Unknown') as first_name, 
+			COALESCE(s_rep.middle_name, t_rep.middle_name, a_rep.middle_name) as middle_name, 
+			COALESCE(s_rep.last_name, t_rep.last_name, a_rep.last_name, 'Reporter') as last_name, 
 			f.pc_number, 
 			f.equipment_condition, 
 			f.monitor_condition, 
 			f.keyboard_condition, 
 			f.mouse_condition, 
-			f.comments, 
+			f.additional_comments, 
 			f.date_submitted,
 			f.status,
 			COALESCE(f.admin_status, 'pending') as admin_status,
@@ -67,7 +110,7 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 			f.verified_at,
 			f.forwarded_by_user_id,
 			f.forwarded_at,
-			f.working_student_notes,
+			f.forward_notes,
 			CONCAT(
 				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''),
 				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
@@ -78,7 +121,10 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 			)
 			as forwarded_by_name
 		FROM feedback f
-		LEFT JOIN students s ON f.student_id = s.id
+		LEFT JOIN users u_rep ON f.reported_by_user_id = u_rep.id
+		LEFT JOIN students s_rep ON u_rep.id = s_rep.id AND u_rep.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t_rep ON u_rep.id = t_rep.id AND u_rep.user_type = 'teacher'
+		LEFT JOIN admins a_rep ON u_rep.id = a_rep.id AND u_rep.user_type = 'admin'
 		LEFT JOIN users u_fwd ON f.forwarded_by_user_id = u_fwd.id
 		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
@@ -120,7 +166,7 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 			fb.MiddleName = &middleName.String
 		}
 		if comments.Valid {
-			fb.Comments = &comments.String
+			fb.AdditionalComments = &comments.String
 		}
 		if verifiedBy.Valid {
 			v := int(verifiedBy.Int64)
@@ -146,7 +192,7 @@ func (a *App) GetFeedback() ([]Feedback, error) {
 			fb.ForwardedByName = &forwardedByName.String
 		}
 		if workingStudentNotes.Valid {
-			fb.WorkingStudentNotes = &workingStudentNotes.String
+			fb.ForwardNotes = &workingStudentNotes.String
 		}
 
 		fb.StudentName = fmt.Sprintf("%s, %s", fb.LastName, fb.FirstName)
@@ -170,21 +216,24 @@ func (a *App) GetStudentFeedback(studentID int) ([]Feedback, error) {
 	query := `
 		SELECT 
 			f.id, 
-			f.student_id, 
-			COALESCE(s.student_id, 'N/A') as student_id_str,
-			s.first_name,
-			s.middle_name,
-			s.last_name,
+			COALESCE(f.reported_by_user_id, 0) as student_user_id, 
+			COALESCE(s_rep.student_id, 'N/A') as student_id_str,
+			COALESCE(s_rep.first_name, t_rep.first_name, a_rep.first_name, 'Unknown') as first_name, 
+			COALESCE(s_rep.middle_name, t_rep.middle_name, a_rep.middle_name) as middle_name, 
+			COALESCE(s_rep.last_name, t_rep.last_name, a_rep.last_name, 'Reporter') as last_name, 
 			f.pc_number, 
 			f.equipment_condition, 
 			f.monitor_condition, 
 			f.keyboard_condition, 
 			f.mouse_condition, 
-			f.comments, 
+			f.additional_comments, 
 			f.date_submitted 
 		FROM feedback f
-		LEFT JOIN students s ON f.student_id = s.id
-		WHERE f.student_id = ? 
+		LEFT JOIN users u_rep ON f.reported_by_user_id = u_rep.id
+		LEFT JOIN students s_rep ON u_rep.id = s_rep.id AND u_rep.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t_rep ON u_rep.id = t_rep.id AND u_rep.user_type = 'teacher'
+		LEFT JOIN admins a_rep ON u_rep.id = a_rep.id AND u_rep.user_type = 'admin'
+		WHERE f.reported_by_user_id = ? 
 		ORDER BY f.date_submitted DESC`
 	rows, err := a.db.Query(query, studentID)
 	if err != nil {
@@ -214,7 +263,7 @@ func (a *App) GetStudentFeedback(studentID int) ([]Feedback, error) {
 			fb.MiddleName = &middleName.String
 		}
 		if comments.Valid {
-			fb.Comments = &comments.String
+			fb.AdditionalComments = &comments.String
 		}
 
 		fb.StudentName = fmt.Sprintf("%s, %s", fb.LastName, fb.FirstName)
@@ -229,7 +278,62 @@ func (a *App) GetStudentFeedback(studentID int) ([]Feedback, error) {
 	return feedbacks, nil
 }
 
-// SaveEquipmentFeedback saves equipment feedback from a student.
+func (a *App) resolveFeedbackReporterName(userID int, fallbackName string) string {
+	fallback := strings.TrimSpace(fallbackName)
+	if a.db == nil {
+		if fallback != "" {
+			return fallback
+		}
+		return fmt.Sprintf("User %d", userID)
+	}
+
+	var firstName, middleName, lastName, username sql.NullString
+	err := a.db.QueryRow(`
+		SELECT
+			COALESCE(s.first_name, t.first_name, adm.first_name) as first_name,
+			COALESCE(s.middle_name, t.middle_name, adm.middle_name) as middle_name,
+			COALESCE(s.last_name, t.last_name, adm.last_name) as last_name,
+			u.username
+		FROM users u
+		LEFT JOIN students s ON u.id = s.id AND u.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t ON u.id = t.id AND u.user_type = 'teacher'
+		LEFT JOIN admins adm ON u.id = adm.id AND u.user_type = 'admin'
+		WHERE u.id = ?
+	`, userID).Scan(&firstName, &middleName, &lastName, &username)
+	if err != nil {
+		if err != sql.ErrNoRows {
+			log.Printf("Failed to resolve feedback reporter name for user %d: %v", userID, err)
+		}
+		if fallback != "" {
+			return fallback
+		}
+		return fmt.Sprintf("User %d", userID)
+	}
+
+	nameParts := make([]string, 0, 3)
+	if firstName.Valid && strings.TrimSpace(firstName.String) != "" {
+		nameParts = append(nameParts, strings.TrimSpace(firstName.String))
+	}
+	if middleName.Valid && strings.TrimSpace(middleName.String) != "" {
+		nameParts = append(nameParts, strings.TrimSpace(middleName.String))
+	}
+	if lastName.Valid && strings.TrimSpace(lastName.String) != "" {
+		nameParts = append(nameParts, strings.TrimSpace(lastName.String))
+	}
+	if len(nameParts) > 0 {
+		return strings.Join(nameParts, " ")
+	}
+
+	if username.Valid && strings.TrimSpace(username.String) != "" {
+		return strings.TrimSpace(username.String)
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return fmt.Sprintf("User %d", userID)
+}
+
+// SaveEquipmentFeedback saves equipment feedback from the current user.
 // optionalPCNumber: if non-empty, the report is for that PC (e.g. "PC-12"); otherwise the configured app station is used.
 func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, computerIssue, mouseStatus, mouseIssue, keyboardStatus, keyboardIssue, monitorStatus, monitorIssue, additionalComments, optionalPCNumber string) error {
 	if err := a.checkDB(); err != nil {
@@ -238,6 +342,7 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 	if err := ValidatePositiveID(userID, "user ID"); err != nil {
 		return err
 	}
+	reporterName := a.resolveFeedbackReporterName(userID, userName)
 
 	// Sanitize and validate optional PC number
 	if strings.TrimSpace(optionalPCNumber) != "" {
@@ -299,7 +404,7 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 		commentsParts = append(commentsParts, fmt.Sprintf("Mouse: %s", mouseIssue))
 	}
 	if additionalComments != "" {
-		commentsParts = append(commentsParts, fmt.Sprintf("Additional: %s", additionalComments))
+		commentsParts = append(commentsParts, fmt.Sprintf("Additional comments: %s", additionalComments))
 	}
 	// When report is for another PC, record which machine submitted so it's visible in the UI
 	if reportedForAnotherPC {
@@ -315,23 +420,12 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 		}
 	}
 
-	// Insert feedback into database with priority auto-detection
-	// Priority: critical if Not Working, high if Minor Issue, medium otherwise
-	priority := "medium"
-	if equipmentCondition == "Not Working" || monitorCondition == "Not Working" ||
-		keyboardCondition == "Not Working" || mouseCondition == "Not Working" {
-		priority = "critical"
-	} else if equipmentCondition == "Minor Issue" || monitorCondition == "Minor Issue" ||
-		keyboardCondition == "Minor Issue" || mouseCondition == "Minor Issue" {
-		priority = "high"
-	}
-
 	// Determine if this report actually has any issues
 	noIssue := strings.EqualFold(equipmentCondition, "good") &&
 		strings.EqualFold(monitorCondition, "good") &&
 		strings.EqualFold(keyboardCondition, "good") &&
 		strings.EqualFold(mouseCondition, "good") &&
-		strings.TrimSpace(combinedComments) == ""
+		!hasOptionalFeedbackComment(combinedComments)
 
 	// Workflow status:
 	// - Reports WITH issues start as "pending" (awaiting verification).
@@ -346,13 +440,13 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 	// - Always starts as "pending" when feedback is first created.
 	adminStatus := "pending"
 
-	query := `INSERT INTO feedback (student_id, pc_number, 
+	query := `INSERT INTO feedback (reported_by_user_id, pc_number,
 			  equipment_condition, monitor_condition, keyboard_condition, mouse_condition, 
-			  comments, priority, status, admin_status, date_submitted) 
-			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`
+			  additional_comments, status, admin_status, date_submitted) 
+			  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`
 
 	_, err := a.db.Exec(query, userID, pcNumber,
-		equipmentCondition, monitorCondition, keyboardCondition, mouseCondition, nullString(combinedComments), priority, status, adminStatus)
+		equipmentCondition, monitorCondition, keyboardCondition, mouseCondition, nullString(combinedComments), status, adminStatus)
 
 	if err != nil {
 		log.Printf("Failed to save equipment feedback: %v", err)
@@ -364,7 +458,7 @@ func (a *App) SaveEquipmentFeedback(userID int, userName, computerStatus, comput
 	// Notify all working students about new feedback
 	go a.createNotificationForRole("working_student", "feedback",
 		"New Equipment Feedback",
-		fmt.Sprintf("New feedback submitted for %s.", pcNumber),
+		fmt.Sprintf("%s submitted feedback for %s.", reporterName, pcNumber),
 		"info", notifRef("feedback"), nil)
 
 	return nil
@@ -379,28 +473,31 @@ func (a *App) GetPendingFeedback() ([]Feedback, error) {
 	query := `
 		SELECT 
 			f.id, 
-			f.student_id, 
-			COALESCE(s.student_id, 'N/A') as student_id_str,
-			s.first_name, 
-			s.middle_name, 
-			s.last_name, 
+			COALESCE(f.reported_by_user_id, 0) as student_user_id, 
+			COALESCE(s_rep.student_id, 'N/A') as student_id_str,
+			COALESCE(s_rep.first_name, t_rep.first_name, a_rep.first_name, 'Unknown') as first_name, 
+			COALESCE(s_rep.middle_name, t_rep.middle_name, a_rep.middle_name) as middle_name, 
+			COALESCE(s_rep.last_name, t_rep.last_name, a_rep.last_name, 'Reporter') as last_name, 
 			f.pc_number, 
 			f.equipment_condition, 
 			f.monitor_condition, 
 			f.keyboard_condition, 
 			f.mouse_condition, 
-			f.comments, 
+			f.additional_comments, 
 			f.date_submitted,
 			f.status
 		FROM feedback f
-		LEFT JOIN students s ON f.student_id = s.id
+		LEFT JOIN users u_rep ON f.reported_by_user_id = u_rep.id
+		LEFT JOIN students s_rep ON u_rep.id = s_rep.id AND u_rep.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t_rep ON u_rep.id = t_rep.id AND u_rep.user_type = 'teacher'
+		LEFT JOIN admins a_rep ON u_rep.id = a_rep.id AND u_rep.user_type = 'admin'
 		WHERE f.status = 'pending'
 		  AND (
 			LOWER(IFNULL(f.equipment_condition, '')) <> 'good'
 			OR LOWER(IFNULL(f.monitor_condition, '')) <> 'good'
 			OR LOWER(IFNULL(f.keyboard_condition, '')) <> 'good'
 			OR LOWER(IFNULL(f.mouse_condition, '')) <> 'good'
-			OR LTRIM(RTRIM(IFNULL(f.comments, ''))) <> ''
+			OR LTRIM(RTRIM(IFNULL(f.additional_comments, ''))) <> ''
 		  )
 		ORDER BY f.date_submitted DESC`
 	rows, err := a.db.Query(query)
@@ -431,7 +528,7 @@ func (a *App) GetPendingFeedback() ([]Feedback, error) {
 			fb.MiddleName = &middleName.String
 		}
 		if comments.Valid {
-			fb.Comments = &comments.String
+			fb.AdditionalComments = &comments.String
 		}
 
 		fb.StudentName = fmt.Sprintf("%s, %s", fb.LastName, fb.FirstName)
@@ -455,24 +552,27 @@ func (a *App) GetConfirmedFeedback() ([]Feedback, error) {
 	query := `
 		SELECT 
 			f.id, 
-			f.student_id, 
-			COALESCE(s.student_id, 'N/A') as student_id_str,
-			s.first_name, 
-			s.middle_name, 
-			s.last_name, 
+			COALESCE(f.reported_by_user_id, 0) as student_user_id, 
+			COALESCE(s_rep.student_id, 'N/A') as student_id_str,
+			COALESCE(s_rep.first_name, t_rep.first_name, a_rep.first_name, 'Unknown') as first_name, 
+			COALESCE(s_rep.middle_name, t_rep.middle_name, a_rep.middle_name) as middle_name, 
+			COALESCE(s_rep.last_name, t_rep.last_name, a_rep.last_name, 'Reporter') as last_name, 
 			f.pc_number, 
 			f.equipment_condition, 
 			f.monitor_condition, 
 			f.keyboard_condition, 
 			f.mouse_condition, 
-			f.comments, 
+			f.additional_comments, 
 			f.date_submitted,
 			f.status,
 			f.verified_by_user_id,
 			f.verified_at,
-			f.working_student_notes
+			f.forward_notes
 		FROM feedback f
-		LEFT JOIN students s ON f.student_id = s.id
+		LEFT JOIN users u_rep ON f.reported_by_user_id = u_rep.id
+		LEFT JOIN students s_rep ON u_rep.id = s_rep.id AND u_rep.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t_rep ON u_rep.id = t_rep.id AND u_rep.user_type = 'teacher'
+		LEFT JOIN admins a_rep ON u_rep.id = a_rep.id AND u_rep.user_type = 'admin'
 		WHERE f.status = 'confirmed'
 		ORDER BY f.date_submitted DESC`
 	rows, err := a.db.Query(query)
@@ -506,7 +606,7 @@ func (a *App) GetConfirmedFeedback() ([]Feedback, error) {
 			fb.MiddleName = &middleName.String
 		}
 		if comments.Valid {
-			fb.Comments = &comments.String
+			fb.AdditionalComments = &comments.String
 		}
 		if verifiedBy.Valid {
 			v := int(verifiedBy.Int64)
@@ -517,7 +617,7 @@ func (a *App) GetConfirmedFeedback() ([]Feedback, error) {
 			fb.VerifiedAt = &t
 		}
 		if workingStudentNotes.Valid {
-			fb.WorkingStudentNotes = &workingStudentNotes.String
+			fb.ForwardNotes = &workingStudentNotes.String
 		}
 
 		fb.StudentName = fmt.Sprintf("%s, %s", fb.LastName, fb.FirstName)
@@ -541,24 +641,27 @@ func (a *App) GetRejectedFeedback() ([]Feedback, error) {
 	query := `
 		SELECT 
 			f.id, 
-			f.student_id, 
-			COALESCE(s.student_id, 'N/A') as student_id_str,
-			s.first_name, 
-			s.middle_name, 
-			s.last_name, 
+			COALESCE(f.reported_by_user_id, 0) as student_user_id, 
+			COALESCE(s_rep.student_id, 'N/A') as student_id_str,
+			COALESCE(s_rep.first_name, t_rep.first_name, a_rep.first_name, 'Unknown') as first_name, 
+			COALESCE(s_rep.middle_name, t_rep.middle_name, a_rep.middle_name) as middle_name, 
+			COALESCE(s_rep.last_name, t_rep.last_name, a_rep.last_name, 'Reporter') as last_name, 
 			f.pc_number, 
 			f.equipment_condition, 
 			f.monitor_condition, 
 			f.keyboard_condition, 
 			f.mouse_condition, 
-			f.comments, 
+			f.additional_comments, 
 			f.date_submitted,
 			f.status,
 			f.verified_by_user_id,
 			f.verified_at,
-			f.working_student_notes
+			f.forward_notes
 		FROM feedback f
-		LEFT JOIN students s ON f.student_id = s.id
+		LEFT JOIN users u_rep ON f.reported_by_user_id = u_rep.id
+		LEFT JOIN students s_rep ON u_rep.id = s_rep.id AND u_rep.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t_rep ON u_rep.id = t_rep.id AND u_rep.user_type = 'teacher'
+		LEFT JOIN admins a_rep ON u_rep.id = a_rep.id AND u_rep.user_type = 'admin'
 		WHERE f.status = 'rejected'
 		ORDER BY f.verified_at DESC, f.date_submitted DESC`
 	rows, err := a.db.Query(query)
@@ -592,7 +695,7 @@ func (a *App) GetRejectedFeedback() ([]Feedback, error) {
 			fb.MiddleName = &middleName.String
 		}
 		if comments.Valid {
-			fb.Comments = &comments.String
+			fb.AdditionalComments = &comments.String
 		}
 		if verifiedBy.Valid {
 			v := int(verifiedBy.Int64)
@@ -603,7 +706,7 @@ func (a *App) GetRejectedFeedback() ([]Feedback, error) {
 			fb.VerifiedAt = &t
 		}
 		if workingStudentNotes.Valid {
-			fb.WorkingStudentNotes = &workingStudentNotes.String
+			fb.ForwardNotes = &workingStudentNotes.String
 		}
 
 		fb.StudentName = fmt.Sprintf("%s, %s", fb.LastName, fb.FirstName)
@@ -633,7 +736,7 @@ func (a *App) ConfirmFeedback(feedbackID int, workingStudentID int, confirmed bo
 			  SET status = ?, 
 			      verified_by_user_id = ?, 
 			      verified_at = NOW(), 
-			      working_student_notes = ?
+			      forward_notes = ?
 			  WHERE id = ? AND status = 'pending'`
 
 	result, err := a.db.Exec(query, status, workingStudentID, nullString(notes), feedbackID)
@@ -665,7 +768,7 @@ func (a *App) ForwardFeedbackToAdmin(feedbackID int, workingStudentID int, notes
 			  SET status = 'forwarded', 
 			      forwarded_by_user_id = ?, 
 			      forwarded_at = NOW(), 
-			      working_student_notes = ?
+			      forward_notes = ?
 			  WHERE id = ? AND status = 'confirmed'`
 
 	result, err := a.db.Exec(query, workingStudentID, nullString(notes), feedbackID)
@@ -723,7 +826,7 @@ func (a *App) ForwardMultipleFeedbackToAdmin(feedbackIDs []int, workingStudentID
 			  SET status = 'forwarded', 
 			      forwarded_by_user_id = ?, 
 			      forwarded_at = NOW(), 
-			      working_student_notes = ?
+			      forward_notes = ?
 			  WHERE id IN (%s) AND status = 'confirmed'`, strings.Join(placeholders, ","))
 
 	result, err := a.db.Exec(query, args...)
@@ -779,7 +882,7 @@ func (a *App) ConfirmAndForwardMultiple(feedbackIDs []int, workingStudentID int,
 			      verified_at = NOW(), 
 			      forwarded_by_user_id = ?, 
 			      forwarded_at = NOW(), 
-			      working_student_notes = ?
+			      forward_notes = ?
 			  WHERE id IN (%s) AND status = 'pending'`, strings.Join(placeholders, ","))
 
 	result, err := a.db.Exec(query, args...)
@@ -834,15 +937,17 @@ func (a *App) GetFeedbackRangeCount(startDate, endDate string) (int, error) {
 func (a *App) getFeedbackByDateRange(startDate, endDate string) ([]Feedback, error) {
 	query := `
 		SELECT
-			f.id, f.student_id,
-			COALESCE(s.student_id, 'N/A') as student_id_str,
-			s.first_name, s.middle_name, s.last_name,
+			f.id, COALESCE(f.reported_by_user_id, 0) as student_user_id,
+			COALESCE(s_rep.student_id, 'N/A') as student_id_str,
+			COALESCE(s_rep.first_name, t_rep.first_name, a_rep.first_name, 'Unknown') as first_name,
+			COALESCE(s_rep.middle_name, t_rep.middle_name, a_rep.middle_name) as middle_name,
+			COALESCE(s_rep.last_name, t_rep.last_name, a_rep.last_name, 'Reporter') as last_name,
 			f.pc_number, f.equipment_condition, f.monitor_condition,
-			f.keyboard_condition, f.mouse_condition, f.comments,
+			f.keyboard_condition, f.mouse_condition, f.additional_comments,
 			f.date_submitted, f.status,
 			COALESCE(f.admin_status, 'pending') as admin_status,
 			f.verified_by_user_id, f.verified_at,
-			f.forwarded_by_user_id, f.forwarded_at, f.working_student_notes,
+			f.forwarded_by_user_id, f.forwarded_at, f.forward_notes,
 			CONCAT(
 				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''),
 				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
@@ -853,7 +958,10 @@ func (a *App) getFeedbackByDateRange(startDate, endDate string) ([]Feedback, err
 			)
 			as forwarded_by_name
 		FROM feedback f
-		LEFT JOIN students s ON f.student_id = s.id
+		LEFT JOIN users u_rep ON f.reported_by_user_id = u_rep.id
+		LEFT JOIN students s_rep ON u_rep.id = s_rep.id AND u_rep.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t_rep ON u_rep.id = t_rep.id AND u_rep.user_type = 'teacher'
+		LEFT JOIN admins a_rep ON u_rep.id = a_rep.id AND u_rep.user_type = 'admin'
 		LEFT JOIN users u_fwd ON f.forwarded_by_user_id = u_fwd.id
 		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
@@ -893,7 +1001,7 @@ func (a *App) getFeedbackByDateRange(startDate, endDate string) ([]Feedback, err
 			fb.MiddleName = &middleName.String
 		}
 		if comments.Valid {
-			fb.Comments = &comments.String
+			fb.AdditionalComments = &comments.String
 		}
 		if verifiedBy.Valid {
 			v := int(verifiedBy.Int64)
@@ -915,7 +1023,7 @@ func (a *App) getFeedbackByDateRange(startDate, endDate string) ([]Feedback, err
 			fb.ForwardedByName = &forwardedByName.String
 		}
 		if workingStudentNotes.Valid {
-			fb.WorkingStudentNotes = &workingStudentNotes.String
+			fb.ForwardNotes = &workingStudentNotes.String
 		}
 		fb.StudentName = fmt.Sprintf("%s, %s", fb.LastName, fb.FirstName)
 		if middleName.Valid {
@@ -982,8 +1090,8 @@ func formatFeedbackForwardedTime(value *string) string {
 
 func feedbackHasNoIssue(fb Feedback) bool {
 	comments := ""
-	if fb.Comments != nil {
-		comments = strings.TrimSpace(*fb.Comments)
+	if fb.AdditionalComments != nil {
+		comments = strings.TrimSpace(*fb.AdditionalComments)
 	}
 
 	return strings.EqualFold(fb.EquipmentCondition, "good") &&
@@ -1053,7 +1161,7 @@ func feedbackStudentDisplay(fb Feedback) string {
 }
 
 func feedbackPCOriginDisplay(fb Feedback) string {
-	submittedFrom := feedbackSubmittedFrom(fb.Comments)
+	submittedFrom := feedbackSubmittedFrom(fb.AdditionalComments)
 	if submittedFrom != "" {
 		return fmt.Sprintf("%s (from %s)", fb.PCNumber, submittedFrom)
 	}
@@ -1176,15 +1284,17 @@ func (a *App) getFeedbackByCount(count int) ([]Feedback, error) {
 
 	query := `
 		SELECT
-			f.id, f.student_id,
-			COALESCE(s.student_id, 'N/A') as student_id_str,
-			s.first_name, s.middle_name, s.last_name,
+			f.id, COALESCE(f.reported_by_user_id, 0) as student_user_id,
+			COALESCE(s_rep.student_id, 'N/A') as student_id_str,
+			COALESCE(s_rep.first_name, t_rep.first_name, a_rep.first_name, 'Unknown') as first_name,
+			COALESCE(s_rep.middle_name, t_rep.middle_name, a_rep.middle_name) as middle_name,
+			COALESCE(s_rep.last_name, t_rep.last_name, a_rep.last_name, 'Reporter') as last_name,
 			f.pc_number, f.equipment_condition, f.monitor_condition,
-			f.keyboard_condition, f.mouse_condition, f.comments,
+			f.keyboard_condition, f.mouse_condition, f.additional_comments,
 			f.date_submitted, f.status,
 			COALESCE(f.admin_status, 'pending') as admin_status,
 			f.verified_by_user_id, f.verified_at,
-			f.forwarded_by_user_id, f.forwarded_at, f.working_student_notes,
+			f.forwarded_by_user_id, f.forwarded_at, f.forward_notes,
 			CONCAT(
 				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''),
 				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
@@ -1195,7 +1305,10 @@ func (a *App) getFeedbackByCount(count int) ([]Feedback, error) {
 			)
 			as forwarded_by_name
 		FROM feedback f
-		LEFT JOIN students s ON f.student_id = s.id
+		LEFT JOIN users u_rep ON f.reported_by_user_id = u_rep.id
+		LEFT JOIN students s_rep ON u_rep.id = s_rep.id AND u_rep.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t_rep ON u_rep.id = t_rep.id AND u_rep.user_type = 'teacher'
+		LEFT JOIN admins a_rep ON u_rep.id = a_rep.id AND u_rep.user_type = 'admin'
 		LEFT JOIN users u_fwd ON f.forwarded_by_user_id = u_fwd.id
 		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
@@ -1235,7 +1348,7 @@ func (a *App) getFeedbackByCount(count int) ([]Feedback, error) {
 			fb.MiddleName = &middleName.String
 		}
 		if comments.Valid {
-			fb.Comments = &comments.String
+			fb.AdditionalComments = &comments.String
 		}
 		if verifiedBy.Valid {
 			v := int(verifiedBy.Int64)
@@ -1257,7 +1370,7 @@ func (a *App) getFeedbackByCount(count int) ([]Feedback, error) {
 			fb.ForwardedByName = &forwardedByName.String
 		}
 		if workingStudentNotes.Valid {
-			fb.WorkingStudentNotes = &workingStudentNotes.String
+			fb.ForwardNotes = &workingStudentNotes.String
 		}
 		fb.StudentName = fmt.Sprintf("%s, %s", fb.LastName, fb.FirstName)
 		if middleName.Valid {
@@ -1283,15 +1396,17 @@ func (a *App) getFeedbackByRowRange(fromRow, toRow int) ([]Feedback, error) {
 
 	query := `
 		SELECT
-			f.id, f.student_id,
-			COALESCE(s.student_id, 'N/A') as student_id_str,
-			s.first_name, s.middle_name, s.last_name,
+			f.id, COALESCE(f.reported_by_user_id, 0) as student_user_id,
+			COALESCE(s_rep.student_id, 'N/A') as student_id_str,
+			COALESCE(s_rep.first_name, t_rep.first_name, a_rep.first_name, 'Unknown') as first_name,
+			COALESCE(s_rep.middle_name, t_rep.middle_name, a_rep.middle_name) as middle_name,
+			COALESCE(s_rep.last_name, t_rep.last_name, a_rep.last_name, 'Reporter') as last_name,
 			f.pc_number, f.equipment_condition, f.monitor_condition,
-			f.keyboard_condition, f.mouse_condition, f.comments,
+			f.keyboard_condition, f.mouse_condition, f.additional_comments,
 			f.date_submitted, f.status,
 			COALESCE(f.admin_status, 'pending') as admin_status,
 			f.verified_by_user_id, f.verified_at,
-			f.forwarded_by_user_id, f.forwarded_at, f.working_student_notes,
+			f.forwarded_by_user_id, f.forwarded_at, f.forward_notes,
 			CONCAT(
 				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''),
 				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
@@ -1302,7 +1417,10 @@ func (a *App) getFeedbackByRowRange(fromRow, toRow int) ([]Feedback, error) {
 			)
 			as forwarded_by_name
 		FROM feedback f
-		LEFT JOIN students s ON f.student_id = s.id
+		LEFT JOIN users u_rep ON f.reported_by_user_id = u_rep.id
+		LEFT JOIN students s_rep ON u_rep.id = s_rep.id AND u_rep.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t_rep ON u_rep.id = t_rep.id AND u_rep.user_type = 'teacher'
+		LEFT JOIN admins a_rep ON u_rep.id = a_rep.id AND u_rep.user_type = 'admin'
 		LEFT JOIN users u_fwd ON f.forwarded_by_user_id = u_fwd.id
 		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
@@ -1342,7 +1460,7 @@ func (a *App) getFeedbackByRowRange(fromRow, toRow int) ([]Feedback, error) {
 			fb.MiddleName = &middleName.String
 		}
 		if comments.Valid {
-			fb.Comments = &comments.String
+			fb.AdditionalComments = &comments.String
 		}
 		if verifiedBy.Valid {
 			v := int(verifiedBy.Int64)
@@ -1364,7 +1482,7 @@ func (a *App) getFeedbackByRowRange(fromRow, toRow int) ([]Feedback, error) {
 			fb.ForwardedByName = &forwardedByName.String
 		}
 		if workingStudentNotes.Valid {
-			fb.WorkingStudentNotes = &workingStudentNotes.String
+			fb.ForwardNotes = &workingStudentNotes.String
 		}
 		fb.StudentName = fmt.Sprintf("%s, %s", fb.LastName, fb.FirstName)
 		if middleName.Valid {
@@ -1604,22 +1722,23 @@ func (a *App) GetArchivedFeedbackByDate(date string) ([]Feedback, error) {
 	query := `
 		SELECT 
 			f.id, 
-			f.student_id, 
-			COALESCE(s.student_id, 'N/A') as student_id_str,
-			s.first_name, 
-			s.middle_name, 
-			s.last_name, 
+			COALESCE(f.reported_by_user_id, 0) as student_user_id,
+			COALESCE(s_rep.student_id, 'N/A') as student_id_str,
+			COALESCE(s_rep.first_name, t_rep.first_name, a_rep.first_name, 'Unknown') as first_name,
+			COALESCE(s_rep.middle_name, t_rep.middle_name, a_rep.middle_name) as middle_name,
+			COALESCE(s_rep.last_name, t_rep.last_name, a_rep.last_name, 'Reporter') as last_name,
 			f.pc_number, 
 			f.equipment_condition, 
 			f.monitor_condition, 
 			f.keyboard_condition, 
 			f.mouse_condition, 
-			f.comments, 
+			f.additional_comments, 
 			f.date_submitted,
 			f.status,
+			COALESCE(f.admin_status, 'pending') as admin_status,
 			f.forwarded_by_user_id,
 			f.forwarded_at,
-			f.working_student_notes,
+			f.forward_notes,
 			CONCAT(
 				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''),
 				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
@@ -1630,7 +1749,10 @@ func (a *App) GetArchivedFeedbackByDate(date string) ([]Feedback, error) {
 			)
 			as forwarded_by_name
 		FROM feedback f
-		LEFT JOIN students s ON f.student_id = s.id
+		LEFT JOIN users u_rep ON f.reported_by_user_id = u_rep.id
+		LEFT JOIN students s_rep ON u_rep.id = s_rep.id AND u_rep.user_type IN ('student', 'working_student')
+		LEFT JOIN teachers t_rep ON u_rep.id = t_rep.id AND u_rep.user_type = 'teacher'
+		LEFT JOIN admins a_rep ON u_rep.id = a_rep.id AND u_rep.user_type = 'admin'
 		LEFT JOIN users u_fwd ON f.forwarded_by_user_id = u_fwd.id
 		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
 		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
@@ -1670,7 +1792,7 @@ func (a *App) GetArchivedFeedbackByDate(date string) ([]Feedback, error) {
 			fb.MiddleName = &middleName.String
 		}
 		if comments.Valid {
-			fb.Comments = &comments.String
+			fb.AdditionalComments = &comments.String
 		}
 		if forwardedBy.Valid {
 			forwardedByInt := int(forwardedBy.Int64)
@@ -1684,7 +1806,7 @@ func (a *App) GetArchivedFeedbackByDate(date string) ([]Feedback, error) {
 			fb.ForwardedByName = &forwardedByName.String
 		}
 		if workingStudentNotes.Valid {
-			fb.WorkingStudentNotes = &workingStudentNotes.String
+			fb.ForwardNotes = &workingStudentNotes.String
 		}
 
 		fb.StudentName = fmt.Sprintf("%s, %s", fb.LastName, fb.FirstName)
@@ -1796,108 +1918,6 @@ func (a *App) ExportArchivedFeedbackSheetDOCX(date string, savePath string) (str
 	}
 
 	return filename, nil
-}
-
-// Legacy function kept for backwards compatibility - returns all archived feedback
-func (a *App) GetArchivedFeedback() ([]Feedback, error) {
-	if err := a.checkDB(); err != nil {
-		return nil, err
-	}
-
-	query := `
-		SELECT 
-			f.id, 
-			f.student_id, 
-			COALESCE(s.student_id, 'N/A') as student_id_str,
-			s.first_name, 
-			s.middle_name, 
-			s.last_name, 
-			f.pc_number, 
-			f.equipment_condition, 
-			f.monitor_condition, 
-			f.keyboard_condition, 
-			f.mouse_condition, 
-			f.comments, 
-			f.date_submitted,
-			f.status,
-			f.forwarded_by_user_id,
-			f.forwarded_at,
-			f.working_student_notes,
-			CONCAT(
-				COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name, ''),
-				CASE WHEN COALESCE(s_fwd.last_name, t_fwd.last_name, a_fwd.last_name) IS NOT NULL THEN ', ' ELSE '' END,
-				COALESCE(s_fwd.first_name, t_fwd.first_name, a_fwd.first_name, ''),
-				CASE WHEN COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name) IS NOT NULL
-					THEN CONCAT(' ', COALESCE(s_fwd.middle_name, t_fwd.middle_name, a_fwd.middle_name))
-					ELSE '' END
-			)
-			as forwarded_by_name
-		FROM feedback f
-		LEFT JOIN students s ON f.student_id = s.id
-		LEFT JOIN users u_fwd ON f.forwarded_by_user_id = u_fwd.id
-		LEFT JOIN students s_fwd ON u_fwd.id = s_fwd.id AND u_fwd.user_type IN ('student', 'working_student')
-		LEFT JOIN teachers t_fwd ON u_fwd.id = t_fwd.id AND u_fwd.user_type = 'teacher'
-		LEFT JOIN admins a_fwd ON u_fwd.id = a_fwd.id AND u_fwd.user_type = 'admin'
-		WHERE f.is_archived = 1
-		ORDER BY f.archived_at DESC, f.date_submitted DESC`
-	rows, err := a.db.Query(query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var feedbacks []Feedback
-	for rows.Next() {
-		var fb Feedback
-		var middleName, comments, studentIDStr, forwardedByName, workingStudentNotes sql.NullString
-		var dateSubmitted time.Time
-		var forwardedBy sql.NullInt64
-		var forwardedAt sql.NullTime
-
-		err := rows.Scan(&fb.ID, &fb.StudentUserID, &studentIDStr, &fb.FirstName, &middleName, &fb.LastName,
-			&fb.PCNumber, &fb.EquipmentCondition, &fb.MonitorCondition,
-			&fb.KeyboardCondition, &fb.MouseCondition, &comments, &dateSubmitted, &fb.Status, &fb.AdminStatus,
-			&forwardedBy, &forwardedAt, &workingStudentNotes, &forwardedByName)
-		if err != nil {
-			continue
-		}
-
-		if studentIDStr.Valid {
-			fb.StudentIDStr = studentIDStr.String
-		} else {
-			fb.StudentIDStr = "N/A"
-		}
-		if middleName.Valid {
-			fb.MiddleName = &middleName.String
-		}
-		if comments.Valid {
-			fb.Comments = &comments.String
-		}
-		if forwardedBy.Valid {
-			forwardedByInt := int(forwardedBy.Int64)
-			fb.ForwardedByUserID = &forwardedByInt
-		}
-		if forwardedAt.Valid {
-			forwardedAtStr := forwardedAt.Time.Format("2006-01-02 15:04:05")
-			fb.ForwardedAt = &forwardedAtStr
-		}
-		if forwardedByName.Valid && forwardedByName.String != "" {
-			fb.ForwardedByName = &forwardedByName.String
-		}
-		if workingStudentNotes.Valid {
-			fb.WorkingStudentNotes = &workingStudentNotes.String
-		}
-
-		fb.StudentName = fmt.Sprintf("%s, %s", fb.LastName, fb.FirstName)
-		if middleName.Valid {
-			fb.StudentName += " " + middleName.String
-		}
-		fb.DateSubmitted = dateSubmitted.Format("2006-01-02 15:04:05")
-
-		feedbacks = append(feedbacks, fb)
-	}
-
-	return feedbacks, nil
 }
 
 // ArchiveFeedback archives selected feedback by their IDs

@@ -1,5 +1,5 @@
 import Modal, { MODAL_BODY_MIN_HEIGHT_CLASS } from './Modal';
-import ArchivedClasses from '../pages/student/StudentArchivedClasses';
+import ArchivedClasses from '../pages/roles/student/ArchivedClassesPage';
 
 interface StudentArchivedClassesModalProps {
   isOpen: boolean;

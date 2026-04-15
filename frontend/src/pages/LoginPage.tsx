@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { User, Lock, Eye, EyeOff, UserPlus, Settings, KeyRound, Check, X } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, UserPlus, Settings, KeyRound, Check, X, CornerUpLeft } from 'lucide-react';
 import { CreateUser, GetDepartments } from '../../wailsjs/go/backend/App';
 import { backend } from '../../wailsjs/go/models';
 import Button from '../components/Button';
@@ -14,7 +14,7 @@ type Department = backend.Department;
 
 const roleRoutes: { [key: string]: string } = {
   student: '/student',
-  working_student: '/working-student',
+  working_student: '/student-staff',
   teacher: '/teacher',
   admin: '/admin'
 };
@@ -194,12 +194,35 @@ function LoginPage() {
   const [lockSaving, setLockSaving] = useState(false);
   const [lockModeEnabled, setLockModeEnabled] = useState(false);
   const [showLockTrigger, setShowLockTrigger] = useState(false);
+  const [dbHost, setDbHost] = useState('');
+  const [dbPort, setDbPort] = useState('3306');
+  const [dbName, setDbName] = useState('');
+  const [dbUsername, setDbUsername] = useState('');
+  const [dbPassword, setDbPassword] = useState('');
+  const [dbConfigPath, setDbConfigPath] = useState('');
+  const [dbMode, setDbMode] = useState('production');
+  const [dbConfigured, setDbConfigured] = useState(false);
+  const [dbStatusMessage, setDbStatusMessage] = useState('');
+  const [dbErrorMessage, setDbErrorMessage] = useState('');
+  const [showDbPassword, setShowDbPassword] = useState(false);
 
   type LockSettings = {
     lock_mode: boolean;
     computer_lab: string;
     pc_number: string;
     station_label: string;
+  };
+
+  type DatabaseSetupSettings = {
+    host: string;
+    port: string;
+    dbname: string;
+    username: string;
+    password: string;
+    mode: string;
+    source_path: string;
+    write_path: string;
+    is_configured: boolean;
   };
 
   const verifyPasswordResetIdentifierBridge = async (
@@ -258,6 +281,30 @@ function LoginPage() {
     }
 
     return appBridge.SetLockSettingsFromInput(input, computerLab, pcNumber);
+  };
+
+  const loadDatabaseSetupBridge = async (): Promise<DatabaseSetupSettings> => {
+    const appBridge = (window as any)?.go?.backend?.App;
+    if (!appBridge || typeof appBridge.GetDatabaseSetupSettings !== 'function') {
+      throw new Error('This app build does not support database configuration yet. Please restart after updating.');
+    }
+
+    return appBridge.GetDatabaseSetupSettings();
+  };
+
+  const saveDatabaseSetupBridge = async (
+    host: string,
+    port: string,
+    dbname: string,
+    username: string,
+    passwordValue: string
+  ): Promise<DatabaseSetupSettings> => {
+    const appBridge = (window as any)?.go?.backend?.App;
+    if (!appBridge || typeof appBridge.SaveDatabaseSetupSettings !== 'function') {
+      throw new Error('This app build does not support database configuration updates yet. Please restart after updating.');
+    }
+
+    return appBridge.SaveDatabaseSetupSettings(host, port, dbname, username, passwordValue);
   };
 
   const handleForgotVerifyIdentity = async () => {
@@ -409,6 +456,8 @@ function LoginPage() {
     setShowLockSettingsModal(true);
     setLockErrorMessage('');
     setLockStatusMessage('');
+    setDbErrorMessage('');
+    setDbStatusMessage('');
 
     try {
       const settings = await loadLockSettingsBridge();
@@ -420,12 +469,28 @@ function LoginPage() {
     } catch (err) {
       setLockErrorMessage(getThrowableMessage(err, 'Unable to load lock mode status.'));
     }
+
+    try {
+      const dbSettings = await loadDatabaseSetupBridge();
+      setDbHost(dbSettings.host ?? '');
+      setDbPort(dbSettings.port ?? '3306');
+      setDbName(dbSettings.dbname ?? '');
+      setDbUsername(dbSettings.username ?? '');
+      setDbPassword(dbSettings.password ?? '');
+      setDbMode((dbSettings.mode ?? 'production').toLowerCase());
+      setDbConfigured(Boolean(dbSettings.is_configured));
+      setDbConfigPath(dbSettings.source_path || dbSettings.write_path || '');
+    } catch (err) {
+      setDbErrorMessage(getThrowableMessage(err, 'Unable to load database configuration.'));
+    }
   };
 
   const closeLockSettingsModal = () => {
     setShowLockSettingsModal(false);
     setLockErrorMessage('');
     setLockStatusMessage('');
+    setDbErrorMessage('');
+    setDbStatusMessage('');
     setShowLockTrigger(false);
   };
 
@@ -433,7 +498,12 @@ function LoginPage() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        setShowLockTrigger(true);
+
+        if (showLockTrigger || showLockSettingsModal) {
+          closeLockSettingsModal();
+        } else {
+          setShowLockTrigger(true);
+        }
       }
     };
 
@@ -441,7 +511,7 @@ function LoginPage() {
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, []);
+  }, [showLockTrigger, showLockSettingsModal]);
 
   const applyLockSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -454,7 +524,10 @@ function LoginPage() {
     setLockSaving(true);
     setLockErrorMessage('');
     setLockStatusMessage('');
+    setDbErrorMessage('');
+    setDbStatusMessage('');
 
+    let lockUpdated = false;
     try {
       const updatedSettings = await setLockSettingsFromInputBridge(
         lockExpression.trim(),
@@ -468,8 +541,40 @@ function LoginPage() {
       setLockPCNumber(updatedSettings.pc_number ?? '');
       setLockStationLabel(updatedSettings.station_label ?? 'Unconfigured PC');
       setLockStatusMessage(`Lock mode is now ${updatedMode ? 'enabled' : 'disabled'}.`);
+      lockUpdated = true;
     } catch (err) {
       setLockErrorMessage(getThrowableMessage(err, 'Unable to update lock mode.'));
+    }
+
+    try {
+      const updated = await saveDatabaseSetupBridge(
+        dbHost.trim(),
+        dbPort.trim(),
+        dbName.trim(),
+        dbUsername.trim(),
+        dbPassword
+      );
+
+      setDbHost(updated.host ?? '');
+      setDbPort(updated.port ?? '3306');
+      setDbName(updated.dbname ?? '');
+      setDbUsername(updated.username ?? '');
+      setDbPassword(updated.password ?? '');
+      setDbMode((updated.mode ?? 'production').toLowerCase());
+      setDbConfigured(Boolean(updated.is_configured));
+      const resolvedPath = updated.source_path || updated.write_path || '';
+      setDbConfigPath(resolvedPath);
+      setDbStatusMessage(
+        resolvedPath
+          ? `Database settings saved to ${resolvedPath}.`
+          : 'Database settings saved successfully.'
+      );
+
+      if (lockUpdated) {
+        setLockStatusMessage('Settings applied successfully.');
+      }
+    } catch (err) {
+      setDbErrorMessage(getThrowableMessage(err, 'Unable to save database configuration.'));
     } finally {
       setLockSaving(false);
     }
@@ -773,21 +878,22 @@ function LoginPage() {
         </button>
       )}
 
-      {/* Lock Mode Settings Modal */}
+      {/* Config Settings Modal */}
       {showLockSettingsModal && (
         <div className="modal-backdrop p-4 z-40">
-          <div className="modal-surface-2xl w-full max-w-md">
+          <div className="modal-surface-2xl w-full max-w-md max-h-[88vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-3.5 border-b border-primary-200/80 bg-gradient-to-r from-primary-50/95 to-gray-50/90">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
-                  <Settings className="h-5 w-5 text-slate-700" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Lock Mode</h3>
-                </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Config Settings</h3>
               </div>
-              <button onClick={closeLockSettingsModal} className="text-gray-400 hover:text-gray-600">
-                <X className="h-5 w-5" />
+              <button
+                type="button"
+                onClick={closeLockSettingsModal}
+                className="modal-back-icon-btn"
+                title="Back"
+                aria-label="Back"
+              >
+                <CornerUpLeft className="h-5 w-5" />
               </button>
             </div>
 
@@ -804,7 +910,7 @@ function LoginPage() {
 
               <div>
                 <label htmlFor="lock-expression" className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Lock Setting
+                  Lock Mode Setting
                 </label>
                 <input
                   id="lock-expression"
@@ -845,6 +951,118 @@ function LoginPage() {
                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   autoComplete="off"
                 />
+              </div>
+
+              <div className="pt-2 border-t border-gray-200 space-y-3">
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  Database config status:{' '}
+                  <span className={`font-semibold ${dbConfigured ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {dbConfigured ? 'Configured' : 'Not configured'}
+                  </span>
+                </div>
+
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                  Mode: <span className="font-semibold text-slate-700 capitalize">{dbMode || 'production'}</span>
+                  <br />
+                  Config file: <span className="font-semibold break-all text-slate-700">{dbConfigPath || 'Not created yet'}</span>
+                </div>
+
+                <div>
+                  <label htmlFor="db-host" className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Database Host
+                  </label>
+                  <input
+                    id="db-host"
+                    type="text"
+                    value={dbHost}
+                    onChange={(e) => setDbHost(e.target.value)}
+                    placeholder="Example: 127.0.0.1"
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    autoComplete="off"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="db-port" className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Database Port
+                  </label>
+                  <input
+                    id="db-port"
+                    type="text"
+                    value={dbPort}
+                    onChange={(e) => setDbPort(e.target.value)}
+                    placeholder="Example: 3306"
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    autoComplete="off"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="db-name" className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Database Name
+                  </label>
+                  <input
+                    id="db-name"
+                    type="text"
+                    value={dbName}
+                    onChange={(e) => setDbName(e.target.value)}
+                    placeholder="Example: logbookdb"
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    autoComplete="off"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="db-username" className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Database Username
+                  </label>
+                  <input
+                    id="db-username"
+                    type="text"
+                    value={dbUsername}
+                    onChange={(e) => setDbUsername(e.target.value)}
+                    placeholder="Example: root"
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    autoComplete="off"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="db-password" className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Database Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="db-password"
+                      type={showDbPassword ? 'text' : 'password'}
+                      value={dbPassword}
+                      onChange={(e) => setDbPassword(e.target.value)}
+                      placeholder="Database password"
+                      className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowDbPassword((prev) => !prev)}
+                      className="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700"
+                      aria-label={showDbPassword ? 'Hide database password' : 'Show database password'}
+                    >
+                      {showDbPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {dbErrorMessage && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm">
+                    {dbErrorMessage}
+                  </div>
+                )}
+
+                {dbStatusMessage && (
+                  <div className="bg-green-50 border border-green-200 text-green-700 px-3 py-2 rounded-lg text-sm">
+                    {dbStatusMessage}
+                  </div>
+                )}
               </div>
 
               {lockErrorMessage && (
@@ -897,8 +1115,13 @@ function LoginPage() {
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900">Reset Password</h3>
               </div>
-              <button onClick={closeForgotModal} className="text-gray-400 hover:text-gray-600">
-                <X className="h-5 w-5" />
+              <button
+                onClick={closeForgotModal}
+                className="modal-back-icon-btn"
+                title="Back"
+                aria-label="Back"
+              >
+                <CornerUpLeft className="h-5 w-5" />
               </button>
             </div>
 

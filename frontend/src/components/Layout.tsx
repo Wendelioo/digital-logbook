@@ -8,16 +8,18 @@ import { compressImage, isImageFile, isValidFileSize } from '../utils/imageUtils
 import {
   User,
   LogOut,
+  Settings,
+  CornerUpLeft,
   ChevronDown,
   Lock,
   UserCircle,
-  X as XIcon,
   Eye,
   EyeOff,
   Bell,
   Search,
   Copy,
   Check,
+  MessageSquare,
 } from 'lucide-react';
 import LogoutFeedbackModal from './LogoutFeedbackModal';
 
@@ -197,6 +199,11 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
     setShowFeedbackModal(true);
   };
 
+  const handleManualReportOpen = () => {
+    setFeedbackMode('manual');
+    setShowFeedbackModal(true);
+  };
+
   const handleLogoutCancel = () => {
     setShowLogoutConfirmModal(false);
   };
@@ -205,73 +212,25 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
     try {
       if (!user) return;
 
-      const reportContextDetails = feedbackMode === 'manual'
-        ? [
-            `Report Context: ${feedbackData.reportingContext === 'other_pc' ? 'Another PC' : 'Current PC'}`,
-            `Reported By: ${feedbackData.reportedBy === 'classmate' ? 'Classmate' : 'Self'}`,
-            `Target PC Number: ${feedbackData.targetPCNumber || 'N/A'}`,
-            `Urgency: ${feedbackData.severity || 'normal'}`,
-            `Affected Student ID: ${feedbackData.affectedStudentID || 'N/A'}`,
-            `Issue Category: ${feedbackData.issueCategory || 'computer'}`,
-          ]
-        : [];
+      // Only persist the optional free-form comment from the user.
+      const additionalComments = (feedbackData.additionalComments || '').trim();
 
-      const additionalComments = [
-        ...reportContextDetails,
-        feedbackData.additionalComments ? `Additional: ${feedbackData.additionalComments}` : ''
-      ].filter(Boolean).join('\n');
-
-      let computerStatus = feedbackData.computer?.status || 'yes';
-      let computerIssue = feedbackData.computer?.issue || '';
-      let mouseStatus = feedbackData.mouse?.status || 'yes';
-      let mouseIssue = feedbackData.mouse?.issue || '';
-      let keyboardStatus = feedbackData.keyboard?.status || 'yes';
-      let keyboardIssue = feedbackData.keyboard?.issue || '';
-      let monitorStatus = feedbackData.monitor?.status || 'yes';
-      let monitorIssue = feedbackData.monitor?.issue || '';
-
-      if (feedbackMode === 'manual') {
-        const issueDescription = feedbackData.issueDescription || '';
-
-        computerStatus = 'yes';
-        computerIssue = '';
-        mouseStatus = 'yes';
-        mouseIssue = '';
-        keyboardStatus = 'yes';
-        keyboardIssue = '';
-        monitorStatus = 'yes';
-        monitorIssue = '';
-
-        switch (feedbackData.issueCategory) {
-          case 'mouse':
-            mouseStatus = 'no';
-            mouseIssue = issueDescription;
-            break;
-          case 'keyboard':
-            keyboardStatus = 'no';
-            keyboardIssue = issueDescription;
-            break;
-          case 'monitor':
-            monitorStatus = 'no';
-            monitorIssue = issueDescription;
-            break;
-          case 'other':
-            computerStatus = 'no';
-            computerIssue = `General issue: ${issueDescription}`;
-            break;
-          case 'computer':
-          default:
-            computerStatus = 'no';
-            computerIssue = issueDescription;
-            break;
-        }
-      }
+      const computerStatus = feedbackData.computer?.status === 'no' ? 'no' : 'yes';
+      const computerIssue = computerStatus === 'no' ? (feedbackData.computer?.issue || '') : '';
+      const mouseStatus = feedbackData.mouse?.status === 'no' ? 'no' : 'yes';
+      const mouseIssue = mouseStatus === 'no' ? (feedbackData.mouse?.issue || '') : '';
+      const keyboardStatus = feedbackData.keyboard?.status === 'no' ? 'no' : 'yes';
+      const keyboardIssue = keyboardStatus === 'no' ? (feedbackData.keyboard?.issue || '') : '';
+      const monitorStatus = feedbackData.monitor?.status === 'no' ? 'no' : 'yes';
+      const monitorIssue = monitorStatus === 'no' ? (feedbackData.monitor?.issue || '') : '';
 
       // When reporting for another PC, pass its number; otherwise backend uses current machine hostname
       const optionalPCNumber =
-        feedbackData.reportingContext === 'other_pc' && feedbackData.targetPCNumber?.trim()
-          ? feedbackData.targetPCNumber.trim()
-          : '';
+        feedbackMode === 'manual'
+          ? (feedbackData.targetPCNumber?.trim() || '')
+          : feedbackData.reportingContext === 'other_pc' && feedbackData.targetPCNumber?.trim()
+            ? feedbackData.targetPCNumber.trim()
+            : '';
 
       await SaveEquipmentFeedback(
         user.id,
@@ -290,7 +249,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
 
       if (feedbackMode === 'manual') {
         setShowFeedbackModal(false);
-        toast('Issue report submitted successfully. The working student will review it first.', 'success');
+        toast('Issue report submitted successfully.', 'success');
         return;
       }
     } catch (error) {
@@ -560,7 +519,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
       setRecoveryCode(code || '');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to load recovery code.';
-      if (/no recovery code is available|cannot be displayed/i.test(message)) {
+      if (/no recovery code is available|cannot be displayed|failed to load recovery code/i.test(message)) {
         setRecoveryCode('');
         setRecoveryCodeError('');
       } else {
@@ -695,7 +654,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
     };
   }, []);
 
-  const accountIDLabel = user?.role === 'teacher' || user?.role === 'admin' ? 'Employee ID' : 'Student ID';
+  const accountIDLabel = 'ID';
   const accountIDValue = user?.employee_id || user?.student_id || user?.name || 'Not available';
   const hasOverflowNotifications = notifications.length > NOTIFICATIONS_VISIBLE_LIMIT;
   const hiddenNotificationsCount = Math.max(0, notifications.length - NOTIFICATIONS_VISIBLE_LIMIT);
@@ -864,6 +823,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                     }}
                     className="w-full flex items-center gap-4 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
                   >
+                    <Settings className="w-4 h-4" />
                     <span className="font-medium">Account Settings</span>
                   </button>
 
@@ -940,6 +900,18 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
               </div>
             </div>
           </div>
+
+          {user?.role === 'teacher' && (
+            <button
+              type="button"
+              onClick={handleManualReportOpen}
+              className="h-10 px-3 rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm font-medium"
+              aria-label="Report lab issue"
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span className="hidden sm:inline">Report Issue</span>
+            </button>
+          )}
 
           {/* Notification Bell */}
           <div className="relative" ref={notifDropdownRef}>
@@ -1054,6 +1026,7 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                     }}
                     className="w-full flex items-center gap-4 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
                   >
+                    <Settings className="w-4 h-4" />
                     <span className="font-medium">Account Settings</span>
                   </button>
 
@@ -1096,9 +1069,12 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
               </div>
               <button
                 onClick={handleCloseAccountModal}
-                className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                type="button"
+                className="modal-back-icon-btn shrink-0"
+                title="Back"
+                aria-label="Back"
               >
-                <XIcon className="w-5 h-5" />
+                <CornerUpLeft className="h-5 w-5" />
               </button>
             </div>
 
@@ -1323,6 +1299,8 @@ function Layout({ children, navigationItems, title, subtitle }: LayoutProps) {
                         <p className="text-sm text-amber-700">Generating recovery code...</p>
                       ) : recoveryCode ? (
                         <p className="text-lg font-bold tracking-[0.18em] text-amber-900">{recoveryCode}</p>
+                      ) : !recoveryCodeError ? (
+                        <p className="text-sm text-amber-700">No recovery code yet. Generate a code to enable account recovery.</p>
                       ) : null}
 
                       {recoveryCodeError && (

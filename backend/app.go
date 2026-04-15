@@ -117,9 +117,6 @@ func (a *App) startup(ctx context.Context) {
 		if err := a.ensureAccountStatusConstraint(); err != nil {
 			log.Printf("Failed to ensure account status constraint: %v", err)
 		}
-		if err := a.ensureLegacyUsersIsActiveRemoved(); err != nil {
-			log.Printf("Failed to remove legacy users.is_active column: %v", err)
-		}
 		if err := a.closeStaleSessions(); err != nil {
 			log.Printf("Failed to close stale sessions on startup: %v", err)
 		}
@@ -129,11 +126,20 @@ func (a *App) startup(ctx context.Context) {
 		if err := a.ensureUserRecoveryCodesTable(); err != nil {
 			log.Printf("Failed to ensure user recovery code table: %v", err)
 		}
+		if err := a.ensureJoinedClassesStatusVocabulary(); err != nil {
+			log.Printf("Failed to ensure joined_classes status vocabulary: %v", err)
+		}
 		if err := a.ensureFeedbackAdminResolvedAtColumn(); err != nil {
 			log.Printf("Failed to ensure feedback admin resolved timestamp column: %v", err)
 		}
+		if err := a.ensureFeedbackNoteColumns(); err != nil {
+			log.Printf("Failed to ensure feedback note columns: %v", err)
+		}
 		if err := a.ensureDepartmentArchiveColumn(); err != nil {
 			log.Printf("Failed to ensure department archive column: %v", err)
+		}
+		if err := a.ensureDepartmentDeleteColumns(); err != nil {
+			log.Printf("Failed to ensure department delete columns: %v", err)
 		}
 		if err := a.CleanOldNotifications(); err != nil {
 			log.Printf("Failed to clean old notifications: %v", err)
@@ -222,10 +228,23 @@ func (a *App) IsLockMode() bool {
 
 // LockSettings represents lock mode and station identity configuration.
 type LockSettings struct {
-	LockMode    bool   `json:"lock_mode"`
+	LockMode     bool   `json:"lock_mode"`
 	ComputerLab  string `json:"computer_lab"`
 	PCNumber     string `json:"pc_number"`
 	StationLabel string `json:"station_label"`
+}
+
+// DatabaseSetupSettings represents database configuration values editable from login settings.
+type DatabaseSetupSettings struct {
+	Host         string `json:"host"`
+	Port         string `json:"port"`
+	DBName       string `json:"dbname"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+	Mode         string `json:"mode"`
+	SourcePath   string `json:"source_path"`
+	WritePath    string `json:"write_path"`
+	IsConfigured bool   `json:"is_configured"`
 }
 
 func formatStationLabel(computerLab, pcNumber string) string {
@@ -250,7 +269,7 @@ func (a *App) currentStationLabel() string {
 
 func (a *App) currentLockSettings() LockSettings {
 	return LockSettings{
-		LockMode:    a.lockMode,
+		LockMode:     a.lockMode,
 		ComputerLab:  strings.TrimSpace(a.computerLab),
 		PCNumber:     strings.TrimSpace(a.pcNumber),
 		StationLabel: a.currentStationLabel(),
@@ -292,7 +311,7 @@ func (a *App) SetLockMode(enabled bool) error {
 	}
 
 	if err := SaveAppSettings(AppConfig{
-		LockMode:   enabled,
+		LockMode:    enabled,
 		ComputerLab: strings.TrimSpace(a.computerLab),
 		PCNumber:    strings.TrimSpace(a.pcNumber),
 	}); err != nil {
@@ -383,6 +402,72 @@ func (a *App) SetLockSettingsFromInput(lockInput, computerLab, pcNumber string) 
 	return a.currentLockSettings(), nil
 }
 
+// GetDatabaseSetupSettings returns database config values and file path metadata for login-page setup.
+func (a *App) GetDatabaseSetupSettings() (DatabaseSetupSettings, error) {
+	config, sourcePath, configured, err := LoadDatabaseSettingsDraft()
+	if err != nil {
+		return DatabaseSetupSettings{}, err
+	}
+
+	writePath, err := ResolveDatabaseConfigINIPathForWrite()
+	if err != nil {
+		writePath = ""
+	}
+
+	return DatabaseSetupSettings{
+		Host:         config.Host,
+		Port:         config.Port,
+		DBName:       config.DBName,
+		Username:     config.Username,
+		Password:     config.Password,
+		Mode:         GetRuntimeMode(),
+		SourcePath:   sourcePath,
+		WritePath:    writePath,
+		IsConfigured: configured,
+	}, nil
+}
+
+// SaveDatabaseSetupSettings persists database config.
+// In production it immediately validates by reconnecting; in development it saves without reconnect test.
+func (a *App) SaveDatabaseSetupSettings(host, port, dbname, username, password string) (DatabaseSetupSettings, error) {
+	savedPath, err := SaveDatabaseSettings(DBConfig{
+		Host:     host,
+		Port:     port,
+		DBName:   dbname,
+		Username: username,
+		Password: password,
+	})
+	if err != nil {
+		return DatabaseSetupSettings{}, err
+	}
+
+	settings, settingsErr := a.GetDatabaseSetupSettings()
+	if settingsErr != nil {
+		return DatabaseSetupSettings{}, settingsErr
+	}
+	settings.SourcePath = savedPath
+
+	if GetRuntimeMode() == runtimeModeDevelopment {
+		log.Printf("Database settings saved in development mode at %s (reconnect test skipped)", savedPath)
+		return settings, nil
+	}
+
+	if a.db != nil {
+		if closeErr := a.db.Close(); closeErr != nil {
+			log.Printf("Failed to close previous database connection before reconnect: %v", closeErr)
+		}
+		a.db = nil
+	}
+
+	reconnectErr := a.reconnectDB()
+
+	if reconnectErr != nil {
+		return settings, fmt.Errorf("database settings were saved to %s, but connection test failed: %w", savedPath, reconnectErr)
+	}
+
+	return settings, nil
+}
+
 // ==============================================================================
 // SHARED TYPE DEFINITIONS
 // ==============================================================================
@@ -405,12 +490,12 @@ type User struct {
 	Created        string  `json:"created"`
 	LoginLogID     int     `json:"login_log_id"` // Track the login session
 	// Activity tracking fields (populated by GetUsersByActivityStatus)
-	LastLoginAt    *string `json:"last_login_at,omitempty"`   // ISO datetime of last login
-	LastLoginAgo   string  `json:"last_login_ago,omitempty"`  // Human-readable "2 months ago"
-	CurrentlyLoggedIn bool `json:"currently_logged_in"`       // True when latest session has no logout yet
-	DeactivatedAt  *string `json:"deactivated_at,omitempty"`  // When auto-deactivated by system
-	DeletedAt      *string `json:"deleted_at,omitempty"`      // When soft-deleted (4-year rule)
-	ActivityStatus string  `json:"activity_status,omitempty"` // active | archived | deactivated | deleted
+	LastLoginAt       *string `json:"last_login_at,omitempty"`   // ISO datetime of last login
+	LastLoginAgo      string  `json:"last_login_ago,omitempty"`  // Human-readable "2 months ago"
+	CurrentlyLoggedIn bool    `json:"currently_logged_in"`       // True when latest session has no logout yet
+	DeactivatedAt     *string `json:"deactivated_at,omitempty"`  // When auto-deactivated by system
+	DeletedAt         *string `json:"deleted_at,omitempty"`      // When soft-deleted (4-year rule)
+	ActivityStatus    string  `json:"activity_status,omitempty"` // active | archived | deactivated | deleted
 }
 
 // LoginLog represents a user login/logout session
@@ -427,48 +512,47 @@ type LoginLog struct {
 
 // Feedback represents equipment condition feedback from students
 type Feedback struct {
-	ID                  int     `json:"id"`
-	StudentUserID       int     `json:"student_user_id"`
-	StudentIDStr        string  `json:"student_id_str"`
-	FirstName           string  `json:"first_name"`
-	MiddleName          *string `json:"middle_name,omitempty"`
-	LastName            string  `json:"last_name"`
-	StudentName         string  `json:"student_name"`
-	PCNumber            string  `json:"pc_number"`
-	EquipmentCondition  string  `json:"equipment_condition"`
-	MonitorCondition    string  `json:"monitor_condition"`
-	KeyboardCondition   string  `json:"keyboard_condition"`
-	MouseCondition      string  `json:"mouse_condition"`
-	Comments            *string `json:"comments,omitempty"`
-	DateSubmitted       string  `json:"date_submitted"`
-	Status              string  `json:"status"`
-	Priority            string  `json:"priority"`     // Issue priority (low/medium/high/critical)
-	AdminStatus         string  `json:"admin_status"` // Admin workflow status: "pending" | "resolved"
-	AdminResolvedAt     *string `json:"admin_resolved_at,omitempty"`
-	VerifiedByUserID    *int    `json:"verified_by_user_id,omitempty"`
-	VerifiedAt          *string `json:"verified_at,omitempty"`
-	ForwardedByUserID   *int    `json:"forwarded_by_user_id,omitempty"`
-	ForwardedByName     *string `json:"forwarded_by_name,omitempty"`
-	ForwardedAt         *string `json:"forwarded_at,omitempty"`
-	WorkingStudentNotes *string `json:"working_student_notes,omitempty"`
+	ID                 int     `json:"id"`
+	StudentUserID      int     `json:"student_user_id"`
+	StudentIDStr       string  `json:"student_id_str"`
+	FirstName          string  `json:"first_name"`
+	MiddleName         *string `json:"middle_name,omitempty"`
+	LastName           string  `json:"last_name"`
+	StudentName        string  `json:"student_name"`
+	PCNumber           string  `json:"pc_number"`
+	EquipmentCondition string  `json:"equipment_condition"`
+	MonitorCondition   string  `json:"monitor_condition"`
+	KeyboardCondition  string  `json:"keyboard_condition"`
+	MouseCondition     string  `json:"mouse_condition"`
+	AdditionalComments *string `json:"additional_comments,omitempty"`
+	DateSubmitted      string  `json:"date_submitted"`
+	Status             string  `json:"status"`
+	AdminStatus        string  `json:"admin_status"` // Admin workflow status: "pending" | "resolved"
+	AdminResolvedAt    *string `json:"admin_resolved_at,omitempty"`
+	VerifiedByUserID   *int    `json:"verified_by_user_id,omitempty"`
+	VerifiedAt         *string `json:"verified_at,omitempty"`
+	ForwardedByUserID  *int    `json:"forwarded_by_user_id,omitempty"`
+	ForwardedByName    *string `json:"forwarded_by_name,omitempty"`
+	ForwardedAt        *string `json:"forwarded_at,omitempty"`
+	ForwardNotes       *string `json:"forward_notes,omitempty"`
 }
 
 // ClasslistEntry represents a student enrolled in a class
 type ClasslistEntry struct {
-	ClassID        int     `json:"class_id"`
-	StudentUserID  int     `json:"student_user_id"`
-	StudentCode    string  `json:"student_code"`
-	FirstName      string  `json:"first_name"`
-	MiddleName     *string `json:"middle_name,omitempty"`
-	LastName       string  `json:"last_name"`
-	EnrollmentDate string  `json:"enrollment_date"`
-	Status         string  `json:"status"`
-	Email          *string `json:"email,omitempty"`
-	ContactNumber  *string `json:"contact_number,omitempty"`
-	Course         *string `json:"course,omitempty"`
+	ClassID       int     `json:"class_id"`
+	StudentUserID int     `json:"student_user_id"`
+	StudentCode   string  `json:"student_code"`
+	FirstName     string  `json:"first_name"`
+	MiddleName    *string `json:"middle_name,omitempty"`
+	LastName      string  `json:"last_name"`
+	JoinedDate    string  `json:"joined_date"`
+	Status        string  `json:"status"`
+	Email         *string `json:"email,omitempty"`
+	ContactNumber *string `json:"contact_number,omitempty"`
+	Course        *string `json:"course,omitempty"`
 }
 
-// ClassStudent represents a student available for enrollment
+// ClassStudent represents a student available for class joining/add flow.
 type ClassStudent struct {
 	ID            int     `json:"id"`
 	StudentID     string  `json:"student_id"`
@@ -480,7 +564,7 @@ type ClassStudent struct {
 	ContactNumber *string `json:"contact_number,omitempty"`
 	PhotoURL      *string `json:"photo_url,omitempty"` // Base64 data URL for frontend display
 	ClassID       *int    `json:"class_id,omitempty"`
-	IsEnrolled    bool    `json:"is_enrolled"`
+	IsJoined      bool    `json:"is_joined"`
 }
 
 // ==============================================================================
@@ -505,6 +589,8 @@ type AdminDashboard struct {
 	LastAdminLoginAt        *string `json:"last_admin_login_at,omitempty"`
 	LastAdminPCNumber       *string `json:"last_admin_pc_number,omitempty"`
 	TodayNewUsers           int     `json:"today_new_users"`
+	IssueReportsToday       int     `json:"issue_reports_today"`
+	NoIssueReportsToday     int     `json:"no_issue_reports_today"`
 	PendingFeedback         int     `json:"pending_feedback"`
 }
 
@@ -661,6 +747,40 @@ func (a *App) GetAdminDashboard() (AdminDashboard, error) {
 		WHERE status = 'forwarded' AND (is_archived = 0 OR is_archived IS NULL)
 	`).Scan(&dashboard.PendingFeedback)
 
+	// Count no-issue feedback submitted today.
+	// A report is considered "no issue" when all equipment conditions are Good
+	// and comments are empty or contain only the system "Submitted from" marker.
+	a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM feedback
+		WHERE DATE(date_submitted) = CURDATE()
+		  AND LOWER(IFNULL(equipment_condition, '')) = 'good'
+		  AND LOWER(IFNULL(monitor_condition, '')) = 'good'
+		  AND LOWER(IFNULL(keyboard_condition, '')) = 'good'
+		  AND LOWER(IFNULL(mouse_condition, '')) = 'good'
+		  AND (
+			LTRIM(RTRIM(IFNULL(additional_comments, ''))) = ''
+			OR LOWER(LTRIM(RTRIM(IFNULL(additional_comments, '')))) LIKE 'submitted from:%'
+		  )
+	`).Scan(&dashboard.NoIssueReportsToday)
+
+	// Count issue feedback submitted today.
+	a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM feedback
+		WHERE DATE(date_submitted) = CURDATE()
+		  AND NOT (
+			LOWER(IFNULL(equipment_condition, '')) = 'good'
+			AND LOWER(IFNULL(monitor_condition, '')) = 'good'
+			AND LOWER(IFNULL(keyboard_condition, '')) = 'good'
+			AND LOWER(IFNULL(mouse_condition, '')) = 'good'
+			AND (
+				LTRIM(RTRIM(IFNULL(additional_comments, ''))) = ''
+				OR LOWER(LTRIM(RTRIM(IFNULL(additional_comments, '')))) LIKE 'submitted from:%'
+			)
+		  )
+	`).Scan(&dashboard.IssueReportsToday)
+
 	return dashboard, nil
 }
 
@@ -682,6 +802,7 @@ type CourseClass struct {
 	SubjectName          string  `json:"subject_name"`
 	DescriptiveTitle     *string `json:"descriptive_title,omitempty"`
 	EdpCode              *string `json:"edp_code,omitempty"`
+	JoinCode             *string `json:"join_code,omitempty"`
 	Section              *string `json:"section,omitempty"`
 	Schedule             *string `json:"schedule,omitempty"`
 	Room                 *string `json:"room,omitempty"`
@@ -855,18 +976,18 @@ func (a *App) GetStudentDashboard(userID int) (StudentDashboard, error) {
 	// Count enrolled classes
 	a.db.QueryRow(`
 		SELECT COUNT(DISTINCT class_id) 
-		FROM classlist 
-		WHERE student_id = ? AND status = 'active'
+		FROM joined_classes 
+		WHERE student_id = ? AND status IN ('join', 'added')
 	`, userID).Scan(&dashboard.EnrolledClasses)
 
 	// Count archived classes (teacher-archived via classes.is_archived OR student self-archived via student_archived_classes)
 	a.db.QueryRow(`
 		SELECT COUNT(DISTINCT cl.class_id)
-		FROM classlist cl
+		FROM joined_classes cl
 		JOIN classes c ON cl.class_id = c.class_id
 		LEFT JOIN student_archived_classes sac ON sac.student_id = cl.student_id AND sac.class_id = cl.class_id
 		WHERE cl.student_id = ?
-		  AND cl.status = 'active'
+		  AND cl.status IN ('join', 'added')
 		  AND (
 			COALESCE(c.is_archived, 0) = 1
 			OR sac.class_id IS NOT NULL
@@ -885,9 +1006,85 @@ type WorkingStudentDashboard struct {
 	StudentsRegistered   int `json:"students_registered"`
 	ClasslistsCreated    int `json:"classlists_created"`
 	PendingFeedback      int `json:"pending_feedback"`
+	IssueReports         int `json:"issue_reports"`
+	NoIssueReports       int `json:"no_issue_reports"`
+	ForwardedReports     int `json:"forwarded_reports"`
 	TodayRegistrations   int `json:"today_registrations"`
 	ActiveStudentsNow    int `json:"active_students_now"`
 	PendingRegistrations int `json:"pending_registrations"`
+}
+
+func splitFeedbackCommentParts(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	semicolonParts := strings.Split(raw, ";")
+	parts := make([]string, 0, len(semicolonParts))
+	for _, semicolonPart := range semicolonParts {
+		for _, line := range strings.Split(semicolonPart, "\n") {
+			cleaned := strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+			if cleaned != "" {
+				parts = append(parts, cleaned)
+			}
+		}
+	}
+	return parts
+}
+
+func hasOptionalFeedbackComment(raw string) bool {
+	parts := splitFeedbackCommentParts(raw)
+	if len(parts) == 0 {
+		return false
+	}
+
+	for _, part := range parts {
+		lower := strings.ToLower(strings.TrimSpace(part))
+
+		if strings.HasPrefix(lower, "additional comments:") {
+			value := strings.TrimSpace(part[len("Additional comments:"):])
+			if value == "" {
+				continue
+			}
+			if strings.HasPrefix(strings.ToLower(value), "computer lab & pc number:") {
+				continue
+			}
+			return true
+		}
+
+		if strings.HasPrefix(lower, "additional:") {
+			value := strings.TrimSpace(part[len("Additional:"):])
+			if value == "" {
+				continue
+			}
+			if strings.HasPrefix(strings.ToLower(value), "computer lab & pc number:") {
+				continue
+			}
+			return true
+		}
+
+		if strings.HasPrefix(lower, "computer:") ||
+			strings.HasPrefix(lower, "monitor:") ||
+			strings.HasPrefix(lower, "keyboard:") ||
+			strings.HasPrefix(lower, "mouse:") ||
+			strings.HasPrefix(lower, "submitted from:") ||
+			strings.HasPrefix(lower, "report context: another pc") ||
+			strings.HasPrefix(lower, "computer lab & pc number:") {
+			continue
+		}
+
+		return true
+	}
+
+	return false
+}
+
+func hasEquipmentIssue(equipment, monitor, keyboard, mouse string) bool {
+	return strings.ToLower(strings.TrimSpace(equipment)) != "good" ||
+		strings.ToLower(strings.TrimSpace(monitor)) != "good" ||
+		strings.ToLower(strings.TrimSpace(keyboard)) != "good" ||
+		strings.ToLower(strings.TrimSpace(mouse)) != "good"
 }
 
 // GetWorkingStudentDashboard returns working student dashboard data
@@ -906,13 +1103,53 @@ func (a *App) GetWorkingStudentDashboard() (WorkingStudentDashboard, error) {
 	a.db.QueryRow(`SELECT COUNT(*) FROM students`).Scan(&dashboard.StudentsRegistered)
 
 	// Count classlists
-	a.db.QueryRow(`SELECT COUNT(*) FROM classlist`).Scan(&dashboard.ClasslistsCreated)
+	a.db.QueryRow(`SELECT COUNT(*) FROM joined_classes`).Scan(&dashboard.ClasslistsCreated)
 
-	// Count pending feedback
-	a.db.QueryRow(`
-		SELECT COUNT(*) FROM feedback 
-		WHERE status = 'pending'
-	`).Scan(&dashboard.PendingFeedback)
+	// Count feedback workflow metrics for report overview cards.
+	rows, err := a.db.Query(`
+		SELECT status, equipment_condition, monitor_condition, keyboard_condition, mouse_condition, additional_comments
+		FROM feedback
+	`)
+	if err != nil {
+		return dashboard, fmt.Errorf("failed to summarize feedback workflow: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var status string
+		var equipmentCondition string
+		var monitorCondition string
+		var keyboardCondition string
+		var mouseCondition string
+		var comments sql.NullString
+
+		if scanErr := rows.Scan(&status, &equipmentCondition, &monitorCondition, &keyboardCondition, &mouseCondition, &comments); scanErr != nil {
+			continue
+		}
+
+		commentsText := ""
+		if comments.Valid {
+			commentsText = comments.String
+		}
+
+		hasIssue := hasEquipmentIssue(equipmentCondition, monitorCondition, keyboardCondition, mouseCondition) || hasOptionalFeedbackComment(commentsText)
+		isNoIssue := !hasIssue
+		normalizedStatus := strings.ToLower(strings.TrimSpace(status))
+
+		switch normalizedStatus {
+		case "pending":
+			if hasIssue {
+				dashboard.PendingFeedback++
+				dashboard.IssueReports++
+			}
+		case "confirmed":
+			if isNoIssue {
+				dashboard.NoIssueReports++
+			}
+		case "forwarded":
+			dashboard.ForwardedReports++
+		}
+	}
 
 	// Count students registered today
 	a.db.QueryRow(`

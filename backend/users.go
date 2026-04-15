@@ -675,7 +675,7 @@ func (a *App) validateActiveDepartmentCode(departmentCode string) (string, error
 	}
 
 	var isActive bool
-	err := a.db.QueryRow(`SELECT is_active FROM departments WHERE department_code = ?`, normalized).Scan(&isActive)
+	err := a.db.QueryRow(`SELECT is_active FROM departments WHERE department_code = ? AND COALESCE(is_deleted, 0) = 0`, normalized).Scan(&isActive)
 	if err == sql.ErrNoRows {
 		return "", fmt.Errorf("selected department does not exist")
 	}
@@ -1072,44 +1072,6 @@ func (a *App) ensureActivityTrackingColumns() error {
 		if _, err := a.db.Exec(`ALTER TABLE users ADD COLUMN deleted_at DATETIME NULL`); err != nil {
 			return fmt.Errorf("failed to ensure deleted_at column: %w", err)
 		}
-	}
-
-	return nil
-}
-
-// ensureLegacyUsersIsActiveRemoved normalizes legacy user rows and removes users.is_active.
-func (a *App) ensureLegacyUsersIsActiveRemoved() error {
-	var exists int
-
-	err := a.db.QueryRow(`
-		SELECT COUNT(*)
-		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_SCHEMA = DATABASE()
-		  AND TABLE_NAME = 'users'
-		  AND COLUMN_NAME = 'is_active'
-	`).Scan(&exists)
-	if err != nil {
-		return fmt.Errorf("failed to check legacy users.is_active column: %w", err)
-	}
-
-	if exists == 0 {
-		return nil
-	}
-
-	_, err = a.db.Exec(`
-		UPDATE users
-		SET account_status = 'deactivated',
-			deactivated_at = COALESCE(deactivated_at, NOW()),
-			updated_at = NOW()
-		WHERE account_status = 'active'
-		  AND is_active = 0
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to normalize legacy users.is_active rows: %w", err)
-	}
-
-	if _, err := a.db.Exec(`ALTER TABLE users DROP COLUMN is_active`); err != nil {
-		return fmt.Errorf("failed to drop legacy users.is_active column: %w", err)
 	}
 
 	return nil

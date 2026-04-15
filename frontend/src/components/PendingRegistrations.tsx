@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { CheckCircle, XCircle, User, Mail, Phone, Calendar, History, Search, Filter, X, ChevronDown, RefreshCw } from 'lucide-react';
+import { CheckCircle, XCircle, User, History, Search, Filter, X, ChevronDown, RefreshCw } from 'lucide-react';
 import { GetPendingRegistrations, ProcessRegistration, GetRegistrationHistory } from '../../wailsjs/go/backend/App';
 import Button from '../components/Button';
 import { Card } from '../components/Card';
@@ -274,14 +274,14 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
         <div className="grid gap-4">
           {registrations.map((reg) => (
             <Card key={reg.user_id} className="hover:shadow-lg transition-shadow">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
-                      <User className="w-6 h-6 text-primary-600" />
+              <div className="px-5 py-4 sm:px-6 sm:py-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex-1 min-w-0 sm:pr-4">
+                  <div className="flex items-center justify-center sm:justify-start gap-3 mb-3 min-w-0">
+                    <div className="w-10 h-10 sm:w-11 sm:h-11 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
+                      <User className="w-5 h-5 text-primary-600" />
                     </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-800">
+                    <div className="min-w-0 text-center sm:text-left">
+                      <h3 className="text-base sm:text-lg font-bold text-gray-800 leading-tight break-words">
                         {reg.last_name}, {reg.first_name} {reg.middle_name || ''}
                       </h3>
                       <p className="text-sm text-gray-500">Student ID: {reg.student_id}</p>
@@ -289,28 +289,19 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Mail className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <span>{reg.email}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Phone className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <span>{reg.contact_number}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <span>Submitted: {new Date(reg.submitted_at).toLocaleDateString()}</span>
+                    <div className="flex items-center justify-center sm:justify-start text-gray-600">
+                      <span className="whitespace-nowrap">Submitted: {new Date(reg.submitted_at).toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+                <div className="flex w-full flex-row gap-2 sm:w-auto sm:items-center sm:justify-center sm:flex-shrink-0 sm:self-center">
                   <Button
                     onClick={() => handleApprove(reg.user_id)}
                     disabled={processing === reg.user_id}
                     variant="primary"
-                    size="md"
-                    className="w-full sm:w-32"
+                    size="sm"
+                    className="flex-1 sm:flex-none sm:w-28"
                     icon={<CheckCircle />}
                   >
                     {processing === reg.user_id ? 'Approving...' : 'Approve'}
@@ -319,8 +310,8 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
                     onClick={() => openRejectModal(reg.user_id)}
                     disabled={processing === reg.user_id}
                     variant="danger"
-                    size="md"
-                    className="w-full sm:w-32"
+                    size="sm"
+                    className="flex-1 sm:flex-none sm:w-28"
                     icon={<XCircle />}
                   >
                     Reject

@@ -78,7 +78,7 @@ const UserManagement: React.FC = () => {
           <option value="student">Students</option>
           <option value="teacher">Teachers</option>
           <option value="admin">Admins</option>
-          <option value="working_student">Working Students</option>
+          <option value="working_student">Student Staff</option>
         </select>
       </div>
 

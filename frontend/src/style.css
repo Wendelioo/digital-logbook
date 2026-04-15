@@ -81,6 +81,14 @@ tbody td {
         @apply bg-primary-950/50 backdrop-blur-sm;
     }
 
+    /* Lighter scrim for export pickers to keep page context visible. */
+    .modal-backdrop-export {
+        @apply fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-4 animate-fadeIn;
+        @apply bg-primary-950/30;
+        backdrop-filter: blur(1px);
+        -webkit-backdrop-filter: blur(1px);
+    }
+
     .modal-backdrop-dense {
         @apply fixed inset-0 z-50 overflow-y-auto animate-fadeIn;
         @apply bg-primary-950/90 backdrop-blur-md;
@@ -98,6 +106,10 @@ tbody td {
         box-shadow:
             0 25px 50px -12px rgba(52, 62, 79, 0.2),
             0 0 0 1px rgba(91, 109, 143, 0.06);
+    }
+
+    .modal-back-icon-btn {
+        @apply inline-flex items-center justify-center h-8 w-8 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors;
     }
 
     .section-highlight {

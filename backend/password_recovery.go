@@ -47,23 +47,6 @@ func (a *App) ensureUserRecoveryCodesTable() error {
 		return fmt.Errorf("failed to ensure user_recovery_codes table: %w", err)
 	}
 
-	var codePlainExists int
-	if err := a.db.QueryRow(`
-		SELECT COUNT(*)
-		FROM INFORMATION_SCHEMA.COLUMNS
-		WHERE TABLE_SCHEMA = DATABASE()
-		  AND TABLE_NAME = 'user_recovery_codes'
-		  AND COLUMN_NAME = 'code_plain'
-	`).Scan(&codePlainExists); err != nil {
-		return fmt.Errorf("failed to inspect user_recovery_codes.code_plain column: %w", err)
-	}
-
-	if codePlainExists > 0 {
-		if _, err := a.db.Exec(`ALTER TABLE user_recovery_codes DROP COLUMN code_plain`); err != nil {
-			return fmt.Errorf("failed to remove legacy user_recovery_codes.code_plain column: %w", err)
-		}
-	}
-
 	var codeCipherExists int
 	if err := a.db.QueryRow(`
 		SELECT COUNT(*)
@@ -82,16 +65,6 @@ func (a *App) ensureUserRecoveryCodesTable() error {
 	}
 
 	return nil
-}
-
-func normalizeRecoveryResetRole(accountType string) (string, error) {
-	role := strings.ToLower(strings.TrimSpace(accountType))
-	switch role {
-	case "student", "working_student", "teacher", "admin":
-		return role, nil
-	default:
-		return "", fmt.Errorf("invalid account type for recovery")
-	}
 }
 
 func hashRecoveryCode(code string) string {
@@ -270,32 +243,6 @@ func (a *App) getStoredRecoveryCode(userID int) (string, error) {
 	return decrypted, nil
 }
 
-func (a *App) resolveUserByRecoveryCode(recoveryCode string) (int, string, error) {
-	normalizedCode := normalizeRecoveryCode(recoveryCode)
-	if len(normalizedCode) != recoveryCodeLength {
-		return 0, "", fmt.Errorf("recovery code must be %d characters", recoveryCodeLength)
-	}
-
-	var userID int
-	var userRole string
-	err := a.db.QueryRow(`
-		SELECT u.id, u.user_type
-		FROM user_recovery_codes urc
-		JOIN users u ON u.id = urc.user_id
-		WHERE urc.code_hash = ?
-		  AND u.account_status = 'active'
-		LIMIT 1
-	`, hashRecoveryCode(normalizedCode)).Scan(&userID, &userRole)
-	if err == sql.ErrNoRows {
-		return 0, "", fmt.Errorf("invalid recovery code")
-	}
-	if err != nil {
-		return 0, "", fmt.Errorf("failed to verify recovery code")
-	}
-
-	return userID, userRole, nil
-}
-
 func (a *App) issueRecoveryCodeForUser(userID int) (string, error) {
 	if err := a.ensureUserRecoveryCodesTable(); err != nil {
 		return "", err
@@ -310,23 +257,6 @@ func (a *App) issueRecoveryCodeForUserTx(tx *sql.Tx, userID int) (string, error)
 	}
 
 	return issueRecoveryCode(tx, userID)
-}
-
-func (a *App) resolveRecoveryResetUser(accountType, identifier string) (int, string, error) {
-	role, err := normalizeRecoveryResetRole(accountType)
-	if err != nil {
-		return 0, "", err
-	}
-
-	requesterUserID, requesterRole, _, err := a.resolvePasswordResetRequester(role, identifier)
-	if err != nil {
-		return 0, "", err
-	}
-	if requesterRole != role {
-		return 0, "", fmt.Errorf("account type does not match account identifier")
-	}
-
-	return requesterUserID, role, nil
 }
 
 func (a *App) resolveRecoveryResetUserByIdentifier(identifier string) (int, string, error) {
@@ -379,32 +309,6 @@ func (a *App) verifyRecoveryCodeForUser(userID int, recoveryCode string) error {
 	return nil
 }
 
-// VerifyPasswordResetIdentity validates that an account identifier exists and is eligible for recovery-code reset.
-func (a *App) VerifyPasswordResetIdentity(accountType, identifier string) error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-	if err := a.ensureUserRecoveryCodesTable(); err != nil {
-		return err
-	}
-
-	requesterUserID, _, err := a.resolveRecoveryResetUser(accountType, identifier)
-	if err != nil {
-		return err
-	}
-
-	var storedHash string
-	err = a.db.QueryRow(`SELECT code_hash FROM user_recovery_codes WHERE user_id = ?`, requesterUserID).Scan(&storedHash)
-	if err == sql.ErrNoRows {
-		return fmt.Errorf("no recovery code is available for this account yet; contact your administrator")
-	}
-	if err != nil {
-		return fmt.Errorf("failed to verify recovery setup: %w", err)
-	}
-
-	return nil
-}
-
 // VerifyPasswordResetIdentifier validates that an account ID exists and has a recovery code configured.
 func (a *App) VerifyPasswordResetIdentifier(identifier string) error {
 	if err := a.checkDB(); err != nil {
@@ -448,59 +352,6 @@ func (a *App) VerifyRecoveryCodeForIdentifier(identifier, recoveryCode string) e
 	return a.verifyRecoveryCodeForUser(requesterUserID, recoveryCode)
 }
 
-// VerifyRecoveryCode validates whether a recovery code belongs to an active account.
-func (a *App) VerifyRecoveryCode(recoveryCode string) error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-	if err := a.ensureUserRecoveryCodesTable(); err != nil {
-		return err
-	}
-
-	_, _, err := a.resolveUserByRecoveryCode(recoveryCode)
-	return err
-}
-
-// ResetPasswordWithRecoveryCode validates recovery code and updates the account password.
-func (a *App) ResetPasswordWithRecoveryCode(accountType, identifier, recoveryCode, newPassword string) error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-	if err := a.ensureUserRecoveryCodesTable(); err != nil {
-		return err
-	}
-	if err := ValidateStrongPassword(newPassword); err != nil {
-		return err
-	}
-
-	requesterUserID, role, err := a.resolveRecoveryResetUser(accountType, identifier)
-	if err != nil {
-		return err
-	}
-
-	if err := a.verifyRecoveryCodeForUser(requesterUserID, recoveryCode); err != nil {
-		return err
-	}
-
-	newPasswordHashBytes, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return fmt.Errorf("failed to process password")
-	}
-
-	if _, err := a.db.Exec(`UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?`, string(newPasswordHashBytes), requesterUserID); err != nil {
-		return fmt.Errorf("failed to update password")
-	}
-
-	log.Printf("Password reset completed through recovery code: user=%d role=%s", requesterUserID, role)
-
-	go a.createNotification(requesterUserID, "password_reset",
-		"Password Reset Completed",
-		"Your password was successfully reset using your recovery code.",
-		"success", notifRef("password_reset"), nil)
-
-	return nil
-}
-
 // ResetPasswordWithIdentifierRecoveryCode resets password using account ID plus recovery code.
 func (a *App) ResetPasswordWithIdentifierRecoveryCode(identifier, recoveryCode, newPassword string) error {
 	if err := a.checkDB(); err != nil {
@@ -532,42 +383,6 @@ func (a *App) ResetPasswordWithIdentifierRecoveryCode(identifier, recoveryCode, 
 	}
 
 	log.Printf("Password reset completed through identifier + recovery code: user=%d role=%s", requesterUserID, role)
-
-	go a.createNotification(requesterUserID, "password_reset",
-		"Password Reset Completed",
-		"Your password was successfully reset using your recovery code.",
-		"success", notifRef("password_reset"), nil)
-
-	return nil
-}
-
-// ResetPasswordWithRecoveryCodeOnly resets password using only a recovery code.
-func (a *App) ResetPasswordWithRecoveryCodeOnly(recoveryCode, newPassword string) error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-	if err := a.ensureUserRecoveryCodesTable(); err != nil {
-		return err
-	}
-	if err := ValidateStrongPassword(newPassword); err != nil {
-		return err
-	}
-
-	requesterUserID, role, err := a.resolveUserByRecoveryCode(recoveryCode)
-	if err != nil {
-		return err
-	}
-
-	newPasswordHashBytes, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return fmt.Errorf("failed to process password")
-	}
-
-	if _, err := a.db.Exec(`UPDATE users SET password = ?, updated_at = NOW() WHERE id = ?`, string(newPasswordHashBytes), requesterUserID); err != nil {
-		return fmt.Errorf("failed to update password")
-	}
-
-	log.Printf("Password reset completed through recovery code only: user=%d role=%s", requesterUserID, role)
 
 	go a.createNotification(requesterUserID, "password_reset",
 		"Password Reset Completed",

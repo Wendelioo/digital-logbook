@@ -135,7 +135,7 @@ export const StatCard: React.FC<StatCardProps> = ({
   return (
     <Card className={`min-w-0 border-l-4 ${borderLClasses[color]} ${className}`}>
       <CardBody noPadding className="p-3 sm:p-4">
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-start gap-3 min-w-0">
           {icon && (
             <div className="flex-shrink-0">
               <div className={`${colorClasses[color]} rounded-xl p-2`}>
@@ -146,7 +146,7 @@ export const StatCard: React.FC<StatCardProps> = ({
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <dt className="text-[10px] sm:text-xs font-medium text-gray-600 uppercase tracking-wide leading-tight truncate">
+            <dt className="text-[10px] sm:text-xs font-medium text-gray-600 uppercase tracking-wide leading-snug whitespace-normal break-words">
               {title}
             </dt>
             <dd className="mt-0.5 flex items-baseline gap-1.5 flex-wrap min-w-0">
@@ -173,7 +173,7 @@ export const StatCard: React.FC<StatCardProps> = ({
 /* ===== INFO CARD (for dashboard info blocks) ===== */
 interface InfoCardProps {
   icon: React.ReactNode;
-  iconColor?: 'blue' | 'green' | 'purple' | 'orange' | 'red';
+  iconColor?: 'blue' | 'green' | 'yellow' | 'purple' | 'orange' | 'red';
   label: string;
   value: string;
   className?: string;
@@ -189,6 +189,7 @@ export const InfoCard: React.FC<InfoCardProps> = ({
   const iconColorClasses = {
     blue: 'bg-blue-100 text-blue-600',
     green: 'bg-green-100 text-green-600',
+    yellow: 'bg-yellow-100 text-yellow-600',
     purple: 'bg-purple-100 text-purple-600',
     orange: 'bg-orange-100 text-orange-600',
     red: 'bg-red-100 text-red-600',
@@ -207,7 +208,7 @@ export const InfoCard: React.FC<InfoCardProps> = ({
         <p className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">
           {label}
         </p>
-        <p className="text-base font-semibold text-gray-900 truncate">
+        <p className="text-sm sm:text-base font-semibold text-gray-900 leading-snug whitespace-normal break-words">
           {value}
         </p>
       </div>
