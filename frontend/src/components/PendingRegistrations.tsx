@@ -59,6 +59,7 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [registrationSearch, setRegistrationSearch] = useState('');
   const [historySearch, setHistorySearch] = useState('');
   const [historyStatusFilter, setHistoryStatusFilter] = useState<'all' | 'approved' | 'rejected'>('all');
   const [historyTimeFilter, setHistoryTimeFilter] = useState<'all' | 'today' | 'this_week' | 'date'>('all');
@@ -99,6 +100,20 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
       setHistoryLoading(false);
     }
   };
+
+  const filteredRegistrations = useMemo(() => {
+    const query = registrationSearch.trim().toLowerCase();
+    if (!query) {
+      return registrations;
+    }
+
+    return registrations.filter((reg) => {
+      const fullName = `${reg.last_name || ''} ${reg.first_name || ''} ${reg.middle_name || ''}`.toLowerCase();
+      const studentId = `${reg.student_id || ''}`.toLowerCase();
+
+      return fullName.includes(query) || studentId.includes(query);
+    });
+  }, [registrations, registrationSearch]);
 
   const filteredHistory = useMemo(() => {
     let list = history;
@@ -264,64 +279,95 @@ const PendingRegistrations: React.FC<PendingRegistrationsProps> = ({ workingStud
         </div>
       )}
 
-      {registrations.length === 0 ? (
-        <Card>
-          <div className="text-center py-12">
-            <p className="text-gray-500">No Pending Registrations</p>
+      <div className="space-y-4">
+        <div className="flex justify-end">
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by name or student ID..."
+              value={registrationSearch}
+              onChange={(e) => setRegistrationSearch(e.target.value)}
+              className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            />
+            {registrationSearch && (
+              <Button
+                onClick={() => setRegistrationSearch('')}
+                variant="secondary"
+                size="sm"
+                icon={<X className="h-5 w-5" />}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 !p-0"
+                title="Clear search"
+              />
+            )}
           </div>
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-          {registrations.map((reg) => (
-            <Card key={reg.user_id} className="hover:shadow-lg transition-shadow">
-              <div className="px-5 py-4 sm:px-6 sm:py-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex-1 min-w-0 sm:pr-4">
-                  <div className="flex items-center justify-center sm:justify-start gap-3 mb-3 min-w-0">
-                    <div className="w-10 h-10 sm:w-11 sm:h-11 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
-                      <User className="w-5 h-5 text-primary-600" />
-                    </div>
-                    <div className="min-w-0 text-center sm:text-left">
-                      <h3 className="text-base sm:text-lg font-bold text-gray-800 leading-tight break-words">
-                        {reg.last_name}, {reg.first_name} {reg.middle_name || ''}
-                      </h3>
-                      <p className="text-sm text-gray-500">Student ID: {reg.student_id}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                    <div className="flex items-center justify-center sm:justify-start text-gray-600">
-                      <span className="whitespace-nowrap">Submitted: {new Date(reg.submitted_at).toLocaleString()}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex w-full flex-row gap-2 sm:w-auto sm:items-center sm:justify-center sm:flex-shrink-0 sm:self-center">
-                  <Button
-                    onClick={() => handleApprove(reg.user_id)}
-                    disabled={processing === reg.user_id}
-                    variant="primary"
-                    size="sm"
-                    className="flex-1 sm:flex-none sm:w-28"
-                    icon={<CheckCircle />}
-                  >
-                    {processing === reg.user_id ? 'Approving...' : 'Approve'}
-                  </Button>
-                  <Button
-                    onClick={() => openRejectModal(reg.user_id)}
-                    disabled={processing === reg.user_id}
-                    variant="danger"
-                    size="sm"
-                    className="flex-1 sm:flex-none sm:w-28"
-                    icon={<XCircle />}
-                  >
-                    Reject
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          ))}
         </div>
-      )}
+
+        {registrations.length === 0 ? (
+          <Card>
+            <div className="text-center py-12">
+              <p className="text-gray-500">No Pending Registrations</p>
+            </div>
+          </Card>
+        ) : filteredRegistrations.length === 0 ? (
+          <Card>
+            <div className="text-center py-12">
+              <p className="text-gray-500">No registration requests match your search.</p>
+            </div>
+          </Card>
+        ) : (
+          <div className="grid gap-4">
+            {filteredRegistrations.map((reg) => (
+              <Card key={reg.user_id} className="hover:shadow-lg transition-shadow">
+                <div className="px-5 py-4 sm:px-6 sm:py-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex-1 min-w-0 sm:pr-4">
+                    <div className="flex items-center justify-center sm:justify-start gap-3 mb-3 min-w-0">
+                      <div className="w-10 h-10 sm:w-11 sm:h-11 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <User className="w-5 h-5 text-primary-600" />
+                      </div>
+                      <div className="min-w-0 text-center sm:text-left">
+                        <h3 className="text-base sm:text-lg font-bold text-gray-800 leading-tight break-words">
+                          {reg.last_name}, {reg.first_name} {reg.middle_name || ''}
+                        </h3>
+                        <p className="text-sm text-gray-500">Student ID: {reg.student_id}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                      <div className="flex items-center justify-center sm:justify-start text-gray-600">
+                        <span className="whitespace-nowrap">Submitted: {new Date(reg.submitted_at).toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex w-full flex-row gap-2 sm:w-auto sm:items-center sm:justify-center sm:flex-shrink-0 sm:self-center">
+                    <Button
+                      onClick={() => handleApprove(reg.user_id)}
+                      disabled={processing === reg.user_id}
+                      variant="primary"
+                      size="sm"
+                      className="flex-1 sm:flex-none sm:w-28"
+                      icon={<CheckCircle />}
+                    >
+                      {processing === reg.user_id ? 'Approving...' : 'Approve'}
+                    </Button>
+                    <Button
+                      onClick={() => openRejectModal(reg.user_id)}
+                      disabled={processing === reg.user_id}
+                      variant="danger"
+                      size="sm"
+                      className="flex-1 sm:flex-none sm:w-28"
+                      icon={<XCircle />}
+                    >
+                      Reject
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
 
       <Modal
         isOpen={showHistoryModal}

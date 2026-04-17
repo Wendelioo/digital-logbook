@@ -120,6 +120,7 @@ func (a *App) startup(ctx context.Context) {
 		if err := a.closeStaleSessions(); err != nil {
 			log.Printf("Failed to close stale sessions on startup: %v", err)
 		}
+		go a.startSessionCleanupLoop(ctx)
 		if err := a.ensureNotificationsTable(); err != nil {
 			log.Printf("Failed to ensure notifications table: %v", err)
 		}
@@ -137,9 +138,6 @@ func (a *App) startup(ctx context.Context) {
 		}
 		if err := a.ensureDepartmentArchiveColumn(); err != nil {
 			log.Printf("Failed to ensure department archive column: %v", err)
-		}
-		if err := a.ensureDepartmentDeleteColumns(); err != nil {
-			log.Printf("Failed to ensure department delete columns: %v", err)
 		}
 		if err := a.CleanOldNotifications(); err != nil {
 			log.Printf("Failed to clean old notifications: %v", err)
@@ -241,11 +239,12 @@ type DatabaseSetupSettings struct {
 	DBName       string `json:"dbname"`
 	Username     string `json:"username"`
 	Password     string `json:"password"`
-	Mode         string `json:"mode"`
 	SourcePath   string `json:"source_path"`
 	WritePath    string `json:"write_path"`
 	IsConfigured bool   `json:"is_configured"`
 }
+
+const fixedDatabaseName = "logbookdb"
 
 func formatStationLabel(computerLab, pcNumber string) string {
 	trimmedLab := strings.TrimSpace(computerLab)
@@ -259,7 +258,7 @@ func formatStationLabel(computerLab, pcNumber string) string {
 	case trimmedLab != "":
 		return trimmedLab
 	default:
-		return "Unconfigured PC"
+		return ""
 	}
 }
 
@@ -420,7 +419,6 @@ func (a *App) GetDatabaseSetupSettings() (DatabaseSetupSettings, error) {
 		DBName:       config.DBName,
 		Username:     config.Username,
 		Password:     config.Password,
-		Mode:         GetRuntimeMode(),
 		SourcePath:   sourcePath,
 		WritePath:    writePath,
 		IsConfigured: configured,
@@ -430,10 +428,15 @@ func (a *App) GetDatabaseSetupSettings() (DatabaseSetupSettings, error) {
 // SaveDatabaseSetupSettings persists database config.
 // In production it immediately validates by reconnecting; in development it saves without reconnect test.
 func (a *App) SaveDatabaseSetupSettings(host, port, dbname, username, password string) (DatabaseSetupSettings, error) {
+	normalizedDBName := strings.TrimSpace(dbname)
+	if normalizedDBName == "" || !strings.EqualFold(normalizedDBName, fixedDatabaseName) {
+		normalizedDBName = fixedDatabaseName
+	}
+
 	savedPath, err := SaveDatabaseSettings(DBConfig{
 		Host:     host,
 		Port:     port,
-		DBName:   dbname,
+		DBName:   normalizedDBName,
 		Username: username,
 		Password: password,
 	})

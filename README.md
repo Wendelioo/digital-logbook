@@ -81,7 +81,7 @@ Inside the project directory, install the frontend dependencies:
 **Database Configuration (config.ini):**
 -Development mode (`wails dev`) reads and writes `config.ini` in the project root.
 -Production/installed mode reads user-level config first at `%APPDATA%/digital-logbook/config.ini`, then falls back to installer `config.ini` beside the executable.
--The installer can now ship with blank database fields; configure them after install from the login page using `Ctrl+Shift+K` then **Save DB Config**.
+-The installer now resets `%APPDATA%/digital-logbook/config.ini` to a blank template on first install (so old dev/test machine values do not carry over) and also seeds a blank fallback beside the executable. On upgrades, existing user config is preserved. You can configure it from the login page using `Ctrl+Shift+K` (opens Config Settings directly), then click **Apply**.
 -Use this format:
 
 >[database]
@@ -107,7 +107,6 @@ Inside the project directory, install the frontend dependencies:
 >Production/installed mode:
 >1. `%APPDATA%/digital-logbook/config.ini`
 >2. Executable directory
->3. Current working directory
 
 -If `config.ini` is missing or malformed, database connection will fail with a clear error in logs.
 -You can also override policy thresholds via environment variables:

@@ -49,42 +49,6 @@ func (a *App) ensureDepartmentArchiveColumn() error {
 	return nil
 }
 
-// ensureDepartmentDeleteColumns ensures departments soft-delete columns exist.
-func (a *App) ensureDepartmentDeleteColumns() error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	ensureColumn := func(columnName, columnDef string) error {
-		var exists int
-		err := a.db.QueryRow(`
-			SELECT COUNT(*)
-			FROM INFORMATION_SCHEMA.COLUMNS
-			WHERE TABLE_SCHEMA = DATABASE()
-			  AND TABLE_NAME = 'departments'
-			  AND COLUMN_NAME = ?
-		`, columnName).Scan(&exists)
-		if err != nil {
-			return err
-		}
-		if exists == 0 {
-			if _, err := a.db.Exec(fmt.Sprintf("ALTER TABLE departments ADD COLUMN %s %s", columnName, columnDef)); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	if err := ensureColumn("is_deleted", "TINYINT(1) NOT NULL DEFAULT 0"); err != nil {
-		return fmt.Errorf("failed to ensure is_deleted column in departments: %w", err)
-	}
-	if err := ensureColumn("deleted_at", "DATETIME NULL"); err != nil {
-		return fmt.Errorf("failed to ensure deleted_at column in departments: %w", err)
-	}
-
-	return nil
-}
-
 // GetDepartments returns all departments
 func (a *App) GetDepartments() ([]Department, error) {
 	if err := a.checkDB(); err != nil {
@@ -93,14 +57,10 @@ func (a *App) GetDepartments() ([]Department, error) {
 	if err := a.ensureDepartmentArchiveColumn(); err != nil {
 		return nil, err
 	}
-	if err := a.ensureDepartmentDeleteColumns(); err != nil {
-		return nil, err
-	}
 
 	rows, err := a.db.Query(`
 		SELECT department_code, department_name, is_active, COALESCE(is_archived, 0), created_at, updated_at
 		FROM departments
-		WHERE COALESCE(is_deleted, 0) = 0
 		ORDER BY department_code
 	`)
 	if err != nil {
@@ -170,9 +130,6 @@ func (a *App) UpdateDepartment(oldDepartmentCode, departmentCode, departmentName
 	if err := a.ensureDepartmentArchiveColumn(); err != nil {
 		return err
 	}
-	if err := a.ensureDepartmentDeleteColumns(); err != nil {
-		return err
-	}
 	_ = description
 
 	departmentCode = strings.ToUpper(strings.TrimSpace(departmentCode))
@@ -199,7 +156,7 @@ func (a *App) UpdateDepartment(oldDepartmentCode, departmentCode, departmentName
 	}
 
 	result, err := a.db.Exec(
-		`UPDATE departments SET department_code = ?, department_name = ?, is_active = ?, is_archived = ? WHERE department_code = ? AND COALESCE(is_deleted, 0) = 0`,
+		`UPDATE departments SET department_code = ?, department_name = ?, is_active = ?, is_archived = ? WHERE department_code = ?`,
 		departmentCode, departmentName, isActive, isArchived, oldDepartmentCode,
 	)
 	if err != nil {
@@ -224,22 +181,15 @@ func (a *App) ArchiveDepartment(departmentCode string) error {
 	if err := a.ensureDepartmentArchiveColumn(); err != nil {
 		return err
 	}
-	if err := a.ensureDepartmentDeleteColumns(); err != nil {
-		return err
-	}
 
 	var isActive bool
 	var isArchived bool
-	var isDeleted bool
-	err := a.db.QueryRow(`SELECT is_active, COALESCE(is_archived, 0), COALESCE(is_deleted, 0) FROM departments WHERE department_code = ?`, departmentCode).Scan(&isActive, &isArchived, &isDeleted)
+	err := a.db.QueryRow(`SELECT is_active, COALESCE(is_archived, 0) FROM departments WHERE department_code = ?`, departmentCode).Scan(&isActive, &isArchived)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("department not found")
 		}
 		return fmt.Errorf("failed to read department status: %w", err)
-	}
-	if isDeleted {
-		return fmt.Errorf("deleted departments cannot be archived")
 	}
 
 	if isArchived {
@@ -249,7 +199,7 @@ func (a *App) ArchiveDepartment(departmentCode string) error {
 		return fmt.Errorf("active departments cannot be archived. set status to inactive first")
 	}
 
-	_, err = a.db.Exec(`UPDATE departments SET is_archived = 1, updated_at = CURRENT_TIMESTAMP WHERE department_code = ? AND COALESCE(is_deleted, 0) = 0`, departmentCode)
+	_, err = a.db.Exec(`UPDATE departments SET is_archived = 1, updated_at = CURRENT_TIMESTAMP WHERE department_code = ?`, departmentCode)
 	if err != nil {
 		log.Printf("Failed to archive department: %v", err)
 		return fmt.Errorf("failed to archive department: %w", err)
@@ -268,28 +218,21 @@ func (a *App) UnarchiveDepartment(departmentCode string) error {
 	if err := a.ensureDepartmentArchiveColumn(); err != nil {
 		return err
 	}
-	if err := a.ensureDepartmentDeleteColumns(); err != nil {
-		return err
-	}
 
 	var isArchived bool
-	var isDeleted bool
-	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0), COALESCE(is_deleted, 0) FROM departments WHERE department_code = ?`, departmentCode).Scan(&isArchived, &isDeleted)
+	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0) FROM departments WHERE department_code = ?`, departmentCode).Scan(&isArchived)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("department not found")
 		}
 		return fmt.Errorf("failed to read department status: %w", err)
 	}
-	if isDeleted {
-		return fmt.Errorf("deleted departments cannot be restored")
-	}
 
 	if !isArchived {
 		return fmt.Errorf("department is not archived")
 	}
 
-	_, err = a.db.Exec(`UPDATE departments SET is_archived = 0, updated_at = CURRENT_TIMESTAMP WHERE department_code = ? AND COALESCE(is_deleted, 0) = 0`, departmentCode)
+	_, err = a.db.Exec(`UPDATE departments SET is_archived = 0, updated_at = CURRENT_TIMESTAMP WHERE department_code = ?`, departmentCode)
 	if err != nil {
 		log.Printf("Failed to unarchive department: %v", err)
 		return fmt.Errorf("failed to unarchive department: %w", err)
@@ -299,15 +242,9 @@ func (a *App) UnarchiveDepartment(departmentCode string) error {
 	return nil
 }
 
-// DeleteDepartment deletes a department
+// DeleteDepartment permanently deletes a department.
 func (a *App) DeleteDepartment(departmentCode string) error {
 	if err := a.checkDB(); err != nil {
-		return err
-	}
-	if err := a.ensureDepartmentDeleteColumns(); err != nil {
-		return err
-	}
-	if err := a.ensureDepartmentArchiveColumn(); err != nil {
 		return err
 	}
 
@@ -316,71 +253,73 @@ func (a *App) DeleteDepartment(departmentCode string) error {
 		return fmt.Errorf("department code is required")
 	}
 
-	var isDeleted bool
-	err := a.db.QueryRow(`
-		SELECT COALESCE(is_deleted, 0)
+	tx, err := a.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	var exists int
+	err = tx.QueryRow(`
+		SELECT 1
 		FROM departments
 		WHERE department_code = ?
-	`, departmentCode).Scan(&isDeleted)
+		LIMIT 1
+	`, departmentCode).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("department not found")
+	}
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return fmt.Errorf("department not found")
-		}
-		return fmt.Errorf("failed to read department status: %w", err)
-	}
-	if isDeleted {
-		return fmt.Errorf("department is already deleted")
+		return fmt.Errorf("failed to read department: %w", err)
 	}
 
-	var teacherCount int
-	if err := a.db.QueryRow(`SELECT COUNT(*) FROM teachers WHERE department_code = ?`, departmentCode).Scan(&teacherCount); err != nil {
-		return fmt.Errorf("failed to check assigned teachers: %w", err)
-	}
-
-	var studentCount int
-	if err := a.db.QueryRow(`SELECT COUNT(*) FROM students WHERE department_code = ? AND COALESCE(is_working_student, 0) = 0`, departmentCode).Scan(&studentCount); err != nil {
-		return fmt.Errorf("failed to check assigned students: %w", err)
-	}
-
-	var workingStudentCount int
-	if err := a.db.QueryRow(`SELECT COUNT(*) FROM students WHERE department_code = ? AND COALESCE(is_working_student, 0) = 1`, departmentCode).Scan(&workingStudentCount); err != nil {
-		return fmt.Errorf("failed to check assigned working students: %w", err)
-	}
-
-	if teacherCount > 0 || studentCount > 0 || workingStudentCount > 0 {
-		reasons := make([]string, 0, 3)
-		if teacherCount > 0 {
-			reasons = append(reasons, fmt.Sprintf("%d teacher(s)", teacherCount))
-		}
-		if studentCount > 0 {
-			reasons = append(reasons, fmt.Sprintf("%d student(s)", studentCount))
-		}
-		if workingStudentCount > 0 {
-			reasons = append(reasons, fmt.Sprintf("%d working student(s)", workingStudentCount))
-		}
-
-		return fmt.Errorf("cannot delete department: %s are currently assigned. reassign them first", strings.Join(reasons, ", "))
-	}
-
-	result, err := a.db.Exec(`
-		UPDATE departments
-		SET is_deleted = 1,
-			deleted_at = CURRENT_TIMESTAMP,
-			is_active = 0,
-			is_archived = 1,
+	if _, err := tx.Exec(`
+		UPDATE teachers
+		SET department_code = NULL,
 			updated_at = CURRENT_TIMESTAMP
 		WHERE department_code = ?
-		  AND COALESCE(is_deleted, 0) = 0
+	`, departmentCode); err != nil {
+		return fmt.Errorf("failed to clear assigned teachers: %w", err)
+	}
+
+	if _, err := tx.Exec(`
+		UPDATE students
+		SET department_code = NULL,
+			updated_at = CURRENT_TIMESTAMP
+		WHERE department_code = ?
+	`, departmentCode); err != nil {
+		return fmt.Errorf("failed to clear assigned students: %w", err)
+	}
+
+	result, err := tx.Exec(`
+		DELETE FROM departments
+		WHERE department_code = ?
 	`, departmentCode)
 	if err != nil {
 		log.Printf("Failed to delete department: %v", err)
 		return fmt.Errorf("failed to delete department: %w", err)
 	}
 
-	if rowsAffected, _ := result.RowsAffected(); rowsAffected == 0 {
-		return fmt.Errorf("department not found or already deleted")
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to confirm department deletion: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("department not found")
 	}
 
-	log.Printf("Department soft-deleted successfully: %s", departmentCode)
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	committed = true
+
+	log.Printf("Department deleted permanently: %s", departmentCode)
 	return nil
 }

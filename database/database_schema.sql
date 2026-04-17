@@ -49,8 +49,6 @@ CREATE TABLE departments (
     department_name VARCHAR(200) UNIQUE NOT NULL,
     is_active TINYINT(1) DEFAULT 1,
     is_archived TINYINT(1) NOT NULL DEFAULT 0,
-    is_deleted TINYINT(1) NOT NULL DEFAULT 0,
-    deleted_at DATETIME NULL,
     created_at DATETIME DEFAULT NOW(),
     updated_at DATETIME DEFAULT NOW()
 );
@@ -117,16 +115,12 @@ CREATE TABLE classes (
     school_year VARCHAR(9),
     is_active TINYINT(1) DEFAULT 1,
     is_archived TINYINT(1) DEFAULT 0,
-    is_deleted TINYINT(1) NOT NULL DEFAULT 0,
-    deleted_at DATETIME NULL,
-    deleted_by_user_id INT NULL,
     created_by_user_id INT NOT NULL,
     created_at DATETIME DEFAULT NOW(),
     updated_at DATETIME DEFAULT NOW(),
     FOREIGN KEY (subject_code) REFERENCES subjects(subject_code),
     FOREIGN KEY (teacher_id) REFERENCES teachers(id),
-    FOREIGN KEY (created_by_user_id) REFERENCES users(id),
-    FOREIGN KEY (deleted_by_user_id) REFERENCES users(id)
+    FOREIGN KEY (created_by_user_id) REFERENCES users(id)
 );
 CREATE TABLE joined_classes (
     class_id INT NOT NULL,
@@ -172,19 +166,15 @@ CREATE TABLE attendance_sessions (
     session_name VARCHAR(255) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
     is_archived TINYINT(1) NOT NULL DEFAULT 0,
-    is_deleted TINYINT(1) NOT NULL DEFAULT 0,
     class_duration_minutes INT NULL,
     grace_period_minutes INT NULL,
     opened_at DATETIME NULL,
     closed_at DATETIME NULL,
-    deleted_at DATETIME NULL,
-    deleted_by_user_id INT NULL,
     created_by_user_id INT NOT NULL,
     created_at DATETIME DEFAULT NOW(),
     updated_at DATETIME DEFAULT NOW(),
     FOREIGN KEY (class_id) REFERENCES classes(class_id) ON DELETE CASCADE,
-    FOREIGN KEY (created_by_user_id) REFERENCES users(id),
-    FOREIGN KEY (deleted_by_user_id) REFERENCES users(id)
+    FOREIGN KEY (created_by_user_id) REFERENCES users(id)
 );
 CREATE TABLE log_entries (
     id INT AUTO_INCREMENT PRIMARY KEY,

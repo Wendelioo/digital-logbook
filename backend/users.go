@@ -675,7 +675,7 @@ func (a *App) validateActiveDepartmentCode(departmentCode string) (string, error
 	}
 
 	var isActive bool
-	err := a.db.QueryRow(`SELECT is_active FROM departments WHERE department_code = ? AND COALESCE(is_deleted, 0) = 0`, normalized).Scan(&isActive)
+	err := a.db.QueryRow(`SELECT is_active FROM departments WHERE department_code = ?`, normalized).Scan(&isActive)
 	if err == sql.ErrNoRows {
 		return "", fmt.Errorf("selected department does not exist")
 	}

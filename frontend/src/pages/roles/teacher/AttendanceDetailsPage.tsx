@@ -437,35 +437,39 @@ function AttendanceManagementDetail() {
                   <table className="w-full" style={{ minWidth: '100%', tableLayout: 'auto' }}>
                     <thead>
                       <tr>
-                        <th colSpan={4} className="px-4 py-2 text-left border-b border-gray-200 bg-gray-50">
+                        <th colSpan={5} className="px-4 py-2 text-left border-b border-gray-200 bg-gray-50">
                           <div className="text-gray-900 font-semibold text-sm">Class Information</div>
                         </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white text-sm">
                       <tr>
-                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '90px' }}>Subject:</td>
-                        <td className="px-3 py-2 text-gray-900">{selectedClass.subject_code} - {selectedClass.subject_name}</td>
-                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '80px' }}>Schedule:</td>
-                        <td className="px-3 py-2 text-gray-900">{selectedClass.schedule || '—'}</td>
+                        <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '120px' }}>Subject Code:</td>
+                        <td className="px-4 py-2 text-gray-900">{selectedClass.subject_code || 'N/A'}</td>
+                        <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '100px' }}>Schedule:</td>
+                        <td className="px-4 py-2 text-gray-900" colSpan={2}>{selectedClass.schedule || 'N/A'}</td>
                       </tr>
                       <tr>
-                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">Instructor:</td>
-                        <td className="px-3 py-2 text-gray-900">{selectedClass.teacher_name || '—'}</td>
-                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">Room:</td>
-                        <td className="px-3 py-2 text-gray-900">{selectedClass.room || '—'}</td>
+                        <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Subject Name:</td>
+                        <td className="px-4 py-2 text-gray-900">{selectedClass.subject_name || 'N/A'}</td>
+                        <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Room:</td>
+                        <td className="px-4 py-2 text-gray-900" colSpan={2}>{selectedClass.room || 'N/A'}</td>
                       </tr>
                       <tr>
-                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">EDP Code:</td>
-                        <td className="px-3 py-2 text-gray-900">{selectedClass.edp_code || '—'}</td>
-                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">Join Code:</td>
-                        <td className="px-3 py-2 text-gray-900 font-medium">{selectedClass.join_code || '—'}</td>
+                        <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">EDP Code:</td>
+                        <td className="px-4 py-2 text-gray-900">{selectedClass.edp_code || 'N/A'}</td>
+                        <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Join Code:</td>
+                        <td className="px-4 py-2 text-gray-900 font-medium" colSpan={2}>{selectedClass.join_code || 'N/A'}</td>
                       </tr>
                       <tr>
-                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">Semester:</td>
-                        <td className="px-3 py-2 text-gray-900">{selectedClass.semester || '—'}</td>
-                        <td className="px-3 py-2 font-semibold text-gray-700 whitespace-nowrap">School Year:</td>
-                        <td className="px-3 py-2 text-gray-900">{selectedClass.school_year || '—'}</td>
+                        <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Semester:</td>
+                        <td className="px-4 py-2 text-gray-900">{selectedClass.semester || 'N/A'}</td>
+                        <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">School Year:</td>
+                        <td className="px-4 py-2 text-gray-900" colSpan={2}>{selectedClass.school_year || 'N/A'}</td>
+                      </tr>
+                      <tr>
+                        <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Instructor:</td>
+                        <td className="px-4 py-2 text-gray-900" colSpan={4}>{selectedClass.teacher_name || 'N/A'}</td>
                       </tr>
                     </tbody>
 

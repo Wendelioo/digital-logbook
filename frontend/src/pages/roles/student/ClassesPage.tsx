@@ -765,7 +765,7 @@ function MyClasses() {
                   {/* Class Information Header */}
                   <thead>
                     <tr>
-                      <th colSpan={4} className="px-4 py-2 text-left border-b border-gray-200 bg-gray-50">
+                      <th colSpan={user?.role === 'teacher' || user?.role === 'admin' ? 5 : 4} className="px-4 py-2 text-left border-b border-gray-200 bg-gray-50">
                         <div className="text-gray-900 font-semibold text-sm">Class Information</div>
                       </th>
                     </tr>
@@ -775,27 +775,27 @@ function MyClasses() {
                       <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '140px' }}>Subject Code:</td>
                       <td className="px-4 py-2 text-gray-900">{viewingClasslist.subject_code || 'N/A'}</td>
                       <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap" style={{ width: '120px' }}>EDP Code:</td>
-                      <td className="px-4 py-2 text-gray-900">{viewingClasslist.edp_code || 'N/A'}</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={user?.role === 'teacher' || user?.role === 'admin' ? 2 : 1}>{viewingClasslist.edp_code || 'N/A'}</td>
                     </tr>
                     <tr>
                       <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Descriptive Title:</td>
-                      <td className="px-4 py-2 text-gray-900" colSpan={3}>{viewingClasslist.descriptive_title || viewingClasslist.subject_name || 'N/A'}</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={user?.role === 'teacher' || user?.role === 'admin' ? 4 : 3}>{viewingClasslist.descriptive_title || viewingClasslist.subject_name || 'N/A'}</td>
                     </tr>
                     <tr>
                       <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Schedule:</td>
                       <td className="px-4 py-2 text-gray-900">{viewingClasslist.schedule || 'N/A'}</td>
                       <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Room:</td>
-                      <td className="px-4 py-2 text-gray-900">{viewingClasslist.room || 'N/A'}</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={user?.role === 'teacher' || user?.role === 'admin' ? 2 : 1}>{viewingClasslist.room || 'N/A'}</td>
                     </tr>
                     <tr>
                       <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Teacher:</td>
-                      <td className="px-4 py-2 text-gray-900" colSpan={3}>{viewingClasslist.teacher_name || 'N/A'}</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={user?.role === 'teacher' || user?.role === 'admin' ? 4 : 3}>{viewingClasslist.teacher_name || 'N/A'}</td>
                     </tr>
                     <tr>
                       <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">Semester:</td>
                       <td className="px-4 py-2 text-gray-900">{viewingClasslist.semester || 'N/A'}</td>
                       <td className="px-4 py-2 font-semibold text-gray-700 whitespace-nowrap">School Year:</td>
-                      <td className="px-4 py-2 text-gray-900">{viewingClasslist.school_year || 'N/A'}</td>
+                      <td className="px-4 py-2 text-gray-900" colSpan={user?.role === 'teacher' || user?.role === 'admin' ? 2 : 1}>{viewingClasslist.school_year || 'N/A'}</td>
                     </tr>
                   </tbody>
 

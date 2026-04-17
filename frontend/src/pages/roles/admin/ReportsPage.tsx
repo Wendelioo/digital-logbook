@@ -22,6 +22,7 @@ import {
 import { openExportSaveDialog, defaultFeedbackRangeFilename, type ExportFormat } from '../../../utils/exportSaveDialog';
 import { hasOptionalUserComment, getOptionalUserComment, parseReportContext } from '../../../utils/feedbackComments';
 import { StatusBadge } from '../../../components/Badge';
+import { getDateRangeForPeriod, TIME_PERIOD_OPTIONS, type TimePeriodValue } from '../../../utils/timePeriod';
 import { Feedback } from './types';
 import { useAuth } from '../../../contexts/AuthContext';
 
@@ -39,9 +40,11 @@ function Reports() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filters
+  const [filterTimePeriod, setFilterTimePeriod] = useState<TimePeriodValue>('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [pendingFilterTimePeriod, setPendingFilterTimePeriod] = useState<TimePeriodValue>('');
   const [pendingFilterDateFrom, setPendingFilterDateFrom] = useState('');
   const [pendingFilterDateTo, setPendingFilterDateTo] = useState('');
   const [pendingFilterStatus, setPendingFilterStatus] = useState('');
@@ -71,6 +74,11 @@ function Reports() {
       return '';
     }
     return parsed.toISOString().slice(0, 10);
+  };
+
+  const normalizePCNumber = (value?: string | null) => {
+    if (!value) return '';
+    return value.trim();
   };
 
   const hasAnyReports = reports.length > 0;
@@ -121,15 +129,30 @@ function Reports() {
     }
   };
 
-  const hasActiveDateRange = Boolean(filterDateFrom || filterDateTo);
+  const hasActiveDateRange = Boolean(filterDateFrom || filterDateTo || filterTimePeriod);
   const activeFilterCount = (hasActiveDateRange ? 1 : 0) + (filterStatus ? 1 : 0);
+
+  const updatePendingPeriod = (period: TimePeriodValue) => {
+    setPendingFilterTimePeriod(period);
+    const range = getDateRangeForPeriod(period);
+    if (range) {
+      setPendingFilterDateFrom(range.from);
+      setPendingFilterDateTo(range.to);
+    }
+    if (period === '') {
+      setPendingFilterDateFrom('');
+      setPendingFilterDateTo('');
+    }
+  };
 
   const clearFilters = () => {
     setSearchQuery('');
+    setFilterTimePeriod('');
     setFilterDateFrom('');
     setFilterDateTo('');
     setFilterStatus('');
     setShowFilters(false);
+    setPendingFilterTimePeriod('');
     setPendingFilterDateFrom('');
     setPendingFilterDateTo('');
     setPendingFilterStatus('');
@@ -242,7 +265,9 @@ function Reports() {
       );
 
       const actionLabel = nextStatus === 'resolved' ? 'marked as resolved' : 'set to pending';
-      showExportToast('success', `Report for ${report.pc_number} was ${actionLabel}.`);
+      const pcNumber = normalizePCNumber(report.pc_number);
+      const reportLabel = pcNumber ? `Report for ${pcNumber}` : 'Report';
+      showExportToast('success', `${reportLabel} was ${actionLabel}.`);
     } catch (e) {
       console.error('Failed to update admin status', e);
       setExportToast({ type: 'error', message: 'Failed to update status. Please try again.' });
@@ -342,6 +367,7 @@ function Reports() {
               onClick={() => {
                 const nextOpen = !showFilters;
                 if (nextOpen) {
+                  setPendingFilterTimePeriod(filterTimePeriod);
                   setPendingFilterDateFrom(filterDateFrom);
                   setPendingFilterDateTo(filterDateTo);
                   setPendingFilterStatus(filterStatus);
@@ -367,6 +393,19 @@ function Reports() {
               {showFilters && (
                 <div className="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden">
                   <div className="p-4 space-y-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Time Period</label>
+                      <select
+                        value={pendingFilterTimePeriod}
+                        onChange={(e) => updatePendingPeriod(e.target.value as TimePeriodValue)}
+                        className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      >
+                        {TIME_PERIOD_OPTIONS.map((option) => (
+                          <option key={option.value || 'all_time'} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
                     {/* Filter by date range */}
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Date Range</label>
@@ -376,7 +415,10 @@ function Reports() {
                             type="date"
                             placeholder="From"
                             value={pendingFilterDateFrom}
-                            onChange={(e) => setPendingFilterDateFrom(e.target.value)}
+                            onChange={(e) => {
+                              setPendingFilterDateFrom(e.target.value);
+                              setPendingFilterTimePeriod('custom');
+                            }}
                             className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                           />
                         </div>
@@ -386,7 +428,10 @@ function Reports() {
                             type="date"
                             placeholder="To"
                             value={pendingFilterDateTo}
-                            onChange={(e) => setPendingFilterDateTo(e.target.value)}
+                            onChange={(e) => {
+                              setPendingFilterDateTo(e.target.value);
+                              setPendingFilterTimePeriod('custom');
+                            }}
                             className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                           />
                         </div>
@@ -421,9 +466,11 @@ function Reports() {
                       <button
                         type="button"
                         onClick={() => {
+                          setPendingFilterTimePeriod('');
                           setPendingFilterDateFrom('');
                           setPendingFilterDateTo('');
                           setPendingFilterStatus('');
+                          setFilterTimePeriod('');
                           setFilterDateFrom('');
                           setFilterDateTo('');
                           setFilterStatus('');
@@ -442,6 +489,7 @@ function Reports() {
                             return;
                           }
 
+                          setFilterTimePeriod(pendingFilterTimePeriod);
                           setFilterDateFrom(pendingFilterDateFrom);
                           setFilterDateTo(pendingFilterDateTo);
                           setFilterStatus(pendingFilterStatus);
@@ -507,6 +555,7 @@ function Reports() {
               const { reportedForAnotherPC, submittedFrom } = parseReportContext(report.additional_comments);
               const issues = countIssues(report);
               const userComment = getOptionalUserComment(report.additional_comments);
+              const pcNumber = normalizePCNumber(report.pc_number);
               return (
                 <div key={report.id} className="py-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -515,9 +564,11 @@ function Reports() {
                       <span className="text-[11px] text-gray-500 truncate">{report.student_id_str}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-700">
-                      <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium">
-                        {report.pc_number}
-                      </span>
+                      {pcNumber && (
+                        <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-medium">
+                          {pcNumber}
+                        </span>
+                      )}
                       {submittedFrom && (
                         <span className="text-gray-500">from {submittedFrom}</span>
                       )}
@@ -603,6 +654,7 @@ function Reports() {
                       const issues = countIssues(report);
                       const hasIssues = issues > 0;
                       const isResolved = (report.admin_status || '').toLowerCase() === 'resolved';
+                      const pcNumber = normalizePCNumber(report.pc_number);
                       return (
                         <tr
                           key={report.id}
@@ -616,9 +668,11 @@ function Reports() {
                           </td>
                           <td className="px-3 py-3">
                             <div className="flex flex-col gap-0.5">
-                              <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium w-fit truncate max-w-full">
-                                {report.pc_number}
-                              </span>
+                              {pcNumber && (
+                                <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium w-fit truncate max-w-full">
+                                  {pcNumber}
+                                </span>
+                              )}
                               {(reportedForAnotherPC || submittedFrom) && (
                                 <span className="text-xs text-gray-500 truncate">
                                   {submittedFrom ? `from ${submittedFrom}` : 'Other PC'}
@@ -781,6 +835,7 @@ function Reports() {
         size="md"
       >
         {selectedReport && (() => {
+          const selectedPCNumber = normalizePCNumber(selectedReport.pc_number);
           const conditionBadge = (label: string, value: string) => {
             const isGood = value?.toLowerCase() === 'good';
             return (
@@ -809,9 +864,11 @@ function Reports() {
                   </div>
                   <div>
                     <p className="text-xs font-medium text-gray-500 mb-0.5">PC Number</p>
-                    <span className="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                      {selectedReport.pc_number}
-                    </span>
+                    {selectedPCNumber && (
+                      <span className="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                        {selectedPCNumber}
+                      </span>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs font-medium text-gray-500 mb-0.5">Date Submitted</p>

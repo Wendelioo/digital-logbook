@@ -414,7 +414,6 @@ export namespace backend {
 	    dbname: string;
 	    username: string;
 	    password: string;
-	    mode: string;
 	    source_path: string;
 	    write_path: string;
 	    is_configured: boolean;
@@ -430,7 +429,6 @@ export namespace backend {
 	        this.dbname = source["dbname"];
 	        this.username = source["username"];
 	        this.password = source["password"];
-	        this.mode = source["mode"];
 	        this.source_path = source["source_path"];
 	        this.write_path = source["write_path"];
 	        this.is_configured = source["is_configured"];

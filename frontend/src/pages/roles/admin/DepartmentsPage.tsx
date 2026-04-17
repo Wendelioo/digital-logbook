@@ -171,8 +171,8 @@ function DepartmentManagement() {
 
   const handleDeleteDepartment = async (dept: Department) => {
     const ok = await confirm({
-      title: 'Delete department',
-      message: `Are you sure you want to delete this department (${dept.department_name})? This will hide it from department lists.`,
+      title: 'Delete department?',
+      message: `This will permanently delete ${dept.department_name} and clear any linked teacher or student department assignments.`,
       confirmLabel: 'Delete',
       variant: 'danger',
     });
@@ -182,7 +182,7 @@ function DepartmentManagement() {
     try {
       await DeleteDepartment(dept.department_code);
       await loadDepartments();
-      toast('Department deleted successfully.', 'success');
+      toast('Department deleted permanently.', 'success');
     } catch (error) {
       console.error('Failed to delete department:', error);
       const errorMessage = formatBackendError(error, 'Failed to delete department. Please try again.');

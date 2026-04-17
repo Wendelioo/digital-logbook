@@ -1,11 +1,30 @@
 package backend
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"time"
 )
 
 const sessionHeartbeatTimeoutSeconds = 120
+const sessionCleanupIntervalSeconds = 30
+
+func (a *App) startSessionCleanupLoop(ctx context.Context) {
+	ticker := time.NewTicker(time.Duration(sessionCleanupIntervalSeconds) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := a.closeStaleSessions(); err != nil {
+				log.Printf("Background stale-session cleanup failed: %v", err)
+			}
+		}
+	}
+}
 
 func (a *App) ensureSessionHeartbeatTable() error {
 	if err := a.checkDB(); err != nil {
@@ -66,15 +85,15 @@ func (a *App) closeStaleSessions() error {
 	query := `
 		UPDATE log_entries le
 		LEFT JOIN user_session_heartbeats sh ON sh.user_id = le.user_id
-		SET le.logout_time = NOW()
+		SET le.logout_time = COALESCE(sh.last_seen, NOW())
 		WHERE le.logout_time IS NULL
 			AND (
-				sh.user_id IS NULL
-				OR sh.last_seen < DATE_SUB(NOW(), INTERVAL ? SECOND)
+				(sh.user_id IS NULL AND le.login_time < DATE_SUB(NOW(), INTERVAL ? SECOND))
+				OR (sh.user_id IS NOT NULL AND sh.last_seen < DATE_SUB(NOW(), INTERVAL ? SECOND))
 			)
 	`
 
-	result, err := a.db.Exec(query, sessionHeartbeatTimeoutSeconds)
+	result, err := a.db.Exec(query, sessionHeartbeatTimeoutSeconds, sessionHeartbeatTimeoutSeconds)
 	if err != nil {
 		return fmt.Errorf("failed to close stale sessions: %w", err)
 	}

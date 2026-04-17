@@ -55,6 +55,7 @@ function ClassManagement() {
   const [selectedClassForStatus, setSelectedClassForStatus] = useState<{ id: number; currentStatus: boolean; newStatus: boolean } | null>(null);
   const [changingStatus, setChangingStatus] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [exportToast, setExportToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [exportingId, setExportingId] = useState<number | null>(null);
   const [openExportModal, setOpenExportModal] = useState<number | null>(null);
@@ -87,6 +88,7 @@ function ClassManagement() {
       setClasses(data || []);
       setFilteredClasses(data || []);
       setError('');
+      setRefreshKey((prev) => prev + 1);
     } catch (error) {
       console.error('Failed to load classes:', error);
       setError('Unable to load classes from server.');
@@ -221,8 +223,8 @@ function ClassManagement() {
       toast('Archived classes cannot be deleted from this list. Restore from Stored archives first if needed.', 'error');
       return;
     }
-    if (cls.is_active) {
-      toast('Set the class to Inactive (closed) before deleting. Use Edit if you only need to correct class details.', 'error');
+    if (cls.is_active && cls.enrolled_count > 0) {
+      toast('Active classes with enrolled students cannot be deleted. Set the class to Inactive first.', 'error');
       return;
     }
 
@@ -239,13 +241,12 @@ function ClassManagement() {
       .join('\n');
 
     const ok = await confirm({
-      title: 'Delete class permanently',
+      title: 'Delete class?',
       message:
-        `This cannot be undone. All attendance sessions and enrollments for this class will be removed from the database.\n\n` +
-        `${detailLines}\n\n` +
-        `Double-check that this is the correct row. If you entered the wrong subject or schedule, use Edit (when the class is active) or Archive instead.`,
+        `This will permanently delete this class, including its attendance sessions and enrollments.\n\n` +
+        `${detailLines}`,
       variant: 'danger',
-      confirmLabel: 'Delete permanently',
+      confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
     });
     if (!ok) return;
@@ -629,8 +630,8 @@ function ClassManagement() {
                             size="xs"
                             className="border-red-200 text-red-600 hover:bg-red-50"
                             icon={<Trash2 className="h-3 w-3" />}
-                            title="Delete class forever (only when closed). Use Edit to fix mistakes while active."
-                            disabled={cls.is_active || deletingClassId === cls.class_id}
+                            title="Delete class forever. Active classes are deletable only when no students are enrolled."
+                            disabled={(cls.is_active && cls.enrolled_count > 0) || deletingClassId === cls.class_id}
                           />
                         )}
                         {/* Export dropdown */}
@@ -799,6 +800,7 @@ function ClassManagement() {
           loadClasses();
         }}
         initialTab="classes"
+        refreshToken={refreshKey}
         onClassUnarchived={loadClasses}
       />
 
@@ -808,10 +810,11 @@ function ClassManagement() {
         title="Export Classlist"
         size="sm"
       >
-        <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-2">
           <Button
             variant="outline"
             className="w-full justify-center"
+            size="sm"
             onClick={() => {
               if (openExportModal === null) return;
               const classID = openExportModal;
@@ -824,6 +827,7 @@ function ClassManagement() {
           <Button
             variant="outline"
             className="w-full justify-center"
+            size="sm"
             onClick={() => {
               if (openExportModal === null) return;
               const classID = openExportModal;
@@ -836,6 +840,7 @@ function ClassManagement() {
           <Button
             variant="outline"
             className="w-full justify-center"
+            size="sm"
             onClick={() => {
               if (openExportModal === null) return;
               const classID = openExportModal;

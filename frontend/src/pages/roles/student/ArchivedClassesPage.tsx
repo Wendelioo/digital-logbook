@@ -557,7 +557,7 @@ function ArchivedClasses({ hideHeader = false, onClassRestored }: ArchivedClasse
                   {/* Class Information Header */}
                   <thead>
                     <tr>
-                      <th colSpan={3} className="px-4 py-2 text-left border-b border-gray-200 bg-gray-50">
+                      <th colSpan={5} className="px-4 py-2 text-left border-b border-gray-200 bg-gray-50">
                         <div className="text-gray-900 font-semibold text-sm">Class Information</div>
                       </th>
                     </tr>

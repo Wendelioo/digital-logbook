@@ -33,12 +33,13 @@ export type AttendanceArchiveTab = 'attendance' | 'classes';
 
 interface AttendanceArchiveProps {
   initialTab?: AttendanceArchiveTab;
+  refreshToken?: number;
   hideHeader?: boolean;
   onClassUnarchived?: () => void;
   onAttendanceUnarchived?: () => void;
 }
 
-function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarchived, onAttendanceUnarchived }: AttendanceArchiveProps) {
+function TeacherAttendanceArchive({ initialTab, refreshToken, hideHeader = false, onClassUnarchived, onAttendanceUnarchived }: AttendanceArchiveProps) {
   const { user } = useAuth();
   const { toast, confirm } = useAppUi();
   const navigate = useNavigate();
@@ -51,10 +52,8 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
   const [loadingAttendance, setLoadingAttendance] = useState(true);
   const [attendanceSearchTerm, setAttendanceSearchTerm] = useState('');
   const [showAttendanceFilters, setShowAttendanceFilters] = useState(false);
-  const [attendanceDateRangeStart, setAttendanceDateRangeStart] = useState('');
-  const [attendanceDateRangeEnd, setAttendanceDateRangeEnd] = useState('');
-  const [pendingAttendanceDateRangeStart, setPendingAttendanceDateRangeStart] = useState('');
-  const [pendingAttendanceDateRangeEnd, setPendingAttendanceDateRangeEnd] = useState('');
+  const [attendanceDate, setAttendanceDate] = useState('');
+  const [pendingAttendanceDate, setPendingAttendanceDate] = useState('');
   const [attendanceClassFilter, setAttendanceClassFilter] = useState<string>('all');
   const [pendingAttendanceClassFilter, setPendingAttendanceClassFilter] = useState<string>('all');
   const [attendanceSemesterFilter, setAttendanceSemesterFilter] = useState<string>('all');
@@ -140,7 +139,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
     loadArchivedSheets();
     loadArchivedClassesList();
     loadActiveTeacherClasses();
-  }, [user?.id]);
+  }, [user?.id, refreshToken]);
 
   useEffect(() => {
     const filtered = archivedSheets.filter((sheet) => {
@@ -168,11 +167,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
         return false;
       }
 
-      if (attendanceDateRangeStart && sheetDate < attendanceDateRangeStart) {
-        return false;
-      }
-
-      if (attendanceDateRangeEnd && sheetDate > attendanceDateRangeEnd) {
+      if (attendanceDate && sheetDate !== attendanceDate) {
         return false;
       }
 
@@ -195,8 +190,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
     setAttendanceCurrentPage(1);
   }, [
     attendanceSearchTerm,
-    attendanceDateRangeStart,
-    attendanceDateRangeEnd,
+    attendanceDate,
     attendanceClassFilter,
     attendanceSemesterFilter,
     attendanceSchoolYearFilter,
@@ -425,7 +419,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
   const classStartEntry = filteredClasses.length > 0 ? classStartIndex + 1 : 0;
   const classEndEntry = Math.min(classEndIndex, filteredClasses.length);
   const attendanceActiveFilterCount =
-    (attendanceDateRangeStart || attendanceDateRangeEnd ? 1 : 0) +
+    (attendanceDate ? 1 : 0) +
     (attendanceClassFilter !== 'all' ? 1 : 0) +
     (attendanceSemesterFilter !== 'all' ? 1 : 0) +
     (attendanceSchoolYearFilter !== 'all' ? 1 : 0);
@@ -484,8 +478,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                     onClick={() => {
                       const nextOpen = !showAttendanceFilters;
                       if (nextOpen) {
-                        setPendingAttendanceDateRangeStart(attendanceDateRangeStart);
-                        setPendingAttendanceDateRangeEnd(attendanceDateRangeEnd);
+                        setPendingAttendanceDate(attendanceDate);
                         setPendingAttendanceClassFilter(attendanceClassFilter);
                         setPendingAttendanceSemesterFilter(attendanceSemesterFilter);
                         setPendingAttendanceSchoolYearFilter(attendanceSchoolYearFilter);
@@ -515,13 +508,11 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                           {attendanceActiveFilterCount > 0 && (
                             <button
                               onClick={() => {
-                                setAttendanceDateRangeStart('');
-                                setAttendanceDateRangeEnd('');
+                                setAttendanceDate('');
                                 setAttendanceClassFilter('all');
                                 setAttendanceSemesterFilter('all');
                                 setAttendanceSchoolYearFilter('all');
-                                setPendingAttendanceDateRangeStart('');
-                                setPendingAttendanceDateRangeEnd('');
+                                setPendingAttendanceDate('');
                                 setPendingAttendanceClassFilter('all');
                                 setPendingAttendanceSemesterFilter('all');
                                 setPendingAttendanceSchoolYearFilter('all');
@@ -533,22 +524,13 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                           )}
                         </div>
                         <div>
-                          <label className="mb-1 block text-xs font-medium text-gray-600">Date Range</label>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="date"
-                              value={pendingAttendanceDateRangeStart}
-                              onChange={(e) => setPendingAttendanceDateRangeStart(e.target.value)}
-                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                            />
-                            <span className="text-xs font-medium text-gray-500">to</span>
-                            <input
-                              type="date"
-                              value={pendingAttendanceDateRangeEnd}
-                              onChange={(e) => setPendingAttendanceDateRangeEnd(e.target.value)}
-                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                            />
-                          </div>
+                          <label className="mb-1 block text-xs font-medium text-gray-600">Date</label>
+                          <input
+                            type="date"
+                            value={pendingAttendanceDate}
+                            onChange={(e) => setPendingAttendanceDate(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
                         </div>
                         <div>
                           <label className="mb-1 block text-xs font-medium text-gray-600">Class</label>
@@ -592,13 +574,11 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                           <button
                             type="button"
                             onClick={() => {
-                              setPendingAttendanceDateRangeStart('');
-                              setPendingAttendanceDateRangeEnd('');
+                              setPendingAttendanceDate('');
                               setPendingAttendanceClassFilter('all');
                               setPendingAttendanceSemesterFilter('all');
                               setPendingAttendanceSchoolYearFilter('all');
-                              setAttendanceDateRangeStart('');
-                              setAttendanceDateRangeEnd('');
+                              setAttendanceDate('');
                               setAttendanceClassFilter('all');
                               setAttendanceSemesterFilter('all');
                               setAttendanceSchoolYearFilter('all');
@@ -611,8 +591,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
                           <button
                             type="button"
                             onClick={() => {
-                              setAttendanceDateRangeStart(pendingAttendanceDateRangeStart);
-                              setAttendanceDateRangeEnd(pendingAttendanceDateRangeEnd);
+                              setAttendanceDate(pendingAttendanceDate);
                               setAttendanceClassFilter(pendingAttendanceClassFilter);
                               setAttendanceSemesterFilter(pendingAttendanceSemesterFilter);
                               setAttendanceSchoolYearFilter(pendingAttendanceSchoolYearFilter);
@@ -1073,10 +1052,11 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
         title="Export Attendance"
         size="sm"
       >
-        <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-2">
           <Button
             variant="outline"
             className="w-full justify-center"
+            size="sm"
             onClick={() => {
               if (!attendanceExportModalSheet) return;
               const sheet = attendanceExportModalSheet;
@@ -1089,6 +1069,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
           <Button
             variant="outline"
             className="w-full justify-center"
+            size="sm"
             onClick={() => {
               if (!attendanceExportModalSheet) return;
               const sheet = attendanceExportModalSheet;
@@ -1101,6 +1082,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
           <Button
             variant="outline"
             className="w-full justify-center"
+            size="sm"
             onClick={() => {
               if (!attendanceExportModalSheet) return;
               const sheet = attendanceExportModalSheet;
@@ -1119,10 +1101,11 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
         title="Export Classlist"
         size="sm"
       >
-        <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-2">
           <Button
             variant="outline"
             className="w-full justify-center"
+            size="sm"
             onClick={() => {
               if (!classExportModalClass) return;
               const cls = classExportModalClass;
@@ -1135,6 +1118,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
           <Button
             variant="outline"
             className="w-full justify-center"
+            size="sm"
             onClick={() => {
               if (!classExportModalClass) return;
               const cls = classExportModalClass;
@@ -1147,6 +1131,7 @@ function TeacherAttendanceArchive({ initialTab, hideHeader = false, onClassUnarc
           <Button
             variant="outline"
             className="w-full justify-center"
+            size="sm"
             onClick={() => {
               if (!classExportModalClass) return;
               const cls = classExportModalClass;

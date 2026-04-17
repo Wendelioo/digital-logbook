@@ -1161,11 +1161,16 @@ func feedbackStudentDisplay(fb Feedback) string {
 }
 
 func feedbackPCOriginDisplay(fb Feedback) string {
+	pcNumber := strings.TrimSpace(fb.PCNumber)
+	if pcNumber == "" {
+		return ""
+	}
+
 	submittedFrom := feedbackSubmittedFrom(fb.AdditionalComments)
 	if submittedFrom != "" {
-		return fmt.Sprintf("%s (from %s)", fb.PCNumber, submittedFrom)
+		return fmt.Sprintf("%s (from %s)", pcNumber, submittedFrom)
 	}
-	return fb.PCNumber
+	return pcNumber
 }
 
 func feedbackForwardedByDisplay(fb Feedback) string {

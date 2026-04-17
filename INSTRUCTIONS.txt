@@ -1,0 +1,171 @@
+Digital Logbook - Instructions (Simple Student Version)
+
+This file has 2 separate guides:
+1) Development Mode Guide (for coding and testing)
+2) Production / Deployment Guide (for actual usage)
+
+
+==================================================
+DEVELOPMENT MODE GUIDE (FOR DEVELOPERS)
+==================================================
+
+Goal:
+Use this guide if you will continue coding, debugging, and testing the app.
+
+A) Install required tools
+1. Node.js (LTS)
+2. Go (Golang)
+3. Wails CLI
+4. MySQL Server
+5. MySQL Workbench
+
+Check if installed:
+- node -v
+- npm -v
+- go version
+- wails doctor
+
+Install Wails CLI if needed:
+- go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+B) Setup database in MySQL Workbench
+1. Open MySQL Workbench.
+2. Connect to your MySQL Server.
+3. Run this file first:
+   - database/database_schema.sql
+4. Run this file second:
+   - database/sample_users.sql
+
+How to run SQL file:
+1. File > Open SQL Script
+2. Select file
+3. Click lightning icon (Execute)
+
+Expected output:
+- Database created: logbookdb
+- Tables created
+- Sample users inserted
+
+C) Configure development database connection
+Open this file in project root:
+- config.ini
+
+Put your values here:
+[database]
+host=localhost
+port=3306
+dbname=logbookdb
+username=your_mysql_username
+password=your_mysql_password
+
+[policy]
+inactivity_deactivation_days=183
+deactivated_deletion_days=1460
+
+D) Install frontend dependencies (first time only)
+1. cd frontend
+2. npm install
+3. cd ..
+
+E) Run app in development mode
+From project root:
+- wails dev
+
+What happens:
+- Backend starts
+- Frontend starts with hot reload
+- Desktop app opens
+
+F) Quick test accounts
+Default password:
+- password123
+
+Sample usernames:
+- Admin: 1000001
+- Teacher: 2000001
+- Student: 3000001
+- Working Student: 4000001
+
+G) Common dev issues
+Problem: DB connection failed
+Fix:
+- Check MySQL service is running
+- Check config.ini values
+- Make sure dbname is logbookdb
+
+Problem: Login failed for sample users
+Fix:
+- Re-run sample_users.sql
+- Use password123
+
+
+==================================================
+PRODUCTION / DEPLOYMENT GUIDE (FOR ACTUAL USE)
+==================================================
+
+Goal:
+Use this guide if you are done coding and want to deploy/install the app on another PC.
+
+A) Build the production app
+From project root:
+- wails build
+
+Build output (usually in):
+- build/bin/Digital Logbook.exe
+- build/bin/Digital Logbook-amd64-installer.exe
+
+B) Prepare target PC
+Install these on target PC:
+1. MySQL Server
+2. MySQL Workbench
+
+C) Setup database on target PC
+In MySQL Workbench, run in this order:
+1. database/database_schema.sql
+2. database/sample_users.sql
+
+D) Install the app
+1. Run installer:
+   - Digital Logbook-amd64-installer.exe
+2. Finish installation.
+3. Launch Digital Logbook.
+
+E) Configure production DB connection inside the app
+1. On login page, press Ctrl+Shift+K.
+2. Config Settings will open.
+3. Enter host, port, dbname, username, and password.
+4. Click Apply.
+5. Login.
+
+Important:
+- In installed mode, app reads config from:
+  %APPDATA%/digital-logbook/config.ini
+
+F) Production smoke test
+1. Login as admin.
+2. Open dashboard and users list.
+3. Login as teacher and check classes.
+4. Login as student and test time in/time out.
+5. Try export CSV/PDF.
+
+G) Common production issues
+Problem: App opens but no records
+Fix:
+- Confirm both SQL files were imported correctly
+- Confirm correct DB credentials in Config Settings
+
+Problem: Cannot connect to DB from deployed app
+Fix:
+- Check MySQL service in target PC
+- Check firewall/port settings (default 3306)
+- Recheck values in %APPDATA%/digital-logbook/config.ini
+
+
+==================================================
+FINAL REMINDER
+==================================================
+- Development guide is for coding and testing.
+- Production guide is for deployment and actual users.
+- Change default passwords before real deployment.
+
+End of instructions.

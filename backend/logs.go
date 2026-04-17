@@ -492,7 +492,7 @@ func formatLogExportDateTime(value string) string {
 func buildActiveLogExportRows(logs []LoginLog) [][]string {
 	rows := make([][]string, 0, len(logs))
 	for _, entry := range logs {
-		pc := "N/A"
+		pc := ""
 		if entry.PCNumber != nil && strings.TrimSpace(*entry.PCNumber) != "" {
 			pc = *entry.PCNumber
 		}
@@ -517,7 +517,7 @@ func buildActiveLogExportRows(logs []LoginLog) [][]string {
 func buildArchivedLogExportRows(logs []LoginLog) [][]string {
 	rows := make([][]string, 0, len(logs))
 	for _, entry := range logs {
-		pc := "N/A"
+		pc := ""
 		if entry.PCNumber != nil && strings.TrimSpace(*entry.PCNumber) != "" {
 			pc = *entry.PCNumber
 		}
@@ -1202,6 +1202,3 @@ func (a *App) ArchiveLogs(logIDs []int, adminUserID int) (int, error) {
 	log.Printf("%d login logs archived by admin %d", rowsAffected, adminUserID)
 	return int(rowsAffected), nil
 }
-
-
-

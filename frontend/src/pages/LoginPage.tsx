@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { User, Lock, Eye, EyeOff, UserPlus, Settings, KeyRound, Check, X, CornerUpLeft } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, UserPlus, KeyRound, Check, X, CornerUpLeft, Settings } from 'lucide-react';
 import { CreateUser, GetDepartments } from '../../wailsjs/go/backend/App';
 import { backend } from '../../wailsjs/go/models';
 import Button from '../components/Button';
@@ -18,6 +18,8 @@ const roleRoutes: { [key: string]: string } = {
   teacher: '/teacher',
   admin: '/admin'
 };
+
+const FIXED_DATABASE_NAME = 'logbookdb';
 
 const getErrorText = (err: unknown): string => {
   if (typeof err === 'string') {
@@ -188,7 +190,7 @@ function LoginPage() {
   const [lockExpression, setLockExpression] = useState('lockmode: false');
   const [lockComputerLab, setLockComputerLab] = useState('');
   const [lockPCNumber, setLockPCNumber] = useState('');
-  const [lockStationLabel, setLockStationLabel] = useState('Unconfigured PC');
+  const [lockStationLabel, setLockStationLabel] = useState('');
   const [lockStatusMessage, setLockStatusMessage] = useState('');
   const [lockErrorMessage, setLockErrorMessage] = useState('');
   const [lockSaving, setLockSaving] = useState(false);
@@ -196,11 +198,9 @@ function LoginPage() {
   const [showLockTrigger, setShowLockTrigger] = useState(false);
   const [dbHost, setDbHost] = useState('');
   const [dbPort, setDbPort] = useState('3306');
-  const [dbName, setDbName] = useState('');
   const [dbUsername, setDbUsername] = useState('');
   const [dbPassword, setDbPassword] = useState('');
   const [dbConfigPath, setDbConfigPath] = useState('');
-  const [dbMode, setDbMode] = useState('production');
   const [dbConfigured, setDbConfigured] = useState(false);
   const [dbStatusMessage, setDbStatusMessage] = useState('');
   const [dbErrorMessage, setDbErrorMessage] = useState('');
@@ -219,7 +219,6 @@ function LoginPage() {
     dbname: string;
     username: string;
     password: string;
-    mode: string;
     source_path: string;
     write_path: string;
     is_configured: boolean;
@@ -295,7 +294,6 @@ function LoginPage() {
   const saveDatabaseSetupBridge = async (
     host: string,
     port: string,
-    dbname: string,
     username: string,
     passwordValue: string
   ): Promise<DatabaseSetupSettings> => {
@@ -304,7 +302,7 @@ function LoginPage() {
       throw new Error('This app build does not support database configuration updates yet. Please restart after updating.');
     }
 
-    return appBridge.SaveDatabaseSetupSettings(host, port, dbname, username, passwordValue);
+    return appBridge.SaveDatabaseSetupSettings(host, port, FIXED_DATABASE_NAME, username, passwordValue);
   };
 
   const handleForgotVerifyIdentity = async () => {
@@ -453,6 +451,7 @@ function LoginPage() {
       : 'password';
 
   const openLockSettingsModal = async () => {
+    setShowLockTrigger(false);
     setShowLockSettingsModal(true);
     setLockErrorMessage('');
     setLockStatusMessage('');
@@ -465,7 +464,7 @@ function LoginPage() {
       setLockExpression(`lockmode: ${settings.lock_mode ? 'true' : 'false'}`);
       setLockComputerLab(settings.computer_lab ?? '');
       setLockPCNumber(settings.pc_number ?? '');
-      setLockStationLabel(settings.station_label ?? 'Unconfigured PC');
+      setLockStationLabel(settings.station_label ?? '');
     } catch (err) {
       setLockErrorMessage(getThrowableMessage(err, 'Unable to load lock mode status.'));
     }
@@ -474,10 +473,8 @@ function LoginPage() {
       const dbSettings = await loadDatabaseSetupBridge();
       setDbHost(dbSettings.host ?? '');
       setDbPort(dbSettings.port ?? '3306');
-      setDbName(dbSettings.dbname ?? '');
       setDbUsername(dbSettings.username ?? '');
       setDbPassword(dbSettings.password ?? '');
-      setDbMode((dbSettings.mode ?? 'production').toLowerCase());
       setDbConfigured(Boolean(dbSettings.is_configured));
       setDbConfigPath(dbSettings.source_path || dbSettings.write_path || '');
     } catch (err) {
@@ -491,19 +488,25 @@ function LoginPage() {
     setLockStatusMessage('');
     setDbErrorMessage('');
     setDbStatusMessage('');
-    setShowLockTrigger(false);
   };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
+      const isCtrlShiftK =
+        event.ctrlKey &&
+        event.shiftKey &&
+        (event.code === 'KeyK' || event.key.toLowerCase() === 'k');
 
-        if (showLockTrigger || showLockSettingsModal) {
-          closeLockSettingsModal();
-        } else {
-          setShowLockTrigger(true);
-        }
+      if (!isCtrlShiftK) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (showLockSettingsModal) {
+        closeLockSettingsModal();
+      } else {
+        setShowLockTrigger((prev) => !prev);
       }
     };
 
@@ -511,7 +514,7 @@ function LoginPage() {
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [showLockTrigger, showLockSettingsModal]);
+  }, [showLockSettingsModal]);
 
   const applyLockSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -539,7 +542,7 @@ function LoginPage() {
       setLockExpression(`lockmode: ${updatedMode ? 'true' : 'false'}`);
       setLockComputerLab(updatedSettings.computer_lab ?? '');
       setLockPCNumber(updatedSettings.pc_number ?? '');
-      setLockStationLabel(updatedSettings.station_label ?? 'Unconfigured PC');
+      setLockStationLabel(updatedSettings.station_label ?? '');
       setLockStatusMessage(`Lock mode is now ${updatedMode ? 'enabled' : 'disabled'}.`);
       lockUpdated = true;
     } catch (err) {
@@ -550,17 +553,14 @@ function LoginPage() {
       const updated = await saveDatabaseSetupBridge(
         dbHost.trim(),
         dbPort.trim(),
-        dbName.trim(),
         dbUsername.trim(),
         dbPassword
       );
 
       setDbHost(updated.host ?? '');
       setDbPort(updated.port ?? '3306');
-      setDbName(updated.dbname ?? '');
       setDbUsername(updated.username ?? '');
       setDbPassword(updated.password ?? '');
-      setDbMode((updated.mode ?? 'production').toLowerCase());
       setDbConfigured(Boolean(updated.is_configured));
       const resolvedPath = updated.source_path || updated.write_path || '';
       setDbConfigPath(resolvedPath);
@@ -869,7 +869,9 @@ function LoginPage() {
       {showLockTrigger && (
         <button
           type="button"
-          onClick={openLockSettingsModal}
+          onClick={() => {
+            void openLockSettingsModal();
+          }}
           className="absolute bottom-4 left-4 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-gray-700 shadow-md ring-1 ring-gray-200 hover:bg-white"
           title="Settings"
           aria-label="Settings"
@@ -932,7 +934,7 @@ function LoginPage() {
                   type="text"
                   value={lockComputerLab}
                   onChange={(e) => setLockComputerLab(e.target.value)}
-                  placeholder="Example: Lab A"
+                  placeholder=""
                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   autoComplete="off"
                 />
@@ -947,7 +949,7 @@ function LoginPage() {
                   type="text"
                   value={lockPCNumber}
                   onChange={(e) => setLockPCNumber(e.target.value)}
-                  placeholder="Example: 12"
+                  placeholder=""
                   className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                   autoComplete="off"
                 />
@@ -962,7 +964,7 @@ function LoginPage() {
                 </div>
 
                 <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                  Mode: <span className="font-semibold text-slate-700 capitalize">{dbMode || 'production'}</span>
+                  Database: <span className="font-semibold text-slate-700">{FIXED_DATABASE_NAME}</span>
                   <br />
                   Config file: <span className="font-semibold break-all text-slate-700">{dbConfigPath || 'Not created yet'}</span>
                 </div>
@@ -976,7 +978,7 @@ function LoginPage() {
                     type="text"
                     value={dbHost}
                     onChange={(e) => setDbHost(e.target.value)}
-                    placeholder="Example: 127.0.0.1"
+                    placeholder=""
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     autoComplete="off"
                   />
@@ -991,22 +993,7 @@ function LoginPage() {
                     type="text"
                     value={dbPort}
                     onChange={(e) => setDbPort(e.target.value)}
-                    placeholder="Example: 3306"
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    autoComplete="off"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="db-name" className="block text-sm font-semibold text-gray-700 mb-1.5">
-                    Database Name
-                  </label>
-                  <input
-                    id="db-name"
-                    type="text"
-                    value={dbName}
-                    onChange={(e) => setDbName(e.target.value)}
-                    placeholder="Example: logbookdb"
+                    placeholder=""
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     autoComplete="off"
                   />
@@ -1021,7 +1008,7 @@ function LoginPage() {
                     type="text"
                     value={dbUsername}
                     onChange={(e) => setDbUsername(e.target.value)}
-                    placeholder="Example: root"
+                    placeholder=""
                     className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                     autoComplete="off"
                   />
@@ -1037,7 +1024,7 @@ function LoginPage() {
                       type={showDbPassword ? 'text' : 'password'}
                       value={dbPassword}
                       onChange={(e) => setDbPassword(e.target.value)}
-                      placeholder="Database password"
+                      placeholder=""
                       className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                       autoComplete="new-password"
                     />

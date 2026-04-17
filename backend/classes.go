@@ -12,44 +12,6 @@ import (
 const joinCodeCharset = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 const joinCodeRawLength = 8
 
-func (a *App) ensureClassDeleteColumns() error {
-	if err := a.checkDB(); err != nil {
-		return err
-	}
-
-	ensureClassColumn := func(columnName, columnDef string) error {
-		var exists int
-		err := a.db.QueryRow(`
-			SELECT COUNT(*)
-			FROM INFORMATION_SCHEMA.COLUMNS
-			WHERE TABLE_SCHEMA = DATABASE()
-			  AND TABLE_NAME = 'classes'
-			  AND COLUMN_NAME = ?
-		`, columnName).Scan(&exists)
-		if err != nil {
-			return err
-		}
-		if exists == 0 {
-			if _, err := a.db.Exec(fmt.Sprintf("ALTER TABLE classes ADD COLUMN %s %s", columnName, columnDef)); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	if err := ensureClassColumn("is_deleted", "TINYINT(1) NOT NULL DEFAULT 0"); err != nil {
-		return err
-	}
-	if err := ensureClassColumn("deleted_at", "DATETIME NULL"); err != nil {
-		return err
-	}
-	if err := ensureClassColumn("deleted_by_user_id", "INT NULL"); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func generateJoinCodeCandidate() (string, error) {
 	randomBytes := make([]byte, joinCodeRawLength)
 	if _, err := rand.Read(randomBytes); err != nil {
@@ -121,9 +83,6 @@ func (a *App) GetTeacherClassesByUserID(userID int) ([]CourseClass, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
-		return nil, err
-	}
 
 	// First get the teacher ID from the user ID
 	teacherID, err := a.GetTeacherID(userID)
@@ -138,9 +97,6 @@ func (a *App) GetTeacherClassesByUserID(userID int) ([]CourseClass, error) {
 // GetTeacherClasses returns all classes for a specific teacher
 func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 	if err := a.checkDB(); err != nil {
-		return nil, err
-	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
 		return nil, err
 	}
 
@@ -162,7 +118,6 @@ func (a *App) GetTeacherClasses(teacherID int) ([]CourseClass, error) {
 		) enrollment_count ON c.class_id = enrollment_count.class_id
 		WHERE c.teacher_id = ?
 		  AND (c.is_archived = 0 OR c.is_archived IS NULL)
-		  AND COALESCE(c.is_deleted, 0) = 0
 		ORDER BY c.subject_code, c.semester, c.school_year
 	`
 	rows, err := a.db.Query(query, teacherID)
@@ -228,9 +183,6 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
-		return nil, err
-	}
 	if err := a.ensureStudentArchivedClassesTable(); err != nil {
 		return nil, err
 	}
@@ -257,7 +209,6 @@ func (a *App) GetStudentClasses(studentUserID int) ([]CourseClass, error) {
 		  AND cl.status IN ('join', 'added')
 		  AND c.is_active = 1
 		  AND COALESCE(c.is_archived, 0) = 0
-		  AND COALESCE(c.is_deleted, 0) = 0
 		  AND sac.class_id IS NULL
 		ORDER BY c.subject_code
 	`
@@ -336,9 +287,6 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 	if err := a.checkDB(); err != nil {
 		return 0, err
 	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
-		return 0, err
-	}
 
 	normalizedEDPCode := strings.TrimSpace(edpCode)
 	normalizedSchedule := strings.TrimSpace(schedule)
@@ -366,7 +314,6 @@ func (a *App) CreateClass(subjectCode string, teacherUserID int, edpCode, schedu
 			  AND COALESCE(semester, '') = ?
 			  AND COALESCE(school_year, '') = ?
 			  AND COALESCE(descriptive_title, '') = ?
-			  AND COALESCE(is_deleted, 0) = 0
 			ORDER BY class_id DESC
 			LIMIT 1
 		`
@@ -501,14 +448,11 @@ func (a *App) UpdateClass(classID int, schedule, room, section, semester, school
 	if err := a.checkDB(); err != nil {
 		return err
 	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
-		return err
-	}
 
 	query := `
 		UPDATE classes 
 		SET schedule = ?, room = ?, section = ?, semester = ?, school_year = ?, is_active = ?
-		WHERE class_id = ? AND COALESCE(is_deleted, 0) = 0
+		WHERE class_id = ?
 	`
 	_, err := a.db.Exec(
 		query,
@@ -533,13 +477,10 @@ func (a *App) CloseClass(classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
-		return err
-	}
 
 	// Check class exists and is active
 	var isActive bool
-	err := a.db.QueryRow(`SELECT is_active FROM classes WHERE class_id = ? AND COALESCE(is_deleted, 0) = 0`, classID).Scan(&isActive)
+	err := a.db.QueryRow(`SELECT is_active FROM classes WHERE class_id = ?`, classID).Scan(&isActive)
 	if err != nil {
 		return fmt.Errorf("class not found")
 	}
@@ -547,7 +488,7 @@ func (a *App) CloseClass(classID int) error {
 		return fmt.Errorf("class is already closed")
 	}
 
-	query := `UPDATE classes SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE class_id = ? AND COALESCE(is_deleted, 0) = 0`
+	query := `UPDATE classes SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`
 	_, err = a.db.Exec(query, classID)
 	if err != nil {
 		log.Printf("Failed to close class: %v", err)
@@ -563,20 +504,13 @@ func (a *App) ReopenClass(classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
-		return err
-	}
 
 	// Check class exists and is not archived
 	var isActive bool
 	var isArchived bool
-	var isDeleted bool
-	err := a.db.QueryRow(`SELECT is_active, COALESCE(is_archived, 0), COALESCE(is_deleted, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isActive, &isArchived, &isDeleted)
+	err := a.db.QueryRow(`SELECT is_active, COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isActive, &isArchived)
 	if err != nil {
 		return fmt.Errorf("class not found")
-	}
-	if isDeleted {
-		return fmt.Errorf("deleted classes cannot be reopened")
 	}
 	if isActive {
 		return fmt.Errorf("class is already active")
@@ -585,7 +519,7 @@ func (a *App) ReopenClass(classID int) error {
 		return fmt.Errorf("archived classes cannot be reopened. Unarchive first")
 	}
 
-	query := `UPDATE classes SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ? AND COALESCE(is_deleted, 0) = 0`
+	query := `UPDATE classes SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`
 	_, err = a.db.Exec(query, classID)
 	if err != nil {
 		log.Printf("Failed to reopen class: %v", err)
@@ -596,17 +530,11 @@ func (a *App) ReopenClass(classID int) error {
 	return nil
 }
 
-// DeleteClass soft-deletes a class owned by the teacher.
-// The class must be closed (inactive) and not archived so active classlists are not removed by accident.
+// DeleteClass permanently deletes a class owned by the teacher.
+// Active classes can be deleted only when there are no enrolled students.
 func (a *App) DeleteClass(classID int, teacherUserID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
-	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
-		return err
-	}
-	if err := a.ensureAttendanceSessionsTable(); err != nil {
-		return fmt.Errorf("failed to initialize attendance sessions table: %w", err)
 	}
 
 	teacherID, err := a.GetTeacherID(teacherUserID)
@@ -616,62 +544,51 @@ func (a *App) DeleteClass(classID int, teacherUserID int) error {
 
 	var isActive bool
 	var isArchived bool
-	var isDeleted bool
 	err = a.db.QueryRow(
-		`SELECT is_active, COALESCE(is_archived, 0), COALESCE(is_deleted, 0) FROM classes WHERE class_id = ? AND teacher_id = ?`,
+		`SELECT is_active, COALESCE(is_archived, 0) FROM classes WHERE class_id = ? AND teacher_id = ?`,
 		classID, teacherID,
-	).Scan(&isActive, &isArchived, &isDeleted)
+	).Scan(&isActive, &isArchived)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("class not found or not authorized")
 	}
 	if err != nil {
 		return err
 	}
-	if isDeleted {
-		return fmt.Errorf("class has already been deleted")
-	}
 	if isArchived {
 		return fmt.Errorf("this class is archived — restore it from Stored archives first if you still need to remove it")
 	}
-	if isActive {
-		return fmt.Errorf("set the class to Inactive before deleting; use Edit to correct details while the class is active")
+
+	var enrolledCount int
+	err = a.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM joined_classes
+		WHERE class_id = ?
+		  AND status IN ('join', 'added')
+		  AND COALESCE(is_archived, 0) = 0
+	`, classID).Scan(&enrolledCount)
+	if err != nil {
+		return err
+	}
+
+	if isActive && enrolledCount > 0 {
+		return fmt.Errorf("active classes with enrolled students cannot be deleted. Set the class to Inactive first")
 	}
 
 	res, err := a.db.Exec(`
-		UPDATE classes
-		SET is_deleted = 1,
-			deleted_at = CURRENT_TIMESTAMP,
-			deleted_by_user_id = ?,
-			is_archived = 1,
-			is_active = 0,
-			updated_at = CURRENT_TIMESTAMP
+		DELETE FROM classes
 		WHERE class_id = ?
 		  AND teacher_id = ?
-		  AND COALESCE(is_deleted, 0) = 0
-	`, teacherUserID, classID, teacherID)
+	`, classID, teacherID)
 	if err != nil {
 		log.Printf("Failed to delete class: %v", err)
 		return err
 	}
 
-	// Keep related records hidden and immutable after class deletion.
-	_, _ = a.db.Exec(`UPDATE joined_classes SET is_archived = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`, classID)
-	_, _ = a.db.Exec(`UPDATE attendance SET is_archived = 1, updated_at = CURRENT_TIMESTAMP WHERE class_id = ?`, classID)
-	_, _ = a.db.Exec(`
-		UPDATE attendance_sessions
-		SET is_archived = 1,
-			is_deleted = 1,
-			deleted_at = CURRENT_TIMESTAMP,
-			deleted_by_user_id = ?,
-			updated_at = CURRENT_TIMESTAMP
-		WHERE class_id = ?
-	`, teacherUserID, classID)
-
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("class not found or not authorized")
 	}
-	log.Printf("Soft-deleted class: class_id=%d teacher_id=%d deleted_by=%d", classID, teacherID, teacherUserID)
+	log.Printf("Deleted class permanently: class_id=%d teacher_id=%d deleted_by=%d", classID, teacherID, teacherUserID)
 	return nil
 }
 
@@ -695,9 +612,6 @@ func (a *App) GetClassStudents(classID int) ([]ClasslistEntry, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
-		return nil, err
-	}
 
 	query := `
 		SELECT 
@@ -714,7 +628,6 @@ func (a *App) GetClassStudents(classID int) ([]ClasslistEntry, error) {
 		JOIN subjects sub ON c.subject_code = sub.subject_code
 		WHERE cl.class_id = ? 
 		  AND cl.status IN ('join', 'added')
-		  AND COALESCE(c.is_deleted, 0) = 0
 		  AND (
 			COALESCE(c.is_archived, 0) = 1
 			OR cl.is_archived = 0
@@ -767,9 +680,6 @@ func (a *App) GetClassByID(classID int) (*CourseClass, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
-		return nil, err
-	}
 
 	query := `
 		SELECT c.class_id, c.subject_code, s.description as subject_name, c.descriptive_title, c.edp_code, c.join_code,
@@ -787,7 +697,6 @@ func (a *App) GetClassByID(classID int) (*CourseClass, error) {
 			GROUP BY class_id
 		) enrollment_count ON c.class_id = enrollment_count.class_id
 		WHERE c.class_id = ?
-		  AND COALESCE(c.is_deleted, 0) = 0
 	`
 
 	var class CourseClass

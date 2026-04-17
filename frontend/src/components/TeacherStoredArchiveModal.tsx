@@ -5,11 +5,12 @@ interface TeacherStoredArchiveModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialTab: AttendanceArchiveTab;
+  refreshToken?: number;
   onClassUnarchived?: () => void;
   onAttendanceUnarchived?: () => void;
 }
 
-function TeacherStoredArchiveModal({ isOpen, onClose, initialTab, onClassUnarchived, onAttendanceUnarchived }: TeacherStoredArchiveModalProps) {
+function TeacherStoredArchiveModal({ isOpen, onClose, initialTab, refreshToken, onClassUnarchived, onAttendanceUnarchived }: TeacherStoredArchiveModalProps) {
   return (
     <Modal
       isOpen={isOpen}
@@ -18,7 +19,13 @@ function TeacherStoredArchiveModal({ isOpen, onClose, initialTab, onClassUnarchi
       size="2xl"
       contentMinHeightClassName={MODAL_BODY_MIN_HEIGHT_CLASS}
     >
-      <TeacherAttendanceArchive initialTab={initialTab} hideHeader onClassUnarchived={onClassUnarchived} onAttendanceUnarchived={onAttendanceUnarchived} />
+      <TeacherAttendanceArchive
+        initialTab={initialTab}
+        refreshToken={refreshToken}
+        hideHeader
+        onClassUnarchived={onClassUnarchived}
+        onAttendanceUnarchived={onAttendanceUnarchived}
+      />
     </Modal>
   );
 }

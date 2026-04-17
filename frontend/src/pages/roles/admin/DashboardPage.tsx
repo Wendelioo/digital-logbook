@@ -171,7 +171,7 @@ function DashboardOverview() {
                 <InfoCard
                   icon={<LogIn className="h-6 w-6" />}
                   label="Current PC Used"
-                  value={currentLogin?.pc_number || (currentLogin ? 'Unconfigured PC' : 'Not Logged In')}
+                  value={currentLogin?.pc_number || (currentLogin ? '' : 'Not Logged In')}
                   iconColor={currentLogin ? 'green' : 'yellow'}
                 />
                 <InfoCard

@@ -82,15 +82,29 @@ FunctionEnd
 Section
     !insertmacro wails.setShellContext
 
+    # Detect whether this is an upgrade before installer files are copied.
+    StrCpy $R0 "0"
+    IfFileExists "$INSTDIR\${PRODUCT_EXECUTABLE}" 0 +2
+    StrCpy $R0 "1"
+
     !insertmacro wails.webview2runtime
 
     SetOutPath $INSTDIR
 
     !insertmacro wails.files
 
-    # Install DB config for first-time installs; keep existing config on upgrade.
+    # Install blank DB config template beside the executable for first-time installs; keep existing config on upgrade.
     IfFileExists "$INSTDIR\config.ini" +2 0
-    File "..\..\..\config.ini"
+    File /oname=config.ini "config.template.ini"
+
+    # Production runtime checks %APPDATA%/digital-logbook/config.ini first.
+    # For first-time installs, reset user-level config to blank to avoid carrying over dev/test values.
+    # For upgrades, preserve the user's existing APPDATA config.
+    StrCmp $R0 "1" +5 0
+    CreateDirectory "$APPDATA\digital-logbook"
+    SetOutPath "$APPDATA\digital-logbook"
+    File /oname=config.ini "config.template.ini"
+    SetOutPath $INSTDIR
 
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"

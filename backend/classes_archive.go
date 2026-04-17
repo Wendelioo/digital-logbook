@@ -19,19 +19,12 @@ func (a *App) ArchiveClass(classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
-		return err
-	}
 
 	// Check class status
 	var isArchived bool
-	var isDeleted bool
-	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0), COALESCE(is_deleted, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isArchived, &isDeleted)
+	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&isArchived)
 	if err != nil {
 		return fmt.Errorf("class not found")
-	}
-	if isDeleted {
-		return fmt.Errorf("deleted classes cannot be archived")
 	}
 	if isArchived {
 		return fmt.Errorf("class is already archived")
@@ -78,18 +71,11 @@ func (a *App) UnarchiveClass(classID int) error {
 	if err := a.checkDB(); err != nil {
 		return err
 	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
-		return err
-	}
 
 	var classArchived bool
-	var classDeleted bool
-	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0), COALESCE(is_deleted, 0) FROM classes WHERE class_id = ?`, classID).Scan(&classArchived, &classDeleted)
+	err := a.db.QueryRow(`SELECT COALESCE(is_archived, 0) FROM classes WHERE class_id = ?`, classID).Scan(&classArchived)
 	if err != nil {
 		return fmt.Errorf("class not found")
-	}
-	if classDeleted {
-		return fmt.Errorf("deleted classes cannot be restored")
 	}
 	if !classArchived {
 		return fmt.Errorf("class is not archived")
@@ -137,9 +123,6 @@ func (a *App) GetArchivedClasses(teacherUserID int) ([]CourseClass, error) {
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
-		return nil, err
-	}
 
 	query := `
 		SELECT 
@@ -159,7 +142,6 @@ func (a *App) GetArchivedClasses(teacherUserID int) ([]CourseClass, error) {
 		) enrollment_count ON c.class_id = enrollment_count.class_id
 		WHERE c.teacher_id = ?
 		  AND c.is_archived = 1
-		  AND COALESCE(c.is_deleted, 0) = 0
 		ORDER BY c.school_year DESC, c.semester DESC, s.subject_code
 	`
 
@@ -238,9 +220,6 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 	if err := a.checkDB(); err != nil {
 		return nil, err
 	}
-	if err := a.ensureClassDeleteColumns(); err != nil {
-		return nil, err
-	}
 	if err := a.ensureStudentArchivedClassesTable(); err != nil {
 		return nil, err
 	}
@@ -265,7 +244,6 @@ func (a *App) GetStudentArchivedClasses(studentUserID int) ([]CourseClass, error
 		) enrollment_count ON c.class_id = enrollment_count.class_id
 		WHERE cl.student_id = ?
 		  AND cl.status IN ('join', 'added')
-		  AND COALESCE(c.is_deleted, 0) = 0
 		  AND (
 			COALESCE(c.is_archived, 0) = 1
 			OR sac.class_id IS NOT NULL

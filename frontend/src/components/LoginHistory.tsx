@@ -367,7 +367,7 @@ export default function LoginHistory({
                   <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap align-middle">
                       <div className="text-sm font-medium text-gray-900">
-                        {log.pc_number || <span className="text-gray-400 italic">Unknown</span>}
+                        {log.pc_number || ''}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap align-middle text-sm text-gray-700 tabular-nums">

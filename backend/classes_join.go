@@ -585,7 +585,6 @@ func (a *App) resolveDepartmentCode(value string) (string, error) {
 			UPPER(LTRIM(RTRIM(department_code))) = UPPER(?)
 			OR UPPER(LTRIM(RTRIM(department_name))) = UPPER(?)
 		)
-		  AND COALESCE(is_deleted, 0) = 0
 	`, trimmed, trimmed).Scan(&code)
 	if err == sql.ErrNoRows {
 		// Keep original value when no mapping exists; caller can still compare safely.
@@ -772,26 +771,34 @@ func (a *App) buildClasslistPrintableDocument(classID int) (printableExportDocum
 	}
 
 	var subjectCode string
-	var subjectName, schedule, room, teacherName, semester, schoolYear sql.NullString
+	var subjectName, schedule, room, teacherName, semester, schoolYear, edpCode, joinCode sql.NullString
 	classQuery := `
 		SELECT
 			c.subject_code,
-			s.description,
+			COALESCE(NULLIF(TRIM(s.description), ''), NULLIF(TRIM(c.descriptive_title), ''), c.subject_code) as subject_name,
 			c.schedule,
 			c.room,
-			(CONCAT(t.last_name, ', ', t.first_name)) as teacher_name,
+			TRIM(CONCAT(
+				COALESCE(t.last_name, ''),
+				CASE WHEN COALESCE(t.last_name, '') <> '' AND COALESCE(t.first_name, '') <> '' THEN ', ' ELSE '' END,
+				COALESCE(t.first_name, '')
+			)) as teacher_name,
 			c.semester,
-			c.school_year
+			c.school_year,
+			c.edp_code,
+			c.join_code
 		FROM classes c
-		JOIN subjects s ON c.subject_code = s.subject_code
+		LEFT JOIN subjects s ON c.subject_code = s.subject_code
 		LEFT JOIN teachers t ON c.teacher_id = t.id
 		WHERE c.class_id = ?
 	`
-	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName, &semester, &schoolYear)
+	err := a.db.QueryRow(classQuery, classID).Scan(&subjectCode, &subjectName, &schedule, &room, &teacherName, &semester, &schoolYear, &edpCode, &joinCode)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return printableExportDocument{}, "", 0, fmt.Errorf("class not found")
+		}
 		log.Printf("Failed to get class info for classlist export: %v", err)
-		subjectCode = fmt.Sprintf("class_%d", classID)
-		subjectName = sql.NullString{String: "Unknown Subject", Valid: true}
+		return printableExportDocument{}, "", 0, err
 	}
 
 	query := `
@@ -843,30 +850,33 @@ func (a *App) buildClasslistPrintableDocument(classID int) (printableExportDocum
 		students = append(students, s)
 	}
 
-	subjectNameValue := ""
-	if subjectName.Valid && strings.TrimSpace(subjectName.String) != "" {
-		subjectNameValue = subjectName.String
+	fieldOrNA := func(value sql.NullString) string {
+		if value.Valid {
+			trimmed := strings.TrimSpace(value.String)
+			if trimmed != "" {
+				return trimmed
+			}
+		}
+		return "N/A"
 	}
-	scheduleValue := ""
-	if schedule.Valid && strings.TrimSpace(schedule.String) != "" {
-		scheduleValue = schedule.String
+
+	subjectCodeValue := strings.TrimSpace(subjectCode)
+	if subjectCodeValue == "" {
+		subjectCodeValue = "N/A"
 	}
-	roomValue := ""
-	if room.Valid && strings.TrimSpace(room.String) != "" {
-		roomValue = room.String
+	subjectCodeForFile := subjectCodeValue
+	if subjectCodeForFile == "N/A" {
+		subjectCodeForFile = fmt.Sprintf("class_%d", classID)
 	}
-	teacherValue := ""
-	if teacherName.Valid && strings.TrimSpace(teacherName.String) != "" {
-		teacherValue = teacherName.String
-	}
-	semesterValue := ""
-	if semester.Valid && strings.TrimSpace(semester.String) != "" {
-		semesterValue = semester.String
-	}
-	schoolYearValue := ""
-	if schoolYear.Valid && strings.TrimSpace(schoolYear.String) != "" {
-		schoolYearValue = schoolYear.String
-	}
+
+	subjectNameValue := fieldOrNA(subjectName)
+	scheduleValue := fieldOrNA(schedule)
+	roomValue := fieldOrNA(room)
+	teacherValue := fieldOrNA(teacherName)
+	semesterValue := fieldOrNA(semester)
+	schoolYearValue := fieldOrNA(schoolYear)
+	edpCodeValue := fieldOrNA(edpCode)
+	joinCodeValue := fieldOrNA(joinCode)
 
 	var exportRows [][]string
 	for index, s := range students {
@@ -894,16 +904,20 @@ func (a *App) buildClasslistPrintableDocument(classID int) (printableExportDocum
 	}
 
 	doc := printableExportDocument{
-		Title:    "CLASS LIST",
+		Title:    "Class List",
 		Subtitle: fmt.Sprintf("School Year %s - %s", schoolYearValue, semesterValue),
 		Details: []printableExportField{
-			{Label: "Subject Code", Value: subjectCode},
-			{Label: "Subject Name", Value: subjectNameValue},
-			{Label: "Instructor", Value: teacherValue},
+			{Label: "Subject Code", Value: subjectCodeValue},
 			{Label: "Schedule", Value: scheduleValue},
+			{Label: "Subject Name", Value: subjectNameValue},
 			{Label: "Room", Value: roomValue},
+			{Label: "EDP Code", Value: edpCodeValue},
+			{Label: "Join Code", Value: joinCodeValue},
+			{Label: "Semester", Value: semesterValue},
+			{Label: "School Year", Value: schoolYearValue},
+			{Label: "Instructor", Value: teacherValue},
 		},
-		TableNote:        "",
+		TableNote:        fmt.Sprintf("Students List (Total: %d)", len(exportRows)),
 		Headers:          []string{"NO.", "STUDENT ID", "NAME", "EMAIL", "CONTACT"},
 		Rows:             exportRows,
 		Footer:           nil,
@@ -913,7 +927,19 @@ func (a *App) buildClasslistPrintableDocument(classID int) (printableExportDocum
 		GeneratedAt:      time.Now(),
 	}
 
-	return doc, subjectCode, len(exportRows), nil
+	return doc, subjectCodeForFile, len(exportRows), nil
+}
+
+func classlistCSVTextCell(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	if strings.HasPrefix(trimmed, "=\"") && strings.HasSuffix(trimmed, "\"") {
+		return trimmed
+	}
+	escaped := strings.ReplaceAll(trimmed, "\"", "\"\"")
+	return fmt.Sprintf("=\"%s\"", escaped)
 }
 
 // ExportClasslistCSV exports the classlist (enrolled students) for a class to CSV.
@@ -922,6 +948,11 @@ func (a *App) ExportClasslistCSV(classID int, savePath string) (string, error) {
 	doc, subjectCode, studentCount, err := a.buildClasslistPrintableDocument(classID)
 	if err != nil {
 		return "", err
+	}
+	for rowIndex := range doc.Rows {
+		if len(doc.Rows[rowIndex]) > 4 {
+			doc.Rows[rowIndex][4] = classlistCSVTextCell(doc.Rows[rowIndex][4])
+		}
 	}
 	defaultName := fmt.Sprintf("classlist_%s_%s.csv", subjectCode, time.Now().Format("20060102_150405"))
 	filename := resolveExportPath(savePath, defaultName)

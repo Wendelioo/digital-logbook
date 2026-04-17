@@ -18,6 +18,7 @@ import {
   ExportLogsDOCXByRange,
 } from '../../../../wailsjs/go/backend/App';
 import { openExportSaveDialog, defaultLogsRangeFilename, type ExportFormat } from '../../../utils/exportSaveDialog';
+import { getDateRangeForPeriod, TIME_PERIOD_OPTIONS, type TimePeriodValue } from '../../../utils/timePeriod';
 import { LoginLog } from './types';
 
 function ViewLogs() {
@@ -36,9 +37,11 @@ function ViewLogs() {
   // Filters
   const [showFilters, setShowFilters] = useState(false);
   const [filterUserType, setFilterUserType] = useState('');
+  const [filterTimePeriod, setFilterTimePeriod] = useState<TimePeriodValue>('');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [pendingFilterUserType, setPendingFilterUserType] = useState('');
+  const [pendingFilterTimePeriod, setPendingFilterTimePeriod] = useState<TimePeriodValue>('');
   const [pendingFilterDateFrom, setPendingFilterDateFrom] = useState('');
   const [pendingFilterDateTo, setPendingFilterDateTo] = useState('');
 
@@ -146,13 +149,29 @@ function ViewLogs() {
 
   const clearSearch = () => { setSearchQuery(''); setCurrentPage(1); };
 
-  const hasActiveDateRange = Boolean(filterDateFrom || filterDateTo);
+  const hasActiveDateRange = Boolean(filterDateFrom || filterDateTo || filterTimePeriod);
   const activeFilterCount = (filterUserType ? 1 : 0) + (hasActiveDateRange ? 1 : 0);
+
+  const updatePendingPeriod = (period: TimePeriodValue) => {
+    setPendingFilterTimePeriod(period);
+    const range = getDateRangeForPeriod(period);
+    if (range) {
+      setPendingFilterDateFrom(range.from);
+      setPendingFilterDateTo(range.to);
+    }
+    if (period === '') {
+      setPendingFilterDateFrom('');
+      setPendingFilterDateTo('');
+    }
+  };
+
   const clearFilters = () => {
     setFilterUserType('');
+    setFilterTimePeriod('');
     setFilterDateFrom('');
     setFilterDateTo('');
     setPendingFilterUserType('');
+    setPendingFilterTimePeriod('');
     setPendingFilterDateFrom('');
     setPendingFilterDateTo('');
     setCurrentPage(1);
@@ -277,6 +296,7 @@ function ViewLogs() {
                 const nextOpen = !showFilters;
                 if (nextOpen) {
                   setPendingFilterUserType(filterUserType);
+                  setPendingFilterTimePeriod(filterTimePeriod);
                   setPendingFilterDateFrom(filterDateFrom);
                   setPendingFilterDateTo(filterDateTo);
                 }
@@ -305,6 +325,19 @@ function ViewLogs() {
                   </div>
 
                   <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Time Period</label>
+                    <select
+                      value={pendingFilterTimePeriod}
+                      onChange={(e) => updatePendingPeriod(e.target.value as TimePeriodValue)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      {TIME_PERIOD_OPTIONS.map((option) => (
+                        <option key={option.value || 'all_time'} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Date Range</label>
                     <div className="flex items-center gap-2">
                       <div className="relative flex-1 min-w-0">
@@ -312,7 +345,10 @@ function ViewLogs() {
                           type="date"
                           placeholder="From"
                           value={pendingFilterDateFrom}
-                          onChange={(e) => setPendingFilterDateFrom(e.target.value)}
+                          onChange={(e) => {
+                            setPendingFilterDateFrom(e.target.value);
+                            setPendingFilterTimePeriod('custom');
+                          }}
                           className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                         />
                       </div>
@@ -322,7 +358,10 @@ function ViewLogs() {
                           type="date"
                           placeholder="To"
                           value={pendingFilterDateTo}
-                          onChange={(e) => setPendingFilterDateTo(e.target.value)}
+                          onChange={(e) => {
+                            setPendingFilterDateTo(e.target.value);
+                            setPendingFilterTimePeriod('custom');
+                          }}
                           className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                         />
                       </div>
@@ -353,9 +392,11 @@ function ViewLogs() {
                       type="button"
                       onClick={() => {
                         setPendingFilterUserType('');
+                        setPendingFilterTimePeriod('');
                         setPendingFilterDateFrom('');
                         setPendingFilterDateTo('');
                         setFilterUserType('');
+                        setFilterTimePeriod('');
                         setFilterDateFrom('');
                         setFilterDateTo('');
                         setCurrentPage(1);
@@ -375,6 +416,7 @@ function ViewLogs() {
                         }
 
                         setFilterUserType(pendingFilterUserType);
+                        setFilterTimePeriod(pendingFilterTimePeriod);
                         setFilterDateFrom(pendingFilterDateFrom);
                         setFilterDateTo(pendingFilterDateTo);
                         setCurrentPage(1);
@@ -469,7 +511,7 @@ function ViewLogs() {
               key: 'pc_number',
               label: 'PC Number',
               render: (log: LoginLog) => (
-                <span className="text-gray-600 text-xs sm:text-sm break-words">{log.pc_number || 'N/A'}</span>
+                <span className="text-gray-600 text-xs sm:text-sm break-words">{log.pc_number || ''}</span>
               )
             },
             {

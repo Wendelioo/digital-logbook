@@ -449,12 +449,21 @@ func parseDeactivatedDeletionDaysValue(raw string) (int, bool, error) {
 }
 
 func getUserAppConfigPath() (string, error) {
+	if getRuntimeMode() == runtimeModeDevelopment {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("unable to determine development app settings path: %w", err)
+		}
+
+		return filepath.Join(cwd, "config.dev.json"), nil
+	}
+
 	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
 
-	return filepath.Join(configDir, "digital-logbook", "config.json"), nil
+	return filepath.Join(configDir, "digital-logbook", "app-settings.json"), nil
 }
 
 func getUserConfigINIPath() (string, error) {
@@ -495,7 +504,8 @@ func GetRuntimeMode() string {
 	return getRuntimeMode()
 }
 
-// LoadAppSettings loads lock-mode settings from per-user app config storage.
+// LoadAppSettings loads lock/station settings from a runtime-mode-aware config path.
+// Development uses project-root config.dev.json; production uses user config storage.
 // Returns default config (lock mode off) if config file is not found.
 func LoadAppSettings() AppConfig {
 	defaultConfig := AppConfig{LockMode: false, ComputerLab: "", PCNumber: ""}
@@ -538,8 +548,8 @@ func LoadAppSettings() AppConfig {
 	return config
 }
 
-// SaveAppSettings saves application settings to user config storage.
-// This avoids write failures in protected install directories.
+// SaveAppSettings saves lock/station settings to the runtime-mode-aware config path.
+// In production this uses user config storage to avoid protected install directories.
 func SaveAppSettings(config AppConfig) error {
 	configPath, err := getUserAppConfigPath()
 	if err != nil {
@@ -605,7 +615,7 @@ func LoadDatabaseSettings() (DBConfig, error) {
 
 func getConfigINIPaths() []string {
 	mode := getRuntimeMode()
-	paths := make([]string, 0, 3)
+	paths := make([]string, 0, 2)
 
 	if mode == runtimeModeDevelopment {
 		if cwd, err := os.Getwd(); err == nil {
@@ -630,12 +640,6 @@ func getConfigINIPaths() []string {
 			paths = append(paths, filepath.Join(exeDir, "config.ini"))
 		} else {
 			log.Printf("Unable to determine executable directory: %v", err)
-		}
-
-		if cwd, err := os.Getwd(); err == nil {
-			paths = append(paths, filepath.Join(cwd, "config.ini"))
-		} else {
-			log.Printf("Unable to determine current working directory: %v", err)
 		}
 	}
 

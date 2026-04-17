@@ -91,10 +91,8 @@ function AttendanceClassSelection() {
   const [error, setError] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
-  const [dateRangeStart, setDateRangeStart] = useState('');
-  const [dateRangeEnd, setDateRangeEnd] = useState('');
-  const [pendingDateRangeStart, setPendingDateRangeStart] = useState('');
-  const [pendingDateRangeEnd, setPendingDateRangeEnd] = useState('');
+  const [attendanceDate, setAttendanceDate] = useState('');
+  const [pendingAttendanceDate, setPendingAttendanceDate] = useState('');
   const [classFilter, setClassFilter] = useState<string>('all');
   const [pendingClassFilter, setPendingClassFilter] = useState<string>('all');
   const [semesterFilter, setSemesterFilter] = useState<string>('all');
@@ -263,12 +261,8 @@ function AttendanceClassSelection() {
         sheet.date.includes(searchTerm)
       );
     }
-    if (dateRangeStart || dateRangeEnd) {
-      filtered = filtered.filter(sheet => {
-        if (dateRangeStart && sheet.date < dateRangeStart) return false;
-        if (dateRangeEnd && sheet.date > dateRangeEnd) return false;
-        return true;
-      });
+    if (attendanceDate) {
+      filtered = filtered.filter((sheet) => String(sheet.date || '').slice(0, 10) === attendanceDate);
     }
     if (classFilter !== 'all') {
       filtered = filtered.filter(sheet => String(sheet.class_id) === classFilter);
@@ -284,10 +278,10 @@ function AttendanceClassSelection() {
 
     setFilteredSheets(filtered);
     setCurrentPage(1);
-  }, [searchTerm, dateRangeStart, dateRangeEnd, classFilter, semesterFilter, schoolYearFilter, attendanceSheets, allTeacherClasses]);
+  }, [searchTerm, attendanceDate, classFilter, semesterFilter, schoolYearFilter, attendanceSheets, allTeacherClasses]);
 
   const activeFilterCount =
-    (dateRangeStart || dateRangeEnd ? 1 : 0) +
+    (attendanceDate ? 1 : 0) +
     (classFilter !== 'all' ? 1 : 0) +
     (semesterFilter !== 'all' ? 1 : 0) +
     (schoolYearFilter !== 'all' ? 1 : 0);
@@ -493,16 +487,14 @@ function AttendanceClassSelection() {
     const deleteKey = `${sheet.class_id}-${sheet.date}-${sessionId}`;
 
     const ok = await confirm({
-      title: 'Delete saved attendance permanently',
+      title: 'Delete attendance session?',
       message:
-        `This removes the session and all attendance marks for it from the database. It cannot be undone.\n\n` +
+        `This will permanently delete this attendance session.\n\n` +
         `Class: ${sheet.subject_code} — ${sheet.subject_name}\n` +
         `Date: ${formattedDate}\n` +
-        `Session: ${sessionTitle} (Session ID ${sessionId})\n` +
-        `Counts: Present ${sheet.present_count}, Absent ${sheet.absent_count}, Late ${sheet.late_count}\n\n` +
-        `Cancel if this is the wrong class or date. Use Rename while the session is still open if you only need to fix the session title.`,
+        `Session: ${sessionTitle} (ID ${sessionId})`,
       variant: 'danger',
-      confirmLabel: 'Delete permanently',
+      confirmLabel: 'Delete',
       cancelLabel: 'Cancel',
     });
     if (!ok) return;
@@ -510,6 +502,8 @@ function AttendanceClassSelection() {
     setDeletingAttendanceKey(deleteKey);
     try {
       await DeleteAttendanceSession(sessionId, user.id);
+      navigate(location.pathname, { replace: true, state: null });
+      setShowArchiveModal(false);
       setRefreshKey((prev) => prev + 1);
       toast('Attendance session deleted permanently.', 'success');
     } catch (error) {
@@ -778,8 +772,7 @@ function AttendanceClassSelection() {
                 onClick={() => {
                   const nextOpen = !showFilters;
                   if (nextOpen) {
-                    setPendingDateRangeStart(dateRangeStart);
-                    setPendingDateRangeEnd(dateRangeEnd);
+                    setPendingAttendanceDate(attendanceDate);
                     setPendingClassFilter(classFilter);
                     setPendingSemesterFilter(semesterFilter);
                     setPendingSchoolYearFilter(schoolYearFilter);
@@ -804,28 +797,14 @@ function AttendanceClassSelection() {
               {showFilters && (
                 <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
                   <div className="p-4 space-y-3">
-                    {/* Filter by Date Range: [from] to [to] with calendar icons */}
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Filter by Date Range</label>
-                      <div className="flex items-center gap-2">
-                        <div className="relative flex-1 min-w-0">
-                          <input
-                            type="date"
-                            value={pendingDateRangeStart}
-                            onChange={(e) => setPendingDateRangeStart(e.target.value)}
-                            className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                          />
-                        </div>
-                        <span className="text-xs font-medium text-gray-500 shrink-0">to</span>
-                        <div className="relative flex-1 min-w-0">
-                          <input
-                            type="date"
-                            value={pendingDateRangeEnd}
-                            onChange={(e) => setPendingDateRangeEnd(e.target.value)}
-                            className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                          />
-                        </div>
-                      </div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+                      <input
+                        type="date"
+                        value={pendingAttendanceDate}
+                        onChange={(e) => setPendingAttendanceDate(e.target.value)}
+                        className="w-full py-2 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
                     </div>
 
                     <div>
@@ -899,13 +878,11 @@ function AttendanceClassSelection() {
                       <button
                         type="button"
                         onClick={() => {
-                          setPendingDateRangeStart('');
-                          setPendingDateRangeEnd('');
+                          setPendingAttendanceDate('');
                           setPendingClassFilter('all');
                           setPendingSemesterFilter('all');
                           setPendingSchoolYearFilter('all');
-                          setDateRangeStart('');
-                          setDateRangeEnd('');
+                          setAttendanceDate('');
                           setClassFilter('all');
                           setSemesterFilter('all');
                           setSchoolYearFilter('all');
@@ -918,8 +895,7 @@ function AttendanceClassSelection() {
                       <button
                         type="button"
                         onClick={() => {
-                          setDateRangeStart(pendingDateRangeStart);
-                          setDateRangeEnd(pendingDateRangeEnd);
+                          setAttendanceDate(pendingAttendanceDate);
                           setClassFilter(pendingClassFilter);
                           setSemesterFilter(pendingSemesterFilter);
                           setSchoolYearFilter(pendingSchoolYearFilter);
@@ -1008,7 +984,7 @@ function AttendanceClassSelection() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex items-center justify-center gap-2">
+                          <div className="flex items-center justify-center gap-3">
                             <Button
                               onClick={() => navigate(
                                 sheetSessionId
@@ -1027,20 +1003,29 @@ function AttendanceClassSelection() {
                                 onClick={() => handleArchiveClick(sheet, archiveContext)}
                                 variant="outline"
                                 size="sm"
-                                className="text-orange-600 hover:bg-orange-50"
+                                className="text-orange-600 hover:bg-orange-50 border-orange-200"
                                 icon={<ArchiveIcon size="xs" />}
-                                title="Move this saved sheet to Stored archives (restore later)"
+                                title="Archive: Move this saved sheet to Stored archives (restore later)"
                               />
                             )}
+                            <div className="border-l border-gray-200 h-6" />
                             <Button
                               onClick={() =>
                                 handleDeleteSavedAttendance(sheet, sheetSessionId ?? undefined, sessionForLabel?.session_name)
                               }
                               variant="outline"
                               size="sm"
-                              className="border-red-200 text-red-600 hover:bg-red-50"
+                              className={
+                                !rowDeleteKey
+                                  ? "border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50"
+                                  : "border-red-200 text-red-600 hover:bg-red-50"
+                              }
                               icon={<Trash2 className="h-3 w-3" />}
-                              title="Delete this saved session permanently (wrong row? click Cancel in the confirmation dialog)"
+                              title={
+                                !rowDeleteKey
+                                  ? "Cannot delete: This row does not have a saved session. Only rows with a saved session ID can be deleted."
+                                  : "Delete: Permanently remove this saved session (wrong row? click Cancel in the confirmation dialog)"
+                              }
                               disabled={
                                 !rowDeleteKey ||
                                 (deletingAttendanceKey !== null && deletingAttendanceKey === rowDeleteKey)
@@ -1052,7 +1037,7 @@ function AttendanceClassSelection() {
                               size="sm"
                               className="text-gray-600 hover:bg-gray-100"
                               icon={<Printer className="h-3 w-3" />}
-                              title="Download attendance report (CSV, PDF, or DOCX)"
+                              title="Export: Download attendance report (CSV, PDF, or DOCX)"
                               disabled={exportingKey !== null && exportingKey.startsWith(`${sheet.class_id}-${sheet.date}`)}
                             />
                           </div>
@@ -1229,6 +1214,7 @@ function AttendanceClassSelection() {
         isOpen={showArchiveModal}
         onClose={() => setShowArchiveModal(false)}
         initialTab="attendance"
+        refreshToken={refreshKey}
         onAttendanceUnarchived={() => setRefreshKey((prev) => prev + 1)}
       />
 
@@ -1238,10 +1224,11 @@ function AttendanceClassSelection() {
         title="Export Attendance"
         size="sm"
       >
-        <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-2">
           <Button
             variant="outline"
             className="w-full justify-center"
+            size="sm"
             onClick={() => {
               if (!openExportModal) return;
               const target = openExportModal;
@@ -1254,6 +1241,7 @@ function AttendanceClassSelection() {
           <Button
             variant="outline"
             className="w-full justify-center"
+            size="sm"
             onClick={() => {
               if (!openExportModal) return;
               const target = openExportModal;
@@ -1266,6 +1254,7 @@ function AttendanceClassSelection() {
           <Button
             variant="outline"
             className="w-full justify-center"
+            size="sm"
             onClick={() => {
               if (!openExportModal) return;
               const target = openExportModal;

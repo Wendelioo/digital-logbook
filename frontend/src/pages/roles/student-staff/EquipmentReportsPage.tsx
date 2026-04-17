@@ -108,6 +108,11 @@ function EquipmentReports() {
       report.mouse_condition,
     ].filter(c => c && c.toLowerCase() !== 'good').length;
 
+  const normalizePCNumber = (value?: string | null) => {
+    if (!value) return '';
+    return value.trim();
+  };
+
   const issueFeedbackList = feedbackList.filter((report) => !isNoIssueReport(report));
   const visibleFeedbackList = sectionTab === 'issues'
     ? issueFeedbackList
@@ -438,9 +443,11 @@ function EquipmentReports() {
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex flex-col gap-0.5">
-                          <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold w-fit truncate max-w-full">
-                            {feedback.pc_number}
-                          </span>
+                          {normalizePCNumber(feedback.pc_number) && (
+                            <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold w-fit truncate max-w-full">
+                              {normalizePCNumber(feedback.pc_number)}
+                            </span>
+                          )}
                           {(() => {
                             const { reportedForAnotherPC, submittedFrom } = parseReportContext(feedback.additional_comments);
                             if (!reportedForAnotherPC && !submittedFrom) return null;
@@ -606,7 +613,7 @@ function EquipmentReports() {
                   </div>
                   <div>
                     <span className="text-gray-600">Reported for (PC):</span>
-                    <p className="font-medium text-gray-900">{selectedFeedback.pc_number}</p>
+                    <p className="font-medium text-gray-900">{normalizePCNumber(selectedFeedback.pc_number)}</p>
                     {(() => {
                       const { reportedForAnotherPC, submittedFrom } = parseReportContext(selectedFeedback.additional_comments);
                       if (!reportedForAnotherPC && !submittedFrom) return null;
@@ -752,7 +759,12 @@ function EquipmentReports() {
                   {confirmDecision === 'confirm' ? 'Confirm issue' : 'Reject report'}
                 </h3>
                 <p className="text-sm text-gray-600 mt-0.5">
-                  {confirmFeedback.student_name} · Reported for: PC {confirmFeedback.pc_number}
+                  {(() => {
+                    const pcNumber = normalizePCNumber(confirmFeedback.pc_number);
+                    return pcNumber
+                      ? `${confirmFeedback.student_name} · Reported for: ${pcNumber}`
+                      : confirmFeedback.student_name;
+                  })()}
                   {(() => {
                     const { submittedFrom } = parseReportContext(confirmFeedback.additional_comments);
                     return submittedFrom ? ` · Submitted from: ${submittedFrom}` : '';
@@ -842,10 +854,13 @@ function EquipmentReports() {
                       <div key={feedback.id} className="text-sm text-gray-700 flex items-center justify-between py-1 border-b border-gray-200 last:border-0">
                         <span className="font-medium">{feedback.student_name}</span>
                         <span className="text-gray-500">
-                          Reported for: PC {feedback.pc_number}
                           {(() => {
+                            const pcNumber = normalizePCNumber(feedback.pc_number);
                             const { submittedFrom } = parseReportContext(feedback.additional_comments);
-                            return submittedFrom ? ` · from ${submittedFrom}` : '';
+                            if (pcNumber && submittedFrom) return `Reported for: ${pcNumber} · from ${submittedFrom}`;
+                            if (pcNumber) return `Reported for: ${pcNumber}`;
+                            if (submittedFrom) return `from ${submittedFrom}`;
+                            return '';
                           })()}
                         </span>
                       </div>
@@ -929,7 +944,7 @@ function EquipmentReports() {
                     </div>
                     <div>
                       <span className="text-gray-600">Reported for (PC):</span>
-                      <p className="font-medium text-gray-900">{selectedReportForDetails.pc_number}</p>
+                      <p className="font-medium text-gray-900">{normalizePCNumber(selectedReportForDetails.pc_number)}</p>
                       {(() => {
                         const { reportedForAnotherPC, submittedFrom } = parseReportContext(selectedReportForDetails.additional_comments);
                         if (!reportedForAnotherPC && !submittedFrom) return null;

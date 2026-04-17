@@ -53,6 +53,7 @@ function ConditionBadge({ value }: { value: string }) {
 
 function DetailsModal({ feedback, onClose }: { feedback: Feedback; onClose: () => void }) {
   const { reportedForAnotherPC, submittedFrom } = parseReportContext(feedback.additional_comments);
+  const reportedPCNumber = (feedback.pc_number || '').trim();
   const issueTexts = parseEquipmentIssues(feedback.additional_comments);
   const optionalUserComment = getOptionalUserComment(feedback.additional_comments);
 
@@ -103,9 +104,11 @@ function DetailsModal({ feedback, onClose }: { feedback: Feedback; onClose: () =
           <div>
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Reported for / Submitted from</p>
             <div className="flex flex-col gap-1">
-              <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium w-fit">
-                Reported for: {feedback.pc_number}
-              </span>
+              {reportedPCNumber && (
+                <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium w-fit">
+                  Reported for: {reportedPCNumber}
+                </span>
+              )}
               {(reportedForAnotherPC || submittedFrom) && (
                 <span className="text-xs text-gray-500">
                   {reportedForAnotherPC && 'Reported for another PC'}
@@ -490,6 +493,7 @@ function FeedbackHistory() {
                     {currentRecords.map((feedback, index) => {
                       const withIssues = hasIssues(feedback);
                       const { reportedForAnotherPC, submittedFrom } = parseReportContext(feedback.additional_comments);
+                      const reportedPCNumber = (feedback.pc_number || '').trim();
                       return (
                         <tr key={feedback.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
@@ -514,9 +518,11 @@ function FeedbackHistory() {
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-900">
                             <div className="flex flex-col gap-0.5">
-                              <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full font-medium w-fit">
-                                Reported for: {feedback.pc_number}
-                              </span>
+                              {reportedPCNumber && (
+                                <span className="px-2.5 py-1 bg-blue-100 text-blue-800 rounded-full font-medium w-fit">
+                                  Reported for: {reportedPCNumber}
+                                </span>
+                              )}
                               {(reportedForAnotherPC || submittedFrom) && (
                                 <span className="text-xs text-gray-500">
                                   {reportedForAnotherPC && 'Reported for another PC'}

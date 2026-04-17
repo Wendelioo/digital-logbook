@@ -19,12 +19,18 @@ type printableExportField struct {
 
 type printableExportDocument struct {
 	Title            string
+	TitleCentered    bool
 	Subtitle         string
+	SubtitleCentered bool
+	DetailsTitle     string
 	Details          []printableExportField
+	TableTitle       string
+	TableRightNote   string
 	TableNote        string
 	Headers          []string
 	Rows             [][]string
 	Footer           []printableExportField
+	FooterInline     bool
 	ColumnWidths     []float64
 	ColumnAlignments []string
 	Orientation      string
@@ -61,6 +67,11 @@ func buildPrintableCSVRows(doc printableExportDocument) [][]string {
 		rows = append(rows, []string{doc.Subtitle})
 	}
 
+	if strings.TrimSpace(doc.DetailsTitle) != "" {
+		rows = append(rows, []string{""})
+		rows = append(rows, []string{doc.DetailsTitle})
+	}
+
 	if len(doc.Details) > 0 {
 		rows = append(rows, []string{""})
 		for _, field := range doc.Details {
@@ -69,6 +80,9 @@ func buildPrintableCSVRows(doc printableExportDocument) [][]string {
 	}
 
 	rows = append(rows, []string{""})
+	if strings.TrimSpace(doc.TableTitle) != "" || strings.TrimSpace(doc.TableRightNote) != "" {
+		rows = append(rows, []string{doc.TableTitle, doc.TableRightNote})
+	}
 	if strings.TrimSpace(doc.TableNote) != "" {
 		rows = append(rows, []string{doc.TableNote})
 	}
@@ -77,8 +91,16 @@ func buildPrintableCSVRows(doc printableExportDocument) [][]string {
 
 	if len(doc.Footer) > 0 {
 		rows = append(rows, []string{""})
-		for _, field := range doc.Footer {
-			rows = append(rows, []string{field.Label, field.Value})
+		if doc.FooterInline {
+			summary := make([]string, 0, len(doc.Footer))
+			for _, field := range doc.Footer {
+				summary = append(summary, fmt.Sprintf("%s: %s", field.Label, field.Value))
+			}
+			rows = append(rows, summary)
+		} else {
+			for _, field := range doc.Footer {
+				rows = append(rows, []string{field.Label, field.Value})
+			}
 		}
 	}
 
@@ -97,13 +119,28 @@ func writePrintablePDF(filename string, doc printableExportDocument) error {
 	pdf.AddPage()
 
 	pdf.SetFont("Arial", "B", 16)
-	pdf.Cell(0, 8, doc.Title)
-	pdf.Ln(9)
+	if doc.TitleCentered {
+		pdf.CellFormat(0, 8, doc.Title, "", 1, "C", false, 0, "")
+		pdf.Ln(1)
+	} else {
+		pdf.Cell(0, 8, doc.Title)
+		pdf.Ln(9)
+	}
 
 	if strings.TrimSpace(doc.Subtitle) != "" {
 		pdf.SetFont("Arial", "", 11)
-		pdf.Cell(0, 6, doc.Subtitle)
-		pdf.Ln(7)
+		if doc.SubtitleCentered {
+			pdf.CellFormat(0, 6, doc.Subtitle, "", 1, "C", false, 0, "")
+			pdf.Ln(1)
+		} else {
+			pdf.Cell(0, 6, doc.Subtitle)
+			pdf.Ln(7)
+		}
+	}
+
+	if strings.TrimSpace(doc.DetailsTitle) != "" {
+		pdf.SetFont("Arial", "B", 10)
+		pdf.CellFormat(0, 7, doc.DetailsTitle, "1", 1, "L", false, 0, "")
 	}
 
 	if len(doc.Details) > 0 {
@@ -119,14 +156,14 @@ func writePrintablePDF(filename string, doc printableExportDocument) error {
 			pdf.SetFont("Arial", "B", 9)
 			pdf.CellFormat(labelWidth, 6, left.Label+":", "", 0, "L", false, 0, "")
 			pdf.SetFont("Arial", "", 9)
-			pdf.CellFormat(valueWidth, 6, pdfCellValue(left.Value, int(valueWidth*2.2)), "", 0, "L", false, 0, "")
+			pdf.CellFormat(valueWidth, 6, pdfCellValueForWidth(left.Value, pdf, valueWidth), "", 0, "L", false, 0, "")
 
 			if i+1 < len(doc.Details) {
 				right := doc.Details[i+1]
 				pdf.SetFont("Arial", "B", 9)
 				pdf.CellFormat(labelWidth, 6, right.Label+":", "", 0, "L", false, 0, "")
 				pdf.SetFont("Arial", "", 9)
-				pdf.CellFormat(valueWidth, 6, pdfCellValue(right.Value, int(valueWidth*2.2)), "", 0, "L", false, 0, "")
+				pdf.CellFormat(valueWidth, 6, pdfCellValueForWidth(right.Value, pdf, valueWidth), "", 0, "L", false, 0, "")
 			} else {
 				pdf.CellFormat(pairWidth, 6, "", "", 0, "L", false, 0, "")
 			}
@@ -143,6 +180,17 @@ func writePrintablePDF(filename string, doc printableExportDocument) error {
 		pdf.Ln(2)
 	} else {
 		pdf.Ln(2)
+	}
+
+	if strings.TrimSpace(doc.TableTitle) != "" || strings.TrimSpace(doc.TableRightNote) != "" {
+		pageWidth, _ := pdf.GetPageSize()
+		usableWidth := pageWidth - 20
+		leftWidth := usableWidth * 0.72
+		rightWidth := usableWidth - leftWidth
+
+		pdf.SetFont("Arial", "B", 10)
+		pdf.CellFormat(leftWidth, 7, doc.TableTitle, "1", 0, "L", false, 0, "")
+		pdf.CellFormat(rightWidth, 7, doc.TableRightNote, "1", 1, "R", false, 0, "")
 	}
 
 	widths := resolvePrintableColumnWidths(doc, pdf)
@@ -173,21 +221,33 @@ func writePrintablePDF(filename string, doc printableExportDocument) error {
 				cell = row[index]
 			}
 			align := alignments[index]
-			maxChars := int(widths[index] * 2.2)
 			// Plain rows: no alternating background colors
-			pdf.CellFormat(widths[index], 6, pdfCellValue(cell, maxChars), "1", 0, align, false, 0, "")
+			pdf.CellFormat(widths[index], 6, pdfCellValueForWidth(cell, pdf, widths[index]), "1", 0, align, false, 0, "")
 		}
 		pdf.Ln(-1)
 	}
 
 	if len(doc.Footer) > 0 {
 		pdf.Ln(4)
-		pdf.SetFont("Arial", "", 9)
-		for _, field := range doc.Footer {
+		if doc.FooterInline {
+			pageWidth, _ := pdf.GetPageSize()
+			usableWidth := pageWidth - 20
+			cellWidth := usableWidth / float64(len(doc.Footer))
+
 			pdf.SetFont("Arial", "B", 9)
-			pdf.CellFormat(35, 6, field.Label+":", "", 0, "L", false, 0, "")
+			for _, field := range doc.Footer {
+				value := fmt.Sprintf("%s: %s", field.Label, field.Value)
+				pdf.CellFormat(cellWidth, 7, pdfCellValueForWidth(value, pdf, cellWidth), "1", 0, "L", false, 0, "")
+			}
+			pdf.Ln(-1)
+		} else {
 			pdf.SetFont("Arial", "", 9)
-			pdf.CellFormat(0, 6, field.Value, "", 1, "L", false, 0, "")
+			for _, field := range doc.Footer {
+				pdf.SetFont("Arial", "B", 9)
+				pdf.CellFormat(35, 6, field.Label+":", "", 0, "L", false, 0, "")
+				pdf.SetFont("Arial", "", 9)
+				pdf.CellFormat(0, 6, field.Value, "", 1, "L", false, 0, "")
+			}
 		}
 	}
 
@@ -239,10 +299,13 @@ func generatePrintableDocx(doc printableExportDocument) ([]byte, error) {
 	sb.WriteString(`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`)
 	sb.WriteString(`<w:body>`)
 
-	// Left-align title and subtitle to match PDF output
-	sb.WriteString(docxParagraph(doc.Title, true, 32, false))
+	sb.WriteString(docxParagraph(doc.Title, true, 32, doc.TitleCentered))
 	if strings.TrimSpace(doc.Subtitle) != "" {
-		sb.WriteString(docxParagraph(doc.Subtitle, false, 22, false))
+		sb.WriteString(docxParagraph(doc.Subtitle, false, 22, doc.SubtitleCentered))
+	}
+
+	if strings.TrimSpace(doc.DetailsTitle) != "" {
+		sb.WriteString(docxParagraph(doc.DetailsTitle, true, 22, false))
 	}
 
 	if len(doc.Details) > 0 {
@@ -251,6 +314,10 @@ func generatePrintableDocx(doc printableExportDocument) ([]byte, error) {
 
 	if strings.TrimSpace(doc.TableNote) != "" {
 		sb.WriteString(docxParagraph(doc.TableNote, false, 18, false))
+	}
+
+	if strings.TrimSpace(doc.TableTitle) != "" || strings.TrimSpace(doc.TableRightNote) != "" {
+		sb.WriteString(buildDocxSectionHeaderTable(doc.TableTitle, doc.TableRightNote))
 	}
 
 	const tableWidthTwips = 9360
@@ -300,8 +367,16 @@ func generatePrintableDocx(doc printableExportDocument) ([]byte, error) {
 	sb.WriteString(`</w:tbl>`)
 
 	if len(doc.Footer) > 0 {
-		for _, field := range doc.Footer {
-			sb.WriteString(docxParagraph(fmt.Sprintf("%s: %s", field.Label, field.Value), false, 18, false))
+		if doc.FooterInline {
+			parts := make([]string, 0, len(doc.Footer))
+			for _, field := range doc.Footer {
+				parts = append(parts, fmt.Sprintf("%s: %s", field.Label, field.Value))
+			}
+			sb.WriteString(docxParagraph(strings.Join(parts, "    "), true, 18, false))
+		} else {
+			for _, field := range doc.Footer {
+				sb.WriteString(docxParagraph(fmt.Sprintf("%s: %s", field.Label, field.Value), false, 18, false))
+			}
 		}
 	}
 
@@ -376,6 +451,50 @@ func pdfCellValue(value string, maxChars int) string {
 		return trimmed
 	}
 	return truncateString(trimmed, maxChars)
+}
+
+func pdfCellValueForWidth(value string, pdf *gofpdf.Fpdf, width float64) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || pdf == nil {
+		return trimmed
+	}
+
+	normalized := strings.Join(strings.Fields(trimmed), " ")
+	if normalized == "" {
+		return ""
+	}
+
+	availableWidth := width - 1.5
+	if availableWidth <= 0 {
+		return normalized
+	}
+
+	if pdf.GetStringWidth(normalized) <= availableWidth {
+		return normalized
+	}
+
+	const ellipsis = "..."
+	ellipsisWidth := pdf.GetStringWidth(ellipsis)
+	if ellipsisWidth >= availableWidth {
+		return ""
+	}
+
+	runes := []rune(normalized)
+	var builder strings.Builder
+	for _, r := range runes {
+		candidate := builder.String() + string(r)
+		if pdf.GetStringWidth(strings.TrimRight(candidate, " "))+ellipsisWidth > availableWidth {
+			break
+		}
+		builder.WriteRune(r)
+	}
+
+	result := strings.TrimSpace(builder.String())
+	if result == "" {
+		return ellipsis
+	}
+
+	return result + ellipsis
 }
 
 func docxEscape(s string) string {
@@ -561,6 +680,40 @@ func buildDocxDetailsTable(details []printableExportField) string {
 	}
 
 	sb.WriteString(`</w:tbl>`)
+	return sb.String()
+}
+
+func buildDocxSectionHeaderTable(left, right string) string {
+	tableWidthTwips := 9360
+	leftWidth := int(float64(tableWidthTwips) * 0.72)
+	rightWidth := tableWidthTwips - leftWidth
+
+	leftChars := max(20, leftWidth/90)
+	rightChars := max(12, rightWidth/90)
+
+	var sb strings.Builder
+	sb.WriteString(`<w:tbl>`)
+	sb.WriteString(`<w:tblPr>`)
+	sb.WriteString(fmt.Sprintf(`<w:tblW w:w="%d" w:type="dxa"/>`, tableWidthTwips))
+	sb.WriteString(`<w:tblBorders>`)
+	sb.WriteString(`<w:top w:val="single" w:sz="4" w:space="0" w:color="auto"/>`)
+	sb.WriteString(`<w:left w:val="single" w:sz="4" w:space="0" w:color="auto"/>`)
+	sb.WriteString(`<w:bottom w:val="single" w:sz="4" w:space="0" w:color="auto"/>`)
+	sb.WriteString(`<w:right w:val="single" w:sz="4" w:space="0" w:color="auto"/>`)
+	sb.WriteString(`<w:insideH w:val="single" w:sz="4" w:space="0" w:color="auto"/>`)
+	sb.WriteString(`<w:insideV w:val="single" w:sz="4" w:space="0" w:color="auto"/>`)
+	sb.WriteString(`</w:tblBorders>`)
+	sb.WriteString(`</w:tblPr>`)
+	sb.WriteString(`<w:tblGrid>`)
+	sb.WriteString(fmt.Sprintf(`<w:gridCol w:w="%d"/>`, leftWidth))
+	sb.WriteString(fmt.Sprintf(`<w:gridCol w:w="%d"/>`, rightWidth))
+	sb.WriteString(`</w:tblGrid>`)
+	sb.WriteString(`<w:tr>`)
+	sb.WriteString(docxTableCellWithFont(left, true, "L", leftWidth, leftChars, 18, 0))
+	sb.WriteString(docxTableCellWithFont(right, true, "R", rightWidth, rightChars, 18, 0))
+	sb.WriteString(`</w:tr>`)
+	sb.WriteString(`</w:tbl>`)
+
 	return sb.String()
 }
 
